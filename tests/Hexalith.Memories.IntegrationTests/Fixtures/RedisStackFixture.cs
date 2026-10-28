@@ -11,7 +11,7 @@ using StackExchange.Redis;
 /// </summary>
 public sealed class RedisStackFixture : IAsyncLifetime
 {
-    private const string RedisStackImage = "redis/redis-stack:latest@sha256:880df9c228597cb0d15b585f39a4327d6ee2d8b0d0f155e3f75dba9a761d4ec3";
+    internal const string RedisStackImage = "redis/redis-stack:latest@sha256:880df9c228597cb0d15b585f39a4327d6ee2d8b0d0f155e3f75dba9a761d4ec3";
 
     private IContainer? _container;
     private string? _nativeConnectionString;

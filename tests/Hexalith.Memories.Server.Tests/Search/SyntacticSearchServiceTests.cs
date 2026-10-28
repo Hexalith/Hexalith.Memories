@@ -388,17 +388,19 @@ public class SyntacticSearchServiceTests
         List<IReadOnlyList<object>> observedArguments = [];
 
         db.ExecuteAsync(
-                Arg.Is<string>(command => command == "FT.SEARCH"),
+                Arg.Is<string>(command => command == "FT.PROFILE"),
                 Arg.Do<ICollection<object>>(args => observedArguments.Add(args.ToArray())),
                 Arg.Any<CommandFlags>())
-            .Returns(CreateRawSearchResult());
+            .Returns(call => CreateProfiledResult(call.Arg<ICollection<object>>().ElementAt(1).ToString() == "AGGREGATE"
+                ? RedisResult.Create([RedisResult.Create(1), RedisResult.Create([RedisResult.Create((RedisValue)"__key"), RedisResult.Create((RedisValue)IndexSchemaDefinitions.BuildSyntacticKey("tenant1", "mu-001"))])])
+                : CreateRawSearchResult()));
 
         Hexalith.Memories.Contracts.V1.SearchResult result = await service.SearchAsync(
             new SearchQuery
             {
                 TenantId = "tenant1",
                 Query = "outage",
-                Offset = 25,
+                Offset = 0,
                 MaxResults = 150,
             },
             [
@@ -407,7 +409,7 @@ public class SyntacticSearchServiceTests
             ]);
 
         result.TotalCount.ShouldBe(1);
-        observedArguments.Count.ShouldBe(1);
+        observedArguments.Count.ShouldBe(2);
         IReadOnlyList<object> args = observedArguments[0];
         int inKeysIndex = IndexOf(args, "INKEYS");
         int scorerIndex = IndexOf(args, "SCORER");
@@ -418,9 +420,9 @@ public class SyntacticSearchServiceTests
         limitIndex.ShouldBeGreaterThan(scorerIndex);
         args[scorerIndex + 1].ShouldBe(SyntacticSearchService.RedisSearchScorerName);
         args[inKeysIndex + 1].ShouldBe(2);
-        args.ShouldContain(IndexSchemaDefinitions.BuildSyntacticKey("tenant1", "mu-001"));
-        args.ShouldContain(IndexSchemaDefinitions.BuildSyntacticKey("tenant1", "mu-002"));
-        args[limitIndex + 1].ShouldBe(25);
+        args.Select(value => value.ToString()).ShouldContain(IndexSchemaDefinitions.BuildSyntacticKey("tenant1", "mu-001"));
+        args.Select(value => value.ToString()).ShouldContain(IndexSchemaDefinitions.BuildSyntacticKey("tenant1", "mu-002"));
+        args[limitIndex + 1].ShouldBe(0);
         args[limitIndex + 2].ShouldBe(150);
     }
 
@@ -473,6 +475,9 @@ public class SyntacticSearchServiceTests
 
         return new Document(id, fields, score);
     }
+
+    private static RedisResult CreateProfiledResult(RedisResult result)
+        => RedisResult.Create([result, RedisResult.Create([RedisResult.Create([RedisResult.Create((RedisValue)"Warning")])])]);
 
     private static RedisResult CreateRawSearchResult() => RedisResult.Create(
     [

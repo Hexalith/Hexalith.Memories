@@ -13,13 +13,10 @@ using Hexalith.Memories.Server.Infrastructure;
 
 using Microsoft.Extensions.Logging;
 
-using NRedisStack.RedisStackCommands;
 using NRedisStack.Search;
 
 using StackExchange.Redis;
 using Hexalith.Memories.Server.Ingestion;
-
-using RedisSearchResult = NRedisStack.Search.SearchResult;
 
 /// <summary>Executes syntactic (BM25) searches against RediSearch indexes.</summary>
 public sealed partial class SyntacticSearchService
@@ -81,7 +78,6 @@ public sealed partial class SyntacticSearchService
         int offset = SearchPaginationOptions.NormalizeOffset(query.Offset);
 
         IDatabase db = _redis.GetDatabase();
-        var ft = db.FT();
 
         string searchTerms = BuildSearchTermsQuery(query.Query);
         string queryString = BuildQueryString(
@@ -94,14 +90,12 @@ public sealed partial class SyntacticSearchService
 
         queryString = await SourcePublicationVisibility.FilterQueryAsync(db, query.TenantId, queryString,
             IndexSchemaDefinitions.GetSyntacticIndexName(query.TenantId)).ConfigureAwait(false);
-        Query redisQuery = BuildRedisQuery(queryString, offset, maxResults);
-
         string indexName = IndexSchemaDefinitions.GetSyntacticIndexName(query.TenantId);
-        RedisSearchResult result;
+        RedisKey[]? scopedKeys = null;
 
         if (graphScopeKeys is not null)
         {
-            RedisKey[] scopedKeys = ValidateGraphScopeKeys(query.TenantId, graphScopeKeys);
+            scopedKeys = ValidateGraphScopeKeys(query.TenantId, graphScopeKeys);
             if (scopedKeys.Length == 0)
             {
                 return new Contracts.V1.SearchResult
@@ -113,19 +107,54 @@ public sealed partial class SyntacticSearchService
                 };
             }
 
-            return await SearchWithGraphScopeKeysAsync(
-                db,
-                indexName,
-                query,
-                queryString,
-                scopedKeys,
-                offset,
-                maxResults).ConfigureAwait(false);
         }
 
         try
         {
-            result = await ft.SearchAsync(indexName, redisQuery).ConfigureAwait(false);
+            // Score-only FT.SEARCH heaps have no unique order across separate LIMIT windows.
+            // Order raw positions before hydration so stale hashes still consume their positions.
+            RedisResult window = await ExecuteCompleteQueryAsync(db, "AGGREGATE",
+                BuildOrderedWindowArguments(indexName, queryString, scopedKeys, offset, maxResults)).ConfigureAwait(false);
+            (long totalResults, RedisKey[] orderedKeys) = ParseOrderedWindow(window);
+            long expectedRows = Math.Min(maxResults, Math.Max(0L, totalResults - offset));
+            if (orderedKeys.LongLength != expectedRows)
+            {
+                // MAXAGGREGATERESULTS can cap the sorter's retained prefix below MAXSEARCHRESULTS.
+                // In that deployment a valid deep SEARCH offset must fail rather than look exhausted.
+                throw new RedisConnectionException(ConnectionFailureType.ProtocolFailure, CommandFlags.None, "Incomplete RediSearch ordered window; the configured aggregate result limit cannot serve the requested raw offset.");
+            }
+
+            List<ScoredResult> results = [];
+            if (orderedKeys.Length > 0)
+            {
+                RedisResult hydrated = await ExecuteCompleteQueryAsync(db, "SEARCH",
+                    BuildGraphScopedSearchArguments(indexName, queryString, orderedKeys, 0, maxResults)).ConfigureAwait(false);
+                ValidateHydratedKeys(hydrated, orderedKeys);
+                (long hydratedCount, List<ScoredResult> hydratedResults) = ParseRawSearchResult(hydrated, query.TenantId);
+                if (hydratedCount != orderedKeys.Length)
+                {
+                    throw new RedisConnectionException(ConnectionFailureType.ProtocolFailure, CommandFlags.None, "Incomplete RediSearch ordered window hydration; retry against an unchanged index.");
+                }
+
+                Dictionary<string, ScoredResult> byId = hydratedResults.ToDictionary(result => result.MemoryUnitId, StringComparer.Ordinal);
+                foreach (RedisKey key in orderedKeys)
+                {
+                    string memoryUnitId = IndexSchemaDefinitions.TryParseSyntacticMemoryUnitId(query.TenantId, key, out string parsedId)
+                        ? parsedId : key.ToString();
+                    if (byId.TryGetValue(memoryUnitId, out ScoredResult? result))
+                    {
+                        results.Add(result);
+                    }
+                }
+            }
+
+            return new Contracts.V1.SearchResult
+            {
+                Results = results,
+                TotalCount = totalResults,
+                HasIndexedMemoryUnits = totalResults > 0 || await HasIndexedMemoryUnitsAsync(db, indexName).ConfigureAwait(false),
+                Query = query.Query,
+            };
         }
         catch (RedisServerException ex) when (RediSearchErrorClassifier.IsMissingIndexError(ex))
         {
@@ -150,31 +179,6 @@ public sealed partial class SyntacticSearchService
             };
         }
 
-        bool hasIndexedMemoryUnits = result.TotalResults > 0;
-        if (!hasIndexedMemoryUnits)
-        {
-            hasIndexedMemoryUnits = await HasIndexedMemoryUnitsAsync(db, indexName).ConfigureAwait(false);
-        }
-
-        List<ScoredResult> results = [];
-        foreach (Document doc in result.Documents)
-        {
-            if (!HasRequiredFields(doc))
-            {
-                LogStaleEntry(_logger, doc.Id, query.TenantId);
-                continue;
-            }
-
-            results.Add(MapDocumentToScoredResult(doc, query.TenantId));
-        }
-
-        return new Contracts.V1.SearchResult
-        {
-            Results = results,
-            TotalCount = result.TotalResults,
-            HasIndexedMemoryUnits = hasIndexedMemoryUnits,
-            Query = query.Query,
-        };
     }
 
     /// <summary>Maps a RediSearch document to a scored result record.</summary>
@@ -293,61 +297,140 @@ public sealed partial class SyntacticSearchService
         };
     }
 
-    private async Task<Contracts.V1.SearchResult> SearchWithGraphScopeKeysAsync(
-        IDatabase db,
+    /// <summary>Builds a BM25-ordered raw window with the unique Redis key breaking score ties.</summary>
+    /// <param name="indexName">The tenant-scoped index.</param>
+    /// <param name="queryString">The escaped query including visibility and attribute filters.</param>
+    /// <param name="graphScopeKeys">Optional validated graph keys applied before selection.</param>
+    /// <param name="offset">The raw offset.</param>
+    /// <param name="maxResults">The normalized window size.</param>
+    /// <returns>The aggregation arguments.</returns>
+    internal static List<object> BuildOrderedWindowArguments(
         string indexName,
-        SearchQuery query,
         string queryString,
-        IReadOnlyList<RedisKey> graphScopeKeys,
+        IReadOnlyList<RedisKey>? graphScopeKeys,
         int offset,
         int maxResults)
     {
-        List<object> args = BuildGraphScopedSearchArguments(
-            indexName,
-            queryString,
-            graphScopeKeys,
-            offset,
-            maxResults);
-
-        RedisResult rawResult;
-        try
+        List<object> args = [indexName, queryString];
+        if (graphScopeKeys is not null)
         {
-            rawResult = await db.ExecuteAsync("FT.SEARCH", args, CommandFlags.None).ConfigureAwait(false);
+            args.Add("INKEYS");
+            args.Add(graphScopeKeys.Count);
+            args.AddRange(graphScopeKeys.Select(static key => (object)key));
         }
-        catch (RedisServerException ex) when (RediSearchErrorClassifier.IsMissingIndexError(ex))
+
+        args.AddRange([
+            "ADDSCORES", "SCORER", RedisSearchScorerName,
+            "LOAD", 1, "__key",
+            "SORTBY", 4, "@__score", "DESC", "@__key", "ASC",
+            "MAX", (long)offset + maxResults,
+            "LIMIT", offset, maxResults,
+            "DIALECT", 2,
+        ]);
+        return args;
+    }
+
+    private static async Task<RedisResult> ExecuteCompleteQueryAsync(IDatabase db, string queryType, List<object> arguments)
+    {
+        // PROFILE reports execution warnings even in RESP2, where ordinary queries silently
+        // omit timeout warnings under ON_TIMEOUT RETURN. Inherit the bounded server timeout.
+        List<object> profileArguments = [arguments[0], queryType, "LIMITED", "QUERY", .. arguments.Skip(1)];
+        RedisResult raw = await db.ExecuteAsync("FT.PROFILE", profileArguments, CommandFlags.None).ConfigureAwait(false);
+        RedisResult[] values = (RedisResult[]?)raw ?? [];
+        RedisResult result;
+        RedisResult profile;
+        if (values.Length == 2 && values[0].Resp2Type == ResultType.Array)
         {
-            LogMissingIndex(_logger, indexName, query.TenantId);
-            return new Contracts.V1.SearchResult
+            result = values[0];
+            profile = values[1];
+        }
+        else
+        {
+            Dictionary<string, RedisResult> map = BuildResultMap(values);
+            if (!map.TryGetValue("profile", out RedisResult? profileValue))
             {
-                Results = [],
-                TotalCount = 0,
-                HasIndexedMemoryUnits = false,
-                Query = query.Query,
-            };
+                throw new RedisConnectionException(ConnectionFailureType.ProtocolFailure, CommandFlags.None, "Incomplete RediSearch execution; completion profile is missing.");
+            }
+
+            result = raw!;
+            profile = profileValue!;
         }
-        catch (RedisServerException ex) when (RediSearchErrorClassifier.IsQuerySyntaxError(ex))
+
+        if (!ValidateProfileWarnings(profile))
         {
-            LogQuerySyntaxRejected(_logger, query.TenantId, "syntactic");
-            return new Contracts.V1.SearchResult
+            throw new RedisConnectionException(ConnectionFailureType.ProtocolFailure, CommandFlags.None, "Incomplete RediSearch execution; completion warning is missing.");
+        }
+
+        return result;
+    }
+
+    private static bool ValidateProfileWarnings(RedisResult profile)
+    {
+        if (profile.Resp2Type != ResultType.Array)
+        {
+            return false;
+        }
+
+        RedisResult[] entries = (RedisResult[]?)profile ?? [];
+        bool foundWarning = false;
+        for (int i = 0; i < entries.Length;)
+        {
+            if (entries[i].Resp2Type == ResultType.Array)
             {
-                Results = [],
-                TotalCount = 0,
-                HasIndexedMemoryUnits = true,
-                Query = query.Query,
-            };
+                foundWarning |= ValidateProfileWarnings(entries[i++]);
+                continue;
+            }
+
+            // Map keys and RESP2 section names occur before their values. Never interpret
+            // an iterator's query-term value (for example "warning") as a completion warning.
+            if (string.Equals(entries[i].ToString(), "Warning", StringComparison.OrdinalIgnoreCase))
+            {
+                foundWarning = true;
+                // RESP2 has a one-element [Warning] row on success; RESP3 returns Warning: None.
+                if (i + 1 < entries.Length && !string.Equals(entries[i + 1].ToString(), "None", StringComparison.OrdinalIgnoreCase))
+                {
+                    string warning = entries[i + 1].ToString();
+                    if (warning.Contains("timeout", StringComparison.OrdinalIgnoreCase)
+                        || warning.Contains("timed out", StringComparison.OrdinalIgnoreCase))
+                    {
+                        throw new RedisTimeoutException(CommandFlags.None, "Incomplete RediSearch execution; query profile reported a timeout.", CommandStatus.Unknown);
+                    }
+
+                    throw new RedisConnectionException(ConnectionFailureType.ProtocolFailure, CommandFlags.None, "Incomplete RediSearch execution; query profile reported a warning.");
+                }
+            }
+            else if (i + 1 < entries.Length && entries[i + 1].Resp2Type == ResultType.Array)
+            {
+                foundWarning |= ValidateProfileWarnings(entries[i + 1]);
+            }
+
+            i += 2;
         }
 
-        (long totalResults, List<ScoredResult> results) = ParseRawSearchResult(rawResult, query.TenantId);
-        bool hasIndexedMemoryUnits = totalResults > 0
-            || await HasIndexedMemoryUnitsAsync(db, indexName).ConfigureAwait(false);
+        return foundWarning;
+    }
 
-        return new Contracts.V1.SearchResult
+    private static (long TotalResults, RedisKey[] Keys) ParseOrderedWindow(RedisResult rawResult)
+    {
+        RedisResult[] values = (RedisResult[]?)rawResult ?? [];
+        if (values.Length == 0)
         {
-            Results = results,
-            TotalCount = totalResults,
-            HasIndexedMemoryUnits = hasIndexedMemoryUnits,
-            Query = query.Query,
-        };
+            throw new RedisConnectionException(ConnectionFailureType.ProtocolFailure, CommandFlags.None, "Incomplete RediSearch ordered window response.");
+        }
+
+        if (long.TryParse(values[0].ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out long total))
+        {
+            return (total, values.Skip(1).Select(value => (RedisKey)ParseFieldMap(value)["__key"].ToString()).ToArray());
+        }
+
+        Dictionary<string, RedisResult> map = BuildResultMap(values);
+        total = long.Parse(map["total_results"].ToString(), CultureInfo.InvariantCulture);
+        RedisResult[] rows = (RedisResult[]?)map["results"] ?? [];
+        return (total, rows.Select(row =>
+        {
+            Dictionary<string, RedisResult> fields = BuildResultMap((RedisResult[]?)row ?? []);
+            return (RedisKey)ParseFieldMap(fields["extra_attributes"])["__key"].ToString();
+        }).ToArray());
     }
 
     internal static string BuildAttributeTag(string key, string value)
@@ -442,25 +525,11 @@ public sealed partial class SyntacticSearchService
 
     private static async Task<bool> HasIndexedMemoryUnitsAsync(IDatabase db, string indexName)
     {
-        RedisSearchResult countResult = await db.FT()
-            .SearchAsync(indexName, new Query("*").Limit(0, 0).Dialect(2))
-            .ConfigureAwait(false);
-
-        return countResult.TotalResults > 0;
-    }
-
-    private static bool HasRequiredFields(Document doc)
-    {
-        foreach (string field in _requiredFields)
-        {
-            RedisValue value = doc[field];
-            if (value.IsNullOrEmpty)
-            {
-                return false;
-            }
-        }
-
-        return true;
+        RedisResult countResult = await ExecuteCompleteQueryAsync(db, "SEARCH", [indexName, "*", "LIMIT", 0, 0, "DIALECT", 2]).ConfigureAwait(false);
+        RedisResult[] values = (RedisResult[]?)countResult ?? [];
+        return values.Length > 0 && (long.TryParse(values[0].ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out long total)
+            ? total > 0
+            : long.Parse(BuildResultMap(values)["total_results"].ToString(), CultureInfo.InvariantCulture) > 0);
     }
 
     private static bool HasRequiredFields(IReadOnlyDictionary<string, RedisValue> fields)
@@ -501,11 +570,42 @@ public sealed partial class SyntacticSearchService
             SourceUri = sourceUri,
             SourceType = sourceType,
             Axis = "syntactic",
-            CaseId = caseIdField.IsNullOrEmpty ? null : caseIdField.ToString(),
+            CaseId = string.IsNullOrWhiteSpace(caseIdField.ToString()) ? null : caseIdField.ToString(),
         };
     }
 
-    private static (long TotalResults, List<ScoredResult> Results) ParseRawSearchResult(RedisResult rawResult, string tenantId)
+    private static void ValidateHydratedKeys(RedisResult rawResult, IReadOnlyCollection<RedisKey> selectedKeys)
+    {
+        RedisResult[] values = (RedisResult[]?)rawResult ?? [];
+        RedisKey[] returnedKeys;
+        if (values.Length > 0 && long.TryParse(values[0].ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+        {
+            // WITHSCORES returns one (id, score, fields) triple for every raw position.
+            returnedKeys = (values.Length - 1) % 3 == 0
+                ? Enumerable.Range(0, (values.Length - 1) / 3).Select(i => (RedisKey)values[1 + i * 3].ToString()).ToArray()
+                : [];
+        }
+        else
+        {
+            Dictionary<string, RedisResult> map = BuildResultMap(values);
+            RedisResult[] documents = map.TryGetValue("results", out RedisResult? rows) ? (RedisResult[]?)rows ?? [] : [];
+            returnedKeys = documents.Select(document =>
+            {
+                Dictionary<string, RedisResult> fields = BuildResultMap((RedisResult[]?)document ?? []);
+                return fields.TryGetValue("id", out RedisResult? id) ? (RedisKey)id.ToString() : (RedisKey)string.Empty;
+            }).ToArray();
+        }
+
+        // Check raw identities before required-field filtering. Missing fields may consume a
+        // position, but a missing, duplicated or substituted selected key cannot be accepted.
+        if (returnedKeys.Length != selectedKeys.Count || !selectedKeys.ToHashSet().SetEquals(returnedKeys))
+        {
+            throw new RedisConnectionException(ConnectionFailureType.ProtocolFailure, CommandFlags.None,
+                "Incomplete RediSearch ordered window hydration; returned identities do not match the selected raw positions.");
+        }
+    }
+
+    private (long TotalResults, List<ScoredResult> Results) ParseRawSearchResult(RedisResult rawResult, string tenantId)
     {
         RedisResult[] values = (RedisResult[]?)rawResult ?? [];
         if (values.Length == 0)
@@ -518,7 +618,7 @@ public sealed partial class SyntacticSearchService
             : ParseRespMapSearchResult(values, tenantId);
     }
 
-    private static (long TotalResults, List<ScoredResult> Results) ParseLegacyArraySearchResult(
+    private (long TotalResults, List<ScoredResult> Results) ParseLegacyArraySearchResult(
         RedisResult[] values,
         long totalResults,
         string tenantId)
@@ -542,6 +642,7 @@ public sealed partial class SyntacticSearchService
             Dictionary<string, RedisValue> fields = ParseFieldMap(values[i++]);
             if (!HasRequiredFields(fields))
             {
+                LogStaleEntry(_logger, documentId.ToString(), tenantId);
                 continue;
             }
 
@@ -551,7 +652,7 @@ public sealed partial class SyntacticSearchService
         return (totalResults, results);
     }
 
-    private static (long TotalResults, List<ScoredResult> Results) ParseRespMapSearchResult(
+    private (long TotalResults, List<ScoredResult> Results) ParseRespMapSearchResult(
         RedisResult[] mapEntries,
         string tenantId)
     {
@@ -591,6 +692,7 @@ public sealed partial class SyntacticSearchService
 
             if (!HasRequiredFields(fields))
             {
+                LogStaleEntry(_logger, documentId.ToString(), tenantId);
                 continue;
             }
 

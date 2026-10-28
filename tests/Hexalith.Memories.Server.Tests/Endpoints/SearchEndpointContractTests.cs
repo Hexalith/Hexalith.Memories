@@ -101,6 +101,42 @@ public sealed class SearchEndpointContractTests : IDisposable
         _factory.ActorProxyFactory.DidNotReceiveWithAnyArgs().CreateActorProxy<ITenantConfigurationActor>(default!, default!);
     }
 
+    [Theory]
+    [InlineData("syntactic", false, "BACKEND_UNAVAILABLE")]
+    [InlineData("syntactic", true, "BACKEND_UNAVAILABLE")]
+    [InlineData("syntactic&startNodeId=mu-1", false, "BACKEND_UNAVAILABLE")]
+    [InlineData("syntactic&startNodeId=mu-1", true, "BACKEND_UNAVAILABLE")]
+    [InlineData("hybrid&axes=syntactic", false, "ALL_BACKENDS_UNAVAILABLE")]
+    [InlineData("hybrid&axes=syntactic", true, "ALL_BACKENDS_UNAVAILABLE")]
+    public async Task SyntacticSearch_IncompleteExecution_ReturnsRetryableBackendUnavailable(string axis, bool timeout, string expectedCode)
+    {
+        StubTenantActive("acme-search");
+        StubFusionWeights(new FusionWeights());
+        _factory.RedisDatabase.ExecuteAsync("FT.PROFILE", Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())
+            .Returns(timeout
+                ? RedisResult.Create([RedisResult.Create([RedisResult.Create(0)]), RedisResult.Create([
+                    RedisResult.Create([RedisResult.Create((RedisValue)"Warning"), RedisResult.Create((RedisValue)"Timeout limit was reached")])])])
+                : RedisResult.Create([RedisResult.Create((RedisValue)"missing-completion-profile")]));
+        // One compact scalar row lets the actual graph-scoped endpoint reach its inner search.
+        _factory.FalkorDbDatabase.ExecuteAsync(Arg.Any<string>(), Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())
+            .Returns(RedisResult.Create([
+                RedisResult.Create([
+                    RedisResult.Create([RedisResult.Create(1), RedisResult.Create((RedisValue)"nodeId")]),
+                    RedisResult.Create([RedisResult.Create(1), RedisResult.Create((RedisValue)"hopDistance")])]),
+                RedisResult.Create([RedisResult.Create([
+                    RedisResult.Create([RedisResult.Create(2), RedisResult.Create((RedisValue)"mu-1")]),
+                    RedisResult.Create([RedisResult.Create(3), RedisResult.Create(0)])])]),
+                RedisResult.Create(Array.Empty<RedisResult>())]));
+        using HttpClient client = _factory.CreateClient();
+
+        using HttpResponseMessage response = await client.GetAsync($"/api/v1/search?tenantId=acme-search&query=qualification&axis={axis}");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable);
+        (await ReadErrorResponseAsync(response)).Code.ShouldBe(expectedCode);
+        GetSingleHeaderValue(response, "Retry-After").ShouldBe("5");
+        await _factory.RedisDatabase.Received().ExecuteAsync("FT.PROFILE", Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>());
+    }
+
     [Fact]
     public async Task SemanticSearch_WhenEmbeddingConfigActorUnavailable_ReturnsBackendUnavailable()
     {
