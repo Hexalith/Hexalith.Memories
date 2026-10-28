@@ -1473,6 +1473,37 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             payload = payload with { VectorDimensions = dimensions };
         }
 
+        // A listening sidecar and readable state store do not imply that the SDK workflow
+        // worker has reconnected. Require its registration before the single provisioning POST.
+        HttpClient sidecarClient = _daprStateClient
+            ?? throw new InvalidOperationException("DAPR state client is unavailable before the topology has started.");
+        CancellationToken appStopping = _app?.Services.GetService<IHostApplicationLifetime>()?.ApplicationStopping
+            ?? CancellationToken.None;
+        using CancellationTokenSource readinessCts = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, appStopping);
+        try
+        {
+            await WaitForWorkflowWorkerReadyAsync(
+                async token =>
+                {
+                    using HttpResponseMessage response = await sidecarClient.GetAsync(
+                        "/v1.0/metadata", token).ConfigureAwait(false);
+                    response.EnsureSuccessStatusCode();
+                    return JsonDocument.Parse(await response.Content.ReadAsStringAsync(token).ConfigureAwait(false));
+                },
+                _daprAppId,
+                EndpointReadyTimeout,
+                EndpointPollInterval,
+                readinessCts.Token).ConfigureAwait(false);
+        }
+        catch (TimeoutException exception)
+        {
+            throw new TimeoutException(
+                $"{exception.Message}{Environment.NewLine}"
+                + FormatRecentLogs(_logProvider.GetEntriesSince(logStartIndex), maxLines: 40),
+                exception);
+        }
+
         using HttpResponseMessage provisionResponse = await MemoriesClient.PostAsJsonAsync(
             "/api/v1/tenants",
             payload,
@@ -1485,7 +1516,9 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         {
             string body = await provisionResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             throw new InvalidOperationException(
-                $"Unexpected POST /api/v1/tenants response for '{id}': {(int)provisionResponse.StatusCode} {provisionResponse.ReasonPhrase}. Body: {body}");
+                RedactSensitiveDiagnostics(
+                    $"Unexpected POST /api/v1/tenants response for '{id}': {(int)provisionResponse.StatusCode} {provisionResponse.ReasonPhrase}. Body: {body}")
+                + $"{Environment.NewLine}{FormatRecentLogs(_logProvider.GetEntriesSince(logStartIndex), maxLines: 40)}");
         }
 
         await WaitForTenantActiveAsync(
@@ -2659,6 +2692,86 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                 $"{exception.Message}" +
                 $"{Environment.NewLine}{FormatRecentLogs(_logProvider.GetEntriesSince(logStartIndex), maxLines: 40)}",
                 exception);
+        }
+    }
+
+    /// <summary>Waits for an SDK workflow worker and its actor types on the fixture-owned sidecar.</summary>
+    /// <param name="getMetadataAsync">Read-only Dapr metadata probe; response ownership passes to this method.</param>
+    /// <param name="expectedAppId">Exact fixture-owned Dapr application identity.</param>
+    /// <param name="timeout">Overall readiness budget, including an unresponsive metadata request.</param>
+    /// <param name="pollInterval">Delay between observations without a registered worker.</param>
+    /// <param name="cancellationToken">Cooperative caller or AppHost shutdown cancellation.</param>
+    /// <returns>A task that completes only after the owned workflow worker is ready.</returns>
+    internal static async Task WaitForWorkflowWorkerReadyAsync(
+        Func<CancellationToken, Task<JsonDocument>> getMetadataAsync,
+        string expectedAppId,
+        TimeSpan timeout,
+        TimeSpan pollInterval,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(getMetadataAsync);
+        ArgumentException.ThrowIfNullOrWhiteSpace(expectedAppId);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(timeout, TimeSpan.Zero);
+        ArgumentOutOfRangeException.ThrowIfLessThan(pollInterval, TimeSpan.Zero);
+        using CancellationTokenSource readinessCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        readinessCts.CancelAfter(timeout);
+        CancellationToken readinessToken = readinessCts.Token;
+        Exception? lastException = null;
+        try
+        {
+            while (true)
+            {
+                readinessToken.ThrowIfCancellationRequested();
+                try
+                {
+                    using JsonDocument metadata = await getMetadataAsync(readinessToken)
+                        .WaitAsync(readinessToken).ConfigureAwait(false);
+                    JsonElement root = metadata.RootElement;
+                    if (!root.TryGetProperty("id", out JsonElement id) ||
+                        !string.Equals(id.GetString(), expectedAppId, StringComparison.Ordinal))
+                    {
+                        throw new InvalidOperationException("The workflow metadata is not from the fixture-owned Dapr app.");
+                    }
+
+                    // Dapr 1.18.2 increments connectedWorkers just before registering actor types.
+                    // Require both registration entries and placement readiness as well as the stream.
+                    if (root.TryGetProperty("workflows", out JsonElement workflows) &&
+                        workflows.TryGetProperty("connectedWorkers", out JsonElement workers) &&
+                        workers.TryGetInt32(out int connectedWorkers) && connectedWorkers > 0 &&
+                        root.TryGetProperty("actorRuntime", out JsonElement actorRuntime) &&
+                        actorRuntime.TryGetProperty("hostReady", out JsonElement hostReady) && hostReady.GetBoolean() &&
+                        root.TryGetProperty("actors", out JsonElement actors))
+                    {
+                        string actorPrefix = $"dapr.internal.default.{expectedAppId}.";
+                        string[] registeredTypes = actors.EnumerateArray()
+                            .Select(actor => actor.GetProperty("type").GetString() ?? string.Empty).ToArray();
+                        if (registeredTypes.Contains(actorPrefix + "workflow", StringComparer.Ordinal) &&
+                            registeredTypes.Contains(actorPrefix + "activity", StringComparer.Ordinal))
+                        {
+                            return;
+                        }
+                    }
+
+                    lastException = null;
+                }
+                catch (OperationCanceledException exception) when (!readinessToken.IsCancellationRequested)
+                {
+                    lastException = exception;
+                }
+                catch (HttpRequestException exception) when (
+                    exception.StatusCode is null || (int)exception.StatusCode is >= 500 and <= 599)
+                {
+                    lastException = exception;
+                }
+
+                await Task.Delay(pollInterval, readinessToken).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException(
+                $"The fixture-owned Dapr workflow worker did not become ready within {timeout}. "
+                + $"Last error: {FormatException(lastException)}.");
         }
     }
 
