@@ -117,6 +117,7 @@ function Get-NextReleaseVersionFromDryRun {
     $normalizedDryRunOutput = [regex]::Replace($DryRunOutput, $ansiEscapePattern, "")
     $semanticReleaseLoggerPrefixPattern = '^\[[^\]\r\n]+\] \[semantic-release\] › ℹ  (?<message>.*)$'
     $nextVersionPrefix = "The next release version is"
+    $firstReleaseVersionPrefix = "There is no previous release, the next release version is"
     $noReleaseSentence = "There are no relevant changes, so no new version is released."
     $staleCheckoutSentence = "The local branch main is behind the remote one, therefore a new version won't be published."
     $parsedVersions = [System.Collections.Generic.List[string]]::new()
@@ -138,10 +139,11 @@ function Get-NextReleaseVersionFromDryRun {
             continue
         }
 
-        if ($message.StartsWith($nextVersionPrefix, [System.StringComparison]::Ordinal)) {
+        if ($message.StartsWith($nextVersionPrefix, [System.StringComparison]::Ordinal) -or
+            $message.StartsWith($firstReleaseVersionPrefix, [System.StringComparison]::Ordinal)) {
             $validVersionMatch = [regex]::Match(
                 $message,
-                "^The next release version is (?<version>[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?)$")
+                "^(?:The next release version is|There is no previous release, the next release version is) (?<version>[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?)$")
             if ($validVersionMatch.Success) {
                 $parsedVersions.Add($validVersionMatch.Groups["version"].Value)
             }
@@ -179,11 +181,11 @@ function Get-NextReleaseVersionFromDryRun {
     if ($malformedVersionMarkers.Count -gt 0) {
         $markers = $malformedVersionMarkers -join "', '"
         $detectedOutcomes = if ($terminalOutcomes.Count -eq 0) { "none" } else { $terminalOutcomes -join ', ' }
-        throw "semantic-release dry-run reported malformed next-release marker(s) ('$markers') alongside recognized terminal outcomes: $detectedOutcomes. Expected 'The next release version is <version>' with a valid semantic version."
+        throw "semantic-release dry-run reported malformed next-release marker(s) ('$markers') alongside recognized terminal outcomes: $detectedOutcomes. Expected 'The next release version is <version>' or 'There is no previous release, the next release version is <version>' with a valid semantic version."
     }
 
     if ($terminalOutcomes.Count -eq 0) {
-        throw "semantic-release dry-run completed, but its terminal outcome could not be parsed. Expected exactly one semantic-release logger record (or exact bare fixture record) containing: 'The next release version is <version>', 'There are no relevant changes, so no new version is released.', or 'The local branch main is behind the remote one, therefore a new version won't be published.'."
+        throw "semantic-release dry-run completed, but its terminal outcome could not be parsed. Expected exactly one semantic-release logger record (or exact bare fixture record) containing: 'The next release version is <version>', 'There is no previous release, the next release version is <version>', 'There are no relevant changes, so no new version is released.', or 'The local branch main is behind the remote one, therefore a new version won't be published.'."
     }
 
     if ($terminalOutcomes.Count -gt 1) {
@@ -206,7 +208,13 @@ function Get-NextReleaseVersionFromDryRun {
 function Test-LocalTagCollision {
     param([Parameter(Mandatory)][string] $TagRef)
 
-    $result = Invoke-GitCommand -Arguments @("show-ref", "--verify", "--quiet", $TagRef) -AllowedExitCodes @(0, 1)
+    try {
+        $result = Invoke-GitCommand -Arguments @("show-ref", "--verify", "--quiet", $TagRef) -AllowedExitCodes @(0, 1)
+    }
+    catch {
+        [Console]::Error.WriteLine("Local tag-ref probe failed for $TagRef. Inspect the repository ref state and repair the Git error before publishing; tag absence has not been established.")
+        throw
+    }
     if ($result.ExitCode -eq 0) {
         throw "$TagRef already exists locally. Delete the stale local tag or choose a new semantic-release version before running release publish work."
     }
@@ -249,8 +257,20 @@ try {
     # value from a prior step in the same pwsh session if the first git invocation fails to launch.
     $global:LASTEXITCODE = 0
 
+    $repositoryPathGuidance = "RepositoryPath '$RepositoryPath' must name an existing Git working directory. Pass -RepositoryPath <path> with the release checkout directory."
+    if ([string]::IsNullOrWhiteSpace($RepositoryPath) -or
+        !(Test-Path -LiteralPath $RepositoryPath -PathType Container)) {
+        throw $repositoryPathGuidance
+    }
+
     $script:ResolvedRepositoryPath = (Resolve-Path -LiteralPath $RepositoryPath).Path
-    Invoke-GitCommand -Arguments @("rev-parse", "--git-dir") | Out-Null
+    try {
+        Invoke-GitCommand -Arguments @("rev-parse", "--git-dir") | Out-Null
+    }
+    catch {
+        [Console]::Error.WriteLine($repositoryPathGuidance)
+        throw
+    }
 
     $version = $NextVersion
     if ([string]::IsNullOrWhiteSpace($version)) {
@@ -283,6 +303,7 @@ try {
     exit 0
 }
 catch {
-    [Console]::Error.WriteLine($_.Exception.Message)
+    [Console]::Error.WriteLine($_.Exception.ToString())
+    [Console]::Error.WriteLine($_.ScriptStackTrace)
     exit 1
 }

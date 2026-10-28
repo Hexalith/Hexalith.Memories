@@ -442,7 +442,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of 15-1-release-edge-case-preflight-hardening (2026-05-13)"), 2026-09-01
 location: tools/release-preflight.ps1
 reason: - **15.1-RV3 - accepted.** Final `catch` block loses inner-exception and stack trace. - ID: 15.1-RV3 - Status: accepted - Source story: 15-1-release-edge-case-preflight-hardening - Target artifact: tools/release-preflight.ps1 - Re-open trigger: A release failure investigation requires the original stack/inner exception and the operator only has the truncated `Write-Error -Message $_.Exception.Message` output. - Rationale: `Write-Error -Message $_.Exception.Message` discards inner exception and stack. Switch to `Write-Error -ErrorRecord $_` or `$_.Exception.ToString()` when a future release post-mortem proves the loss matters. Story 19.3 (2026-06-30) buckets this as accept-until-trigger (no current failure or trigger; the fix is a release-owner decision); natural future home: release-preflight script robustness sweep. Owner: release maintainer.
-status: open
+status: done 2026-10-28
+resolution: Final failure reporting retains Exception.ToString() (including inner causes) and the original PowerShell ScriptStackTrace. Contextual ref/repository diagnostics use bare rethrow rather than replacing the ErrorRecord. A nested-exception fixture proves both original causes and Invoke-GitCommand stack context survive. Verification: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/release_preflight -p '*_test.py' passed 36/36 methods (120.463s, exit 0); the subsequently strengthened diagnostic assertions also passed in the focused method (10.375s, exit 0). See spec-five-deferred-release-preflight.md. Reopen if this preflight behavior or its regression coverage is lost.
 
 ### DW-60: 15.1-RV4: accepted. `CiTestInventoryTests` workflow-string assertions are brittle to cosmetic edits.
 
@@ -513,21 +514,24 @@ resolution: already resolved: Commit fa1ecb52 records the renewed accepted-risk 
 origin: migrated from legacy ledger ("Deferred from: code review of 15-1-release-edge-case-preflight-hardening (2026-05-13)"), 2026-09-01
 location: tools/release-preflight.ps1
 reason: - **15.1-RV13 - accepted.** `git show-ref --verify` allowed exit codes do not cover `128`. - ID: 15.1-RV13 - Status: accepted - Source story: 15-1-release-edge-case-preflight-hardening - Target artifact: tools/release-preflight.ps1 - Re-open trigger: A release attempt fails with the generic "git failed with exit code 128" wrapper because the ref store is corrupt or otherwise unreadable. - Rationale: A clearer "ref-state probe failed" diagnostic would shorten release-day investigation. Current wrapper is acceptable for the common case. Story 19.3 (2026-06-30) buckets this as accept-until-trigger (no current failure or trigger; the fix is a release-owner decision); natural future home: release-preflight script robustness sweep. Owner: release maintainer.
-status: open
+status: done 2026-10-28
+resolution: Unexpected local show-ref failures remain fatal and now identify the queried tag ref with repository-ref recovery direction before bare rethrow preserves original Git details. The exit-128 fixture configures origin and proves the remote sentinel is never reached; 128 is not treated as missing-tag success. Verification: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/release_preflight -p '*_test.py' passed 36/36 methods (120.463s, exit 0); the subsequently strengthened diagnostic assertions also passed in the focused method (10.375s, exit 0). See spec-five-deferred-release-preflight.md. Reopen if this preflight behavior or its regression coverage is lost.
 
 ### DW-70: 15.1-RV14: accepted. Peeled-only-ref remote response not fixtured.
 
 origin: migrated from legacy ledger ("Deferred from: code review of 15-1-release-edge-case-preflight-hardening (2026-05-13)"), 2026-09-01
 location: tests/tooling/release_preflight/release_preflight_test.py
 reason: - **15.1-RV14 - accepted.** Peeled-only-ref remote response not fixtured. - ID: 15.1-RV14 - Status: accepted - Source story: 15-1-release-edge-case-preflight-hardening - Target artifact: tests/tooling/release_preflight/release_preflight_test.py - Re-open trigger: A real remote returns only peeled refs (`refs/tags/vX.Y.Z^{}`) without the unpeeled entry and the contract is not test-fixtured. - Rationale: The script accepts either, but no fixture proves the peeled-only path. Story 19.3 (2026-06-30) buckets this as accept-until-trigger (no current failure or trigger; the fix is a release-owner decision); natural future home: release test-helper hardening sweep. Owner: release maintainer.
-status: open
+status: done 2026-10-28
+resolution: Retained a controlled peeled-only remote response regression: refs/tags/v1.2.3^{} rejects the requested tag while refs/tags/v1.2.30^{} does not collide. Both cases prove the ls-remote fixture executes; existing correct exact-ref production behavior is preserved. Verification: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/release_preflight -p '*_test.py' passed 36/36 methods (120.463s, exit 0); the subsequently strengthened diagnostic assertions also passed in the focused method (10.375s, exit 0). See spec-five-deferred-release-preflight.md. Reopen if this preflight behavior or its regression coverage is lost.
 
 ### DW-71: 15.1-RV15: accepted. `Resolve-Path` throws a cryptic error when `-RepositoryPath` is missing.
 
 origin: migrated from legacy ledger ("Deferred from: code review of 15-1-release-edge-case-preflight-hardening (2026-05-13)"), 2026-09-01
 location: tools/release-preflight.ps1
 reason: - **15.1-RV15 - accepted.** `Resolve-Path` throws a cryptic error when `-RepositoryPath` is missing. - ID: 15.1-RV15 - Status: accepted - Source story: 15-1-release-edge-case-preflight-hardening - Target artifact: tools/release-preflight.ps1 - Re-open trigger: A caller invokes the script with a stale or wrong `-RepositoryPath` and gets a generic `Cannot find path` error instead of an actionable message. - Rationale: Pre-check with `Test-Path -PathType Container` and throw a script-owned message. Minor UX improvement. Story 19.3 (2026-06-30) buckets this as accept-until-trigger (no current failure or trigger; the fix is a release-owner decision); natural future home: release-preflight script robustness sweep. Owner: release maintainer.
-status: open
+status: done 2026-10-28
+resolution: Missing paths, files and existing non-Git directories now receive actionable RepositoryPath checkout-directory guidance, including the supplied path. Original Git failure details and stack survive for the existing-directory case. The three-case regression rejects each invalid input. Verification: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/release_preflight -p '*_test.py' passed 36/36 methods (120.463s, exit 0); the subsequently strengthened diagnostic assertions also passed in the focused method (10.375s, exit 0). See spec-five-deferred-release-preflight.md. Reopen if this preflight behavior or its regression coverage is lost.
 
 ### DW-72: 15.1-RV16: accepted. `GetReleaseWorkflowJobScalar` depends on 4-space indentation.
 
@@ -4072,7 +4076,8 @@ decision: 2026-09-06 Suppress all metadata — Suppress all trust metadata for u
 origin: migrated from legacy ledger ("Deferred from: bmad-dev-auto follow-up review of spec-25-8-dead-code-and-topology-cleanup (2026-07-11)"), 2026-09-01
 location: n/a
 reason: - source_spec: `/home/administrator/projects/hexalith/memories/_bmad-output/implementation-artifacts/spec-gh-29158532353-release-preflight-stale-branch.md` summary: Release preflight does not recognize semantic-release's alternate first-release version message when no prior tag exists. evidence: Repository-pinned semantic-release 25.0.5 emits `There is no previous release, the next release version is <version>`, while the pre-existing parser expects `The next release version is <version>`; this repository already has release tags, so first-release support is outside the stale-checkout incident fix.
-status: open
+status: done 2026-10-28
+resolution: The existing terminal parser now recognizes the exact first-release version record confirmed in pinned semantic-release 25.0.8 while preserving logger provenance, collision checks and malformed/conflicting-record rejection. Fixtures cover plain/logger/ANSI records, first-release local collisions, the live 2x2 payload/logger marker matrix and payload-only failures. Verification: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/release_preflight -p '*_test.py' passed 36/36 methods (120.463s, exit 0); the subsequently strengthened diagnostic assertions also passed in the focused method (10.375s, exit 0). See spec-five-deferred-release-preflight.md. Reopen if this preflight behavior or its regression coverage is lost.
 
 ### DW-541: The new release-package topology validation — the `-PackageDirectory` throws in `tools/validate-release-packages.ps1`, the `tests/tooling/release_packages` and `tests/tooling/publish_nuget` fixtures, and the real packed-nuspec dependency closure — runs only post-merge in `release.yml`, never on the PR (`ci.yml`) lane, so package-topology and validator regressions merge green and first fail during the release run.
 
@@ -5846,3 +5851,9 @@ status: open
 - source_spec: `_bmad-output/implementation-artifacts/spec-five-deferred-commit-validation.md`
   summary: Reject empty repository commit messages permitted by explicit Git --allow-empty-message, including in history validation.
   evidence: Independent review and a disposable real-hook reproduction both created an empty-subject commit with exit 0 using git commit --allow-empty-message --file <empty-file>. The pinned commitlint CLI filters whitespace-only repository messages before applying rules (node_modules/@commitlint/cli/lib/cli.js:222-225), independently of defaultIgnores; this predates the five selected fixes. Ordinary Git rejects empty messages by default. Resolve through both the local hook and shared CI validation, without treating skipped empty messages as validated subjects.
+
+## Deferred from: review of spec-five-deferred-release-preflight.md (2026-10-28)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-five-deferred-release-preflight.md`
+  summary: Validate release versions consistently against the complete SemVer grammar in direct input and both semantic-release terminal marker forms.
+  evidence: Independent disposable-repository execution confirms the grammar predates this change: baseline 46692dd0f6c7cd780608ce74fd827d81c481ae6d and changed tools/release-preflight.ps1 both exit 0 for invalid 01.0.0 and exit 1 for valid 1.0.0-beta.1+build.1 through ordinary next-version records and direct -NextVersion. The alternate first-release marker inherits the same grammar. Owner: release maintainer. Consequence: malformed version tags can pass preflight and valid prerelease-plus-build versions are refused. Reopen trigger: a version-parser hardening change or a release using these boundary forms.

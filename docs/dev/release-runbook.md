@@ -42,6 +42,13 @@ rules to merge, revert and version-shaped messages as well as ordinary subjects.
   `.releaserc.json` `tagFormat: "v${version}"`, and checks exact local and remote tag refs such as
   `refs/tags/v1.2.3`. It intentionally does not treat similarly prefixed tags such as
   `v1.2.30` as collisions.
+  The parser accepts both the ordinary next-version record and semantic-release's
+  `There is no previous release, the next release version is <version>` record. Live
+  output must use the semantic-release logger prefix; malformed or conflicting terminal
+  records fail preflight. A peeled-only exact remote ref also counts as a collision.
+  Invalid `RepositoryPath` values name the required checkout directory. A failed local
+  ref probe blocks publication and identifies the ref to inspect; failures retain the
+  original exception, inner causes and PowerShell script stack for diagnosis.
 - Semantic-release runs `tools/verify-container-registry.ps1` as its `verifyReleaseCmd`, before
   prepare creates release artifacts or a tag can be published. The verifier first requires the
   unauthenticated `/v2/` response to advertise a Basic `WWW-Authenticate` realm, then opens and
