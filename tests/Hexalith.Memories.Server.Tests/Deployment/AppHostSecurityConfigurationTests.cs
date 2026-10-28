@@ -23,6 +23,25 @@ public sealed class AppHostSecurityConfigurationTests
     private const string EventStorePackagePrefix = "Hexalith.EventStore.";
 
     [Fact]
+    public void FalkorDb_HostsUseTheSameQualifiedImageAsIntegrationFixtures()
+    {
+        string fixture = ReadRepoFile("tests", "Hexalith.Memories.IntegrationTests", "Fixtures", "FalkorDbFixture.cs");
+        string digest = System.Text.RegularExpressions.Regex.Match(fixture, @"falkordb/falkordb:latest@sha256:([a-f0-9]{64})").Groups[1].Value;
+        digest.ShouldNotBeNullOrWhiteSpace("The native query fixture must use an immutable FalkorDB image.");
+
+        foreach (string source in new[]
+        {
+            ReadRepoFile("src", "Hexalith.Memories.AppHost", "Program.cs"),
+            ReadRepoFile("src", "Hexalith.Memories.Aspire", "HexalithMemoriesServerExtensions.cs"),
+        })
+        {
+            string pattern = $"""AddContainer\("memories-graphs", "falkordb/falkordb"\)\s*\.WithImageSHA256\("{digest}"\)""";
+            System.Text.RegularExpressions.Regex.IsMatch(source, pattern).ShouldBeTrue(
+                "HTTP and native graph tests must exercise the same qualified FalkorDB image.");
+        }
+    }
+
+    [Fact]
     public void AppHost_InitializesSharedSecurityResource()
     {
         string program = ReadRepoFile("src", "Hexalith.Memories.AppHost", "Program.cs");

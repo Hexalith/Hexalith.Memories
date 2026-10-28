@@ -100,6 +100,7 @@ public static class HexalithMemoriesServerExtensions
         // FalkorDB graph store for the Memories graph index.
         IResourceBuilder<ContainerResource> falkorDb = builder
             .AddContainer("memories-graphs", "falkordb/falkordb")
+            .WithImageSHA256("4b7c79901ad409a39655f049b772adbc499b92ee2e01db80c3502572444df84d")
             .WithEndpoint(targetPort: 6379, name: "falkordb");
         EndpointReference falkorDbEndpoint = falkorDb.GetEndpoint("falkordb");
 

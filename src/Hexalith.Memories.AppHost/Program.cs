@@ -277,6 +277,7 @@ IResourceBuilder<IDaprComponentResource> conversationLlm = builder
 // FalkorDB: graph database (Redis-protocol compatible, internal port 6379 mapped to 6380)
 IResourceBuilder<ContainerResource> falkordb = builder
     .AddContainer("memories-graphs", "falkordb/falkordb")
+    .WithImageSHA256("4b7c79901ad409a39655f049b772adbc499b92ee2e01db80c3502572444df84d")
     .WithVolume(falkorVolumeName, "/var/lib/falkordb/data")
     .WithEndpoint(targetPort: 6379, name: "falkordb");
 EndpointReference falkordbEndpoint = falkordb.GetEndpoint("falkordb");
