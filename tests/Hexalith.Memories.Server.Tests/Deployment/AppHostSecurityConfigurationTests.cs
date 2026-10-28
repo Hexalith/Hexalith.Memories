@@ -14,12 +14,12 @@ using Shouldly;
 
 /// <summary>
 /// Drift guards for the approved 2026-06-26 AppHost security-service correction
-/// and EventStore 3.128.0 owner-approved published catalog/restore consumption
+/// and EventStore 3.128.3 owner-approved published catalog/restore consumption
 /// (nuget.org; supersedes Story 28.1 proof-identity pin).
 /// </summary>
 public sealed class AppHostSecurityConfigurationTests
 {
-    private const string EventStoreCatalogVersion = "3.128.0";
+    private const string EventStoreCatalogVersion = "3.128.3";
     private const string EventStorePackagePrefix = "Hexalith.EventStore.";
 
     [Fact]
@@ -95,7 +95,7 @@ public sealed class AppHostSecurityConfigurationTests
     }
 
     [Fact]
-    public void BuildsCatalog_PinsEventStoreFamilyAt31280()
+    public void BuildsCatalog_PinsEventStoreFamilyAt31283()
     {
         // Match this repository's three tracked Directory.Packages.props import locations.
         // Umbrella checkouts use the root-declared sibling Builds; never initialize a nested submodule.
@@ -212,7 +212,7 @@ public sealed class AppHostSecurityConfigurationTests
     [Fact]
     public void ProjectAssets_RestoreEventStorePackagesAtCatalogVersion()
     {
-        // Owner-approved EventStore 3.128.0 is published on nuget.org; restore via the tracked
+        // Owner-approved EventStore 3.128.3 is published on nuget.org; restore via the tracked
         // NuGet.config (plain `dotnet restore`) must resolve Hexalith.EventStore.* at this catalog
         // version and populate obj/project.assets.json with the matching library keys.
         string serverAssets = ReadRepoFile(
