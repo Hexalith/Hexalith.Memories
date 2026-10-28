@@ -27,17 +27,18 @@ public class TenantEmbeddingConfigEndpointTests
     {
         // Verify exception carries all data needed for 409 response
         TenantEmbeddingConfig current = EmbeddingProviderDefaults.Google();
-        TenantEmbeddingConfig proposed = current with { Model = "different-model" };
-        string[] affectedFields = ["model"];
+        TenantEmbeddingConfig proposed = EmbeddingProviderDefaults.Ollama();
+        EmbeddingProviderDefaults.Validate(current);
+        EmbeddingProviderDefaults.Validate(proposed);
+        string[] affectedFields = ["provider", "model", "dimensions"];
+        EmbeddingProviderDefaults.GetBreakingChangeFields(current, proposed).ShouldBe(affectedFields);
 
         EmbeddingConfigChangeException ex = new("test-tenant", current, proposed, affectedFields);
 
         ex.TenantId.ShouldBe("test-tenant");
-        ex.CurrentConfig.ShouldNotBeNull();
-        ex.CurrentConfig.Model.ShouldBe("gemini-embedding-001");
-        ex.ProposedConfig.ShouldNotBeNull();
-        ex.ProposedConfig.Model.ShouldBe("different-model");
-        ex.AffectedFields.ShouldContain("model");
+        ex.CurrentConfig.ShouldBe(current);
+        ex.ProposedConfig.ShouldBe(proposed);
+        ex.AffectedFields.ShouldBe(affectedFields);
         ex.Message.ShouldContain("reindex");
     }
 

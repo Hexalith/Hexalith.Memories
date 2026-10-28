@@ -5,6 +5,7 @@
 
 namespace Hexalith.Memories.Server.Tests.Ingestion;
 
+using System.Globalization;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -549,6 +550,59 @@ public class EmbeddingClientTests
             Arg.Any<string>(),
             Arg.Any<string?>(),
             Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData(null, 0)]
+    [InlineData("120", 120)]
+    [InlineData("7200", 3600)]
+    [InlineData("0", 0)]
+    [InlineData("malformed", 0)]
+    [InlineData("past-date", 0)]
+    [InlineData("future-date", 3600)]
+    public async Task GenerateAsync_Ollama_Http429_ReportsRetryAfterWithoutCredentialRefresh(string? retryAfter, int expectedDelay)
+    {
+        int requestCount = 0;
+        TestDelegatingHandler handler = new((request, _) =>
+        {
+            requestCount++;
+            request.Method.ShouldBe(HttpMethod.Post);
+            request.RequestUri.ShouldNotBeNull();
+            request.RequestUri.ToString().ShouldBe("https://llm.tache.ai/api/embed");
+            request.Headers.Authorization.ShouldNotBeNull();
+            request.Headers.Authorization.Scheme.ShouldBe("Bearer");
+            request.Headers.Authorization.Parameter.ShouldBe(TestAccessToken);
+            HttpResponseMessage response = CreateJsonResponse(HttpStatusCode.TooManyRequests, "rate limited");
+            if (retryAfter is not null)
+            {
+                string headerValue = retryAfter switch
+                {
+                    "past-date" => DateTimeOffset.UtcNow.AddDays(-1).ToString("R", CultureInfo.InvariantCulture),
+                    "future-date" => DateTimeOffset.UtcNow.AddDays(1).ToString("R", CultureInfo.InvariantCulture),
+                    _ => retryAfter,
+                };
+                response.Headers.TryAddWithoutValidation("Retry-After", headerValue).ShouldBeTrue();
+            }
+
+            return Task.FromResult(response);
+        });
+        DaprClient daprClient = CreateDaprClientWithSecret("memories-embedding-client-secret", TestClientSecret);
+        IOidcTokenProvider tokenProvider = CreateTokenProvider(TestAccessToken);
+        TenantEmbeddingConfig config = CreateOllamaConfig();
+        EmbeddingClient client = new(CreateHttpClientFactory(handler), daprClient, CreateConfiguration(), CreateHostEnvironment(), tokenProvider);
+
+        EmbeddingRateLimitException ex = await Should.ThrowAsync<EmbeddingRateLimitException>(
+            () => client.GenerateAsync(TestText, TenantId, config, CancellationToken.None));
+
+        ex.TenantId.ShouldBe(TenantId);
+        ex.RetryAfterSeconds.ShouldBe(expectedDelay);
+        requestCount.ShouldBe(1);
+        await daprClient.Received(1).GetSecretAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>());
+        await tokenProvider.Received(1).GetAccessTokenAsync(
+            config.OidcTokenEndpoint!, config.OidcClientId!, TestClientSecret, config.OidcScope, CancellationToken.None);
+        await tokenProvider.DidNotReceive().InvalidateAndRefreshAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]

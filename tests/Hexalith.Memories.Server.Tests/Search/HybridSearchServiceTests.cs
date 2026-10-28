@@ -1,6 +1,7 @@
 namespace Hexalith.Memories.Server.Tests.Search;
 
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.Search;
 
 using Microsoft.Extensions.Logging.Abstractions;
@@ -60,7 +61,11 @@ public class HybridSearchServiceTests
         => new() { TenantId = tenantId, Query = "test query", MaxResults = maxResults, Offset = offset };
 
     private static TenantEmbeddingConfig MakeEmbeddingConfig()
-        => new() { Provider = "google", Model = "text-embedding-004", Dimensions = 768, RateLimitPerMinute = 60, ApiSecretKeyName = "test-key" };
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { RateLimitPerMinute = 60, ApiSecretKeyName = "test-key" };
+        EmbeddingProviderDefaults.Validate(config);
+        return config;
+    }
 
     // 8.3: All three axes enabled -> all three delegate functions called
     [Fact]

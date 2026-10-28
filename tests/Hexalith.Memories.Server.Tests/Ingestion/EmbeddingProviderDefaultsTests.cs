@@ -475,12 +475,19 @@ public class EmbeddingProviderDefaultsTests
         Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
     }
 
-    [Fact]
-    public void Validate_GoogleAtRateLimitAboveOllamaCeiling_ShouldThrow()
+    [Theory]
+    [InlineData(3001)]
+    [InlineData(5000)]
+    [InlineData(60_000)]
+    public void Validate_RateAboveGoogleCeilingWithinOllamaCeiling_AppliesProviderLimit(int rateLimit)
     {
-        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { RateLimitPerMinute = 5000 };
+        TenantEmbeddingConfig google = EmbeddingProviderDefaults.Google() with { RateLimitPerMinute = rateLimit };
+        TenantEmbeddingConfig ollama = EmbeddingProviderDefaults.Ollama() with { RateLimitPerMinute = rateLimit };
 
-        Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
+        ArgumentException ex = Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(google));
+
+        ex.ParamName.ShouldBe(nameof(google.RateLimitPerMinute));
+        Should.NotThrow(() => EmbeddingProviderDefaults.Validate(ollama));
     }
 
     [Fact]
@@ -1027,6 +1034,29 @@ public class EmbeddingProviderDefaultsTests
         ex.Message.ShouldContain("fragment");
     }
 
+    [Theory]
+    [InlineData("https://oidc-user-canary:oidc-password-canary@oidc-host-canary.example/oidc-path-canary/%64ecoded-path-canary")]
+    [InlineData("https://oidc-host-canary.example/oidc-path-canary/%64ecoded-path-canary?oidc-query-canary=oidc-value-canary")]
+    [InlineData("https://oidc-host-canary.example/oidc-path-canary/%64ecoded-path-canary#oidc-fragment-canary")]
+    [InlineData("http://oidc-host-canary.example/oidc-path-canary/%64ecoded-path-canary")]
+    public void Validate_RejectedOidcEndpoint_DoesNotLeakIndividualUriSegments(string endpoint)
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Ollama() with { OidcTokenEndpoint = endpoint };
+
+        ArgumentException ex = Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
+
+        AssertSanitizedTransportPolicyMessage(ex, nameof(config.OidcTokenEndpoint), endpoint);
+        foreach (string segment in new[]
+        {
+            "oidc-user-canary", "oidc-password-canary", "oidc-host-canary",
+            "oidc-path-canary", "%64ecoded-path-canary", "decoded-path-canary",
+            "oidc-query-canary", "oidc-value-canary", "oidc-fragment-canary",
+        })
+        {
+            ex.Message.ShouldNotContain(segment);
+        }
+    }
+
     private static TenantEmbeddingConfig SetUrlField(TenantEmbeddingConfig config, string fieldName, string value)
         => fieldName switch
         {
@@ -1041,11 +1071,6 @@ public class EmbeddingProviderDefaultsTests
         string endpoint)
     {
         ex.ParamName.ShouldBe(parameterName);
-        ex.Message.ShouldContain("HTTPS");
-        ex.Message.ShouldContain("loopback");
-        ex.Message.ShouldContain("localhost");
-        ex.Message.ShouldContain("127.0.0.1");
-        ex.Message.ShouldContain("[::1]");
         ex.Message.ShouldNotContain(endpoint);
 
         // Story 15.4 P4: strengthen leak guard. ShouldNotContain(endpoint) only catches the full

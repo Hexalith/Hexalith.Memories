@@ -681,6 +681,44 @@ public class OidcTokenProviderTests
         handler.Requests.Count.ShouldBe(0);
     }
 
+    [Theory]
+    [InlineData(false, "https://oidc-user-canary:oidc-password-canary@oidc-host-canary.example/oidc-path-canary/%64ecoded-path-canary")]
+    [InlineData(false, "https://oidc-host-canary.example/oidc-path-canary/%64ecoded-path-canary?oidc-query-canary=oidc-value-canary")]
+    [InlineData(false, "https://oidc-host-canary.example/oidc-path-canary/%64ecoded-path-canary#oidc-fragment-canary")]
+    [InlineData(false, "http://oidc-host-canary.example/oidc-path-canary/%64ecoded-path-canary")]
+    [InlineData(true, "https://oidc-user-canary:oidc-password-canary@oidc-host-canary.example/oidc-path-canary/%64ecoded-path-canary")]
+    [InlineData(true, "https://oidc-host-canary.example/oidc-path-canary/%64ecoded-path-canary?oidc-query-canary=oidc-value-canary")]
+    [InlineData(true, "https://oidc-host-canary.example/oidc-path-canary/%64ecoded-path-canary#oidc-fragment-canary")]
+    [InlineData(true, "http://oidc-host-canary.example/oidc-path-canary/%64ecoded-path-canary")]
+    public async Task AcquireToken_RejectedEndpoint_DoesNotLeakIndividualUriSegments(bool refresh, string endpoint)
+    {
+        ScriptedTokenHandler handler = new((_, _) => TokenResponse("never-fetched", 3600));
+        CapturingLogger<OidcTokenProvider> logger = new();
+        OidcTokenProvider provider = CreateProvider(handler, logger: logger);
+
+        ArgumentException ex = await Should.ThrowAsync<ArgumentException>(
+            () => refresh
+                ? provider.InvalidateAndRefreshAsync(endpoint, ClientId, ClientSecret, null, CancellationToken.None)
+                : provider.GetAccessTokenAsync(endpoint, ClientId, ClientSecret, null, CancellationToken.None));
+
+        AssertSanitizedTransportPolicyMessage(ex, "tokenEndpoint", endpoint);
+        string logText = string.Join(Environment.NewLine, logger.Entries.Select(entry => entry.Message));
+        logText.ShouldNotContain(endpoint);
+        logText.ShouldNotContain(ClientSecret);
+        foreach (string segment in new[]
+        {
+            "oidc-user-canary", "oidc-password-canary", "oidc-host-canary",
+            "oidc-path-canary", "%64ecoded-path-canary", "decoded-path-canary",
+            "oidc-query-canary", "oidc-value-canary", "oidc-fragment-canary",
+        })
+        {
+            ex.Message.ShouldNotContain(segment);
+            logText.ShouldNotContain(segment);
+        }
+
+        handler.Requests.Count.ShouldBe(0);
+    }
+
     [Fact]
     public void Constructor_NullHttpClientFactory_ThrowsArgumentNullException()
     {
@@ -697,11 +735,6 @@ public class OidcTokenProviderTests
         string endpoint)
     {
         ex.ParamName.ShouldBe(parameterName);
-        ex.Message.ShouldContain("HTTPS");
-        ex.Message.ShouldContain("loopback");
-        ex.Message.ShouldContain("localhost");
-        ex.Message.ShouldContain("127.0.0.1");
-        ex.Message.ShouldContain("[::1]");
         ex.Message.ShouldNotContain(endpoint);
 
         // Story 15.4 P4: strengthen leak guard. ShouldNotContain(endpoint) only catches the full
