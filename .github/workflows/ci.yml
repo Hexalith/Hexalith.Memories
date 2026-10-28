@@ -210,7 +210,9 @@ jobs:
   test-unit-contract:
     name: test-unit-contract
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    # Producer fixtures alone took 21 minutes on the 2026-10-28 run, and the
+    # 40-minute budget cancelled the interchange fixtures before dotnet tests.
+    timeout-minutes: 70
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
