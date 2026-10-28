@@ -298,6 +298,11 @@ jobs:
       - name: Run access-telemetry owner discovery fixtures
         run: PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_owner_discovery -p "test_*.py"
 
+      - name: Build source Debug descriptor reader
+        # Campaign environment fixtures hash platform_test.CLI, which is the Debug
+        # Builds module CLI. The Release solution build does not produce that output.
+        run: dotnet build references/Hexalith.Builds/src/libraries/Hexalith.Builds.Module.Cli/Hexalith.Builds.Module.Cli.csproj --configuration Debug -m:1 -p:NuGetAudit=false -p:MinVerVersionOverride=1.0.0 -p:RunAnalyzers=false -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904
+
       - name: Run access-telemetry lifecycle C1 fixtures
         # Story 27.3's mandatory C1 inventory. PYTHONHASHSEED=0 matches the story's exact
         # discovery command so the recorded sorted-case identity is reproducible here. The
