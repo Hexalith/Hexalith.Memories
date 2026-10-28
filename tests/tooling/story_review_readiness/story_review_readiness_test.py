@@ -106,7 +106,7 @@ class VerifierTestCase(unittest.TestCase):
                 capture_output=True,
                 check=False,
             )
-            return completed.returncode, completed.stdout
+            return completed.returncode, completed.stdout + completed.stderr
 
 
 class NoOpTests(VerifierTestCase):
@@ -337,9 +337,136 @@ class C6EvidenceRowTests(VerifierTestCase):
     def test_done_with_verified_rows_passes(self):
         self.assert_story("done", self.VERIFIED, 0)
 
-    def test_blocked_row_is_accepted_at_done(self):
-        blocked = self.REAL_26_5.replace("| pending | - |", "| blocked - owner named | - |")
-        self.assert_story("done", blocked, 0)
+    def test_bare_blocked_row_is_rejected(self):
+        blocked = self.VERIFIED.replace("Verified", "blocked")
+        for status in ("review", "done"):
+            with self.subTest(status=status):
+                self.assertIn("incomplete blocked disposition", self.assert_story(status, blocked, 1))
+
+    def test_completed_rows_require_real_dates(self):
+        for status in ("review", "done"):
+            for value in ("-", "TBD", "<date>", "...", "2026-02-30", "2026-13-01", "2026-10-280", "July 5"):
+                with self.subTest(status=status, date=value):
+                    evidence = self.VERIFIED.replace("2026-07-05", value)
+                    self.assertIn("valid completion date", self.assert_story(status, evidence, 1))
+
+    def test_missing_date_column_requires_inline_date(self):
+        for status in ("review", "done"):
+            for value, expected in (("Verified", 1), ("Reviewed 2026-10-28; scoped proof", 0),
+                                    ("Passed 2026-10-28T09:30:00Z", 0)):
+                with self.subTest(status=status, value=value):
+                    self.assert_story(status, f"| Gate | Review state |\n|---|---|\n| Proof | {value} |\n", expected)
+
+    def test_completion_vocabulary_and_formatting(self):
+        for value in ("Complete", "Completed", "Reviewed", "Verified", "Passed", "Applied",
+                      "**VERIFIED**", "Passed with advisory 2026-07-05", "Reviewed; scoped proof"):
+            with self.subTest(value=value):
+                self.assert_story("done", self.VERIFIED.replace("Verified", value), 0)
+
+    def test_unknown_pending_and_near_match_states_fail(self):
+        for status in ("review", "done"):
+            for value in ("gibberish", "verifed", "unverified", "not verified", "verifiedish",
+                          "passed-away", "pending — not executed", "todo; verified 2026-07-05"):
+                with self.subTest(status=status, value=value):
+                    self.assertIn("unrecognized review state", self.assert_story(
+                        status, self.VERIFIED.replace("Verified", value), 1))
+
+    def test_accountable_blocked_dispositions_require_dates_at_done(self):
+        for value in ("blocked", "waived", "deferred", "accepted", "not applicable", "n/a"):
+            with self.subTest(value=value):
+                evidence = self.VERIFIED.replace("Verified", value + "; consequence: proof remains open; reopen trigger: runner restored")
+                self.assert_story("review", evidence.replace("2026-07-05", "-"), 0)
+                self.assert_story("done", evidence, 0)
+                self.assertIn("valid completion date", self.assert_story(
+                    "done", evidence.replace("2026-07-05", "-"), 1))
+
+    def test_blocked_accountability_cannot_be_missing_placeholder_or_duplicated(self):
+        fields = {"owner": "Developer", "consequence": "proof remains open", "reopen trigger": "runner restored"}
+        for label in fields:
+            for bad in (None, "", "TBD", "...", "<name>", "Developer; " + label + ": Another"):
+                with self.subTest(label=label, bad=bad):
+                    values = dict(fields)
+                    if bad is None:
+                        del values[label]
+                    else:
+                        values[label] = bad
+                    record = "blocked; " + "; ".join(f"{k}: {v}" for k, v in values.items())
+                    evidence = self.VERIFIED.replace("| Dev |", "| - |").replace("Verified", record)
+                    self.assertIn(label, self.assert_story("done", evidence, 1))
+
+    def test_blocked_metadata_respects_cells_and_code_spans(self):
+        for value in (
+            "blocked; owner: Developer; consequence: TBD; reopen trigger: restored",
+            "blocked; owner: Developer; consequence: open; reopen trigger: TBD",
+            "blocked; owner: Developer; note: `; consequence: open; reopen trigger: restored`",
+        ):
+            with self.subTest(value=value):
+                self.assertIn("incomplete blocked disposition", self.assert_story(
+                    "done", self.VERIFIED.replace("| Dev |", "| Developer |").replace("Verified", value), 1))
+        value = "blocked; **Owner**: Developer; Consequence: proof open; Re-open trigger: restored"
+        self.assert_story("done", self.VERIFIED.replace("| Dev |", "| Developer |").replace("Verified", value), 0)
+
+    def test_conflicting_and_duplicate_owner_sources_fail(self):
+        for columns, values, expected in (
+            ("Owner", "Alice", 1),
+            ("Owner", "Bob", 0),
+            ("Owner", "-", 0),
+            ("Owner | Accountable owner", "Alice | Bob", 1),
+            ("Owner | Owner", "Bob | Bob", 1),
+        ):
+            with self.subTest(columns=columns, values=values):
+                table = (f"| Gate | {columns} | Review state | Completion date |\n"
+                         + "|---" * (len(columns.split('|')) + 3) + "|\n"
+                         + f"| Proof | {values} | blocked; owner: Bob; consequence: open; reopen trigger: restored | 2026-10-28 |\n")
+                self.assert_story("done", table, expected)
+
+    def test_ambiguous_review_status_columns_fail(self):
+        for second in ("pending", "Verified"):
+            with self.subTest(second=second):
+                table = ("| Gate | Review status | Review state | Completion date |\n|---|---|---|---|\n"
+                         f"| Proof | Verified | {second} | 2026-10-28 |\n")
+                self.assertIn("duplicate review-status columns", self.assert_story("done", table, 1))
+
+    def test_template_scheduled_and_metadata_dates_do_not_count_as_completion(self):
+        for value in ("<2026-10-28>", "TBD (scheduled 2026-10-28)", "planned 2026-10-28"):
+            with self.subTest(value=value):
+                self.assertIn("valid completion date", self.assert_story(
+                    "done", self.VERIFIED.replace("2026-07-05", value), 1))
+        for value in ("Verified <2026-10-28>", "Verified; scheduled 2026-10-28",
+                      "blocked; consequence: proof open; reopen trigger: retry on 2026-10-28"):
+            with self.subTest(inline=value):
+                evidence = self.VERIFIED.replace("Verified", value).replace("| 2026-07-05 |", "| - |")
+                self.assertIn("valid completion date", self.assert_story("done", evidence, 1))
+
+    def test_contradictory_incomplete_status_clauses_fail(self):
+        for value in ("Verified pending", "Verified; pending rerun; historical 2026-10-28",
+                      "Passed — blocked", "Reviewed (not started)", "Complete; todo"):
+            with self.subTest(value=value):
+                self.assertIn("unrecognized review state", self.assert_story(
+                    "done", self.VERIFIED.replace("Verified", value), 1))
+
+    def test_explicit_inline_completion_labels_pass(self):
+        for value in (
+            "Verified; completion date: 2026-10-28",
+            "Reviewed; completed: `2026-10-28`",
+            "blocked; consequence: proof open; reopen trigger: restored; completion date: 2026-10-28",
+        ):
+            with self.subTest(value=value):
+                self.assert_story("done", self.VERIFIED.replace("Verified", value).replace("| 2026-07-05 |", "| - |"), 0)
+
+    def test_unrelated_dates_cannot_supply_completion_date(self):
+        evidence = self.VERIFIED.replace("Test or code proof", "proof dated 2026-07-05").replace("| 2026-07-05 |", "| - |")
+        self.assertIn("valid completion date", self.assert_story("done", evidence, 1))
+
+    def test_reordered_columns_and_leap_day_pass(self):
+        evidence = "| Gate | Completion date | Review state |\n|---|---|---|\n| Proof | `2028-02-29` | **Verified** |\n"
+        self.assert_story("done", evidence, 0)
+
+    def test_invalid_evidence_below_review_is_preserved(self):
+        evidence = self.VERIFIED.replace("Verified", "gibberish").replace("2026-07-05", "-")
+        for status in ("ready-for-dev", "in-progress"):
+            with self.subTest(status=status):
+                self.assert_story(status, evidence, 0)
 
     def test_review_state_spelling_is_honoured(self):
         renamed = self.REAL_26_5.replace("Review status", "Review state")
@@ -1019,6 +1146,37 @@ class C1CumulativeTests(VerifierTestCase):
         self.assertIn("C1 SKIPPED: HEAD is on default branch 'main'", out)
         self.assertNotIn("File List exactly matches", out)
 
+    def test_committed_and_staged_renames_require_both_endpoints(self):
+        self.git("config", "diff.renames", "true")
+        self.git("switch", "-c", "fix/99-9-fixture")
+        self.git("mv", "docs/unchanged.md", "docs/committed é.md")
+        self.git("commit", "-m", "test: rename readiness fixture")
+        self.git("mv", "docs/committed é.md", "docs/staged 日本語.md")
+        paths = ["docs/unchanged.md", "docs/committed é.md", "docs/staged 日本語.md"]
+        for omitted in (None, *paths):
+            with self.subTest(omitted=omitted):
+                file_list = [p for p in paths if p != omitted]
+                code, out = self.run_cli(
+                    "--story-key", "99-9-fixture", "--derive-cumulative", cwd=self.repo,
+                    artifacts={"99-9-fixture.md": self.fixture_story(file_list=file_list)},
+                )
+                self.assertEqual(code, 0 if omitted is None else 1, out)
+                if omitted:
+                    self.assertIn(f"'{omitted}' changed but is not in the File List", out)
+
+    def test_staged_rename_without_derivation_requires_source_path(self):
+        self.git("config", "diff.renames", "true")
+        self.git("mv", "docs/unchanged.md", "docs/new é.md")
+        for paths, expected in ((["docs/unchanged.md", "docs/new é.md"], 0), (["docs/new é.md"], 1)):
+            with self.subTest(paths=paths):
+                code, out = self.run_cli(
+                    "--story-key", "99-9-fixture", "--staged", cwd=self.repo,
+                    artifacts={"99-9-fixture.md": self.fixture_story(file_list=paths)},
+                )
+                self.assertEqual(code, expected, out)
+                if expected:
+                    self.assertIn("'docs/unchanged.md' changed but is not in the File List", out)
+
     def test_default_branch_skip_cannot_hide_blank_exclusion_owner(self):
         exclusions = (
             "### File List Exclusions\n\n"
@@ -1097,20 +1255,31 @@ class LivenessTests(unittest.TestCase):
             self.assertTrue(rows, f"{path.name} has a ledger header but no parsed rows")
         self.assertGreaterEqual(found, 8)
 
-    def test_only_the_two_known_stale_artifacts_violate_c6(self):
+    def test_known_historical_evidence_violations_remain_visible(self):
         statuses = V.parse_sprint_status(self.ARTIFACTS / "sprint-status.yaml")
-        violating = []
+        violating = {}
         for path in self.evidence_bearers():
             status = statuses.get(path.stem)
             if status is None:
                 continue
             failures, _ = V.check_evidence_rows(V.read_text_lf(path), status)
             if failures:
-                violating.append(path.stem)
+                violating[path.stem] = len(failures)
         self.assertEqual(
-            sorted(violating),
-            ["22-2-bounded-cancellable-graph-traversal", "26-5-operational-runbook-set"],
-            "C6 violations changed; retrofit the new artifact or update this guard.",
+            violating,
+            {
+                "21-10-migration-subsystem-test-coverage": 1,
+                "22-1-semantic-axis-pagination": 2,
+                "22-2-bounded-cancellable-graph-traversal": 5,
+                "22-4-fusion-case-attribution-score-calibration-and-pinned-scorer": 1,
+                "22-5-case-scoped-traversal-path-integrity": 1,
+                "24-6-graph-content-level-tenant-isolation-evidence": 2,
+                "26-5-operational-runbook-set": 10,
+                "27-2-bounded-retention-ttl-and-purge-implementation": 1,
+                "27-21-runtime-and-control-plane-identity": 2,
+                "27-22-component-and-backend-identity": 1,
+            },
+            "C6 violations changed; inspect the affected historical records before updating this guard.",
         )
 
     def test_live_status_lines_parse_for_every_governed_artifact(self):

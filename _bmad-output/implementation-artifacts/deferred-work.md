@@ -4530,21 +4530,24 @@ decision: 2026-09-01 Add follow-up note — Add a release-note correction and re
 origin: migrated from legacy ledger ("DW 27.3-CR24 - the deferred-work status verifier is wired to nothing"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md` summary: The readiness gate does not require completion dates for evidence rows at review or done. evidence: `check_evidence_rows` reads only the status-column index, while the phase-ledger policy requires completed evidence to carry a date and forbids dateless rows at done.
-status: open
+status: resolved
+resolution: 2026-10-28 — spec-five-deferred-evidence-readiness.md. C6 now requires a real ISO calendar completion date in the completion-date column or inline review-status text for completed states; done also dates accountable blocked dispositions. Missing columns, placeholders, impossible dates, timestamps and leap days have executable controls. Verification: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/story_review_readiness -p "*_test.py" — 104/104 methods passed (17.113s, exit 0; baseline 81, delta +23). Reopen if the corresponding refusal or entry-point contract regresses.
 
 ### DW-602: The readiness gate accepts a bare blocked evidence status without accountability metadata.
 
 origin: migrated from legacy ledger ("DW 27.3-CR24 - the deferred-work status verifier is wired to nothing"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md` summary: The readiness gate accepts a bare blocked evidence status without accountability metadata. evidence: Any non-pending value bypasses C6, so `blocked` passes without the policy-required owner, consequence, and reopen trigger.
-status: open
+status: resolved
+resolution: 2026-10-28 — spec-five-deferred-evidence-readiness.md. C6 now requires non-placeholder owner, consequence and reopen-trigger fields for blocked dispositions, with an Owner/Accountable owner column fallback. Missing, duplicate, template and code-span-supplied fields fail; cell boundaries cannot disguise placeholders. Verification: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/story_review_readiness -p "*_test.py" — 104/104 methods passed (17.113s, exit 0; baseline 81, delta +23). Reopen if the corresponding refusal or entry-point contract regresses.
 
 ### DW-603: The readiness gate accepts unknown evidence statuses as completed.
 
 origin: migrated from legacy ledger ("DW 27.3-CR24 - the deferred-work status verifier is wired to nothing"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md` summary: The readiness gate accepts unknown evidence statuses as completed. evidence: C6 rejects only values in `PENDING_CELLS`, so a typo or invented state such as `gibberish` passes without a recognized completed-state vocabulary.
-status: open
+status: resolved
+resolution: 2026-10-28 — spec-five-deferred-evidence-readiness.md. C6 now recognizes explicit completed and blocked state vocabularies at the start of the status cell. Unknown, misspelled, near-match and qualified-pending states fail closed; existing completed-state formatting and below-review behavior have passing controls. Verification: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/story_review_readiness -p "*_test.py" — 104/104 methods passed (17.113s, exit 0; baseline 81, delta +23). Reopen if the corresponding refusal or entry-point contract regresses.
 
 ### DW-604: The readiness gate silently ignores evidence rows whose review-status cell is absent.
 
@@ -4578,7 +4581,8 @@ reopen_trigger: A change to readiness parsing or reconciliation lets the covered
 origin: migrated from legacy ledger ("DW 27.3-CR24 - the deferred-work status verifier is wired to nothing"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md` summary: Cumulative readiness diff collection loses the source path of renames. evidence: `derive_cumulative_changed` uses `git diff --name-only`, while policy requires a rename entry to identify both old and new paths.
-status: open
+status: resolved
+resolution: 2026-10-28 — spec-five-deferred-evidence-readiness.md. Checker staged/cumulative diffs, commit-msg input and all CI prepared ranges use --no-renames to preserve source and destination as separate exact paths. Executed disposable-repository CLI, hook and CI PR/push cases prove missing rename endpoints fail C1. Verification: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/story_review_readiness -p "*_test.py" — 104/104 methods passed (17.113s, exit 0; baseline 81, delta +23). Reopen if the corresponding refusal or entry-point contract regresses.
 
 ### DW-608: A review or done artifact can pass C2 without a create-story ledger row.
 
@@ -4648,7 +4652,8 @@ reopen_trigger: A change to readiness parsing or reconciliation lets the covered
 origin: migrated from legacy ledger ("DW 27.3-CR24 - the deferred-work status verifier is wired to nothing"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md` summary: Readiness hook and CI adoption lack an executable entry-point contract test. evidence: Existing tests exercise the CLI and policy prose but do not pin the hook's `--derive-cumulative` invocation or CI's prepared changed-file invocation.
-status: open
+status: resolved
+resolution: 2026-10-28 — spec-five-deferred-evidence-readiness.md. New readiness_entrypoints_test.py executes the actual commit-msg hook and extracted CI collection/readiness commands in disposable repositories. Passing inventories and refusal propagation prove hook cumulative derivation, CI prepared-range use, rename source retention and temporary-input cleanup. Unrelated hook gates and commitlint are isolated stand-ins; this does not claim their validation. Verification: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/story_review_readiness -p "*_test.py" — 104/104 methods passed (17.113s, exit 0; baseline 81, delta +23). Reopen if the corresponding refusal or entry-point contract regresses.
 
 ### DW-616: The local commitlint hook fails open when repository dependencies are absent.
 

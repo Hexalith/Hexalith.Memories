@@ -10,7 +10,7 @@ message_file="$1"
 changed_file="$git_dir/story-scope-changed-$$.txt"
 trap 'rm -f "$changed_file"' EXIT
 
-git diff --cached --name-only -- > "$changed_file"
+git -c core.quotepath=false diff --cached --no-renames --name-only -- > "$changed_file"
 
 # Conventional Commits gate. semantic-release derives the version and changelog solely from
 # commit subjects, so a malformed message silently breaks releases. Runs before the trailer

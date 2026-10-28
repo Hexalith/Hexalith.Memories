@@ -254,10 +254,40 @@ Five checks run against the resolved artifact:
 | C2 | a governed review/done artifact lacks its ledger or status-required creation/development/review rows; canonical phases violate lifecycle dependencies; a Date, Change, Test count or File List reconciliation cell is a placeholder; or the newest row lacks `matched N/N` or a complete labelled blocked-evidence record |
 | C3 | the artifact declares no `Status:` line, or one outside `backlog`, `ready-for-dev`, `in-progress`, `review`, `done` |
 | C4 | the story's status disagrees with its `development_status` row in `sprint-status.yaml` (a `spec-*` artifact is not expected to carry a row) |
-| C6 | a row in any table with a `Review status`/`Review state` column is still `pending` or dateless once the story reads `review` or `done` |
+| C6 | a row in any table with a `Review status`/`Review state` column has an unknown or pending state, lacks a required completion date, or records a blocked disposition without accountability metadata at `review` or `done` |
 
 C1 evaluates only while the story is `in-progress` or `review`, since a
 cumulative diff is not meaningful outside that window.
+The line-oriented changed-file and File List interfaces represent a rename by
+listing both its old and new paths separately. Hook, CI and checker Git collectors
+use `--no-renames` so rename detection cannot hide the source path, with
+`core.quotepath=false` so Unicode paths remain literal UTF-8. This is a
+path inventory; the human phase ledger can still describe one rename operation.
+
+C6 accepts completed states `complete`, `completed`, `reviewed`, `verified`,
+`passed`, and `applied` (case-insensitive, with optional explanatory suffixes).
+Each needs a real ISO calendar date (`YYYY-MM-DD`) in the `Completion date`
+column or the review-status text; dates elsewhere in the row do not qualify.
+Unknown states, typos and pending states fail closed. Completed states with
+explicit pending/blocked clauses also fail. Templates and scheduled dates do
+not establish completion, and duplicate review-status columns are ambiguous.
+
+Blocked dispositions start with `blocked`, `waived`, `deferred`, `accepted`,
+`not applicable`, or `n/a` and require non-placeholder `owner:`, `consequence:`,
+and `reopen trigger:` values, once each, in the row's cells. An `Owner` or
+`Accountable owner` column can supply the owner. A named column owner must
+agree with an explicit owner label; duplicate owner columns are ambiguous.
+For example:
+
+```text
+blocked; owner: Developer; consequence: proof remains open; reopen trigger: runner restored
+```
+
+At `review`, that accountable record may remain undated. At `done`, it must
+also carry a date in the completion-date column or review-status text. A dated
+blocked record documents a disposition, not successful execution of its proof.
+C6 remains inactive below review; newly exposed historical violations must be
+reported honestly rather than treated as completed evidence.
 
 C2 requires `create-story` first and development before QA or review. Repeated
 phases, including development after review and later `correct-course` rows,

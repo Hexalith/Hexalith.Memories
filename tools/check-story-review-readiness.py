@@ -33,6 +33,7 @@ import re
 import subprocess
 import sys
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
 
@@ -74,10 +75,13 @@ PLACEHOLDER_CELLS = {"", "-", "--", "—", "–", "...", "…", "tbd", "n/a", "n
 # their first column, because the first column varies across story generations
 # (`Evidence item`, `Checkpoint`, `Gate`, `Item`).
 EVIDENCE_STATUS_HEADERS = ("review status", "review state")
-PENDING_CELLS = {"", "-", "--", "—", "–", "pending", "not started", "todo"}
+COMPLETED_STATES = ("complete", "completed", "reviewed", "verified", "passed", "applied")
 # A row that names an owner, consequence and reopen trigger is a recorded
 # decision rather than an unanswered question, so `blocked` is accepted.
 BLOCKED_MARKERS = ("blocked", "waived", "deferred", "accepted", "not applicable", "n/a")
+UNRESOLVED_STATES = ("pending", "todo", "not started", "blocked", "unverified", "not verified")
+EVIDENCE_ACCOUNTABILITY_FIELDS = ("owner", "consequence", "reopen trigger")
+ISO_DATE_PATTERN = re.compile(r"(?<![\w-])(\d{4}-\d{2}-\d{2})(?=$|[^\w-]|T\d{2}:)")
 
 VALID_STATUSES = ("backlog", "ready-for-dev", "in-progress", "review", "done")
 # C1 needs the story's cumulative diff, which is only meaningful while the
@@ -109,6 +113,13 @@ class Exclusion:
     path: str
     owner: str
     reason: str
+
+
+@dataclass(frozen=True)
+class EvidenceTable:
+    headers: list[str]
+    status_index: int
+    rows: list[list[str]]
 
 
 class ValidationError(Exception):
@@ -206,7 +217,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--commit-sha", help="Commit SHA whose message should be parsed.")
     parser.add_argument("--changed-file", action="append", default=[], help="Changed file path. May be repeated.")
     parser.add_argument("--changed-files-file", help="File containing changed paths, one per line.")
-    parser.add_argument("--staged", action="store_true", help="Add git diff --cached --name-only -- to the changed set.")
+    parser.add_argument("--staged", action="store_true", help="Add staged paths, including both rename endpoints, to the changed set.")
     parser.add_argument(
         "--derive-cumulative",
         action="store_true",
@@ -229,7 +240,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 def run_git(args: list[str], check: bool = True) -> str:
     try:
         completed = subprocess.run(
-            ["git", *args],
+            ["git", "-c", "core.quotepath=false", *args],
             text=True,
             capture_output=True,
             check=False,
@@ -500,14 +511,14 @@ def find_ledger(text: str) -> list[list[str]] | None:
     return None
 
 
-def find_evidence_tables(text: str) -> list[tuple[int, int, list[list[str]]]]:
-    """Return (status column index, header width, rows) for each evidence table."""
-    found: list[tuple[int, int, list[list[str]]]] = []
+def find_evidence_tables(text: str) -> list[EvidenceTable]:
+    """Retain column context for status, completion dates and accountable owners."""
+    found: list[EvidenceTable] = []
     for header, rows in parse_tables(text):
         normalized = [normalize_cell(cell) for cell in header]
         for index, cell in enumerate(normalized):
             if cell in EVIDENCE_STATUS_HEADERS:
-                found.append((index, len(header), rows))
+                found.append(EvidenceTable(normalized, index, rows))
                 break
     return found
 
@@ -616,7 +627,7 @@ def collect_supplied_changed(args: argparse.Namespace) -> list[str]:
             raise ValidationError(f"Changed-files input does not exist: {changed_file}")
         values.extend(changed_file.read_text(encoding="utf-8").splitlines())
     if args.staged:
-        values.extend(run_git(["diff", "--cached", "--name-only", "--"]).splitlines())
+        values.extend(run_git(["diff", "--cached", "--no-renames", "--name-only", "--"]).splitlines())
     return [normalized for value in values if (normalized := normalize_path(value))]
 
 
@@ -647,8 +658,9 @@ def derive_cumulative_changed(baseline: str, supplied: list[str]) -> tuple[list[
         )
 
     values = list(supplied)
-    values.extend(run_git(["diff", "--name-only", f"{resolved}..HEAD"]).splitlines())
-    values.extend(run_git(["diff", "--cached", "--name-only", "--"]).splitlines())
+    # The line-oriented interface represents a rename by both exact endpoints.
+    values.extend(run_git(["diff", "--no-renames", "--name-only", f"{resolved}..HEAD"]).splitlines())
+    values.extend(run_git(["diff", "--cached", "--no-renames", "--name-only", "--"]).splitlines())
     return [normalized for value in values if (normalized := normalize_path(value))], None
 
 
@@ -658,8 +670,8 @@ def is_ledger_placeholder(value: str) -> bool:
     return normalized in PLACEHOLDER_CELLS or re.fullmatch(r"<[^<>]+>", normalized) is not None
 
 
-def invalid_blocked_evidence_fields(value: str) -> list[str]:
-    """Return missing, duplicate or placeholder fields in a labelled blocker record.
+def blocked_evidence_fields(value: str) -> dict[str, list[str]]:
+    """Read labelled values within a single cell, without crossing column boundaries.
 
     Labels start the cell or follow semicolons outside Markdown code spans.
     Unknown labels also delimit values, so a note cannot disguise a placeholder.
@@ -673,8 +685,28 @@ def invalid_blocked_evidence_fields(value: str) -> list[str]:
         end = matches[index + 1].start() if index + 1 < len(matches) else len(value)
         label = match.group(1).strip().lower().replace("re-open", "reopen")
         fields.setdefault(label, []).append(value[match.end():end].strip().rstrip(";"))
+    return fields
+
+
+def invalid_blocked_evidence_fields(
+    value: str | list[str],
+    required: tuple[str, ...] = BLOCKED_EVIDENCE_FIELDS,
+    defaults: dict[str, str] | None = None,
+) -> list[str]:
+    """Return missing, duplicate or placeholder fields in labelled blocker cells."""
+    fields: dict[str, list[str]] = {}
+    for cell in [value] if isinstance(value, str) else value:
+        for label, values in blocked_evidence_fields(cell).items():
+            fields.setdefault(label, []).extend(values)
+    for label, default in (defaults or {}).items():
+        if label not in fields:
+            fields[label] = [default]
+        elif not is_ledger_placeholder(default) and any(
+            normalize_cell(value) != normalize_cell(default) for value in fields[label]
+        ):
+            fields[label].append(default)
     return [
-        label for label in BLOCKED_EVIDENCE_FIELDS
+        label for label in required
         if len(fields.get(label, [])) != 1
         or is_ledger_placeholder(fields[label][0])
     ]
@@ -750,8 +782,42 @@ def check_ledger(rows: list[list[str]], status: str) -> list[str]:
     return failures
 
 
+def starts_with_state(value: str, states: tuple[str, ...]) -> bool:
+    """Recognize an initial state token, allowing dated explanatory suffixes."""
+    return any(re.match(rf"^{re.escape(state)}(?=$|\s|[;:—–(])", value) for state in states)
+
+
+def has_calendar_date(value: str) -> bool:
+    """Require a real completion date, excluding templates, plans and metadata."""
+    value = re.sub(r"<[^<>]*>", "", value)
+    fields = blocked_evidence_fields(value)
+    candidates = [
+        values[0] for label, values in fields.items()
+        if label in ("completion date", "completed") and len(values) == 1
+    ]
+    masked = INLINE_CODE_PATTERN.sub(lambda match: " " * len(match.group()), value)
+    for metadata in BLOCKED_EVIDENCE_FIELD_PATTERN.finditer(masked):
+        # A leading status followed by an ISO timestamp is not a metadata
+        # label merely because the timestamp contains a colon.
+        label = metadata.group(1).strip().lower().replace("re-open", "reopen")
+        if metadata.start() > 0 or label in BLOCKED_EVIDENCE_FIELDS:
+            value = value[:metadata.start()]
+            break
+    candidates.append(value)
+    for candidate in candidates:
+        for match in ISO_DATE_PATTERN.finditer(candidate):
+            if re.search(r"\b(?:tbd|todo|pending|scheduled|planned)\b", candidate[:match.start()], re.IGNORECASE):
+                continue
+            try:
+                date.fromisoformat(match.group(1))
+                return True
+            except ValueError:
+                continue
+    return False
+
+
 def check_evidence_rows(text: str, status: str) -> tuple[list[str], int]:
-    """C6 - no evidence/checkpoint row left pending once status is review or done."""
+    """C6 - completed, dated evidence or an accountable blocked disposition."""
     failures: list[str] = []
     tables = find_evidence_tables(text)
     if not tables:
@@ -760,8 +826,13 @@ def check_evidence_rows(text: str, status: str) -> tuple[list[str], int]:
     if status not in C6_STATUSES:
         return failures, len(tables)
 
-    for status_index, header_width, rows in tables:
-        for cells in rows:
+    for table in tables:
+        if sum(header in EVIDENCE_STATUS_HEADERS for header in table.headers) != 1:
+            failures.append("C6: evidence table has ambiguous duplicate review-status columns.")
+            continue
+        status_index = table.status_index
+        header_width = len(table.headers)
+        for cells in table.rows:
             if len(cells) < header_width:
                 label = cells[0].strip() if cells else "?"
                 failures.append(
@@ -772,15 +843,47 @@ def check_evidence_rows(text: str, status: str) -> tuple[list[str], int]:
                 )
                 continue
             value = normalize_cell(cells[status_index])
-            if value not in PENDING_CELLS:
-                continue
-            if any(marker in value for marker in BLOCKED_MARKERS):
-                continue
             label = cells[0].strip() if cells else "?"
-            failures.append(
-                f"C6: evidence row '{label}' is '{cells[status_index].strip() or '(empty)'}' "
-                f"while the story status is '{status}'."
-            )
+            prefix = f"C6: evidence row '{label}'"
+            completed = starts_with_state(value, COMPLETED_STATES)
+            blocked = starts_with_state(value, BLOCKED_MARKERS)
+            if completed:
+                state = next(state for state in COMPLETED_STATES if starts_with_state(value, (state,)))
+                clauses = re.split(r"[;:—–()]|\s+-\s+", value[len(state):])
+                if any(starts_with_state(clause.strip(), UNRESOLVED_STATES) for clause in clauses):
+                    completed = False
+            if not completed and not blocked:
+                failures.append(
+                    f"{prefix} has an unresolved or unrecognized review state "
+                    f"'{cells[status_index].strip() or '(empty)'}' "
+                    f"while the story status is '{status}'."
+                )
+                continue
+            if blocked:
+                # Owner columns are equivalent to an explicit owner label. Other
+                # accountability fields may be labelled in any cell in the row.
+                owners = [cells[index] for index, header in enumerate(table.headers)
+                          if header in ("owner", "accountable owner")]
+                if len(owners) > 1:
+                    failures.append(f"{prefix} has ambiguous duplicate owner columns.")
+                defaults = {"owner": owners[0]} if len(owners) == 1 else {}
+                invalid_fields = invalid_blocked_evidence_fields(
+                    cells, EVIDENCE_ACCOUNTABILITY_FIELDS, defaults,
+                )
+                if invalid_fields:
+                    failures.append(
+                        f"{prefix} has an incomplete blocked disposition; required "
+                        f"non-placeholder fields (once each): {', '.join(invalid_fields)}."
+                    )
+            date_values = [cells[status_index]] + [
+                cells[index] for index, header in enumerate(table.headers)
+                if header == "completion date"
+            ]
+            if (completed or status == "done") and not any(has_calendar_date(v) for v in date_values):
+                failures.append(
+                    f"{prefix} needs a valid completion date (YYYY-MM-DD) in its "
+                    "Completion date column or review-status text."
+                )
     return failures, len(tables)
 
 
@@ -915,7 +1018,7 @@ def validate(args: argparse.Namespace) -> int:
     else:
         failures.extend(evidence_failures)
         if not evidence_failures:
-            print(f"C6: {table_count} evidence table(s) carry no unresolved pending row.")
+            print(f"C6: {table_count} evidence table(s) have valid evidence states, dates and dispositions.")
 
     for note in notes:
         print(note)
