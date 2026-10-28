@@ -212,7 +212,7 @@ jobs:
     runs-on: ubuntu-latest
     # Producer fixtures alone took 21 minutes on the 2026-10-28 run, and the
     # 40-minute budget cancelled the interchange fixtures before dotnet tests.
-    timeout-minutes: 70
+    timeout-minutes: 60
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
