@@ -1,11 +1,12 @@
 import importlib.util
+import ntpath
 import os
 import subprocess
 import sys
 import tempfile
 import textwrap
 import unittest
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from unittest import mock
 
 
@@ -80,6 +81,13 @@ def section_block(stdout: str, header: str) -> list[str]:
 def stdio(result) -> str:
     """Combined stdout + stderr for assertions that must not couple to a sink."""
     return (result.stdout or "") + (result.stderr or "")
+
+
+def diagnostic_path(path: Path) -> str:
+    """Expected diagnostic location, including fixtures on another Windows drive."""
+    if path.drive.casefold() != REPO_ROOT.drive.casefold():
+        return "<external>/" + "/".join(path.parts[1:])
+    return Path(os.path.relpath(path, REPO_ROOT)).as_posix()
 
 
 def load_tool_module():
@@ -1330,6 +1338,298 @@ class StoryScopeValidatorTests(unittest.TestCase):
         self.assertIn("tools/first.py", in_scope)
         self.assertIn("tools/second.py", in_scope)
 
+    # --- Deferred input and diagnostic gaps ---------------------------------
+
+    def test_ignored_direct_allowed_bullet_warns_without_granting_scope(self):
+        temp = self.fixture_artifacts(
+            "## File Scope\nAllowed files for this story:\n"
+            "- `docs/allowed.md`\n- docs/ignored.md\n",
+        )
+        for changed_path, expected_code in (("docs/allowed.md", 0), ("docs/ignored.md", 1)):
+            with self.subTest(changed_path=changed_path):
+                result = run_validator(
+                    "--artifacts-root", temp.name,
+                    "--story-key", "12-2-forbidden-default-tolerances-checklist",
+                    "--changed-file", changed_path,
+                )
+                self.assertEqual(result.returncode, expected_code, stdio(result))
+                self.assertIn(".md:4:", result.stderr)
+                self.assertIn("backtick", result.stderr)
+                self.assertNotIn("docs/ignored.md", section_block(result.stdout, "Allowed scope entries:"))
+
+    def test_bare_bullets_outside_authoritative_list_do_not_warn(self):
+        temp = self.fixture_artifacts(
+            """
+            ## File Scope
+            Allowed files for this story:
+            - `docs/allowed.md`
+              - indented explanation
+            ```markdown
+            - illustrative bare path
+            ```
+            Read/verify only:
+            - unbackticked reference
+            """,
+        )
+        result = run_validator(
+            "--artifacts-root", temp.name,
+            "--story-key", "12-2-forbidden-default-tolerances-checklist",
+            "--changed-file", "docs/allowed.md",
+        )
+        self.assertEqual(result.returncode, 0, stdio(result))
+        self.assertEqual(result.stderr, "")
+
+    def test_artifact_error_diagnostics_use_relative_paths(self):
+        story_key = "12-2-forbidden-default-tolerances-checklist"
+        temp = self.fixture_artifacts("## File Scope\nRead/verify only:\n- `docs/reference.md`\n")
+        story_path = Path(temp.name) / f"{story_key}.md"
+        for present in (True, False):
+            with self.subTest(present=present):
+                if not present:
+                    story_path.unlink()
+                result = run_validator(
+                    "--artifacts-root", temp.name, "--story-key", story_key,
+                    "--changed-file", "docs/changed.md",
+                )
+                self.assertEqual(result.returncode, 1, stdio(result))
+                self.assertIn(diagnostic_path(story_path), result.stdout)
+                self.assertNotIn(f": {story_path}", stdio(result))
+
+    def test_windows_cross_drive_display_omits_drive_and_preserves_location(self):
+        module = load_tool_module()
+        windows_relpath = ntpath.relpath
+        cases = (
+            ("C:/work/repo/artifacts/story.md", "artifacts/story.md"),
+            ("D:/work/artifacts/story.md", "<external>/work/artifacts/story.md"),
+            ("//server/share/work/artifacts/story.md", "<external>/work/artifacts/story.md"),
+        )
+        with (
+            mock.patch.object(module.Path, "cwd", return_value=PureWindowsPath("C:/work/repo")),
+            mock.patch.object(module.os.path, "relpath", side_effect=windows_relpath),
+        ):
+            for path, expected in cases:
+                with self.subTest(path=path):
+                    self.assertEqual(module.display_path(PureWindowsPath(path)), expected)
+
+    def test_invalid_utf8_commit_message_reports_actionable_error_without_traceback(self):
+        message = self.write_message("fix: fixture\n")
+        message.write_bytes(b"fix: invalid \xff\n")
+        result = run_validator(
+            "--story-key", "12-3-story-file-scope-enforcement",
+            "--commit-message-file", str(message),
+            "--changed-file", "CONTRIBUTING.md",
+        )
+        self.assertEqual(result.returncode, 1, stdio(result))
+        self.assertIn("Commit message", result.stdout)
+        self.assertIn("UTF-8", result.stdout)
+        self.assertIn(message.name, result.stdout)
+        self.assertNotIn(f": {message}", stdio(result))
+        self.assertNotIn("Traceback", stdio(result))
+
+    def test_missing_commit_message_reports_clean_relative_path_error(self):
+        message = self.write_message("fix: fixture\n")
+        message.unlink()
+        result = run_validator(
+            "--story-key", "12-3-story-file-scope-enforcement",
+            "--commit-message-file", str(message),
+            "--changed-file", "CONTRIBUTING.md",
+        )
+        self.assertEqual(result.returncode, 1, stdio(result))
+        self.assertIn("Cannot read Commit message", result.stdout)
+        self.assertIn(message.name, result.stdout)
+        self.assertNotIn(f": {message}", stdio(result))
+        self.assertNotIn("Traceback", stdio(result))
+
+    def test_changed_files_bom_preserves_first_and_remaining_allowed_paths(self):
+        temp = self.fixture_artifacts(FROZEN_STORY_FIXTURE)
+        paths = ("CONTRIBUTING.md", "_bmad-output/implementation-artifacts/sprint-status.yaml")
+        for prefix in ("", "\ufeff"):
+            with self.subTest(bom=bool(prefix)):
+                changed = self.write_changed_files(prefix + paths[0], paths[1])
+                result = run_validator(
+                    "--artifacts-root", temp.name,
+                    "--story-key", "12-2-forbidden-default-tolerances-checklist",
+                    "--changed-files-file", str(changed),
+                )
+                self.assertEqual(result.returncode, 0, stdio(result))
+                self.assertEqual(list(paths), section_block(result.stdout, "In-scope changed files:"))
+
+    def test_story_and_commit_message_accept_utf8_bom(self):
+        temp = self.fixture_artifacts("\ufeff" + FROZEN_STORY_FIXTURE)
+        message = self.write_message(
+            "\ufefffix: fixture\n\nStory-Key: 12-2-forbidden-default-tolerances-checklist\n",
+        )
+        result = run_validator(
+            "--artifacts-root", temp.name, "--commit-message-file", str(message),
+            "--changed-file", "CONTRIBUTING.md",
+        )
+        self.assertEqual(result.returncode, 0, stdio(result))
+        self.assertIn("Story source: trailer", result.stdout)
+
+    def test_invalid_utf8_story_and_changed_files_report_clean_input_errors(self):
+        for source in ("story", "changed"):
+            with self.subTest(source=source):
+                temp = self.fixture_artifacts(FROZEN_STORY_FIXTURE)
+                changed = self.write_changed_files("CONTRIBUTING.md")
+                path = (
+                    Path(temp.name) / "12-2-forbidden-default-tolerances-checklist.md"
+                    if source == "story" else changed
+                )
+                path.write_bytes(b"invalid \xff\n")
+                result = run_validator(
+                    "--artifacts-root", temp.name,
+                    "--story-key", "12-2-forbidden-default-tolerances-checklist",
+                    "--changed-files-file", str(changed),
+                )
+                self.assertEqual(result.returncode, 1, stdio(result))
+                self.assertIn("UTF-8", result.stdout)
+                self.assertIn(path.name, result.stdout)
+                self.assertNotIn("Traceback", stdio(result))
+
+    def test_changed_files_bom_cannot_hide_forbidden_first_path(self):
+        temp = self.fixture_artifacts(FROZEN_STORY_FIXTURE)
+        forbidden = "src/Hexalith.Memories.Server/Denied.cs"
+        for prefix in ("", "\ufeff"):
+            with self.subTest(bom=bool(prefix)):
+                changed = self.write_changed_files(prefix + forbidden, "CONTRIBUTING.md")
+                result = run_validator(
+                    "--artifacts-root", temp.name,
+                    "--story-key", "12-2-forbidden-default-tolerances-checklist",
+                    "--changed-files-file", str(changed),
+                )
+                self.assertEqual(result.returncode, 1, stdio(result))
+                self.assertEqual([forbidden], section_block(result.stdout, "Forbidden-default files (no override; D5-class):"))
+                self.assertEqual(["CONTRIBUTING.md"], section_block(result.stdout, "In-scope changed files:"))
+
+    def test_nested_allowed_headings_are_recognized(self):
+        for heading in (
+            "### Allowed files for this story:",
+            "#### Allowed files for this story",
+            "###### **Allowed files for this story:** ######",
+            "### **Allowed files for this story**:",
+        ):
+            with self.subTest(heading=heading):
+                temp = self.fixture_artifacts(f"## File Scope\n{heading}\n- `docs/allowed.md`\n")
+                result = run_validator(
+                    "--artifacts-root", temp.name,
+                    "--story-key", "12-2-forbidden-default-tolerances-checklist",
+                    "--changed-file", "docs/allowed.md",
+                )
+                self.assertEqual(result.returncode, 0, stdio(result))
+                self.assertEqual(["docs/allowed.md"], section_block(result.stdout, "Allowed scope entries:"))
+
+    def test_nested_nonwritable_headings_end_active_allowed_list(self):
+        for heading in ("### Read/verify only:", "#### Forbidden by default", "### Examples ###"):
+            with self.subTest(heading=heading):
+                temp = self.fixture_artifacts(
+                    "## File Scope\nAllowed files for this story:\n- `docs/allowed.md`\n"
+                    f"{heading}\n- `docs/denied.md`\n",
+                )
+                result = run_validator(
+                    "--artifacts-root", temp.name,
+                    "--story-key", "12-2-forbidden-default-tolerances-checklist",
+                    "--changed-file", "docs/denied.md",
+                )
+                self.assertEqual(result.returncode, 1, stdio(result))
+                self.assertEqual(["docs/allowed.md"], section_block(result.stdout, "Allowed scope entries:"))
+                self.assertEqual(["docs/denied.md"], section_block(result.stdout, "Out-of-scope files:"))
+
+    def test_parent_and_sibling_headings_end_file_scope(self):
+        for heading in (
+            "# Parent", "## Sibling", "## Allowed files for this story:", "## File Scope",
+        ):
+            with self.subTest(heading=heading):
+                temp = self.fixture_artifacts(
+                    "## File Scope\nAllowed files for this story:\n- `docs/allowed.md`\n\n"
+                    f"{heading}\nAllowed files for this story:\n- `docs/denied.md`\n",
+                )
+                result = run_validator(
+                    "--artifacts-root", temp.name,
+                    "--story-key", "12-2-forbidden-default-tolerances-checklist",
+                    "--changed-file", "docs/denied.md",
+                )
+                self.assertEqual(result.returncode, 1, stdio(result))
+                self.assertEqual(["docs/allowed.md"], section_block(result.stdout, "Allowed scope entries:"))
+
+    def test_indented_example_labels_cannot_reopen_allowed_list(self):
+        for indentation in ("    ", "\t", "  \t"):
+            with self.subTest(indentation=repr(indentation)):
+                temp = self.fixture_artifacts(
+                    "## File Scope\nAllowed files for this story:\n- `docs/allowed.md`\n"
+                    "### Read/verify only\n"
+                    f"{indentation}Allowed files for this story:\n- `docs/denied.md`\n",
+                )
+                result = run_validator(
+                    "--artifacts-root", temp.name,
+                    "--story-key", "12-2-forbidden-default-tolerances-checklist",
+                    "--changed-file", "docs/denied.md",
+                )
+                self.assertEqual(result.returncode, 1, stdio(result))
+                self.assertEqual(["docs/allowed.md"], section_block(result.stdout, "Allowed scope entries:"))
+
+    def test_thematic_breaks_and_list_rationale_preserve_allowed_entries(self):
+        for middle in ("---", "Some rationale\n---", "\n---\n---", "> quoted rationale\n---"):
+            with self.subTest(middle=middle):
+                temp = self.fixture_artifacts(
+                    "## File Scope\nAllowed files for this story:\n- `docs/first.md`\n"
+                    f"{middle}\n- `docs/second.md`\n",
+                )
+                result = run_validator(
+                    "--artifacts-root", temp.name,
+                    "--story-key", "12-2-forbidden-default-tolerances-checklist",
+                    "--changed-file", "docs/second.md",
+                )
+                self.assertEqual(result.returncode, 0, stdio(result))
+                self.assertEqual(["docs/first.md", "docs/second.md"], section_block(result.stdout, "Allowed scope entries:"))
+
+    def test_utf8_commit_message_is_independent_of_process_locale(self):
+        temp = self.fixture_artifacts(FROZEN_STORY_FIXTURE)
+        message = self.write_message(
+            "fix: caf\u00e9 \u6771\u4eac fixture\n\nStory-Key: 12-2-forbidden-default-tolerances-checklist\n",
+        )
+        env = os.environ.copy()
+        env.update(PYTHONUTF8="0", PYTHONCOERCECLOCALE="0", LC_ALL="C")
+        result = subprocess.run(
+            [sys.executable, str(TOOL), "--artifacts-root", temp.name,
+             "--commit-message-file", str(message), "--changed-file", "CONTRIBUTING.md"],
+            cwd=REPO_ROOT, env=env, text=True, capture_output=True, check=False,
+        )
+        self.assertEqual(result.returncode, 0, stdio(result))
+        self.assertIn("Story source: trailer", result.stdout)
+
+    def test_commit_sha_forces_utf8_despite_legacy_git_log_encoding(self):
+        temp = self.fixture_artifacts(FROZEN_STORY_FIXTURE)
+        repo = tempfile.TemporaryDirectory()
+        self.addCleanup(repo.cleanup)
+        message = "fix: caf\u00e9 fixture\n\nStory-Key: 12-2-forbidden-default-tolerances-checklist\n"
+        for args in (
+            ("init", "--initial-branch=main"),
+            ("-c", "user.name=Scope Fixture", "-c", "user.email=scope@example.invalid",
+             "-c", "commit.gpgsign=false", "commit", "--allow-empty", "-m", message),
+            ("config", "i18n.logOutputEncoding", "ISO-8859-1"),
+        ):
+            subprocess.run(["git", *args], cwd=repo.name, capture_output=True, encoding="utf-8", check=True)
+        result = run_validator(
+            "--artifacts-root", temp.name, "--commit-sha", "HEAD",
+            "--changed-file", "CONTRIBUTING.md", cwd=repo.name,
+        )
+        self.assertEqual(result.returncode, 0, stdio(result))
+        self.assertIn("Story source: trailer", result.stdout)
+
+    def test_nested_sections_can_resume_only_with_explicit_allowed_label(self):
+        temp = self.fixture_artifacts(
+            "## File Scope\n### Allowed files for this story\n- `docs/first.md`\n"
+            "### Read/verify only\n- `docs/reference.md`\n"
+            "### Allowed files for this story\n- `docs/second.md`\n",
+        )
+        result = run_validator(
+            "--artifacts-root", temp.name,
+            "--story-key", "12-2-forbidden-default-tolerances-checklist",
+            "--changed-file", "docs/first.md", "--changed-file", "docs/second.md",
+        )
+        self.assertEqual(result.returncode, 0, stdio(result))
+        self.assertEqual(["docs/first.md", "docs/second.md"], section_block(result.stdout, "Allowed scope entries:"))
+
     # --- Story artifact path diagnostic (12.4-RV18) ---------------------------
 
     def test_fixture_test_reports_loaded_story_artifact_path(self):
@@ -1351,7 +1651,8 @@ class StoryScopeValidatorTests(unittest.TestCase):
         # Loaded path must match the fixture artifacts root, not a live
         # repository artifact.
         self.assertIn(
-            f"Story artifact: {Path(temp.name).as_posix()}/12-2-forbidden-default-tolerances-checklist.md",
+            "Story artifact: "
+            + diagnostic_path(Path(temp.name) / "12-2-forbidden-default-tolerances-checklist.md"),
             result.stdout,
         )
 

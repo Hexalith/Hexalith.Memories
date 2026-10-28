@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import os
 import re
 import subprocess
 import sys
@@ -28,6 +29,7 @@ BACKTICK_PATTERN = re.compile(r"`([^`]+)`")
 # Track open-fence length so fences > 3 backticks/tildes can contain shorter
 # nested fence lines without prematurely closing (12.4-RV12).
 CODE_FENCE_PATTERN = re.compile(r"^\s*(`{3,}|~{3,})(.*)$")
+HEADING_PATTERN = re.compile(r"^ {0,3}(#{1,6})(?:[ \t]+(.*?))?[ \t]*$")
 
 ALLOWED_LABELS = {
     "allowed files for this story:",
@@ -101,7 +103,10 @@ def normalize_path(value: str) -> str:
 
 
 def normalize_label(value: str) -> str:
-    return value.strip().strip("*").strip().lower()
+    cleaned = value.strip()
+    if cleaned.endswith(":"):
+        return cleaned[:-1].strip().strip("*").strip().lower() + ":"
+    return cleaned.strip("*").strip().lower()
 
 
 def extract_story_keys(value: str) -> list[str]:
@@ -170,6 +175,7 @@ def run_git(args: list[str]) -> str:
         completed = subprocess.run(
             ["git", *args],
             text=True,
+            encoding="utf-8",
             capture_output=True,
             check=False,
         )
@@ -185,9 +191,9 @@ def run_git(args: list[str]) -> str:
 
 def read_commit_message(args: argparse.Namespace) -> str:
     if args.commit_message_file:
-        return Path(args.commit_message_file).read_text(encoding="utf-8")
+        return read_utf8(Path(args.commit_message_file), "Commit message")
     if args.commit_sha:
-        return run_git(["log", "-1", "--format=%B", args.commit_sha])
+        return run_git(["log", "-1", "--encoding=UTF-8", "--format=%B", args.commit_sha])
     return ""
 
 
@@ -200,6 +206,7 @@ def parse_trailers(message: str) -> tuple[list[str], list[str]]:
             ["git", "interpret-trailers", "--parse"],
             input=message,
             text=True,
+            encoding="utf-8",
             capture_output=True,
             check=False,
         )
@@ -309,9 +316,7 @@ def extract_backtick_path(line: str) -> str | None:
 
 
 def parse_allowed_scope(story_path: Path) -> list[str]:
-    text = story_path.read_text(encoding="utf-8")
-    if text.startswith("﻿"):
-        text = text[1:]
+    text = read_utf8(story_path, "Story artifact")
     lines = text.splitlines()
 
     in_file_scope = False
@@ -319,7 +324,7 @@ def parse_allowed_scope(story_path: Path) -> list[str]:
     fence_marker: str | None = None  # full opener, e.g. "```" or "````"
     allowed: list[str] = []
 
-    for raw_line in lines:
+    for line_number, raw_line in enumerate(lines, start=1):
         fence_match = CODE_FENCE_PATTERN.match(raw_line)
         if fence_match:
             marker = fence_match.group(1)
@@ -338,19 +343,31 @@ def parse_allowed_scope(story_path: Path) -> list[str]:
         if fence_marker is not None:
             continue
 
+        indentation = raw_line[:len(raw_line) - len(raw_line.lstrip(" \t"))]
+        if len(indentation.expandtabs(4)) >= 4:
+            continue
+
         stripped = raw_line.strip()
-        if stripped.startswith("## "):
-            if stripped.lower() == "## file scope":
+        heading = HEADING_PATTERN.match(raw_line)
+        if heading:
+            level = len(heading.group(1))
+            stripped = re.sub(r"[ \t]+#+[ \t]*$", "", heading.group(2) or "").strip()
+            if in_file_scope and level <= 2:
+                break
+            if level == 2 and stripped.lower() == "file scope":
                 in_file_scope = True
                 in_allowed = False
                 continue
-            if in_file_scope:
-                break
+            # Every nested heading starts a new subsection. Only an explicit
+            # allowed label below can reopen authorization within File Scope.
+            in_allowed = False
 
         if not in_file_scope:
             continue
 
         label = normalize_label(stripped)
+        if heading and not label.endswith(":"):
+            label += ":"
         # Bold-wrapped section labels like `**Forbidden by default:**` should
         # behave like the plain form for both opening and terminating checks.
         bold_label: str | None = None
@@ -379,10 +396,19 @@ def parse_allowed_scope(story_path: Path) -> list[str]:
         path = extract_backtick_path(stripped)
         if path:
             allowed.append(normalize_path(path))
+        else:
+            print(
+                f"Warning: {display_path(story_path)}:{line_number}: ignored allowed-scope "
+                "bullet without a backtick-wrapped path. Wrap the path or glob in backticks.",
+                file=sys.stderr,
+            )
 
     allowed = [entry for entry in allowed if entry]
     if not allowed:
-        raise ValidationError(f"Story file has no parseable File Scope section or has an empty allowed scope: {story_path}")
+        raise ValidationError(
+            "Story file has no parseable File Scope section or has an empty allowed scope: "
+            + display_path(story_path),
+        )
     return allowed
 
 
@@ -392,8 +418,8 @@ def collect_changed_files(args: argparse.Namespace) -> list[str]:
     if args.changed_files_file:
         changed_file = Path(args.changed_files_file)
         if not changed_file.exists():
-            raise ValidationError(f"Changed-files input does not exist: {changed_file}")
-        values.extend(changed_file.read_text(encoding="utf-8").splitlines())
+            raise ValidationError(f"Changed-files input does not exist: {display_path(changed_file)}")
+        values.extend(read_utf8(changed_file, "Changed-files input").splitlines())
     if args.staged:
         values.extend(run_git(["diff", "--cached", "--name-only", "--"]).splitlines())
 
@@ -467,8 +493,26 @@ def override_matches(path: str, override: Override) -> bool:
     return path == override.pattern
 
 
-def to_posix(path: Path) -> str:
-    return str(path).replace("\\", "/")
+def display_path(path: Path) -> str:
+    """Render local paths relative to the working directory without drive prefixes."""
+    try:
+        return os.path.relpath(path, Path.cwd()).replace("\\", "/")
+    except ValueError:
+        # Windows cannot relativize paths on different drives. Preserve the
+        # useful location beneath the anchor without printing its drive/UNC root.
+        return "<external>/" + "/".join(path.parts[1:])
+
+
+def read_utf8(path: Path, description: str) -> str:
+    """Read tooling input with an optional UTF-8 BOM and actionable diagnostics."""
+    try:
+        return path.read_text(encoding="utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise ValidationError(
+            f"{description} must be UTF-8 encoded: {display_path(path)}. Save the file as UTF-8 and retry.",
+        ) from exc
+    except OSError as exc:
+        raise ValidationError(f"Cannot read {description}: {display_path(path)} ({exc.strerror})") from exc
 
 
 def validate(args: argparse.Namespace) -> int:
@@ -488,14 +532,14 @@ def validate(args: argparse.Namespace) -> int:
     artifacts_root = Path(args.artifacts_root)
     story_path = artifacts_root / f"{source.key}.md"
     if not story_path.exists():
-        raise ValidationError(f"Story artifact not found: {to_posix(story_path)}")
+        raise ValidationError(f"Story artifact not found: {display_path(story_path)}")
 
     allowed = parse_allowed_scope(story_path)
     overrides = parse_overrides(trailer_overrides)
 
     print(f"Selected story key: {source.key}")
     print(f"Story source: {source.name}")
-    print(f"Story artifact: {to_posix(story_path)}")
+    print(f"Story artifact: {display_path(story_path)}")
     print("Allowed scope entries:")
     for entry in allowed:
         print(f"  - {entry}")

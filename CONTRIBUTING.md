@@ -49,6 +49,24 @@ Forbidden by default:
 The writable contract is the direct bullet list under `Allowed files for this story:`. The validator
 extracts only backtick-wrapped paths or globs from that list. `Read/verify only:` and
 `Forbidden by default:` are reviewer guidance and diagnostic context; they do not grant write access.
+An unbackticked direct bullet in the writable list produces a warning on stderr with the artifact
+path and line number; it remains excluded from scope. Indented explanations, fenced examples and
+bullets outside the writable list do not produce this warning.
+
+Labels may also appear as nested ATX headings at levels three through six, for example
+`### Allowed files for this story` or `### Read/verify only:`. The colon is optional for heading
+labels. Every nested heading ends the previous list; only an explicit allowed label starts another
+writable list. Indented code examples cannot open writable lists. A sibling `##` heading (including
+a repeated `## File Scope`) or parent `#` heading ends the File Scope section. This gate supports
+ATX headings marked with `#`; Setext underlined headings do not define scope boundaries. Use the
+ATX form for all scope sections. Plain rationale prose between bullets retains the existing list.
+
+Commit-message files, story artifacts and changed-files inputs must use UTF-8; an optional UTF-8
+BOM is accepted. Invalid encoding produces an actionable validation error without a traceback.
+Local input and artifact paths in diagnostics are relative POSIX-style paths. On Windows, paths
+on another drive use an `<external>/` prefix with the drive or UNC anchor omitted. These display
+rules do not change filesystem lookup or authorization.
+
 Changed-file inputs are normalized to repository-relative POSIX-style paths. Added, modified, copied,
 renamed, and deleted paths are validated; for renames, Git's `--name-only` output supplies the
 destination path.

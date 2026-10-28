@@ -177,14 +177,16 @@ resolution: already resolved: src/Hexalith.Memories.Server/Handlers/HandlerMisma
 origin: migrated from legacy ledger ("Story 15.5 Triage Rollup (2026-05-15)"), 2026-09-01
 location: tools/check-story-file-scope.py
 reason: - **12.4-RV10 - accepted.** A parse-time warning for dropped bare-token bullets may help story authors, but the current out-of-scope-files diagnostic already catches the issue once a changed file lands outside the parsed allow-list. - ID: 12.4-RV10 - Status: accepted - Source story: 15-5-deferred-register-triage-sweep - Target artifact: tools/check-story-file-scope.py - Re-open trigger: A contributor confusion incident or story-template redesign shows that pre-commit author warnings are needed before any changed-file validation runs. - Rationale: The value is low until there is evidence of author confusion, and adding parse-time stderr warnings could create noise for legitimate non-bullet prose.
-status: open
+status: done 2026-10-28
+resolution: Direct unbackticked allowed-list bullets now emit artifact/line-specific stderr warnings while remaining unauthorized; fenced, indented and read-only bullets stay silent. Reopen if warnings disappear or imply write access. Evidence: spec-five-deferred-story-scope.md and tests/tooling/story_scope/story_scope_validator_test.py; PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/story_scope -p '*_test.py' -q passed 71/71 methods on 2026-10-28.
 
 ### DW-25: 12.4-RV11: accepted. Local Windows absolute-path cosmetic noise remains
 
 origin: migrated from legacy ledger ("Story 15.5 Triage Rollup (2026-05-15)"), 2026-09-01
 location: tools/check-story-file-scope.py
 reason: - **12.4-RV11 - accepted.** Local Windows absolute-path cosmetic noise remains intentionally accepted because CI diagnostics use repository-relative paths and do not expose maintainer-visible drive letters. - ID: 12.4-RV11 - Status: accepted - Source story: 15-5-deferred-register-triage-sweep - Target artifact: tools/check-story-file-scope.py - Re-open trigger: A PR review comment or release-evidence document cites a local Windows drive-letter path emitted by `tools/check-story-file-scope.py`, or a maintainer reports that pasting story-scope tooling output from a local Windows run into a shared review channel leaks a drive letter. - Rationale: The remaining issue is cosmetic and local-only; changing it now would add story-scope tooling churn without improving CI or reviewer evidence.
-status: open
+status: done 2026-10-28
+resolution: Artifact and local-input diagnostics now render relative POSIX paths; Windows cross-drive and UNC paths use an external marker without the drive/share anchor. Lookup and authorization stay independent of formatting. Reopen if a local path diagnostic emits an absolute drive prefix or names the wrong artifact. Evidence: spec-five-deferred-story-scope.md and tests/tooling/story_scope/story_scope_validator_test.py; PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/story_scope -p '*_test.py' -q passed 71/71 methods on 2026-10-28.
 
 ### DW-26: `S11-FC`, `12.1-RV3`, and `12.1-RV4` are already reconciled by Story 15.1:
 
@@ -1248,14 +1250,16 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of story-12.3 (2026-05-01)"), 2026-09-01
 location: tools/check-story-file-scope.py:114-118
 reason: - **12.3-RV6 — `read_commit_message` raises `UnicodeDecodeError` on non-UTF-8 messages.** Edge case; clean error wrapping is a follow-up nicety. [tools/check-story-file-scope.py:114-118]
-status: open
+status: done 2026-10-28
+resolution: UTF-8 input decoding failures now become actionable ValidationError diagnostics naming the commit-message file, with exit 1 and no traceback; missing input files also receive clean errors. Reopen if malformed commit-message bytes bypass validation or expose a traceback. Evidence: spec-five-deferred-story-scope.md and tests/tooling/story_scope/story_scope_validator_test.py; PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/story_scope -p '*_test.py' -q passed 71/71 methods on 2026-10-28.
 
 ### DW-165: 12.3-RV7: `--changed-files-file` does not strip a UTF-8 BOM. A PowerShell `Set-Content`-emitted file would silently mismatch the first path. Switch to `utf-8-sig` decoding when revisited.
 
 origin: migrated from legacy ledger ("Deferred from: code review of story-12.3 (2026-05-01)"), 2026-09-01
 location: tools/check-story-file-scope.py:246
 reason: - **12.3-RV7 — `--changed-files-file` does not strip a UTF-8 BOM.** A PowerShell `Set-Content`-emitted file would silently mismatch the first path. Switch to `utf-8-sig` decoding when revisited. [tools/check-story-file-scope.py:246]
-status: open
+status: done 2026-10-28
+resolution: UTF-8-sig decoding removes an optional leading BOM from changed-files input before normalizing paths. BOM and BOM-free fixtures prove both first-path authorization and forbidden-default classification, including remaining list entries. Reopen if BOM-prefixed input changes scope decisions. Evidence: spec-five-deferred-story-scope.md and tests/tooling/story_scope/story_scope_validator_test.py; PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/story_scope -p '*_test.py' -q passed 71/71 methods on 2026-10-28.
 
 ### DW-166: 12.3-RV8: `collect_changed_files` silently drops paths normalizing to empty. Theoretical; `..`-only inputs are not produced by `git diff --name-only`.
 
@@ -1299,7 +1303,8 @@ resolution: already resolved: tools/check-story-file-scope.py:442-449
 origin: migrated from legacy ledger ("Deferred from: code review of story-12.3 (2026-05-01)"), 2026-09-01
 location: tools/check-story-file-scope.py:206-211
 reason: - **12.3-RV13 — `parse_allowed_scope` does not honor `## ` subheadings inside `## File Scope`.** No current story uses this shape. [tools/check-story-file-scope.py:206-211]
-status: open
+status: done 2026-10-28
+resolution: Proper ATX Markdown subsections at heading levels three through six now recognize allowed/read-only/forbidden labels and reset collection at unrelated headings. Sibling level-two and parent headings end File Scope. The historical wording calling a level-two heading nested was corrected in the build trace. Reopen if subsection content leaks into writable scope or explicit allowed lists cannot resume. Evidence: spec-five-deferred-story-scope.md and tests/tooling/story_scope/story_scope_validator_test.py; PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/story_scope -p '*_test.py' -q passed 71/71 methods on 2026-10-28.
 
 ### DW-172: 12.3-RV14: `ALLOWED_LABELS` set has aliases (`Expected files to add or edit:`, `Allowed to modify:`) not in CONTRIBUTING.md. Either remove the aliases or document them in a follow-up.
 
@@ -5823,3 +5828,7 @@ status: open
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-4-live-tenant-isolation-evidence.md`
   summary: Add live authenticated HTTP proof that tenant A's bearer cannot traverse tenant B's graph route.
   evidence: Blind review B2 (medium, pre-existing). The executed two-tenant graph method mints a bearer matching each route, while the focused in-memory endpoint theory proves A-to-B denial before graph dependencies but does not exercise the live Aspire transport. Owner: tenant authorization integration tests. Reopen with an A-bearer-to-B-route request that returns 403 `TENANT_FORBIDDEN` and no foreign response data.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-five-deferred-story-scope.md`
+  summary: Support Setext parent and sibling scope boundaries with correct Markdown block context if that authoring syntax is adopted.
+  evidence: Independent review confirmed the pre-existing ATX-only parser treats an underlined Setext title after an allowed list as ordinary content and can collect later bullets. Baseline and current implementations share this unsupported-syntax gap; CONTRIBUTING.md now requires ATX scope headings explicitly. A trial lookahead was withdrawn after review demonstrated false boundaries at thematic breaks and list continuations, plus incorrect handling of ordered markers within paragraphs. Correct support requires paragraph/list indentation context or an approved Markdown parser dependency. Owner: tooling maintainer. Reopen when Setext scope headings are proposed or found in authored artifacts; qualify both real headings and thematic-break, lazy-continuation, indented-list and ordered-marker controls before enabling support.
