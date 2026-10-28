@@ -799,6 +799,44 @@
         "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/kubectl-host-channel-20261028-r3p_1yr3/verification-initial.json",
         "sha256": "13aa93ee3ed29c47e2c96cddddceab5138f76552c41c9c5e941a2b938b39a933"
       }
+    },
+    "readinessResumption": {
+      "status": "verified-existing-bindings-operational-inputs-still-blocked",
+      "sourceBeforeDocumentation": {
+        "memories": {
+          "revision": "7520a601a1420fd238a48ef6415d47b409a824a1",
+          "trackedAndUntrackedStatus": ""
+        },
+        "platform": {
+          "revision": "eee6ce27965b7c7108bbfcc02d447038e0553751",
+          "trackedAndUntrackedStatus": ""
+        }
+      },
+      "verifier": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/resumption-readiness-20261028-hsz5h7tg/verify-readiness.py",
+        "sha256": "67ffad5b18de3b202bc2283b68bab9ef5409747928e9e7ae193ff3282acf754c"
+      },
+      "command": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/resumption-readiness-20261028-hsz5h7tg/command.json",
+        "sha256": "c659083af28992e6b0d6d69d0f34078527c2938058e7afe2610883783250a88d"
+      },
+      "result": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/resumption-readiness-20261028-hsz5h7tg/result.json",
+        "sha256": "f16c04c4012eaad46e7bac8cdd4a78358fea58fdddbb119eafd4aaaa91674a43"
+      },
+      "localObservation": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/resumption-readiness-20261028-hsz5h7tg/coordinator-local-observation.json",
+        "sha256": "f59db1eb572fa00023e85077e89d6ddc167cee3abc4f3afc88900284dc752556"
+      },
+      "artifactCheckCount": 23,
+      "sourceCheckCount": 9,
+      "unresolvedNullCount": 31,
+      "launchAuthorized": true,
+      "launchReady": false,
+      "calibrationLaunchAttemptConsumed": false,
+      "hostCaptureAttemptConsumed": true,
+      "qualificationCredit": false,
+      "scope": "Existing bound artifacts/source and bounded local host/Docker metadata only. Completed implementation suites/reviews and node1 capture were not repeated. No prepare/launch, reservation, allocation or runtime mutation."
     }
   },
   "lifecyclePlanDraft": {

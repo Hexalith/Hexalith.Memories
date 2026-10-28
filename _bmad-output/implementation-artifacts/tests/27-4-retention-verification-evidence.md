@@ -1,5 +1,42 @@
 # Story 27.4 — current retention results
 
+## Resumption after pushed changes — 2026-10-28 (current)
+
+Memories `7520a601a1420fd238a48ef6415d47b409a824a1` and Platform
+`eee6ce27965b7c7108bbfcc02d447038e0553751` were clean before these documentation
+updates. The existing calibration implementation remains complete. Focused verification
+passed **23/23 retained artifact hashes and 9/9 current native-source bindings**;
+the small draft still has **31 unresolved nulls**. No executable independent plan,
+independent state or campaign state exists. Owner run approval remains accepted,
+the calibration launch unused and the host-capture attempt consumed.
+
+Exact command from Memories root:
+`python3 -B /home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/resumption-readiness-20261028-hsz5h7tg/verify-readiness.py`.
+Result: **exit0**, 09:34:55.344778–09:34:55.365485Z; local clock only.
+The existing preparation index binds its script, command, raw result and the
+coordinator's local-observation receipt. These checks establish consistency with
+the recorded prerequisites; they are not a successful runtime admission.
+
+Bounded read-only local metadata found **14 CPUs**, Docker Desktop **29.8.2** with
+**97021214720 memory bytes**, and **339310170112 available bytes** on the workspace's
+ext4 filesystem. The Docker read used
+`timeout --signal=TERM --kill-after=2s 8s docker --host unix:///var/run/docker.sock info --format '{{json .}}'`
+with an allowlisted metadata projection. Filesystem reads used `findmnt` and `df`;
+the receipt retains the exact commands and assurance limits. This exceeds the
+small profile's **10.25CPU/19GiB gross totals**; historical 14 CPU insufficiency
+applies to the **16.25CPU/31GiB legacy/full profile**. Neither local gross capacity
+nor workspace free space establishes an isolated engine, net reservation, actual
+allocation, independent Linux backup or same-input full-profile measurements.
+No target was substituted or admitted and no draft input was filled by inference.
+
+Live calibration still requires the actual isolated Docker target, signed net
+compute/storage reservations, different-host Linux backup and complete runtime,
+monitoring, independently authenticated clock/authority and absolute window inputs.
+Completed product suites/reviews, consumed node1 capture and absent-state CLI
+inspection were not repeated. No infrastructure, dependency, gate or Git mutation
+occurred. Story 27.4 remains **in progress**, full qualification/Production unproved
+and **A41 open**. Existing run approval is retained; no repeat approval is needed.
+
 ## Host capture through kubectl — 2026-10-28 (current)
 
 The owner's **“use kubectl”** supplied the approved capture's working transport.

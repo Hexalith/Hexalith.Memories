@@ -14,6 +14,18 @@ context:
 
 # Story 27.4 — active functional retention contract
 
+## Resumption after pushed changes — 2026-10-28 (current)
+
+Existing implementation/source bindings remain intact: focused verification
+passes 23/23 artifact hashes and 9/9 source bindings. The local 14 CPU Docker host
+exceeds the small 10.25 CPU/19GiB gross budget; that observation establishes no net
+reservation, isolated target or independent backup. The draft retains 31 nulls;
+no executable plan/state exists. The [single report](tests/27-4-retention-verification-evidence.md#resumption-after-pushed-changes--2026-10-28-current)
+and existing preparation index bind the exact checks, source revisions and local
+metadata limits. Existing run approval persists and its launch remains unused;
+the host capture stays consumed. No completed implementation/review is repeated.
+Actual operational inputs still precede execution; Story 27.4 in progress, A41 open.
+
 ## Host capture completed through kubectl — 2026-10-28 (current)
 
 The owner's **“use kubectl”** supplied the approved node1 capture's transport.
