@@ -403,6 +403,7 @@ public class EmbeddingProviderDefaultsTests
         ArgumentException ex = Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
         ex.Message.ShouldContain(model);
         ex.Message.ShouldContain(provider);
+        ex.ParamName.ShouldBe(nameof(TenantEmbeddingConfig.Model));
     }
 
     [Theory]
@@ -483,7 +484,7 @@ public class EmbeddingProviderDefaultsTests
     }
 
     [Fact]
-    public void Validate_OllamaProviderWithGoogleModel_DimensionMismatch_ShouldThrow()
+    public void Validate_OllamaQwen3WithGoogleDimensions_ShouldThrowDimensionsError()
     {
         TenantEmbeddingConfig config = EmbeddingProviderDefaults.Ollama() with
         {
@@ -491,7 +492,8 @@ public class EmbeddingProviderDefaultsTests
             Dimensions = 768,
         };
 
-        Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
+        ArgumentException ex = Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
+        ex.ParamName.ShouldBe(nameof(TenantEmbeddingConfig.Dimensions));
     }
 
     [Fact]
@@ -511,11 +513,20 @@ public class EmbeddingProviderDefaultsTests
     [InlineData(768)]
     [InlineData(1024)]
     [InlineData(1536)]
-    public void Validate_OllamaQwen3_AcceptsExactly2560(int dimensions)
+    public void Validate_OllamaQwen3_RejectsAnyDimensionExcept2560(int dimensions)
     {
         TenantEmbeddingConfig config = EmbeddingProviderDefaults.Ollama() with { Dimensions = dimensions };
 
-        Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
+        ArgumentException ex = Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
+        ex.ParamName.ShouldBe(nameof(TenantEmbeddingConfig.Dimensions));
+    }
+
+    [Fact]
+    public void Validate_OllamaQwen3_AcceptsExactly2560()
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Ollama() with { Dimensions = 2560 };
+
+        Should.NotThrow(() => EmbeddingProviderDefaults.Validate(config));
     }
 
     [Fact]

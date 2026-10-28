@@ -528,44 +528,178 @@ public class TenantConfigurationActorTests
             Arg.Any<CancellationToken>());
     }
 
-    [Fact]
-    public async Task SetEmbeddingConfigAsync_FirstWrite_ShouldIgnoreClientSuppliedReindexFlag()
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData(null, true)]
+    [InlineData("", false)]
+    [InlineData("", true)]
+    [InlineData("   ", false)]
+    [InlineData("   ", true)]
+    [InlineData("\t", false)]
+    [InlineData("\t", true)]
+    [InlineData("http://localhost:11434", false)]
+    [InlineData("http://localhost:11434", true)]
+    public async Task GetEmbeddingConfigAsync_LegacyOllamaState_ShouldValidateDefaultedAuthWithoutWriting(
+        string? baseUrl,
+        bool reindexRequired)
+    {
+        (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        string baseUrlProperty = baseUrl is null ? string.Empty : $", \"baseUrl\": {JsonSerializer.Serialize(baseUrl)}";
+        string json = $$"""
+            {
+              "provider": "ollama",
+              "model": "qwen3-embedding:4b",
+              "dimensions": 2560,
+              "rateLimitPerMinute": 1234,
+              "apiSecretKeyName": "legacy-ollama-key",
+              "reindexRequired": {{(reindexRequired ? "true" : "false")}}
+              {{baseUrlProperty}}
+            }
+            """;
+        StoredTenantEmbeddingConfig? stored = JsonSerializer.Deserialize<StoredTenantEmbeddingConfig>(
+            json, MemoriesPersistenceJsonContext.Options);
+        stored.ShouldNotBeNull();
+        stored.AuthMode.ShouldBe("api-key");
+        stored.OidcTokenEndpoint.ShouldBeNull();
+        stored.OidcClientId.ShouldBeNull();
+        stored.OidcScope.ShouldBeNull();
+        stateManager.TryGetStateAsync<StoredTenantEmbeddingConfig>("embeddingConfig", Arg.Any<CancellationToken>())
+            .Returns(new ConditionalValue<StoredTenantEmbeddingConfig>(true, stored));
+
+        TenantEmbeddingConfig config = await actor.GetEmbeddingConfigAsync();
+
+        TenantEmbeddingConfig expected = !string.IsNullOrWhiteSpace(baseUrl)
+            ? new TenantEmbeddingConfig(
+                "ollama", "qwen3-embedding:4b", 2560, 1234, "legacy-ollama-key",
+                reindexRequired: reindexRequired, baseUrl: baseUrl, authMode: "api-key")
+            : EmbeddingProviderDefaults.Google();
+        config.ShouldBe(expected);
+        stored.ReindexRequired.ShouldBe(reindexRequired);
+        ShouldNotMutateState(stateManager);
+    }
+
+    [Theory]
+    [InlineData("", false)]
+    [InlineData("", true)]
+    [InlineData("   ", false)]
+    [InlineData("   ", true)]
+    [InlineData("\t", false)]
+    [InlineData("\t", true)]
+    public async Task GetEmbeddingConfigAsync_GoogleStateWithBlankBaseUrl_ShouldPreserveStateWithoutWriting(
+        string baseUrl,
+        bool reindexRequired)
+    {
+        (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        TenantEmbeddingConfig storedConfig = EmbeddingProviderDefaults.Google() with
+        {
+            BaseUrl = baseUrl,
+            RateLimitPerMinute = 500,
+            ReindexRequired = reindexRequired,
+        };
+        SetupExistingState(stateManager, storedConfig);
+
+        TenantEmbeddingConfig config = await actor.GetEmbeddingConfigAsync();
+
+        config.ShouldBe(storedConfig);
+        ShouldNotMutateState(stateManager);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("\t")]
+    public async Task GetEmbeddingConfigAsync_OllamaStateWithBlankBaseUrl_ShouldReturnDefaultsWithoutWriting(string baseUrl)
+    {
+        (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        SetupExistingState(stateManager, CreateOllamaOidcConfig() with
+        {
+            BaseUrl = baseUrl,
+            ReindexRequired = true,
+        });
+
+        TenantEmbeddingConfig config = await actor.GetEmbeddingConfigAsync();
+
+        config.ShouldBe(EmbeddingProviderDefaults.Google());
+        ShouldNotMutateState(stateManager);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task SetEmbeddingConfigAsync_FirstWrite_ShouldIgnoreClientSuppliedReindexFlag(
+        bool clientReindexRequired,
+        bool forceReindex)
     {
         // Arrange
         (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
         SetupEmptyState(stateManager);
 
-        TenantEmbeddingConfig newConfig = EmbeddingProviderDefaults.Google() with { ReindexRequired = true };
+        TenantEmbeddingConfig newConfig = EmbeddingProviderDefaults.Google() with
+        {
+            Dimensions = 1536,
+            RateLimitPerMinute = 900,
+            ApiSecretKeyName = "custom-google-key",
+            ReindexRequired = clientReindexRequired,
+        };
 
         // Act
-        await actor.SetEmbeddingConfigAsync(newConfig, forceReindex: true);
+        await actor.SetEmbeddingConfigAsync(newConfig, forceReindex);
 
         // Assert
+        await stateManager.Received(1).SetStateAsync(
+            Arg.Any<string>(),
+            Arg.Any<StoredTenantEmbeddingConfig>(),
+            Arg.Any<CancellationToken>());
         await stateManager.Received().SetStateAsync(
             "embeddingConfig",
-            Arg.Is<StoredTenantEmbeddingConfig>(c => !c!.ReindexRequired),
+            new StoredTenantEmbeddingConfig("google", "gemini-embedding-001", 1536, 900, "custom-google-key"),
             Arg.Any<CancellationToken>());
     }
 
-    [Fact]
-    public async Task SetEmbeddingConfigAsync_FirstOllamaWrite_ShouldIgnoreClientSuppliedReindexFlag()
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task SetEmbeddingConfigAsync_FirstOllamaWrite_ShouldIgnoreClientSuppliedReindexFlag(
+        bool clientReindexRequired,
+        bool forceReindex)
     {
         // Arrange
         (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
         SetupEmptyState(stateManager);
 
-        TenantEmbeddingConfig newConfig = CreateOllamaOidcConfig() with { ReindexRequired = true };
+        TenantEmbeddingConfig newConfig = CreateOllamaOidcConfig() with
+        {
+            RateLimitPerMinute = 1000,
+            ApiSecretKeyName = "custom-ollama-key",
+            BaseUrl = "https://custom-ollama.example",
+            OidcTokenEndpoint = "https://identity.example/token",
+            OidcClientId = "custom-client",
+            OidcScope = "openid custom-embed",
+            ReindexRequired = clientReindexRequired,
+        };
 
         // Act
-        await actor.SetEmbeddingConfigAsync(newConfig, forceReindex: true);
+        await actor.SetEmbeddingConfigAsync(newConfig, forceReindex);
 
         // Assert
+        await stateManager.Received(1).SetStateAsync(
+            Arg.Any<string>(),
+            Arg.Any<StoredTenantEmbeddingConfig>(),
+            Arg.Any<CancellationToken>());
         await stateManager.Received().SetStateAsync(
             "embeddingConfig",
-            Arg.Is<StoredTenantEmbeddingConfig>(c =>
-                c!.Provider == "ollama" &&
-                c.AuthMode == "oidc-client-credentials" &&
-                !c.ReindexRequired),
+            new StoredTenantEmbeddingConfig(
+                "ollama", "qwen3-embedding:4b", 2560, 1000, "custom-ollama-key",
+                ReindexRequired: false,
+                BaseUrl: "https://custom-ollama.example",
+                AuthMode: "oidc-client-credentials",
+                OidcTokenEndpoint: "https://identity.example/token",
+                OidcClientId: "custom-client",
+                OidcScope: "openid custom-embed"),
             Arg.Any<CancellationToken>());
     }
 
@@ -616,6 +750,14 @@ public class TenantConfigurationActorTests
         // Assert
         config.RateLimitPerMinute.ShouldBe(500);
     }
+
+    private static void ShouldNotMutateState(IActorStateManager stateManager)
+        => stateManager.ReceivedCalls()
+            .Select(call => call.GetMethodInfo().Name)
+            .Where(name => name is not nameof(IActorStateManager.TryGetStateAsync)
+                and not nameof(IActorStateManager.GetStateAsync)
+                and not nameof(IActorStateManager.ContainsStateAsync))
+            .ShouldBeEmpty();
 
     private static (TenantConfigurationActor Actor, IActorStateManager StateManager) CreateActorWithMockState()
     {
