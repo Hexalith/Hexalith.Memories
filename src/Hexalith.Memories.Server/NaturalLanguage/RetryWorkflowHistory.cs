@@ -67,6 +67,31 @@ internal static class RetryWorkflowHistory
         await db.ScriptEvaluateAsync(retain, [(RedisKey)Units(tenant)], [(RedisValue)unit]).WaitAsync(token).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Attests empty retry coverage for a newly provisioned tenant that has no historical inventory.
+    /// Existing obligations, inventory, or a different attestation are left unchanged.
+    /// </summary>
+    /// <param name="db">The Redis database.</param>
+    /// <param name="tenant">The tenant identifier.</param>
+    /// <param name="token">The cancellation token.</param>
+    internal static async Task AttestFreshCoverageAsync(IDatabase db, string tenant, CancellationToken token)
+    {
+        IngestionIdentityGuard.Scope(tenant, tenant);
+        const string attest = """
+            -- nl-retry-fresh-coverage-v1
+            if redis.call('EXISTS',KEYS[2])==1 or redis.call('SCARD',KEYS[3])~=0 or redis.call('HLEN',KEYS[4])~=0
+                or redis.call('ZCARD',KEYS[5])~=0 or redis.call('ZCARD',KEYS[6])~=0 then return 0 end
+            local current=redis.call('GET',KEYS[1])
+            if current==ARGV[1] then return 1 end
+            if current then return 0 end
+            redis.call('SET',KEYS[1],ARGV[1]); return 1
+            """;
+        await db.ScriptEvaluateAsync(attest,
+            [(RedisKey)Coverage(tenant), (RedisKey)Unresolved(tenant), (RedisKey)Units(tenant), (RedisKey)Scheduling(tenant),
+                (RedisKey)FailedNaturalLanguageEmbeddingRegistry.LiveKey(tenant), (RedisKey)FailedNaturalLanguageEmbeddingRegistry.DeadKey(tenant)],
+            [(RedisValue)ReconciledCoverage]).WaitAsync(token).ConfigureAwait(false);
+    }
+
     /// <summary>Reconciles queues after fencing, then purges independently scoped Dapr history.</summary>
     internal static async Task PurgeTenantAsync(IDatabase db, IDaprWorkflowClient? client, string tenant,
         bool legacySchedulersDrained, CancellationToken token)

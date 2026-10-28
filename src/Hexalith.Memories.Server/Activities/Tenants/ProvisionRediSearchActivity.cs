@@ -43,6 +43,7 @@ public sealed partial class ProvisionRediSearchActivity : WorkflowActivity<Tenan
         IDatabase db = _redis.GetDatabase();
         if (await db.KeyExistsAsync(Hexalith.Memories.Server.Ingestion.TenantIngestionOwnership.Fence(input.TenantId)).ConfigureAwait(false))
         { throw new InvalidOperationException("tenant-ingestion-erased"); }
+        await Hexalith.Memories.Server.NaturalLanguage.RetryWorkflowHistory.AttestFreshCoverageAsync(db, input.TenantId, CancellationToken.None).ConfigureAwait(false);
         var ft = db.FT();
 
         string indexName = IndexSchemaDefinitions.GetSyntacticIndexName(input.TenantId);

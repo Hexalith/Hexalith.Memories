@@ -25,6 +25,7 @@ public class ProvisionRediSearchActivityTests
     public async Task RunAsync_IndexAlreadyExistsWithMatchingSchema_ShouldReturnTrue()
     {
         IDatabase db = Substitute.For<IDatabase>();
+        ConfigureFreshCoverage(db);
         ConfigureIndexAlreadyExists(db, CreateMatchingSyntacticIndexInfo());
         IConnectionMultiplexer redis = CreateMockMultiplexer(db);
         ILogger<ProvisionRediSearchActivity> logger = Substitute.For<ILogger<ProvisionRediSearchActivity>>();
@@ -42,6 +43,7 @@ public class ProvisionRediSearchActivityTests
     public async Task RunAsync_IndexAlreadyExistsWithDifferentSchema_ShouldThrowInvalidOperationException()
     {
         IDatabase db = Substitute.For<IDatabase>();
+        ConfigureFreshCoverage(db);
         ConfigureIndexAlreadyExists(db, CreateMismatchedSyntacticIndexInfo());
         IConnectionMultiplexer redis = CreateMockMultiplexer(db);
         ILogger<ProvisionRediSearchActivity> logger = Substitute.For<ILogger<ProvisionRediSearchActivity>>();
@@ -67,6 +69,10 @@ public class ProvisionRediSearchActivityTests
 
         await Should.ThrowAsync<ArgumentNullException>(() => activity.RunAsync(context, null!));
     }
+
+    private static void ConfigureFreshCoverage(IDatabase db)
+        => db.ScriptEvaluateAsync(Arg.Any<string>(), Arg.Any<RedisKey[]>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>())
+            .Returns(RedisResult.Create(1L));
 
     private static void ConfigureIndexAlreadyExists(IDatabase db, RedisResult infoResult)
     {
