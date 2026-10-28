@@ -121,10 +121,17 @@ message, then validates `Story:`, `Story-Key:`, and `Scope-Override:` trailers a
 file list. This makes a valid `Story-Key:` trailer usable on `main` while a changed commit with neither
 a trailer nor an owner-named branch still fails before creation.
 
-The commitlint step is skipped with a warning when `node_modules/.bin/commitlint` is absent, so run
-`npm ci` after cloning to arm it locally; CI enforces it regardless. CI runs the same Python validator
-without the local deferral mode against PR and non-`main` push diffs, using the PR source branch and
-the real head commit message rather than the synthetic merge commit.
+The commitlint step rejects the commit when `node_modules/.bin/commitlint` is missing or not
+executable; run `npm ci` after cloning and before committing. The pinned policy disables built-in
+message ignores, so merge, revert, fixup/squash and version-only subjects must satisfy the same
+Conventional Commit rules. Use a subject such as `revert: Restore the previous behavior` for a
+revert. CI validates PR commits and the exact PR title, including on title edits. Each `main` push
+has its own commitlint concurrency group so later pushes cannot cancel its running or queued
+range check; newer PR runs may supersede earlier runs on the same ref.
+
+CI runs the same Python validator without the local deferral mode against PR and non-`main` push
+diffs, using the PR source branch and the real head commit message rather than the synthetic merge
+commit.
 
 Local hook and direct CLI runs treat an empty changed-file list as a successful no-op (e.g., a
 `pre-commit` invocation with nothing staged). CI does not — the `story-file-scope` workflow job

@@ -4521,7 +4521,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of 27-3-production-adapter-and-deployment-profile (2026-07-26)"), 2026-09-01
 location: .githooks / commitlint configuration
 reason: - **27.3-CR9 - commit `358bef35` bypasses the Conventional Commits contract.** Its subject carries - ID: 27.3-CR9 - Status: open - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 3a/3) - Target artifact: .githooks / commitlint configuration - Re-open trigger: confirm the commit-msg hook rejects a missing type prefix, and decide whether the omitted product change needs a follow-up release note. - Rationale: Commit `358bef35` carries no Conventional Commits type prefix, and its body lists only the three new test files while omitting the `InMemoryAccessTelemetryStateStore.cs` purge-ordering product change in the same commit. It is already published on `main`, so correcting the message needs a history rewrite; the durable fix is the commit-msg gate, not this commit. Owner: repository workflow owner. Consequence: release semantics and the changed-surface audit trail are both wrong for that one commit. no type prefix and its body enumerates only the three new test files, omitting the `InMemoryAccessTelemetryStateStore.cs` purge-ordering product change in the same commit. The commit is already published on `main`, so correcting the message itself would require a history rewrite. Owner: repository workflow owner. Consequence: `feat`/`fix` release semantics and the changed-surface audit trail are both wrong for that commit. Reopen trigger: confirm the commit-msg hook rejects a missing type prefix, and record whether the omitted product change needs a follow-up release note.
-status: open
+status: done 2026-10-28
+resolution: Recorded the omitted expiry timestamp ordering change from canonical commit 358bef352bf657bcd2a7c4e91cb0a6d298c3f7a4 in docs/dev/release-runbook.md, including its in-memory test-adapter scope. Real commit-msg fixtures reject untyped headers and preserve valid commits; published history is retained. Verification: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/commitlint -p '*_test.py' -v passed 13/13 methods (exit 0); see spec-five-deferred-commit-validation.md. Reopen if the gate or caller contract permits these bypasses again.
 decision: 2026-09-01 Add follow-up note — Add a release-note correction and regression-test the commit-msg gate.
 decision: 2026-09-01 Add follow-up note — Add a release-note correction and regression-test the commit-msg gate.
 
@@ -4660,21 +4661,24 @@ resolution: 2026-10-28 — spec-five-deferred-evidence-readiness.md. New readine
 origin: migrated from legacy ledger ("DW 27.3-CR24 - the deferred-work status verifier is wired to nothing"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md` summary: The local commitlint hook fails open when repository dependencies are absent. evidence: `.githooks/commit-msg` prints an installation hint but exits successfully when `node_modules/.bin/commitlint` is unavailable, contrary to mandatory local validation policy.
-status: open
+status: done 2026-10-28
+resolution: .githooks/commit-msg now exits 1 with npm ci guidance if the pinned CLI is absent or non-executable. Disposable real Git commit fixtures prove no commit is created and no downstream gate is reached in either case. Verification: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/commitlint -p '*_test.py' -v passed 13/13 methods (exit 0); see spec-five-deferred-commit-validation.md. Reopen if the gate or caller contract permits these bypasses again.
 
 ### DW-617: Commitlint default ignores allow merge- and version-shaped messages through the stated every-commit policy.
 
 origin: migrated from legacy ledger ("DW 27.3-CR24 - the deferred-work status verifier is wired to nothing"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md` summary: Commitlint default ignores allow merge- and version-shaped messages through the stated every-commit policy. evidence: `commitlint.config.mjs` does not disable default ignores, so commitlint's built-in ignored message shapes are outside the configured Conventional Commit rules.
-status: open
+status: done 2026-10-28
+resolution: commitlint.config.mjs disables built-in ignores. Pinned-CLI and actual-hook fixtures reject merge, version, revert, reapply and fixup/squash subjects that lack a valid Conventional Commit header; all eleven supported types remain accepted. Verification: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/commitlint -p '*_test.py' -v passed 13/13 methods (exit 0); see spec-five-deferred-commit-validation.md. Reopen if the gate or caller contract permits these bypasses again.
 
 ### DW-618: Main-push commitlint runs can cancel an earlier range before it is validated.
 
 origin: migrated from legacy ledger ("DW 27.3-CR24 - the deferred-work status verifier is wired to nothing"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md` summary: Main-push commitlint runs can cancel an earlier range before it is validated. evidence: The workflow groups all main pushes together with `cancel-in-progress: true`, while each reusable run validates only its event-specific before-to-after range.
-status: open
+status: done 2026-10-28
+resolution: .github/workflows/commitlint.yml assigns every main push a run_id-specific group and limits cancellation to pull_request events. Parsed caller fixtures pin these expressions and preserve PR supersession; distinct groups protect queued as well as running push ranges. Actual GitHub scheduling is not executed locally. Verification: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/commitlint -p '*_test.py' -v passed 13/13 methods (exit 0); see spec-five-deferred-commit-validation.md. Reopen if the gate or caller contract permits these bypasses again.
 
 ### DW-619: Contributor guidance still recommends the forbidden chore branch and commit type.
 
@@ -4689,7 +4693,8 @@ resolution: already resolved: Commit 7df55c12 records the correction; the root b
 origin: migrated from legacy ledger ("DW 27.3-CR24 - the deferred-work status verifier is wired to nothing"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md` summary: The dirty commitlint policy and PR-title workflow changes lack negative behavioral verification. evidence: Repository tests do not execute the hook against an invalid message, reject forbidden message shapes through the pinned config, or contract-test PR-title edit wiring.
-status: open
+status: done 2026-10-28
+resolution: Retained executable policy/hook tests use the installed pinned CLI and actual git commit in disposable repositories, with only unrelated downstream gates isolated. Parsed caller checks retain PR edited triggers, exact title forwarding and mandatory shared-validator invocation. CLI and hook matrices reject invalid messages and accept valid controls; remote reusable execution is outside local evidence. Verification: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/commitlint -p '*_test.py' -v passed 13/13 methods (exit 0); see spec-five-deferred-commit-validation.md. Reopen if the gate or caller contract permits these bypasses again.
 
 ### DW-621: Plain internal OperationCanceledException timeout mapping in the Tenants REST client lacks regression tests.
 
@@ -5837,3 +5842,7 @@ status: open
 - source_spec: `_bmad-output/implementation-artifacts/spec-five-deferred-story-scope.md`
   summary: Support Setext parent and sibling scope boundaries with correct Markdown block context if that authoring syntax is adopted.
   evidence: Independent review confirmed the pre-existing ATX-only parser treats an underlined Setext title after an allowed list as ordinary content and can collect later bullets. Baseline and current implementations share this unsupported-syntax gap; CONTRIBUTING.md now requires ATX scope headings explicitly. A trial lookahead was withdrawn after review demonstrated false boundaries at thematic breaks and list continuations, plus incorrect handling of ordered markers within paragraphs. Correct support requires paragraph/list indentation context or an approved Markdown parser dependency. Owner: tooling maintainer. Reopen when Setext scope headings are proposed or found in authored artifacts; qualify both real headings and thematic-break, lazy-continuation, indented-list and ordered-marker controls before enabling support.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-five-deferred-commit-validation.md`
+  summary: Reject empty repository commit messages permitted by explicit Git --allow-empty-message, including in history validation.
+  evidence: Independent review and a disposable real-hook reproduction both created an empty-subject commit with exit 0 using git commit --allow-empty-message --file <empty-file>. The pinned commitlint CLI filters whitespace-only repository messages before applying rules (node_modules/@commitlint/cli/lib/cli.js:222-225), independently of defaultIgnores; this predates the five selected fixes. Ordinary Git rejects empty messages by default. Resolve through both the local hook and shared CI validation, without treating skipped empty messages as validated subjects.

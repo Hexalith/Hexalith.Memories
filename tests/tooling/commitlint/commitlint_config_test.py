@@ -6,6 +6,18 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[3]
 COMMITLINT = REPO_ROOT / "node_modules" / ".bin" / "commitlint"
 CONFIG = REPO_ROOT / "commitlint.config.mjs"
+IGNORED_MESSAGE_SHAPES = (
+    "Merge branch 'topic'",
+    "Merge pull request #42 from Hexalith/topic",
+    "Merge remote-tracking branch 'origin/main'",
+    "Merge tag 'v1.2.3'",
+    "v1.2.3",
+    "1.2.3",
+    'Revert "fix: Correct ordering"',
+    'reapply "fix: Correct ordering"',
+    "fixup! fix: Correct ordering",
+    "squash! fix: Correct ordering",
+)
 
 
 def run_commitlint(message: str) -> "subprocess.CompletedProcess[str]":
@@ -30,6 +42,22 @@ def stdio(result: "subprocess.CompletedProcess[str]") -> str:
 
 
 class CommitlintConfigTests(unittest.TestCase):
+    def test_default_ignored_message_shapes_are_validated(self) -> None:
+        for message in IGNORED_MESSAGE_SHAPES:
+            with self.subTest(message=message):
+                result = run_commitlint(message)
+                self.assertNotEqual(0, result.returncode, stdio(result))
+                self.assertIn("type-empty", stdio(result))
+
+    def test_conventional_commit_types_remain_accepted(self) -> None:
+        for commit_type in (
+            "build", "chore", "ci", "docs", "feat", "fix", "perf",
+            "refactor", "revert", "style", "test",
+        ):
+            with self.subTest(commit_type=commit_type):
+                result = run_commitlint(f"{commit_type}(tooling): Correct ordering")
+                self.assertEqual(0, result.returncode, stdio(result))
+
     def test_chore_maintenance_subject_is_accepted(self) -> None:
         result = run_commitlint(
             "chore: update subproject references for Hexalith.FrontComposer and Hexalith.Tenants"

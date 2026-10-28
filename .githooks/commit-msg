@@ -22,7 +22,8 @@ if [ -x "$commitlint_bin" ]; then
     exit 1
   fi
 else
-  echo "commit-msg: commitlint not found at node_modules/.bin/commitlint; run 'npm ci' to enable the local Conventional Commits gate. CI still enforces it." >&2
+  echo "commit-msg: commitlint is missing or not executable at node_modules/.bin/commitlint; run 'npm ci' before committing." >&2
+  exit 1
 fi
 
 if command -v python3 >/dev/null 2>&1; then

@@ -8,8 +8,10 @@ on:
   push:
     branches: [main]
 concurrency:
-  group: commitlint-${{ github.ref }}
-  cancel-in-progress: true
+  # Each main push owns an event-specific range. Separate groups also prevent
+  # a later push from replacing a queued run before that range is validated.
+  group: commitlint-${{ github.event_name == 'push' && github.run_id || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 permissions:
   contents: read
 jobs:

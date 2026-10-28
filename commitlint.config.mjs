@@ -1,5 +1,7 @@
 export default {
   extends: ['@commitlint/config-conventional'],
+  // Apply the ordinary rules to merge/revert/version-shaped messages too.
+  defaultIgnores: false,
   // Sprint Change Proposal 2026-07-05 (CI Package Boundary / Fluent Pin): the team's
   // conventional-commit subjects are written in sentence-case (e.g. "feat: Add ..."),
   // change-proposal bodies routinely exceed the default line cap, and descriptive headers can

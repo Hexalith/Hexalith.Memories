@@ -4,6 +4,20 @@ This runbook records the observed first release path (`v1.2.0`, 2026-04-30) and 
 path for the next release. Package and container publishing remains CI-only. Do not publish release
 artifacts from a workstation.
 
+## Historical Release-Note Correction (2026-10-28)
+
+Commit [358bef352bf657bcd2a7c4e91cb0a6d298c3f7a4](https://github.com/Hexalith/Hexalith.Memories/commit/358bef352bf657bcd2a7c4e91cb0a6d298c3f7a4)
+used an untyped subject and described only test additions in its message. It also changed
+`InMemoryAccessTelemetryStateStore.GetDueEntriesAsync`: entries are ordered by expiry minute,
+then expiration timestamp (`ExpiresAtUtc`, ordinal), shard and record ID. The added timestamp
+tie-break matches the Dapr adapter's purge ordering, making bounded batches deterministic across
+the two adapters. This is a source change to the in-memory lifecycle test adapter; it does not
+establish Production retention qualification or change the runtime adapter registration.
+
+This durable note records the omitted change for release review (DW-600). Published commit and
+release history remain intact. Local and CI commit validation now apply the Conventional Commit
+rules to merge, revert and version-shaped messages as well as ordinary subjects.
+
 ## Current Release Contract
 
 - Releases are produced by `.github/workflows/release.yml` on `push` events targeting `main`. With
