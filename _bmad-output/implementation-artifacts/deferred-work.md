@@ -1150,7 +1150,9 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of story-12.5 (2026-05-02)"), 2026-09-01
 location: tools/create-partial-publish-issue.ps1:92
 reason: - **12.5-RV2 — `gh issue list --search` lacks `in:title` qualifier and uses default `--limit 30`.** `tools/create-partial-publish-issue.ps1:92`. Local `Where-Object { $_.title -eq $title }` defends against substring collisions today, but a high-volume backlog of partial-publish issues could push the exact match off the result page. Switch to `--search "in:title \"$title\""` and bump limit when revisited.
-status: open
+status: done 2026-10-28
+resolution: `_bmad-output/implementation-artifacts/spec-five-deferred-release-alerts.md` — Quoted in:title search with an explicit limit of 100 retains exact-title verification; IssueHelperReliabilityTests.test_lookup_uses_quoted_title_and_explicit_limit_and_exact_match proves a match beyond the former 30-result default and ignores near matches. Verification: `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/publish_nuget -p '*_test.py' -v` passed 30/30 methods (2026-10-28).
+reopen-trigger: The corresponding retained fake-GitHub CLI regression fails, or live alert evidence contradicts the documented behavior.
 
 ### DW-153: 12.5-RV3: Race on concurrent partial-publish runs. Two workflow runs hitting partial-publish for the same version simultaneously can each create a new issue. `tools/create-partial-publish-issue.ps1:92-119`. Workflow `concurrency: release` reduces but does not eliminate the window. Needs server-side dedupe (search-with-create-or-comment idempotency) before becoming critical.
 
@@ -1164,28 +1166,36 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of story-12.5 (2026-05-02)"), 2026-09-01
 location: tools/create-partial-publish-issue.ps1:52-67
 reason: - **12.5-RV4 — `Format-ListSection` does not skip `$null` items.** `tools/create-partial-publish-issue.ps1:52-67`. Current JSON shape never emits nulls; a future contract change could produce blank `- :` bullets.
-status: open
+status: done 2026-10-28
+resolution: `_bmad-output/implementation-artifacts/spec-five-deferred-release-alerts.md` — Format-ListSection filters null members before counting/rendering; IssueHelperReliabilityTests.test_null_artifacts_are_omitted_and_all_null_lists_render_none proves mixed lists omit null bullets and all-null/missing lists say None. Verification: `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/publish_nuget -p '*_test.py' -v` passed 30/30 methods (2026-10-28).
+reopen-trigger: The corresponding retained fake-GitHub CLI regression fails, or live alert evidence contradicts the documented behavior.
 
 ### DW-155: 12.5-RV5: No retry/backoff for transient `gh` failures in the alert path. `tools/create-partial-publish-issue.ps1:92-128`. A flaky GitHub API turns partial-publish into "release failed AND alert step failed." Release failure is still loud; alert reliability is the deferred gap.
 
 origin: migrated from legacy ledger ("Deferred from: code review of story-12.5 (2026-05-02)"), 2026-09-01
 location: tools/create-partial-publish-issue.ps1:92-128
 reason: - **12.5-RV5 — No retry/backoff for transient `gh` failures in the alert path.** `tools/create-partial-publish-issue.ps1:92-128`. A flaky GitHub API turns partial-publish into "release failed AND alert step failed." Release failure is still loud; alert reliability is the deferred gap.
-status: open
+status: done 2026-10-28
+resolution: `_bmad-output/implementation-artifacts/spec-five-deferred-release-alerts.md` — Three-attempt transient GitHub retries use visible one-/two-second transport backoff, rate-limit-specific pacing within a shared 180-second wait budget, retained redacted diagnostics, immediate permanent-error refusal and validated issue/comment readback before repeating an ambiguous write, preserving the current evidence when readback finds an older incident. Subprocess fixtures prove recovery, exhausted query/write budgets, applied writes with lost responses, and refusal after failed or invalid readback. Independent concurrent runs remain the existing DW-153 scope. Verification: `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/publish_nuget -p '*_test.py' -v` passed 30/30 methods (2026-10-28).
+reopen-trigger: The corresponding retained fake-GitHub CLI regression fails, or live alert evidence contradicts the documented behavior.
 
 ### DW-156: 12.5-RV6: Malformed `publish-summary.json` makes the alert step throw. `tools/create-partial-publish-issue.ps1:32`. `ConvertFrom-Json` has no `try`; a half-written summary causes the alert step to fail with a JSON-parse trace and obscure the original publish failure.
 
 origin: migrated from legacy ledger ("Deferred from: code review of story-12.5 (2026-05-02)"), 2026-09-01
 location: tools/create-partial-publish-issue.ps1:32
 reason: - **12.5-RV6 — Malformed `publish-summary.json` makes the alert step throw.** `tools/create-partial-publish-issue.ps1:32`. `ConvertFrom-Json` has no `try`; a half-written summary causes the alert step to fail with a JSON-parse trace and obscure the original publish failure.
-status: open
+status: done 2026-10-28
+resolution: `_bmad-output/implementation-artifacts/spec-five-deferred-release-alerts.md` — Summary parsing fails with a path-specific, actionable preserve-evidence diagnostic before GitHub invocation, without echoing malformed JSON; IssueHelperReliabilityTests.test_malformed_summary_fails_with_context_before_github proves this refusal. Verification: `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/publish_nuget -p '*_test.py' -v` passed 30/30 methods (2026-10-28).
+reopen-trigger: The corresponding retained fake-GitHub CLI regression fails, or live alert evidence contradicts the documented behavior.
 
 ### DW-157: 12.5-RV7: Empty stdout from `gh issue list` trips `ConvertFrom-Json`. `tools/create-partial-publish-issue.ps1:97`. Add `if ([string]::IsNullOrWhiteSpace($issuesJson)) { $issues = @() }` guard.
 
 origin: migrated from legacy ledger ("Deferred from: code review of story-12.5 (2026-05-02)"), 2026-09-01
 location: tools/create-partial-publish-issue.ps1:97
 reason: - **12.5-RV7 — Empty stdout from `gh issue list` trips `ConvertFrom-Json`.** `tools/create-partial-publish-issue.ps1:97`. Add `if ([string]::IsNullOrWhiteSpace($issuesJson)) { $issues = @() }` guard.
-status: open
+status: done 2026-10-28
+resolution: `_bmad-output/implementation-artifacts/spec-five-deferred-release-alerts.md` — Blank and whitespace lookup stdout explicitly normalize to an empty issue collection; IssueHelperReliabilityTests.test_empty_lookup_output_is_an_empty_collection proves incident creation. The historical crash did not reproduce on installed PowerShell (the previous null sentinel was filtered), so this closes explicit handling and compatibility coverage, not a reproduced crash. Verification: `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/publish_nuget -p '*_test.py' -v` passed 30/30 methods (2026-10-28).
+reopen-trigger: The corresponding retained fake-GitHub CLI regression fails, or live alert evidence contradicts the documented behavior.
 
 ### DW-158: 12.5-RV8: Closed-then-reopened partial-publish issue creates a duplicate. `tools/create-partial-publish-issue.ps1:92` filters `--state open` only. After a maintainer manually reconciles and closes the issue, a same-version rerun creates a new issue rather than reopening or commenting. Spec is silent; semantics may need refinement after first real reconciliation cycle.
 

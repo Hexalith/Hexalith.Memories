@@ -432,6 +432,22 @@ those actions can move the published state away from the CI-recorded audit ancho
   for the same version, reruns add a comment to the existing issue instead of creating a duplicate.
   The issue/comment includes the run URL, version, pushed/failed/not-attempted package lists, and
   this runbook reference.
+- The alert helper searches quoted title text among up to 100 open issues and verifies the exact
+  title before choosing an incident. Null artifact entries are omitted; empty lists say `None`.
+  GitHub transport timeouts, connection failures and HTTP 5xx responses receive at most three
+  attempts with visible one- and two-second backoff. HTTP 429 and rate-limit-specific HTTP 403
+  or GraphQL errors wait before any further request, including readback: the helper honors
+  Retry-After/reset timing surfaced in CLI diagnostics, otherwise using 60/120-second backoff.
+  All waits share a 180-second budget; a longer required wait stops the helper without another
+  request. Before repeating an ambiguous create or comment, it requires valid readback JSON
+  and checks the incident body or exact comment body. If it discovers an older incident, it adds
+  the current run's evidence as a comment. Permanent/unclassified failures and failed readback
+  stop further writes. Terminal errors retain bounded diagnostics with credentials redacted.
+  This recovery does not serialize independent concurrent release runs.
+- If the summary cannot be parsed, the alert helper fails before contacting GitHub and names
+  the summary path. Preserve the original release failure and all summary evidence, repair or
+  regenerate the summary, then rerun the alert step. A failed alert does not reconcile a release
+  or justify closing its incident.
 - Once a failed publish has created the exact version tag or published any NuGet package, do not
   rerun normal semantic-release for that version and do not delete or republish packages. Dispatch
   **Recover Partial Release** from `main` with the existing bare version (for example, `2.6.6`).
