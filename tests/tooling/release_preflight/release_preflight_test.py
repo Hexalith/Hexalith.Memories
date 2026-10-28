@@ -1,17 +1,41 @@
 import os
+import shutil
 import subprocess
 import tempfile
+import time
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Optional
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = REPO_ROOT / "tools" / "release-preflight.ps1"
+PWSH = shutil.which("pwsh")
 
 
+@contextmanager
+def temporary_directory():
+    directory = tempfile.TemporaryDirectory()
+    try:
+        yield directory.name
+    finally:
+        # Git or antivirus can briefly retain Windows file handles. Removal is
+        # idempotent; retry permission failures only, and surface a lasting lock.
+        for attempt in range(3):
+            try:
+                directory.cleanup()
+                break
+            except PermissionError:
+                if attempt == 2:
+                    raise
+                time.sleep(0.05 * (attempt + 1))
+
+
+@unittest.skipUnless(PWSH, "PowerShell 7 (pwsh) is required for release preflight execution tests")
 class ReleasePreflightTests(unittest.TestCase):
     def test_no_existing_tag_passes(self):
-        with tempfile.TemporaryDirectory() as temp:
+        with temporary_directory() as temp:
             repo = Path(temp) / "work"
             self._init_repo(repo)
 
@@ -21,7 +45,7 @@ class ReleasePreflightTests(unittest.TestCase):
             self.assertIn("No stale release tag found for refs/tags/v1.2.3", result.stdout)
 
     def test_local_tag_collision_fails_exact_ref(self):
-        with tempfile.TemporaryDirectory() as temp:
+        with temporary_directory() as temp:
             repo = Path(temp) / "work"
             self._init_repo(repo)
             self._git(repo, "tag", "v1.2.3")
@@ -33,11 +57,11 @@ class ReleasePreflightTests(unittest.TestCase):
             self.assertIn("refs/tags/v1.2.3 already exists locally", result.stdout + result.stderr)
 
     def test_remote_tag_collision_fails_exact_ref(self):
-        with tempfile.TemporaryDirectory() as temp:
+        with temporary_directory() as temp:
             remote = Path(temp) / "remote.git"
             seed = Path(temp) / "seed"
             repo = Path(temp) / "work"
-            self._git(None, "init", "--bare", str(remote))
+            self._init_bare_repo(remote)
             self._init_repo(seed)
             self._git(seed, "remote", "add", "origin", str(remote))
             self._git(seed, "tag", "v1.2.3")
@@ -52,10 +76,10 @@ class ReleasePreflightTests(unittest.TestCase):
             self.assertIn("refs/tags/v1.2.3 already exists on remote 'origin'", result.stdout + result.stderr)
 
     def test_matching_local_and_remote_tag_collision_fails_on_exact_ref(self):
-        with tempfile.TemporaryDirectory() as temp:
+        with temporary_directory() as temp:
             remote = Path(temp) / "remote.git"
             repo = Path(temp) / "work"
-            self._git(None, "init", "--bare", str(remote))
+            self._init_bare_repo(remote)
             self._init_repo(repo)
             self._git(repo, "remote", "add", "origin", str(remote))
             self._git(repo, "tag", "v1.2.3")
@@ -67,11 +91,11 @@ class ReleasePreflightTests(unittest.TestCase):
             self.assertIn("refs/tags/v1.2.3 already exists locally", result.stdout + result.stderr)
 
     def test_similarly_prefixed_remote_tag_does_not_collide(self):
-        with tempfile.TemporaryDirectory() as temp:
+        with temporary_directory() as temp:
             remote = Path(temp) / "remote.git"
             seed = Path(temp) / "seed"
             repo = Path(temp) / "work"
-            self._git(None, "init", "--bare", str(remote))
+            self._init_bare_repo(remote)
             self._init_repo(seed)
             self._git(seed, "remote", "add", "origin", str(remote))
             self._git(seed, "tag", "v1.2.30")
@@ -86,7 +110,7 @@ class ReleasePreflightTests(unittest.TestCase):
             self.assertIn("No stale release tag found for refs/tags/v1.2.3", result.stdout)
 
     def test_semantic_release_no_release_output_exits_successfully(self):
-        with tempfile.TemporaryDirectory() as temp:
+        with temporary_directory() as temp:
             repo = Path(temp) / "work"
             output = Path(temp) / "dry-run.txt"
             self._init_repo(repo)
@@ -98,7 +122,7 @@ class ReleasePreflightTests(unittest.TestCase):
             self.assertIn("semantic-release dry-run reported no release", result.stdout)
 
     def test_semantic_release_ansi_no_release_output_exits_successfully(self):
-        with tempfile.TemporaryDirectory() as temp:
+        with temporary_directory() as temp:
             repo = Path(temp) / "work"
             output = Path(temp) / "dry-run.txt"
             self._init_repo(repo)
@@ -114,7 +138,7 @@ class ReleasePreflightTests(unittest.TestCase):
             self.assertIn("semantic-release dry-run reported no release", result.stdout)
 
     def test_semantic_release_stale_checkout_output_exits_successfully_without_remote_probe(self):
-        with tempfile.TemporaryDirectory() as temp:
+        with temporary_directory() as temp:
             repo = Path(temp) / "work"
             output = Path(temp) / "dry-run.txt"
             unreachable_remote = Path(temp) / "must-not-be-probed.git"
@@ -140,7 +164,7 @@ class ReleasePreflightTests(unittest.TestCase):
         )
 
         for logger_line in logger_lines:
-            with self.subTest(logger_line=logger_line), tempfile.TemporaryDirectory() as temp:
+            with self.subTest(logger_line=logger_line), temporary_directory() as temp:
                 repo = Path(temp) / "work"
                 output = Path(temp) / "dry-run.txt"
                 unreachable_remote = Path(temp) / "must-not-be-probed.git"
@@ -154,7 +178,7 @@ class ReleasePreflightTests(unittest.TestCase):
                 self.assertIn("stale checkout", result.stdout)
 
     def test_semantic_release_unknown_success_output_fails_loudly(self):
-        with tempfile.TemporaryDirectory() as temp:
+        with temporary_directory() as temp:
             repo = Path(temp) / "work"
             output = Path(temp) / "dry-run.txt"
             self._init_repo(repo)
@@ -174,7 +198,7 @@ class ReleasePreflightTests(unittest.TestCase):
         )
 
         for dry_run_output in outputs:
-            with self.subTest(dry_run_output=dry_run_output), tempfile.TemporaryDirectory() as temp:
+            with self.subTest(dry_run_output=dry_run_output), temporary_directory() as temp:
                 repo = Path(temp) / "work"
                 output = Path(temp) / "dry-run.txt"
                 self._init_repo(repo)
@@ -193,7 +217,7 @@ class ReleasePreflightTests(unittest.TestCase):
         )
 
         for dry_run_output in outputs:
-            with self.subTest(dry_run_output=dry_run_output), tempfile.TemporaryDirectory() as temp:
+            with self.subTest(dry_run_output=dry_run_output), temporary_directory() as temp:
                 repo = Path(temp) / "work"
                 output = Path(temp) / "dry-run.txt"
                 self._init_repo(repo)
@@ -205,7 +229,7 @@ class ReleasePreflightTests(unittest.TestCase):
                 self.assertIn("terminal outcome could not be parsed", result.stdout + result.stderr)
 
     def test_semantic_release_non_main_stale_output_fails_loudly(self):
-        with tempfile.TemporaryDirectory() as temp:
+        with temporary_directory() as temp:
             repo = Path(temp) / "work"
             output = Path(temp) / "dry-run.txt"
             self._init_repo(repo)
@@ -220,7 +244,7 @@ class ReleasePreflightTests(unittest.TestCase):
             self.assertIn("terminal outcome could not be parsed", result.stdout + result.stderr)
 
     def test_semantic_release_stale_checkout_plus_version_fails_as_mixed_outcome(self):
-        with tempfile.TemporaryDirectory() as temp:
+        with temporary_directory() as temp:
             repo = Path(temp) / "work"
             output = Path(temp) / "dry-run.txt"
             self._init_repo(repo)
@@ -239,7 +263,7 @@ class ReleasePreflightTests(unittest.TestCase):
             self.assertIn("next release version 1.2.3", combined)
 
     def test_semantic_release_stale_checkout_plus_no_release_fails_as_mixed_outcome(self):
-        with tempfile.TemporaryDirectory() as temp:
+        with temporary_directory() as temp:
             repo = Path(temp) / "work"
             output = Path(temp) / "dry-run.txt"
             self._init_repo(repo)
@@ -258,7 +282,7 @@ class ReleasePreflightTests(unittest.TestCase):
             self.assertIn("no release", combined)
 
     def test_semantic_release_stale_checkout_plus_malformed_version_fails_loudly(self):
-        with tempfile.TemporaryDirectory() as temp:
+        with temporary_directory() as temp:
             repo = Path(temp) / "work"
             output = Path(temp) / "dry-run.txt"
             self._init_repo(repo)
@@ -276,7 +300,7 @@ class ReleasePreflightTests(unittest.TestCase):
             self.assertIn("stale checkout", combined)
 
     def test_semantic_release_version_plus_no_release_fails_as_mixed_outcome(self):
-        with tempfile.TemporaryDirectory() as temp:
+        with temporary_directory() as temp:
             repo = Path(temp) / "work"
             output = Path(temp) / "dry-run.txt"
             self._init_repo(repo)
@@ -295,7 +319,7 @@ class ReleasePreflightTests(unittest.TestCase):
             self.assertIn("no release", combined)
 
     def test_semantic_release_valid_plus_malformed_version_fails_loudly(self):
-        with tempfile.TemporaryDirectory() as temp:
+        with temporary_directory() as temp:
             repo = Path(temp) / "work"
             output = Path(temp) / "dry-run.txt"
             self._init_repo(repo)
@@ -313,7 +337,7 @@ class ReleasePreflightTests(unittest.TestCase):
             self.assertIn("next release version 1.2.3", combined)
 
     def test_semantic_release_no_release_plus_malformed_version_fails_loudly(self):
-        with tempfile.TemporaryDirectory() as temp:
+        with temporary_directory() as temp:
             repo = Path(temp) / "work"
             output = Path(temp) / "dry-run.txt"
             self._init_repo(repo)
@@ -331,7 +355,7 @@ class ReleasePreflightTests(unittest.TestCase):
             self.assertIn("no release", combined)
 
     def test_semantic_release_positive_dry_run_output_resolves_next_version(self):
-        with tempfile.TemporaryDirectory() as temp:
+        with temporary_directory() as temp:
             repo = Path(temp) / "work"
             output = Path(temp) / "dry-run.txt"
             self._init_repo(repo)
@@ -348,7 +372,7 @@ class ReleasePreflightTests(unittest.TestCase):
             self.assertIn("No stale release tag found for refs/tags/v1.2.3", result.stdout)
 
     def test_semantic_release_ansi_positive_dry_run_output_resolves_next_version(self):
-        with tempfile.TemporaryDirectory() as temp:
+        with temporary_directory() as temp:
             repo = Path(temp) / "work"
             output = Path(temp) / "dry-run.txt"
             self._init_repo(repo)
@@ -364,7 +388,7 @@ class ReleasePreflightTests(unittest.TestCase):
             self.assertIn("No stale release tag found for refs/tags/v1.2.3", result.stdout)
 
     def test_semantic_release_payload_terminal_phrases_are_ignored_when_genuine_outcome_exists(self):
-        with tempfile.TemporaryDirectory() as temp:
+        with temporary_directory() as temp:
             repo = Path(temp) / "work"
             output = Path(temp) / "dry-run.txt"
             self._init_repo(repo)
@@ -382,7 +406,7 @@ class ReleasePreflightTests(unittest.TestCase):
             self.assertNotIn("refs/tags/v9.9.9", result.stdout)
 
     def test_semantic_release_payload_terminal_phrases_without_genuine_outcome_fail_as_unknown(self):
-        with tempfile.TemporaryDirectory() as temp:
+        with temporary_directory() as temp:
             repo = Path(temp) / "work"
             output = Path(temp) / "dry-run.txt"
             self._init_repo(repo)
@@ -404,7 +428,7 @@ class ReleasePreflightTests(unittest.TestCase):
         )
         for marker in markers:
             for payload_marker in markers:
-                with self.subTest(marker=marker, payload_marker=payload_marker), tempfile.TemporaryDirectory() as temp:
+                with self.subTest(marker=marker, payload_marker=payload_marker), temporary_directory() as temp:
                     repo = Path(temp) / "work"
                     self._init_repo(repo)
 
@@ -422,7 +446,7 @@ class ReleasePreflightTests(unittest.TestCase):
             "There is no previous release, the next release version is 9.9.9",
             "[4:12:30 PM] [semantic-release] [plugin] › ℹ  There is no previous release, the next release version is 9.9.9",
         ):
-            with self.subTest(record=record), tempfile.TemporaryDirectory() as temp:
+            with self.subTest(record=record), temporary_directory() as temp:
                 repo = Path(temp) / "work"
                 self._init_repo(repo)
                 self._git(repo, "tag", "v9.9.9")
@@ -435,7 +459,7 @@ class ReleasePreflightTests(unittest.TestCase):
                 self.assertNotIn("No stale release tag found", result.stdout)
 
     def test_semantic_release_dry_run_with_multiple_distinct_versions_fails_loudly(self):
-        with tempfile.TemporaryDirectory() as temp:
+        with temporary_directory() as temp:
             repo = Path(temp) / "work"
             output = Path(temp) / "dry-run.txt"
             self._init_repo(repo)
@@ -454,7 +478,7 @@ class ReleasePreflightTests(unittest.TestCase):
             self.assertIn("1.3.0", combined)
 
     def test_next_version_with_leading_v_is_rejected(self):
-        with tempfile.TemporaryDirectory() as temp:
+        with temporary_directory() as temp:
             repo = Path(temp) / "work"
             self._init_repo(repo)
 
@@ -470,7 +494,7 @@ class ReleasePreflightTests(unittest.TestCase):
             f"[4:12:33 PM] [semantic-release] › ℹ  {marker}",
             f"\x1b[90m[4:12:33 PM]\x1b[39m [semantic-release] › ℹ  \x1b[32m{marker}\x1b[39m",
         ):
-            with self.subTest(record=record), tempfile.TemporaryDirectory() as temp:
+            with self.subTest(record=record), temporary_directory() as temp:
                 repo = Path(temp) / "work"
                 output = Path(temp) / "dry-run.txt"
                 self._init_repo(repo)
@@ -482,7 +506,7 @@ class ReleasePreflightTests(unittest.TestCase):
                 self.assertIn("No stale release tag found for refs/tags/v1.0.0-beta.1", result.stdout)
 
     def test_first_release_marker_still_checks_tag_collision(self):
-        with tempfile.TemporaryDirectory() as temp:
+        with temporary_directory() as temp:
             repo = Path(temp) / "work"
             output = Path(temp) / "dry-run.txt"
             self._init_repo(repo)
@@ -498,7 +522,7 @@ class ReleasePreflightTests(unittest.TestCase):
 
     def test_first_release_malformed_marker_is_rejected_even_with_valid_outcome(self):
         for version in ("invalid", "v1.0.0", "1.0.0 trailing text", ""):
-            with self.subTest(version=version), tempfile.TemporaryDirectory() as temp:
+            with self.subTest(version=version), temporary_directory() as temp:
                 repo = Path(temp) / "work"
                 output = Path(temp) / "dry-run.txt"
                 self._init_repo(repo)
@@ -522,7 +546,7 @@ class ReleasePreflightTests(unittest.TestCase):
             ("The local branch main is behind the remote one, therefore a new version won't be published.",
              "multiple terminal outcomes"),
         ):
-            with self.subTest(other_record=other_record), tempfile.TemporaryDirectory() as temp:
+            with self.subTest(other_record=other_record), temporary_directory() as temp:
                 repo = Path(temp) / "work"
                 output = Path(temp) / "dry-run.txt"
                 self._init_repo(repo)
@@ -537,7 +561,7 @@ class ReleasePreflightTests(unittest.TestCase):
                 self.assertIn(expected, result.stderr)
 
     def test_first_release_payload_records_cannot_override_logger_outcome(self):
-        with tempfile.TemporaryDirectory() as temp:
+        with temporary_directory() as temp:
             repo = Path(temp) / "work"
             output = Path(temp) / "dry-run.txt"
             self._init_repo(repo)
@@ -555,7 +579,7 @@ class ReleasePreflightTests(unittest.TestCase):
             self.assertNotIn("refs/tags/v9.9.9", result.stdout)
 
     def test_invalid_repository_path_has_actionable_diagnostic(self):
-        with tempfile.TemporaryDirectory() as temp:
+        with temporary_directory() as temp:
             file_path = Path(temp) / "a-file"
             file_path.write_text("not a directory\n", encoding="utf-8")
             non_git = Path(temp) / "not-a-repo"
@@ -570,7 +594,7 @@ class ReleasePreflightTests(unittest.TestCase):
                     self.assertIn("existing Git working directory", result.stderr)
 
     def test_local_ref_probe_failure_keeps_original_details_and_stops_before_remote(self):
-        with tempfile.TemporaryDirectory() as temp:
+        with temporary_directory() as temp:
             repo = Path(temp) / "work"
             self._init_repo(repo)
             self._git(repo, "remote", "add", "origin", str(Path(temp) / "must-not-be-probed.git"))
@@ -586,7 +610,7 @@ class ReleasePreflightTests(unittest.TestCase):
             self.assertFalse((repo / "remote-probed").exists())
 
     def test_failure_reports_inner_exception_and_script_stack(self):
-        with tempfile.TemporaryDirectory() as temp:
+        with temporary_directory() as temp:
             repo = Path(temp) / "work"
             self._init_repo(repo)
             self._git(repo, "remote", "add", "origin", str(Path(temp) / "must-not-be-probed.git"))
@@ -602,7 +626,7 @@ class ReleasePreflightTests(unittest.TestCase):
 
     def test_peeled_only_remote_ref_uses_exact_tag_matching(self):
         for scenario, expected_exit in (("peeled-exact", 1), ("peeled-prefix", 0)):
-            with self.subTest(scenario=scenario), tempfile.TemporaryDirectory() as temp:
+            with self.subTest(scenario=scenario), temporary_directory() as temp:
                 repo = Path(temp) / "work"
                 self._init_repo(repo)
                 self._git(repo, "remote", "add", "origin", str(Path(temp) / "unused.git"))
@@ -671,9 +695,9 @@ class ReleasePreflightTests(unittest.TestCase):
             encoding="utf-8",
         )
         return subprocess.run(
-            ["pwsh", "-NoLogo", "-NoProfile", "-File", str(wrapper), str(SCRIPT), str(repo), scenario],
+            [PWSH, "-NoLogo", "-NoProfile", "-File", str(wrapper), str(SCRIPT), str(repo), scenario],
             check=False, text=True, capture_output=True, cwd=REPO_ROOT,
-            env=self._environment(), encoding="utf-8",
+            env=self._environment(), encoding="utf-8", errors="replace",
         )
 
     @staticmethod
@@ -686,11 +710,11 @@ class ReleasePreflightTests(unittest.TestCase):
         self,
         repo: Path,
         *args: str,
-        env: dict[str, str] | None = None,
+        env: Optional[dict[str, str]] = None,
     ) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             [
-                "pwsh",
+                PWSH,
                 "-NoLogo",
                 "-NoProfile",
                 "-File",
@@ -705,18 +729,22 @@ class ReleasePreflightTests(unittest.TestCase):
             cwd=REPO_ROOT,
             env=self._environment(env),
             encoding="utf-8",
+            errors="replace",
         )
+
+    def _init_bare_repo(self, repo: Path) -> None:
+        self._git(None, "init", "--bare", "--initial-branch=main", str(repo))
 
     def _init_repo(self, repo: Path) -> None:
         repo.mkdir(parents=True, exist_ok=True)
-        self._git(repo, "init")
+        self._git(repo, "init", "--initial-branch=main")
         self._git(repo, "config", "user.email", "release-preflight@example.invalid")
         self._git(repo, "config", "user.name", "Release Preflight")
         (repo / "README.md").write_text("fixture\n", encoding="utf-8")
         self._git(repo, "add", "README.md")
         self._git(repo, "commit", "-m", "feat: initial fixture")
 
-    def _git(self, cwd: Path | None, *args: str) -> subprocess.CompletedProcess[str]:
+    def _git(self, cwd: Optional[Path], *args: str) -> subprocess.CompletedProcess[str]:
         env = self._environment()
         env["GIT_TERMINAL_PROMPT"] = "0"
         result = subprocess.run(
@@ -727,6 +755,7 @@ class ReleasePreflightTests(unittest.TestCase):
             cwd=cwd,
             env=env,
             encoding="utf-8",
+            errors="replace",
         )
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
         return result

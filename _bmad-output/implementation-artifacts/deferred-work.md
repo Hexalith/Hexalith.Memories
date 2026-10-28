@@ -457,35 +457,40 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of 15-1-release-edge-case-preflight-hardening (2026-05-13)"), 2026-09-01
 location: tests/tooling/release_preflight/release_preflight_test.py
 reason: - **15.1-RV5 - accepted.** Windows tempdir cleanup can raise `PermissionError`. - ID: 15.1-RV5 - Status: accepted - Source story: 15-1-release-edge-case-preflight-hardening - Target artifact: tests/tooling/release_preflight/release_preflight_test.py - Re-open trigger: CI or a Windows developer hits intermittent `PermissionError` on tempdir cleanup because git keeps an index lock open when the test ends. - Rationale: Tests currently pass locally and in CI. Switching to `tempfile.TemporaryDirectory(ignore_cleanup_errors=True)` (Py 3.10+) is a one-line hardening but Story 15.1 has no evidence the path manifests yet. Story 19.3 (2026-06-30) buckets this as accept-until-trigger (no current failure or trigger; the fix is a release-owner decision); natural future home: release test-helper hardening sweep. Owner: release maintainer.
-status: open
+status: done 2026-10-28
+resolution: `spec-five-deferred-preflight-harness.md` — All release-preflight fixtures now use bounded permission-error cleanup retries (three attempts with 50/100 ms delays); persistent and unrelated errors still fail. Focused regressions prove transient recovery removes the directory, persistent exhaustion propagates, unrelated failures are not retried and test-body exceptions survive successful cleanup. Reopen if a real Windows file-handle failure outlasts this bound or cleanup can leave resources without a failing run.
 
 ### DW-62: 15.1-RV6: accepted. `Path | None` union syntax requires Python 3.10+.
 
 origin: migrated from legacy ledger ("Deferred from: code review of 15-1-release-edge-case-preflight-hardening (2026-05-13)"), 2026-09-01
 location: tests/tooling/release_preflight/release_preflight_test.py
 reason: - **15.1-RV6 - accepted.** `Path | None` union syntax requires Python 3.10+. - ID: 15.1-RV6 - Status: accepted - Source story: 15-1-release-edge-case-preflight-hardening - Target artifact: tests/tooling/release_preflight/release_preflight_test.py - Re-open trigger: A contributor runs the test on Python 3.9 (or the project lowers its minimum) and gets a `TypeError` on test collection. - Rationale: Current CI runs Python 3.11+. Lowering to `Optional[Path]` would broaden compatibility but is not needed today. Story 19.3 (2026-06-30) buckets this as accept-until-trigger (no current failure or trigger; the fix is a release-owner decision); natural future home: release test-helper hardening sweep. Owner: release maintainer.
-status: open
+status: done 2026-10-28
+resolution: `spec-five-deferred-preflight-harness.md` — Replace evaluated Python 3.10 union annotations with Optional for _git and _run_preflight. CPython 3.9.25 successfully imports the actual module and resolves all four helper signatures with typing.get_type_hints; all nine final helper regressions also pass on that interpreter. This qualifies this harness only. Reopen if module collection or annotation evaluation again needs a newer interpreter than the documented Python 3.9 minimum.
 
 ### DW-63: 15.1-RV7: accepted. Non-UTF-8 Windows codepage may raise `UnicodeDecodeError` on subprocess output.
 
 origin: migrated from legacy ledger ("Deferred from: code review of 15-1-release-edge-case-preflight-hardening (2026-05-13)"), 2026-09-01
 location: tests/tooling/release_preflight/release_preflight_test.py
 reason: - **15.1-RV7 - accepted.** Non-UTF-8 Windows codepage may raise `UnicodeDecodeError` on subprocess output. - ID: 15.1-RV7 - Status: accepted - Source story: 15-1-release-edge-case-preflight-hardening - Target artifact: tests/tooling/release_preflight/release_preflight_test.py - Re-open trigger: A test runner uses a non-UTF-8 codepage and `pwsh` stderr contains non-ASCII characters, raising `UnicodeDecodeError` on `subprocess.run(..., text=True)`. - Rationale: Pass `encoding='utf-8', errors='replace'` to `subprocess.run`. Deferred as low-impact hardening; CI codepages are UTF-8. Story 19.3 (2026-06-30) buckets this as accept-until-trigger (no current failure or trigger; the fix is a release-owner decision); natural future home: release test-helper hardening sweep. Owner: release maintainer.
-status: open
+status: done 2026-10-28
+resolution: `spec-five-deferred-preflight-harness.md` — All three subprocess capture paths explicitly decode UTF-8 with errors=replace. A real child process emits UTF-8 café and malformed 0xff on both output streams through each helper; the regression preserves Unicode, replaces malformed bytes and retains the exit code. The same regression passes on CPython 3.9.25 and 3.14.4. Reopen if another capture path relies on the ambient codepage or raises a decoding error.
 
 ### DW-64: 15.1-RV8: accepted. `git init` default branch depends on host `init.defaultBranch`.
 
 origin: migrated from legacy ledger ("Deferred from: code review of 15-1-release-edge-case-preflight-hardening (2026-05-13)"), 2026-09-01
 location: tests/tooling/release_preflight/release_preflight_test.py
 reason: - **15.1-RV8 - accepted.** `git init` default branch depends on host `init.defaultBranch`. - ID: 15.1-RV8 - Status: accepted - Source story: 15-1-release-edge-case-preflight-hardening - Target artifact: tests/tooling/release_preflight/release_preflight_test.py - Re-open trigger: A future test that relies on the default branch name (rather than just tags) fails on a runner with a non-standard `init.defaultBranch` value. - Rationale: Current tests only push tags, so the default-branch name is irrelevant. Adding `--initial-branch=main` would future-proof the helper. Story 19.3 (2026-06-30) buckets this as accept-until-trigger (no current failure or trigger; the fix is a release-owner decision); natural future home: release test-helper hardening sweep. Owner: release maintainer.
-status: open
+status: done 2026-10-28
+resolution: `spec-five-deferred-preflight-harness.md` — Working fixtures and the shared bare-fixture helper explicitly pass --initial-branch=main. An isolated real Git global configuration proves ordinary init chooses ambient-topic, then verifies both fixture kinds select main. Reopen if a new fixture bypasses these helpers or inherits host init.defaultBranch.
 
 ### DW-65: 15.1-RV9: accepted. Test runner hardcodes `pwsh` without availability guard.
 
 origin: migrated from legacy ledger ("Deferred from: code review of 15-1-release-edge-case-preflight-hardening (2026-05-13)"), 2026-09-01
 location: tests/tooling/release_preflight/release_preflight_test.py
 reason: - **15.1-RV9 - accepted.** Test runner hardcodes `pwsh` without availability guard. - ID: 15.1-RV9 - Status: accepted - Source story: 15-1-release-edge-case-preflight-hardening - Target artifact: tests/tooling/release_preflight/release_preflight_test.py - Re-open trigger: A non-Windows developer environment without PowerShell 7 runs `pytest`/`unittest discover` and sees a confusing `FileNotFoundError` instead of a clear skip. - Rationale: Add `@unittest.skipUnless(shutil.which('pwsh'), 'pwsh required')`. Deferred because CI and dev environments today all have pwsh. Story 19.3 (2026-06-30) buckets this as accept-until-trigger (no current failure or trigger; the fix is a release-owner decision); natural future home: release test-helper hardening sweep. Owner: release maintainer.
-status: open
+status: done 2026-10-28
+resolution: `spec-five-deferred-preflight-harness.md` — Resolve pwsh with shutil.which and mark the script execution class with an explicit PowerShell 7 prerequisite skip. The isolated no-pwsh discovery regression proves one recorded skip and no fixture creation/errors/failures; helper regressions remain runnable. With pwsh installed the existing execution suite remains enabled. Reopen if absent PowerShell causes FileNotFoundError or skips are presented as execution evidence.
 
 ### DW-66: 15.1-RV10: accepted. Runbook release-day checklist renumbered to 17 items; other docs may reference old step numbers.
 
@@ -5857,3 +5862,13 @@ status: open
 - source_spec: `_bmad-output/implementation-artifacts/spec-five-deferred-release-preflight.md`
   summary: Validate release versions consistently against the complete SemVer grammar in direct input and both semantic-release terminal marker forms.
   evidence: Independent disposable-repository execution confirms the grammar predates this change: baseline 46692dd0f6c7cd780608ce74fd827d81c481ae6d and changed tools/release-preflight.ps1 both exit 0 for invalid 01.0.0 and exit 1 for valid 1.0.0-beta.1+build.1 through ordinary next-version records and direct -NextVersion. The alternate first-release marker inherits the same grammar. Owner: release maintainer. Consequence: malformed version tags can pass preflight and valid prerelease-plus-build versions are refused. Reopen trigger: a version-parser hardening change or a release using these boundary forms.
+
+## Deferred from: review of spec-five-deferred-preflight-harness.md (2026-10-28)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-five-deferred-preflight-harness.md`
+  summary: Enroll the release-preflight fixture suite in pull-request validation before changes reach main.
+  evidence: Independent review confirmed .github/workflows/release.yml:118 runs the suite only in its main-push workflow, while ci.yml has no release_preflight discovery step. This predates DW-61 through DW-65 corrections; their executed focused suite is local evidence only. Owner: CI/release maintainer. Reopen with a focused PR lane that supplies Git and PowerShell and proves a deliberately failing fixture blocks PR validation; retain an explicit missing-prerequisite policy.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-five-deferred-preflight-harness.md`
+  summary: Add routine Python 3.9 module/annotation and harness verification for the preflight harness minimum runtime.
+  evidence: Actual CPython 3.9.25 collection, typing.get_type_hints and all nine helper cases pass locally after the Optional correction; the exact command is documented in tests/README.md. Restoring Python 3.10 union annotations still passes helper checks on Python 3.14, and the existing release workflow uses only its runner-default interpreter. Owner: CI/release maintainer. Reopen with a maintained lower-runtime lane that rejects the baseline union-annotation mutation while accepting current source; this entry concerns recurring qualification rather than the already executed compatibility proof.

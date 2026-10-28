@@ -26,6 +26,32 @@ For local service-backed runs, the default server endpoints exposed by the AppHo
 ./tools/test.ps1 -Filter 'Category!=Integration'
 ```
 
+### Release preflight tooling
+
+Run the release-preflight regression suite without starting the application:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/release_preflight -p '*_test.py' -q
+```
+
+The complete suite uses POSIX `sh` executable fixtures for its simulated npm command; run it on a
+POSIX host. This harness requires Python 3.9 or newer and Git with `--initial-branch` support (2.28+).
+PowerShell 7 (`pwsh`) must be on `PATH` to execute the preflight script cases. Those cases report
+an explicit prerequisite skip when PowerShell is absent; the harness regressions still run. A skip
+is not evidence that preflight execution passed. Fixture repositories explicitly use `main`,
+independent of the host Git default. Captured Git and PowerShell diagnostics use UTF-8 and replace
+malformed bytes so output remains readable. Owned temporary directories retry transient permission
+errors during cleanup at most three times (50 ms and 100 ms delays); persistent permission errors
+and other cleanup failures still fail the test run.
+
+To qualify the minimum Python runtime, also run the focused harness cases on Python 3.9:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 python3.9 -m unittest discover -s tests/tooling/release_preflight -p 'preflight_harness_test.py' -q
+```
+
+This includes module collection and evaluation of helper annotations under that interpreter.
+
 ### Integration coverage
 
 Integration tests split into two lanes by wall-clock cost. Performance-tagged integration smoke tests are opt-in so the PR lane stays deterministic under shared CI resources.
