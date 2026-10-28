@@ -546,7 +546,7 @@ internal static class TenantLifecycleEndpoints
                     $"Use the workflowInstanceId returned by DELETE {MemoriesRoutes.Tenant} for the same tenant."));
             }
 
-            WorkflowState? state = await workflowClient.GetWorkflowStateAsync(instanceId);
+            WorkflowState? state = await ReadDeletionWorkflowStateAsync(workflowClient, instanceId, cancellationToken);
             scope.QueryParams = new Dictionary<string, object?>(scope.QueryParams, StringComparer.Ordinal)
             {
                 ["state"] = state?.RuntimeStatus.ToString(),
@@ -647,6 +647,32 @@ internal static class TenantLifecycleEndpoints
         });
 
         return app;
+    }
+
+    /// <summary>
+    /// Reads deletion workflow state, retrying the short interval before the actor inbox is visible.
+    /// </summary>
+    private static async Task<WorkflowState?> ReadDeletionWorkflowStateAsync(
+        DaprWorkflowClient workflowClient,
+        string instanceId,
+        CancellationToken cancellationToken)
+    {
+        const int attempts = 8;
+        for (int attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await workflowClient.GetWorkflowStateAsync(instanceId).WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (Grpc.Core.RpcException ex) when (
+                attempt < attempts
+                && ex.StatusCode == Grpc.Core.StatusCode.Unknown
+                && ex.Status.Detail.Contains("inbox key", StringComparison.Ordinal)
+                && ex.Status.Detail.Contains("declared in metadata", StringComparison.Ordinal))
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(50 * attempt), cancellationToken).ConfigureAwait(false);
+            }
+        }
     }
 
     private static EndpointTelemetryDescriptor TenantConfigTelemetryDescriptor(string operation)
