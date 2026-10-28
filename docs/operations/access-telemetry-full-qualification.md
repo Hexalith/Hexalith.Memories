@@ -1,5 +1,22 @@
 # Access-telemetry full qualification — pending campaign
 
+## Host capture completed through kubectl — 2026-10-28 (current)
+
+The approved node1 metadata capture completed once through `jpiquot@local`.
+Its bounded temporary diagnostic Pod was removed and verified absent from both
+the API and node runtime. SSH is not required for the completed action. The
+host-capture attempt is consumed; the approved calibration launch remains unused.
+The [single report](../../_bmad-output/implementation-artifacts/tests/27-4-retention-verification-evidence.md#host-capture-through-kubectl--2026-10-28-current)
+and preparation index/catalogue bind commands, timing, hashes and disposition.
+
+Actual observations are 32 CPUs, 134924496896 total / 120387510272 available RAM bytes
+and 845941534720 free root-filesystem bytes; they establish no signed reservation.
+The configured Docker socket is unavailable and Kubernetes uses containerd 2.3.3.
+No engine was installed or existing cluster adopted. Independent Linux backup,
+reservations and runtime/clock/authority/window inputs remain unbound, with 31
+nulls in the small draft. Owner run approval stays accepted. Story 27.4 remains
+in progress, full qualification/Production unproved and A41 open.
+
 ## Smaller independent calibration candidate — 2026-10-27 (current)
 
 The owner approved reducing the configured calibration budget before requesting

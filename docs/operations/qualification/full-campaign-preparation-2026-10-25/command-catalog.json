@@ -175,7 +175,7 @@
     "profileId": "PG-INDEPENDENT-CALIBRATION-1",
     "qualified": false,
     "remainingOperationalInputs": [
-      "actual isolated physical engine/host-local metadata; read-only node1 Kubernetes metadata is now available",
+      "actual isolated Docker engine: node1 configured unix:///var/run/docker.sock was unavailable; Kubernetes uses containerd 2.3.3",
       "signed net CPU/RAM and separately approved primary/independent Linux backup reservation/allocation",
       "actual complete application/provider/reporter/CNI/component/credential artifacts and adopted source",
       "independently authenticated UTC/current action status and allocation/operational collector",
@@ -189,7 +189,11 @@
       "independentLinuxBackup": null,
       "physicalTarget": null,
       "primary": null,
-      "reservation": null
+      "reservation": null,
+      "hostMetadataObservation": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/kubectl-host-channel-20261028-r3p_1yr3/host-readiness-summary.json",
+        "sha256": "4c078eeee910eda2565330c044cd51527784254296c9757e92043b2a6b7b5da3"
+      }
     },
     "workload": {
       "backlogCommandContract": "Supported --calibration launch executes the separate backlog lane before writers. There is no separate ungated backlog entry point.",
@@ -569,12 +573,187 @@
       },
       "launchReady": false,
       "launchAuthorizationNote": "Owner approval accepted for one unchanged bounded run; launch remains blocked on exact executable plan and operational authority/reservations. No launch is ready or attempted."
+    },
+    "hostReservationActionBeforeKubectlCapture-2026-10-28": {
+      "additionalRequiredRecords": [
+        "Actual signed reservation ID/issuer/owner/valid-from/valid-until/revocation and competing-demand ledger; observed load or free capacity is insufficient.",
+        "Net >=16250m CPU /33285996544 RAM bytes, exact allocations and independent failure domains.",
+        "Finite host/backup credential and provider references with scopes/audiences/not-before/expiry/revocation."
+      ],
+      "argvTemplates": [
+        [
+          "hostname"
+        ],
+        [
+          "cat",
+          "/etc/machine-id"
+        ],
+        [
+          "cat",
+          "/proc/sys/kernel/random/boot_id"
+        ],
+        [
+          "getconf",
+          "_NPROCESSORS_ONLN"
+        ],
+        [
+          "cat",
+          "/sys/fs/cgroup/cpu.max"
+        ],
+        [
+          "cat",
+          "/sys/fs/cgroup/memory.max"
+        ],
+        [
+          "cat",
+          "/proc/meminfo"
+        ],
+        [
+          "findmnt",
+          "--json",
+          "--target",
+          "${ACTUAL_PRIMARY_PATH}",
+          "--output",
+          "SOURCE,TARGET,FSTYPE,OPTIONS,UUID,MAJ:MIN"
+        ],
+        [
+          "df",
+          "--block-size=1",
+          "--output=source,fstype,size,used,avail,target",
+          "${ACTUAL_PRIMARY_PATH}"
+        ],
+        [
+          "findmnt",
+          "--json",
+          "--target",
+          "${ACTUAL_INDEPENDENT_BACKUP_PATH}",
+          "--output",
+          "SOURCE,TARGET,FSTYPE,OPTIONS,UUID,MAJ:MIN"
+        ],
+        [
+          "df",
+          "--block-size=1",
+          "--output=source,fstype,size,used,avail,target",
+          "${ACTUAL_INDEPENDENT_BACKUP_PATH}"
+        ],
+        [
+          "${PINNED_DOCKER_CLIENT}",
+          "--host",
+          "${ACTUAL_LOCAL_SOCKET}",
+          "info",
+          "--format",
+          "{\"ID\":{{json .ID}},\"NCPU\":{{.NCPU}},\"MemTotal\":{{.MemTotal}},\"DockerRootDir\":{{json .DockerRootDir}},\"Driver\":{{json .Driver}}}"
+        ]
+      ],
+      "attempts": 1,
+      "automaticRetries": 0,
+      "candidateTarget": "node1 / 192.168.1.30; independently trusted host identity and isolation required before any connection",
+      "cleanup": "Read-only process ends at 60s; retain sanitized stdout/exit/timing and signed owner reservation. No VM, storage, cluster or credential mutation; no cleanup of other workloads.",
+      "currentAccess": {
+        "LinuxSsh": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/transport.json",
+          "sha256": "94632c675267b613edcabe25557a1efca98f6c8f8a662f20f7e07a72e9225d3e"
+        },
+        "WindowsSsh": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/windows-transport.json",
+          "sha256": "42063e6871c448db7c21772c4068b57045487bf2843d8385fa0cbe4697147790"
+        },
+        "result": "Existing kubectl context reaches Ready node1; read-only Kubernetes metadata collected. Historical SSH transports remain unavailable. Signed net reservations, isolated engine and independent Linux backup remain missing.",
+        "historicalSshResultBeforeKubectl": "Both exit255 before remote execution; no credential retry or account guessing. Current capacity null."
+      },
+      "executionLocation": "Prepared automated command runs locally on node1 through an existing trusted custodian channel. Both configured SSH transports failed before remote execution; this session cannot dispatch it.",
+      "maximumSeconds": 60,
+      "mutations": false,
+      "nextAction": {
+        "action": "One host-local bounded metadata capture on node1 by its authorized host custodian",
+        "approvalRequestedByImplementer": false,
+        "argv": [
+          "timeout",
+          "--signal=TERM",
+          "--kill-after=2s",
+          "58s",
+          "python3",
+          "-B",
+          "-",
+          "--expected-hostname",
+          "node1",
+          "--docker-host",
+          "unix:///var/run/docker.sock"
+        ],
+        "attempts": 1,
+        "automaticRetries": 0,
+        "cleanup": "Script <=55s with bounded read-only child groups; outer TERM at58s/KILL by60s. No infrastructure to dispose; retain generated JSON/exit. No cluster, credential, storage or workload mutation.",
+        "executionLocation": "node1 local shell, through a valid existing host-custodian access channel; this session has none",
+        "infrastructureMutations": false,
+        "maximumSeconds": 60,
+        "outputs": "Automatically generated bounded JSON observations only; reservation/authority/primary/backup remain null.",
+        "script": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/host-observation-bounded.py",
+          "sha256": "d2410555614d483691f0c12876251cf9d840cd70ace854110ffba5e039eaed52"
+        },
+        "status": "approved-not-dispatched-access-blocked",
+        "stdin": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/host-observation-bounded.py",
+          "sha256": "d2410555614d483691f0c12876251cf9d840cd70ace854110ffba5e039eaed52"
+        },
+        "approvalRequestedByCoordinator": true,
+        "launchIncluded": false,
+        "ownerApproved": true,
+        "approval": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/host-observation-approval-20261026.json",
+          "sha256": "f06114f6f47bfddbc80d7901660e7e9bb0d026eabe5b15f78880997f2458f047"
+        },
+        "captureStarted": false,
+        "captureAttemptConsumed": false,
+        "captureAttemptsRemaining": 1,
+        "remoteCommandsExecuted": 0,
+        "latestAccessCheck": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/access-resumption-20261027-4txekp_v/access-checks.json",
+          "sha256": "01535db7962488f96109cf93a4a4fbae6063cb07c3a3d030585e135e9f2a30e5"
+        }
+      },
+      "owner": "Platform host/storage custodians; J\u00e9r\u00f4me Piquot accepts the exact returned packet",
+      "status": "kubectl-metadata-observed-reservation-and-backup-pending",
+      "approval": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/host-observation-approval-20261026.json",
+        "sha256": "f06114f6f47bfddbc80d7901660e7e9bb0d026eabe5b15f78880997f2458f047"
+      },
+      "kubectlObservation": {
+        "status": "read-only-kubernetes-metadata-collected",
+        "context": "jpiquot@local",
+        "apiServer": "https://192.168.1.30:6443",
+        "node": "node1",
+        "receipt": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/kubectl-observation-20261027-9dm9nx59/receipt.json",
+          "sha256": "ab0607174398bf190c0e77b30511bb9fc4f3afb020f67e3e6fe64ac492a6f57a"
+        },
+        "capacityObservation": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/kubectl-observation-20261027-9dm9nx59/capacity-observation.json",
+          "sha256": "41640770b8153082fa9fdd45d9c2a446f37d0ae63460da8a83aa8bb3628925b2"
+        },
+        "qualificationCredit": false,
+        "originalHostCaptureUnchanged": true
+      },
+      "offNodeBackupObservation": {
+        "receipt": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/backup-observation-20261027-_ggxjwrg/receipt.json",
+          "sha256": "4078d5d9d4c759a3ad015dd7e1630c866c9b9bc7cdd7376e7a137ab0b5a64fb5"
+        },
+        "status": "existing-off-node-service-observed-supported-linux-backup-path-unresolved",
+        "candidateLocation": "velero/scaleway-kube-green",
+        "candidateBucket": "hexalith-velero-backups",
+        "endpoint": "https://s3.fr-par.scw.cloud",
+        "existingBackupScope": "forgejo",
+        "campaignAllocation": null,
+        "campaignRestoreEvidence": null,
+        "qualificationCredit": false
+      }
     }
   },
   "hostReservationAction": {
     "additionalRequiredRecords": [
       "Actual signed reservation ID/issuer/owner/valid-from/valid-until/revocation and competing-demand ledger; observed load or free capacity is insufficient.",
-      "Net >=16250m CPU /33285996544 RAM bytes, exact allocations and independent failure domains.",
+      "Full campaign still needs net >=16250m CPU /33285996544 RAM bytes. Small independent calibration needs its selected10250m/20401094656-byte reservation; exact allocations and independent failure domains remain unbound.",
       "Finite host/backup credential and provider references with scopes/audiences/not-before/expiry/revocation."
     ],
     "argvTemplates": [
@@ -645,7 +824,7 @@
     "attempts": 1,
     "automaticRetries": 0,
     "candidateTarget": "node1 / 192.168.1.30; independently trusted host identity and isolation required before any connection",
-    "cleanup": "Read-only process ends at 60s; retain sanitized stdout/exit/timing and signed owner reservation. No VM, storage, cluster or credential mutation; no cleanup of other workloads.",
+    "cleanup": "Completed: exact UID-preconditioned diagnostic Pod deletion, API absence and native kubelet runtime absence verified. Original host script was read-only; no calibration or other resource disposal.",
     "currentAccess": {
       "LinuxSsh": {
         "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/transport.json",
@@ -655,12 +834,12 @@
         "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/windows-transport.json",
         "sha256": "42063e6871c448db7c21772c4068b57045487bf2843d8385fa0cbe4697147790"
       },
-      "result": "Existing kubectl context reaches Ready node1; read-only Kubernetes metadata collected. Historical SSH transports remain unavailable. Signed net reservations, isolated engine and independent Linux backup remain missing.",
+      "result": "Kubectl host capture completed; diagnostic Pod removed and absence verified in the node runtime. Actual configured Docker socket unavailable. Signed reservations and independent Linux backup remain missing.",
       "historicalSshResultBeforeKubectl": "Both exit255 before remote execution; no credential retry or account guessing. Current capacity null."
     },
-    "executionLocation": "Prepared automated command runs locally on node1 through an existing trusted custodian channel. Both configured SSH transports failed before remote execution; this session cannot dispatch it.",
+    "executionLocation": "Approved capture completed on node1 through kubectl; SSH is not required.",
     "maximumSeconds": 60,
-    "mutations": false,
+    "mutations": true,
     "nextAction": {
       "action": "One host-local bounded metadata capture on node1 by its authorized host custodian",
       "approvalRequestedByImplementer": false,
@@ -679,16 +858,16 @@
       ],
       "attempts": 1,
       "automaticRetries": 0,
-      "cleanup": "Script <=55s with bounded read-only child groups; outer TERM at58s/KILL by60s. No infrastructure to dispose; retain generated JSON/exit. No cluster, credential, storage or workload mutation.",
-      "executionLocation": "node1 local shell, through a valid existing host-custodian access channel; this session has none",
-      "infrastructureMutations": false,
+      "cleanup": "Diagnostic Pod had a60s active deadline and no restart. Exact UID-preconditioned deletion succeeded; API and native kubelet runningpods verified removal. The original host script made no filesystem changes.",
+      "executionLocation": "node1 via kubectl diagnostic Pod; exact source script supplied over stdin",
+      "infrastructureMutations": true,
       "maximumSeconds": 60,
       "outputs": "Automatically generated bounded JSON observations only; reservation/authority/primary/backup remain null.",
       "script": {
         "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/host-observation-bounded.py",
         "sha256": "d2410555614d483691f0c12876251cf9d840cd70ace854110ffba5e039eaed52"
       },
-      "status": "approved-not-dispatched-access-blocked",
+      "status": "completed-via-kubectl-removal-verified",
       "stdin": {
         "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/host-observation-bounded.py",
         "sha256": "d2410555614d483691f0c12876251cf9d840cd70ace854110ffba5e039eaed52"
@@ -700,17 +879,23 @@
         "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/host-observation-approval-20261026.json",
         "sha256": "f06114f6f47bfddbc80d7901660e7e9bb0d026eabe5b15f78880997f2458f047"
       },
-      "captureStarted": false,
-      "captureAttemptConsumed": false,
-      "captureAttemptsRemaining": 1,
-      "remoteCommandsExecuted": 0,
+      "captureStarted": true,
+      "captureAttemptConsumed": true,
+      "captureAttemptsRemaining": 0,
+      "remoteCommandsExecuted": 1,
       "latestAccessCheck": {
-        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/access-resumption-20261027-4txekp_v/access-checks.json",
-        "sha256": "01535db7962488f96109cf93a4a4fbae6063cb07c3a3d030585e135e9f2a30e5"
-      }
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/kubectl-host-channel-20261028-r3p_1yr3/host-readiness-summary.json",
+        "sha256": "4c078eeee910eda2565330c044cd51527784254296c9757e92043b2a6b7b5da3"
+      },
+      "result": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/kubectl-host-channel-20261028-r3p_1yr3/host-readiness-summary.json",
+        "sha256": "4c078eeee910eda2565330c044cd51527784254296c9757e92043b2a6b7b5da3"
+      },
+      "clusterMutationScope": "One temporary diagnostic Pod created and removed with exact UID precondition; no existing workload or credential changed.",
+      "hostFilesystemMutations": false
     },
     "owner": "Platform host/storage custodians; J\u00e9r\u00f4me Piquot accepts the exact returned packet",
-    "status": "kubectl-metadata-observed-reservation-and-backup-pending",
+    "status": "host-capture-complete-reservations-and-independent-backup-pending",
     "approval": {
       "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/host-observation-approval-20261026.json",
       "sha256": "f06114f6f47bfddbc80d7901660e7e9bb0d026eabe5b15f78880997f2458f047"
@@ -744,7 +929,12 @@
       "campaignAllocation": null,
       "campaignRestoreEvidence": null,
       "qualificationCredit": false
-    }
+    },
+    "hostCapture": {
+      "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/kubectl-host-channel-20261028-r3p_1yr3/host-readiness-summary.json",
+      "sha256": "4c078eeee910eda2565330c044cd51527784254296c9757e92043b2a6b7b5da3"
+    },
+    "clusterMutationScope": "One temporary diagnostic Pod created and removed; no existing workload or credential changed."
   },
   "lifecycle": [
     {

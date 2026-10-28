@@ -14,6 +14,24 @@ context:
 
 # Story 27.4 — active functional retention contract
 
+## Host capture completed through kubectl — 2026-10-28 (current)
+
+The owner's **“use kubectl”** supplied the approved node1 capture's transport.
+The unchanged script ran once in a bounded temporary diagnostic Pod. Capture took
+0.897811s; orchestration and removal took 5.372118s. Exact-UID deletion, API absence and a
+separate kubelet runtime read verified removal. No existing workload or credential
+changed. The [single report](tests/27-4-retention-verification-evidence.md#host-capture-through-kubectl--2026-10-28-current)
+and index/catalogue bind commands, hashes and limitations. The host-capture attempt
+is consumed; do not repeat it or request SSH access for this completed action.
+The calibration launch remains unused and owner run approval remains accepted.
+
+Observed 32 CPUs, 120387510272 available RAM bytes and 845941534720 free root bytes
+are not net reservations. The configured Docker socket is unavailable; node1
+runs containerd 2.3.3. Actual isolated engine, signed reservations, independent
+Linux backup and runtime/time/authority bindings remain missing; the small draft
+still has 31 null fields. Do not install Docker or substitute the existing cluster
+under this metadata action. Story 27.4 stays in progress and A41 open.
+
 ## Smaller calibration resource profile — owner-approved continuation, 2026-10-27
 
 The owner asked why calibration reserves 16.25 CPU / 31GiB. Those are configured

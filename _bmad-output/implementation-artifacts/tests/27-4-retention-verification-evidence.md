@@ -1,5 +1,67 @@
 # Story 27.4 — current retention results
 
+## Host capture through kubectl — 2026-10-28 (current)
+
+The owner's **“use kubectl”** supplied the approved capture's working transport.
+The unchanged host script ran once on node1 through `jpiquot@local`, using a
+cached immutable image in a temporary diagnostic Pod. It had a read-only host-root
+mount, no service-account token, only `SYS_CHROOT`, 100m CPU/128MiB ceilings,
+no restart and a 60s active deadline. The runtime reported recursive read-only
+mounting disabled; the script executed read-only metadata commands. Existing
+workloads and credentials were not changed; no calibration was launched.
+
+At **07:28:16.547736Z**, node1 reported **32 online CPUs**, **134924496896 total /
+120387510272 available RAM bytes**, and **845941534720 free root-filesystem bytes**
+on ext4 `/dev/nvme0n1p2`. These are gross/free observations, not net reservations
+or calibrated capacity. Host cgroup CPU/memory limit files were unavailable.
+`unix:///var/run/docker.sock` was unavailable; Kubernetes uses **containerd 2.3.3**.
+Linux disks on this same node establish no independent backup destination.
+
+The script completed in **0.897811s**; admission/create/capture/UID-preconditioned
+delete/API-removal verification completed in **5.372118s**, zero retries. Pod
+`default/memories-host-observe-1a5c2f7dd9`, UID
+`b5083c9b-d2f0-4b92-8828-87afe4c67db6`, was removed. A native kubelet
+`/runningpods/` read at **07:29:33Z** verified its exact UID and name absent from
+the node runtime. The single host-capture attempt is consumed; the approved
+calibration launch remains unused. Do not repeat this capture or request SSH
+access for the completed action.
+
+Private evidence is `HOST_DISCOVERY/kubectl-host-channel-20261028-r3p_1yr3/`
+under the existing preparation root. `capture-receipt.json` retains every exact
+argv, timing, exit result and output hash; SHA256:
+`83ec29630d0078db33d33fe386c00fcb7f90165d3d95297aaac2a5de08c0e275`.
+`host-readiness-summary.json` binds observations, source revisions, manifest,
+original script and both removal checks; SHA256:
+`4c078eeee910eda2565330c044cd51527784254296c9757e92043b2a6b7b5da3`.
+The index/catalogue bind this summary and preserve their former pending-action
+records under history. Original script SHA256 remains
+`d2410555614d483691f0c12876251cf9d840cd70ace854110ffba5e039eaed52`.
+
+Executed command from Memories root:
+`python3 -B /home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/kubectl-host-channel-20261028-r3p_1yr3/capture-via-kubectl.py`.
+Result: exit0, all 8 recorded kubectl steps exit0. Fresh runtime verification:
+`kubectl --context=jpiquot@local --request-timeout=6s get --raw /api/v1/nodes/node1/proxy/runningpods/`,
+exit0, no owned runtime Pod. The receipt records actual commands; do not rerun it.
+
+The small draft still has 31 null fields. Actual isolated supported Docker engine,
+signed compute/storage reservations, independent Linux backup and runtime,
+monitoring, authority/clock/window bindings still precede prepare/launch. No
+Docker installation, existing-cluster substitution, signature, allocation or
+measurement was invented. Owner run approval remains accepted. Story 27.4 remains
+in progress, full qualification/Production unproved and A41 open.
+
+Verification: `python3 -B /home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/kubectl-host-channel-20261028-r3p_1yr3/verify-host-capture-records.py`
+passed **26/26** local record checks, including actual removal, attempt accounting,
+current artifact hashes, preserved historical text/JSON, unchanged approval/draft
+and private permissions. The index binds the verifier, command and result receipts.
+The initial checker compared a historical pre-small-profile source hash to current
+code; that failed check is retained in `verification-initial.json`. The checker
+now validates current bindings and preserves historical values separately; no
+source, historical hash or admission rule was changed. No product source changed,
+so completed implementation suites and reviews were not repeated. `git diff --check`
+passes.
+
+
 ## Smaller calibration candidate — 2026-10-27 (current)
 
 The owner's **“ok”** approves revising and measuring a smaller calibration profile
