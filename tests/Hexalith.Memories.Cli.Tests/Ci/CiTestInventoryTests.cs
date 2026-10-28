@@ -263,8 +263,7 @@ public sealed partial class CiTestInventoryTests
     {
         ReleaseWorkflowStep step = GetReleaseWorkflowStep("Validate package inventory before release");
 
-        step.Shell.ShouldBe("pwsh", "Validate package inventory step must execute under pwsh so PowerShell 7-only validator features (Test-Json -SchemaFile) are available.");
-        step.Run.ShouldBe("./tools/validate-release-packages.ps1");
+        IsReleaseCommand(step, "./tools/validate-release-packages.ps1").ShouldBeTrue();
         step.Uses.ShouldBeNull();
     }
 
@@ -273,7 +272,7 @@ public sealed partial class CiTestInventoryTests
     {
         ReleaseWorkflowStep step = GetReleaseWorkflowStep("Install release tooling");
 
-        step.Run.ShouldBe("npm ci");
+        IsReleaseCommand(step, "npm ci").ShouldBeTrue();
         step.Uses.ShouldBeNull();
     }
 
@@ -486,11 +485,11 @@ public sealed partial class CiTestInventoryTests
         string repoRoot = GetRepoRoot();
         ReleaseWorkflowStep[] steps = ParseReleaseWorkflowSteps(File.ReadAllLines(Path.Combine(repoRoot, ".github", "workflows", "release.yml")));
 
-        int installIndex = Array.FindIndex(steps, static step => string.Equals(step.Name, "Install release tooling", StringComparison.Ordinal));
-        int auditIndex = Array.FindIndex(steps, static step => string.Equals(step.Name, "Audit root release tooling", StringComparison.Ordinal));
-        int verifierIndex = Array.FindIndex(steps, static step => string.Equals(step.Name, "Verify semantic-release configuration offline", StringComparison.Ordinal));
-        int preflightIndex = Array.FindIndex(steps, static step => string.Equals(step.Name, "Run release preflight", StringComparison.Ordinal));
-        int semanticReleaseIndex = Array.FindIndex(steps, static step => string.Equals(step.Name, "Run semantic-release", StringComparison.Ordinal));
+        int installIndex = Array.IndexOf(steps, GetReleaseWorkflowStep(steps, "Install release tooling"));
+        int auditIndex = Array.IndexOf(steps, GetReleaseWorkflowStep(steps, "Audit root release tooling"));
+        int verifierIndex = Array.IndexOf(steps, GetReleaseWorkflowStep(steps, "Verify semantic-release configuration offline"));
+        int preflightIndex = Array.IndexOf(steps, GetReleaseWorkflowStep(steps, "Run release preflight"));
+        int semanticReleaseIndex = Array.IndexOf(steps, GetReleaseWorkflowStep(steps, "Run semantic-release"));
 
         installIndex.ShouldBeGreaterThanOrEqualTo(0, "release.yml must install the reviewed root lockfile before release preflight.");
         auditIndex.ShouldBeGreaterThanOrEqualTo(0, "release.yml must audit the complete root release-tooling graph.");
@@ -502,8 +501,8 @@ public sealed partial class CiTestInventoryTests
         verifierIndex.ShouldBeLessThan(preflightIndex, "the combined configuration verifier must pass before release preflight.");
         preflightIndex.ShouldBeLessThan(semanticReleaseIndex, "release preflight must run before semantic-release starts publish-capable work.");
 
-        steps[auditIndex].Run.ShouldBe("npm audit signatures");
-        steps[verifierIndex].Run.ShouldBe("npm run verify:semantic-release-config");
+        IsReleaseCommand(steps[auditIndex], "npm audit signatures").ShouldBeTrue();
+        IsReleaseCommand(steps[verifierIndex], "npm run verify:semantic-release-config").ShouldBeTrue();
         foreach (ReleaseWorkflowStep gate in new[] { steps[installIndex], steps[auditIndex], steps[verifierIndex] })
         {
             gate.If.ShouldBeNull("release-tooling gates must run unconditionally in the production release job.");
@@ -512,8 +511,7 @@ public sealed partial class CiTestInventoryTests
         }
 
         ReleaseWorkflowStep step = steps[preflightIndex];
-        step.Shell.ShouldBe("pwsh");
-        step.Run.ShouldBe("./tools/release-preflight.ps1");
+        IsReleaseCommand(step, "./tools/release-preflight.ps1").ShouldBeTrue();
         step.Uses.ShouldBeNull();
     }
 
@@ -524,12 +522,12 @@ public sealed partial class CiTestInventoryTests
         ReleaseWorkflowStep[] steps = ParseReleaseWorkflowSteps(File.ReadAllLines(Path.Combine(repoRoot, ".github", "workflows", "release.yml")));
         const string FixtureCommand = "python3 -m unittest discover -s tests/tooling/release_preflight -p \"*_test.py\"";
 
-        ReleaseWorkflowStep[] fixtureSteps = [.. steps.Where(step => string.Equals(step.Run, FixtureCommand, StringComparison.Ordinal))];
+        ReleaseWorkflowStep[] fixtureSteps = [.. steps.Where(step => IsReleaseCommand(step, FixtureCommand))];
         fixtureSteps.Length.ShouldBe(1, "release.yml must invoke the canonical release-preflight fixture command exactly once.");
 
         int fixturesIndex = Array.IndexOf(steps, fixtureSteps[0]);
-        int preflightIndex = Array.FindIndex(steps, static step => string.Equals(step.Name, "Run release preflight", StringComparison.Ordinal));
-        int semanticReleaseIndex = Array.FindIndex(steps, static step => string.Equals(step.Name, "Run semantic-release", StringComparison.Ordinal));
+        int preflightIndex = Array.IndexOf(steps, GetReleaseWorkflowStep(steps, "Run release preflight"));
+        int semanticReleaseIndex = Array.IndexOf(steps, GetReleaseWorkflowStep(steps, "Run semantic-release"));
 
         preflightIndex.ShouldBeGreaterThanOrEqualTo(0, "release.yml must retain the live release preflight.");
         semanticReleaseIndex.ShouldBeGreaterThanOrEqualTo(0, "release.yml must retain the semantic-release step.");
@@ -537,7 +535,6 @@ public sealed partial class CiTestInventoryTests
         fixturesIndex.ShouldBeLessThan(semanticReleaseIndex, "release-preflight fixtures must run before semantic-release starts publish-capable work.");
 
         ReleaseWorkflowStep step = fixtureSteps[0];
-        step.Name.ShouldBe("Run release preflight fixtures");
         step.If.ShouldBeNull("release-preflight fixtures must run unconditionally.");
         step.ContinueOnError.ShouldBeNull("release-preflight fixture failures must fail the release job.");
         step.Uses.ShouldBeNull();
@@ -548,7 +545,7 @@ public sealed partial class CiTestInventoryTests
     {
         ReleaseWorkflowStep step = GetReleaseWorkflowStep("Run semantic-release");
 
-        step.Run.ShouldBe("npx semantic-release");
+        IsReleaseCommand(step, "npx semantic-release").ShouldBeTrue();
         step.Uses.ShouldBeNull();
         step.Environment["NUGET_API_KEY"].ShouldBe("${{ steps.nuget-login.outputs.NUGET_API_KEY }}");
 
@@ -558,8 +555,12 @@ public sealed partial class CiTestInventoryTests
         workflow.ShouldContain("NuGet/login@v1");
         workflow.ShouldContain("user: ${{ vars.NUGET_USER }}");
         workflow.ShouldNotContain("secrets.NUGET_API_KEY");
-        workflow.IndexOf("Exchange GitHub OIDC token for a temporary NuGet key", StringComparison.Ordinal)
-            .ShouldBeLessThan(workflow.IndexOf("name: Run semantic-release", StringComparison.Ordinal));
+        ReleaseWorkflowStep[] steps = ParseReleaseWorkflowSteps(workflow.Split('\n'));
+        ReleaseWorkflowStep login = GetReleaseWorkflowStep(steps, "Exchange GitHub OIDC token for a temporary NuGet key");
+        login.With["user"].ShouldBe("${{ vars.NUGET_USER }}");
+        login.If.ShouldBeNull("the trusted publishing exchange must run before release.");
+        login.ContinueOnError.ShouldBeNull("a failed trusted publishing exchange must block release.");
+        Array.IndexOf(steps, login).ShouldBeLessThan(Array.IndexOf(steps, GetReleaseWorkflowStep(steps, "Run semantic-release")));
     }
 
     [Fact]
@@ -647,7 +648,7 @@ public sealed partial class CiTestInventoryTests
     {
         ReleaseWorkflowStep step = GetReleaseWorkflowStep("Run release package validator fixtures");
 
-        step.Run.ShouldBe("python3 -m unittest discover -s tests/tooling/release_packages -p \"*_test.py\"");
+        IsReleaseCommand(step, "python3 -m unittest discover -s tests/tooling/release_packages -p \"*_test.py\"").ShouldBeTrue();
         step.Uses.ShouldBeNull();
     }
 
@@ -659,16 +660,15 @@ public sealed partial class CiTestInventoryTests
         ReleaseWorkflowStep[] releaseSteps = ParseReleaseWorkflowSteps(File.ReadAllLines(Path.Combine(repoRoot, ".github", "workflows", "release.yml")));
         string ciWorkflow = File.ReadAllText(Path.Combine(repoRoot, ".github", "workflows", "ci.yml"));
 
-        ReleaseWorkflowStep[] fixtureSteps = [.. releaseSteps.Where(step => string.Equals(step.Run, FixtureCommand, StringComparison.Ordinal))];
+        ReleaseWorkflowStep[] fixtureSteps = [.. releaseSteps.Where(step => IsReleaseCommand(step, FixtureCommand))];
         fixtureSteps.Length.ShouldBe(1, "release.yml must execute the container partial-publish and retry fixture exactly once.");
 
         int fixturesIndex = Array.IndexOf(releaseSteps, fixtureSteps[0]);
-        int semanticReleaseIndex = Array.FindIndex(releaseSteps, static step => string.Equals(step.Name, "Run semantic-release", StringComparison.Ordinal));
+        int semanticReleaseIndex = Array.IndexOf(releaseSteps, GetReleaseWorkflowStep(releaseSteps, "Run semantic-release"));
         semanticReleaseIndex.ShouldBeGreaterThanOrEqualTo(0, "release.yml must retain semantic-release.");
         fixturesIndex.ShouldBeLessThan(semanticReleaseIndex, "container publication fixtures must pass before semantic-release starts publish-capable work.");
 
         ReleaseWorkflowStep step = fixtureSteps[0];
-        step.Name.ShouldBe("Run container publish fixtures");
         step.If.ShouldBeNull("container publication fixtures must run unconditionally in the release lane.");
         step.ContinueOnError.ShouldBeNull("container publication fixture failures must fail the release job.");
         step.Uses.ShouldBeNull();
@@ -966,8 +966,7 @@ public sealed partial class CiTestInventoryTests
     {
         ReleaseWorkflowStep step = GetReleaseWorkflowStep("Test unit and non-Docker suite");
 
-        step.Shell.ShouldBe("pwsh");
-        step.Run.ShouldBe("./tools/test-release.ps1");
+        IsReleaseCommand(step, "./tools/test-release.ps1").ShouldBeTrue();
         step.Uses.ShouldBeNull();
     }
 
@@ -1484,15 +1483,295 @@ public sealed partial class CiTestInventoryTests
         filters.ShouldBeEmpty();
     }
 
+    [Theory]
+    [InlineData("npm ci", null, "npm ci", true)]
+    [InlineData("  npm   ci --ignore-scripts  ", null, "npm ci", true)]
+    [InlineData("npm install", null, "npm ci", false)]
+    [InlineData("echo npm ci", null, "npm ci", false)]
+    [InlineData("npm ci && false", null, "npm ci", false)]
+    [InlineData("npm ci --prefix other", null, "npm ci", false)]
+    [InlineData("./tools/release-preflight.ps1", "pwsh", "./tools/release-preflight.ps1", true)]
+    [InlineData("pwsh ./tools/release-preflight.ps1", null, "./tools/release-preflight.ps1", true)]
+    [InlineData("pwsh -File ./tools/release-preflight.ps1", "bash", "./tools/release-preflight.ps1", true)]
+    [InlineData("./tools/release-preflight.ps1", "bash", "./tools/release-preflight.ps1", false)]
+    [InlineData("./tools/release-preflight.ps1.disabled", "pwsh", "./tools/release-preflight.ps1", false)]
+    [InlineData("pwsh ./tools/release-preflight.ps1; exit 0", null, "./tools/release-preflight.ps1", false)]
+    [InlineData("pwsh ./tools/release-preflight.ps1", "python", "./tools/release-preflight.ps1", false)]
+    [InlineData("pwsh ./tools/release-preflight.ps1", "bash -c true {0}", "./tools/release-preflight.ps1", false)]
+    [InlineData("npm ci", "python", "npm ci", false)]
+    public void IsReleaseCommand_RecognizesOnlySupportedEquivalentOperations(string run, string? shell, string command, bool expected)
+    {
+        ReleaseWorkflowStep step = ParseReleaseWorkflowSteps(
+        [
+            "      - name: A renamed display step",
+            $"        run: {run}",
+            .. shell is null ? Array.Empty<string>() : new[] { $"        shell: {shell}" },
+        ]).ShouldHaveSingleItem();
+
+        IsReleaseCommand(step, command).ShouldBe(expected);
+    }
+
+    [Fact]
+    public void GetReleaseWorkflowStep_RenamedOperation_PreservesBlockingProperties()
+    {
+        ReleaseWorkflowStep[] steps = ParseReleaseWorkflowSteps(
+        [
+            "      - name: Harmless new presentation",
+            "        run: npm ci --ignore-scripts",
+            "        if: always()",
+            "        continue-on-error: true",
+            "        working-directory: other",
+        ]);
+
+        ReleaseWorkflowStep step = GetReleaseWorkflowStep(steps, "Install release tooling");
+        step.If.ShouldBe("always()");
+        step.ContinueOnError.ShouldBe("true");
+        step.WorkingDirectory.ShouldBe("other");
+    }
+
+    [Fact]
+    public void GetReleaseWorkflowStep_RenamedOidcExchange_IsLocatedByAction()
+    {
+        ReleaseWorkflowStep[] steps = ParseReleaseWorkflowSteps(
+        [
+            "      - name: A renamed exchange",
+            "        uses: NuGet/login@v1",
+            "        with:",
+            "          user: ${{ vars.NUGET_USER }}",
+        ]);
+
+        ReleaseWorkflowStep login = GetReleaseWorkflowStep(steps, "Exchange GitHub OIDC token for a temporary NuGet key");
+        login.With["user"].ShouldBe("${{ vars.NUGET_USER }}");
+    }
+
+    [Fact]
+    public void GetReleaseWorkflowStep_DuplicateOperations_FailsLoudly()
+    {
+        ReleaseWorkflowStep[] steps = ParseReleaseWorkflowSteps(
+        [
+            "      - name: Install A",
+            "        run: npm ci",
+            "      - name: Install B",
+            "        run: npm ci --ignore-scripts",
+        ]);
+
+        Should.Throw<ShouldAssertException>(() => GetReleaseWorkflowStep(steps, "Install release tooling"));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(4)]
+    public void GetReleaseWorkflowJobScalar_ReadsOnlyImmediateJobProperties(int width)
+    {
+        string pad = new(' ', width);
+        string[] fixture =
+        [
+            "env:",
+            $"{pad}release:",
+            $"{pad}{pad}if: decoy",
+            "jobs:",
+            $"{pad}before:",
+            $"{pad}{pad}if: before",
+            $"{pad}release:",
+            "# comments do not terminate mappings",
+            $"{pad}{pad}env:",
+            $"{pad}{pad}{pad}if: nested",
+            $"{pad}{pad}if: 'real-condition'",
+            $"{pad}after:",
+            $"{pad}{pad}if: after",
+            "permissions:",
+            $"{pad}if: top-level-decoy",
+        ];
+
+        GetReleaseWorkflowJobScalar(fixture, "if").ShouldBe("real-condition");
+        GetReleaseWorkflowJobScalar(fixture.Where(line => !line.Contains("real-condition", StringComparison.Ordinal)).ToArray(), "if")
+            .ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData("if : condition")]
+    [InlineData("'if': condition")]
+    [InlineData("\"if\" : condition")]
+    public void GetReleaseWorkflowJobScalar_EquivalentMappingKeys_ReturnsCondition(string property)
+    {
+        string[] fixture = ["'jobs' :", "  \"release\" :", $"    {property}"];
+
+        GetReleaseWorkflowJobScalar(fixture, "if").ShouldBe("condition");
+    }
+
+    [Fact]
+    public void GetReleaseWorkflowJobScalar_TabsInsideRunBlock_AreNotMappingIndentation()
+    {
+        string[] fixture =
+        [
+            "jobs:",
+            "  release:",
+            "    runs-on: ubuntu-latest",
+            "    steps:",
+            "      - name: Print",
+            "        run: |",
+            "          \tprintf 'tab in script text'",
+        ];
+
+        GetReleaseWorkflowJobScalar(fixture, "if").ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData("jobs:\n  other:\n    if: decoy")]
+    [InlineData("jobs:\n  release:\n    runs-on: ubuntu\njobs:\n  release:\n    if: duplicate")]
+    [InlineData("jobs:\n  release:\n    runs-on: ubuntu\n  release:\n    if: duplicate")]
+    [InlineData("jobs:\n  release:\n    if: first\n    if: duplicate")]
+    [InlineData("jobs:\n\trelease:\n\t\tif: unsupported")]
+    [InlineData("jobs: {release: {if: hidden}}")]
+    [InlineData("jobs:\n  release: {if: hidden}")]
+    [InlineData("jobs:\n  release:\n    if: |\n      unsupported")]
+    [InlineData("jobs:\n  release:\n    <<: *defaults\n    runs-on: ubuntu")]
+    [InlineData("jobs:\n  release:\n    '<<': *defaults\n    runs-on: ubuntu")]
+    [InlineData("jobs:\n  release:\n    ? if\n    : unsupported")]
+    [InlineData("jobs:\n  release:\n    runs-on: ubuntu\n    \"i\\u0066\": false")]
+    [InlineData("jobs:\n  release:\n    runs-on: ubuntu\n    \"\\x69f\": false")]
+    public void GetReleaseWorkflowJobScalar_UnsupportedOrAmbiguousMapping_FailsLoudly(string workflow)
+    {
+        Should.Throw<ShouldAssertException>(() => GetReleaseWorkflowJobScalar(workflow.Split('\n'), "if"));
+    }
+
+    [Fact]
+    public void ReadOpenDeferredBaselines_RealLedgerWithPositiveCanary_ReturnsExactPair()
+    {
+        string path = Path.Combine(GetRepoRoot(), "_bmad-output", "implementation-artifacts", "deferred-work.md");
+        string[] lines = [.. File.ReadAllLines(path), .. OpenStructuredBaselineFixture("S11-FCANARY", "CanaryTests.Positive")];
+
+        DeferredBaseline baseline = ReadOpenDeferredBaselines(lines).ShouldHaveSingleItem();
+
+        baseline.Key.ShouldBe("S11-FCANARY");
+        baseline.TestName.ShouldBe("CanaryTests.Positive");
+        baseline.HasReleaseFilter.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void ReadAcceptedReleaseFilters_TwoPairsAndCommentDecoys_PreserveExactAssociations()
+    {
+        string[] fixture =
+        [
+            "# FullyQualifiedName!~CommentTests.Before",
+            "$projectFilters = @{",
+            "# entry S11-FX. First baseline",
+            "# FullyQualifiedName!~CommentTests.Decoy",
+            "    \"foo.csproj\" = \"FullyQualifiedName!~FirstTests.FirstMethod\"",
+            "# entry S11-FY. Second baseline",
+            "    \"bar#literal.csproj\" = \"FullyQualifiedName!~SecondTests.SecondMethod\" # FullyQualifiedName!~CommentTests.Trailing",
+            "# FullyQualifiedName!~CommentTests.After",
+            "}",
+        ];
+
+        ReadAcceptedReleaseFilters(fixture).ShouldBe(
+        [
+            new BaselineFilter("S11-FX", "FirstTests.FirstMethod"),
+            new BaselineFilter("S11-FY", "SecondTests.SecondMethod"),
+        ]);
+    }
+
+    [Theory]
+    [InlineData("'a#b' # comment", "'a#b' ")]
+    [InlineData("\"a#b\" # comment", "\"a#b\" ")]
+    [InlineData("'a''#b' # comment", "'a''#b' ")]
+    [InlineData("\"a`\"#b\" # comment", "\"a`\"#b\" ")]
+    [InlineData("a`#b # comment", "a`#b ")]
+    public void StripPowerShellLineComment_PreservesQuotedAndEscapedHashes(string line, string expected)
+    {
+        StripPowerShellLineComment(line).ShouldBe(expected);
+    }
+
+    [Fact]
+    public void ReadAcceptedReleaseFilters_SecondFilterWithoutFreshKey_FailsLoudly()
+    {
+        string[] fixture =
+        [
+            "# entry S11-FX. Only first baseline is paired",
+            "\"foo.csproj\" = \"FullyQualifiedName!~FirstTests.FirstMethod\"",
+            "\"bar.csproj\" = \"FullyQualifiedName!~SecondTests.SecondMethod\"",
+        ];
+
+        Should.Throw<ShouldAssertException>(() => ReadAcceptedReleaseFilters(fixture));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void ResolveRepoRoot_MissingMetadata_ExplainsProjectConfiguration(string? value)
+    {
+        ShouldAssertException error = Should.Throw<ShouldAssertException>(() => ResolveRepoRoot(value));
+
+        error.Message.ShouldContain("AssemblyMetadata Include=\"RepoRoot\"");
+        error.Message.ShouldContain("Hexalith.Memories.Cli.Tests.csproj");
+        error.Message.ShouldContain("rebuild");
+    }
+
+    [Fact]
+    public void ResolveRepoRoot_ValidMetadata_ReturnsAbsolutePath()
+    {
+        ResolveRepoRoot(".").ShouldBe(Path.GetFullPath("."));
+    }
+
+    private static bool IsReleaseCommand(ReleaseWorkflowStep step, string command)
+    {
+        if (step.Run is null || step.Uses is not null || step.Shell is not (null or "bash" or "sh" or "pwsh"))
+        {
+            return false;
+        }
+
+        // This is a deliberately narrow command vocabulary, not a general shell parser.
+        if (step.Run.Contains('\n') || step.Run.Contains('\r'))
+        {
+            return false;
+        }
+
+        string normalized = string.Join(' ', Regex.Split(step.Run.Trim(), @"[ \t]+"));
+        if (command.EndsWith(".ps1", StringComparison.Ordinal))
+        {
+            return (normalized == command && step.Shell == "pwsh")
+                || normalized == $"pwsh {command}"
+                || normalized == $"pwsh -File {command}";
+        }
+
+        return normalized == command || (command == "npm ci" && normalized == "npm ci --ignore-scripts");
+    }
+
     private static ReleaseWorkflowStep GetReleaseWorkflowStep(string stepName)
     {
         string repoRoot = GetRepoRoot();
         string[] lines = File.ReadAllLines(Path.Combine(repoRoot, ".github", "workflows", "release.yml"));
 
         ReleaseWorkflowStep[] steps = ParseReleaseWorkflowSteps(lines);
-        ReleaseWorkflowStep[] matches = [.. steps.Where(step => string.Equals(step.Name, stepName, StringComparison.Ordinal))];
+        return GetReleaseWorkflowStep(steps, stepName);
+    }
 
-        matches.Length.ShouldBe(1, $"expected exactly one step named '{stepName}' in release.yml; found {matches.Length} (steps present: {string.Join(", ", steps.Select(s => $"\"{s.Name}\""))})");
+    private static ReleaseWorkflowStep GetReleaseWorkflowStep(ReleaseWorkflowStep[] steps, string stepName)
+    {
+        string? command = stepName switch
+        {
+            "Validate package inventory before release" => "./tools/validate-release-packages.ps1",
+            "Install release tooling" => "npm ci",
+            "Audit root release tooling" => "npm audit signatures",
+            "Verify semantic-release configuration offline" => "npm run verify:semantic-release-config",
+            "Run release preflight" => "./tools/release-preflight.ps1",
+            "Run semantic-release" => "npx semantic-release",
+            "Test unit and non-Docker suite" => "./tools/test-release.ps1",
+            "Run release package validator fixtures" => "python3 -m unittest discover -s tests/tooling/release_packages -p \"*_test.py\"",
+            _ => null,
+        };
+        ReleaseWorkflowStep[] matches =
+        [
+            .. steps.Where(step => command is null
+                ? stepName == "Exchange GitHub OIDC token for a temporary NuGet key"
+                    ? step.Uses == "NuGet/login@v1"
+                    : string.Equals(step.Name, stepName, StringComparison.Ordinal)
+                : IsReleaseCommand(step, command)),
+        ];
+
+        matches.Length.ShouldBe(1, $"expected exactly one required operation '{stepName}' in release.yml; found {matches.Length} (steps present: {string.Join(", ", steps.Select(s => $"\"{s.Name}\""))})");
         return matches[0];
     }
 
@@ -1906,42 +2185,87 @@ public sealed partial class CiTestInventoryTests
     }
 
     private static string? GetReleaseWorkflowJobScalar(string scalarName)
+        => GetReleaseWorkflowJobScalar(
+            File.ReadAllLines(Path.Combine(GetRepoRoot(), ".github", "workflows", "release.yml")),
+            scalarName);
+
+    private static string? GetReleaseWorkflowJobScalar(string[] lines, string scalarName)
     {
-        string repoRoot = GetRepoRoot();
-        string[] lines = File.ReadAllLines(Path.Combine(repoRoot, ".github", "workflows", "release.yml"));
-        string prefix = $"    {scalarName}:";
-        bool insideReleaseJob = false;
-
-        foreach (string line in lines)
+        // Read only mapping properties, so script-body text cannot supply a job condition.
+        string[] jobs = GetBlockMappingBody(lines, "jobs");
+        string[] release = GetBlockMappingBody(jobs, "release");
+        string[] children = GetImmediateMappingLines(release);
+        string[] matches = [.. children.Where(line => ReadMappingProperty(line).Key == scalarName)];
+        matches.Length.ShouldBeLessThanOrEqualTo(1, $"jobs.release must not declare '{scalarName}' more than once.");
+        if (matches.Length == 0)
         {
-            // TrimEnd tolerates CRLF-checkout line endings (the patch path emits a
-            // "LF will be replaced by CRLF" warning); without it the equality check would
-            // miss the job header and the helper would fall through with the wrong invariant.
-            string trimmedLine = line.TrimEnd();
-            if (!insideReleaseJob)
-            {
-                if (trimmedLine == "  release:")
-                {
-                    insideReleaseJob = true;
-                }
+            return null;
+        }
 
-                continue;
-            }
+        string value = ReadMappingProperty(matches[0]).Value;
+        (value.Length > 0 && !value.StartsWith('|') && !value.StartsWith('>') && !value.StartsWith('#'))
+            .ShouldBeTrue($"jobs.release.{scalarName} must be an inline scalar for this inventory reader.");
+        return StripQuotes(value);
+    }
 
-            if (line.Length > 0 && line.StartsWith("  ", StringComparison.Ordinal) && !line.StartsWith("    ", StringComparison.Ordinal))
+    private static string[] GetBlockMappingBody(string[] lines, string key)
+    {
+        string[] children = GetImmediateMappingLines(lines);
+        string[] matches = [.. children.Where(line => ReadMappingProperty(line).Key == key)];
+        matches.Length.ShouldBe(1, $"workflow must declare mapping '{key}' exactly once at its parent scope.");
+        string header = matches[0];
+        string value = ReadMappingProperty(header).Value;
+        (value.Length == 0 || value.StartsWith('#')).ShouldBeTrue($"'{key}' must be a block mapping for this inventory reader.");
+        int start = Array.IndexOf(lines, header);
+        int indentation = header.Length - header.TrimStart().Length;
+        int end = start + 1;
+        while (end < lines.Length)
+        {
+            string line = lines[end];
+            if (IsWorkflowContent(line) && line.Length - line.TrimStart().Length <= indentation)
             {
                 break;
             }
 
-            if (line.StartsWith(prefix, StringComparison.Ordinal))
-            {
-                return StripQuotes(line[prefix.Length..].Trim());
-            }
+            end++;
         }
 
-        insideReleaseJob.ShouldBeTrue("release.yml does not declare jobs.release.");
-        return null;
+        return lines[(start + 1)..end];
     }
+
+    private static string[] GetImmediateMappingLines(string[] lines)
+    {
+        string[] content = [.. lines.Where(IsWorkflowContent)];
+        content.ShouldNotBeEmpty("workflow mapping must have children.");
+        int indentation = content.Min(static line => line.Length - line.TrimStart().Length);
+        string[] children = [.. content.Where(line => line.Length - line.TrimStart().Length == indentation)];
+        foreach (string child in children)
+        {
+            ReadMappingProperty(child);
+        }
+
+        return children;
+    }
+
+    private static (string Key, string Value) ReadMappingProperty(string line)
+    {
+        string indentation = line[..(line.Length - line.TrimStart().Length)];
+        indentation.Contains('\t').ShouldBeFalse("workflow mapping indentation must use spaces, not tabs.");
+        Match property = BlockMappingPropertyRegex().Match(line.TrimStart());
+        property.Success.ShouldBeTrue($"unsupported workflow mapping property '{line.Trim()}'; use explicit block mapping keys without merges or complex keys.");
+        string rawKey = property.Groups["key"].Value.Trim();
+        (rawKey.StartsWith('"') && rawKey.Contains('\\'))
+            .ShouldBeFalse("escaped double-quoted workflow keys must be expanded explicitly for this inventory reader.");
+        string key = StripQuotes(rawKey);
+        key.ShouldNotBe("<<", "workflow mapping merges must be expanded explicitly for this inventory reader.");
+        return (key, property.Groups["value"].Value.Trim());
+    }
+
+    [GeneratedRegex("^(?<key>\"[^\"]*\"|'[^']*'|[A-Za-z_][A-Za-z0-9_-]*)[ \\t]*:[ \\t]*(?<value>.*)$")]
+    private static partial Regex BlockMappingPropertyRegex();
+
+    private static bool IsWorkflowContent(string line)
+        => !string.IsNullOrWhiteSpace(line) && !line.TrimStart().StartsWith('#');
 
     private static string StripQuotes(string value)
     {
@@ -2004,6 +2328,43 @@ public sealed partial class CiTestInventoryTests
         return count;
     }
 
+    private static string StripPowerShellLineComment(string line)
+    {
+        char quote = '\0';
+        for (int index = 0; index < line.Length; index++)
+        {
+            char value = line[index];
+            if (value == '`' && quote != '\'' && index + 1 < line.Length)
+            {
+                index++;
+            }
+            else if (quote != '\0')
+            {
+                if (value == quote)
+                {
+                    if (index + 1 < line.Length && line[index + 1] == quote)
+                    {
+                        index++;
+                    }
+                    else
+                    {
+                        quote = '\0';
+                    }
+                }
+            }
+            else if (value is '\'' or '"')
+            {
+                quote = value;
+            }
+            else if (value == '#')
+            {
+                return line[..index];
+            }
+        }
+
+        return line;
+    }
+
     private static BaselineFilter[] ReadAcceptedReleaseFilters(string[] lines)
     {
         const int MaxKeyToFilterDistance = 3;
@@ -2024,7 +2385,13 @@ public sealed partial class CiTestInventoryTests
                 distance++;
             }
 
-            Match filterMatch = ProjectFilterRegex().Match(line);
+            if (line.TrimStart().StartsWith('#'))
+            {
+                continue;
+            }
+
+            string code = StripPowerShellLineComment(line);
+            Match filterMatch = ProjectFilterRegex().Match(code);
             if (!filterMatch.Success)
             {
                 continue;
@@ -2039,7 +2406,7 @@ public sealed partial class CiTestInventoryTests
             // Reject multi-directive lines (review-12-4 P6): a single filter line must contain
             // exactly one FullyQualifiedName!~ directive. Multiple directives make the captured
             // test name silently span across them.
-            int directiveCount = ProjectFilterRegex().Matches(line).Count;
+            int directiveCount = ProjectFilterRegex().Matches(code).Count;
             directiveCount.ShouldBe(1, $"release baseline filter line '{line.Trim()}' must contain exactly one FullyQualifiedName!~ directive.");
 
             string testName = filterMatch.Groups["test"].Value.Trim();
@@ -2259,7 +2626,13 @@ public sealed partial class CiTestInventoryTests
             .FirstOrDefault(static a => string.Equals(a.Key, "RepoRoot", StringComparison.Ordinal))
             ?.Value;
 
-        repoRoot.ShouldNotBeNullOrWhiteSpace();
+        return ResolveRepoRoot(repoRoot);
+    }
+
+    private static string ResolveRepoRoot(string? repoRoot)
+    {
+        repoRoot.ShouldNotBeNullOrWhiteSpace(
+            "CLI inventory tests require AssemblyMetadata Include=\"RepoRoot\" Value=\"$(MSBuildThisFileDirectory)..\\..\\\" in Hexalith.Memories.Cli.Tests.csproj; rebuild the test project after restoring it.");
         return Path.GetFullPath(repoRoot);
     }
 }

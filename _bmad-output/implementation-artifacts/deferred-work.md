@@ -450,7 +450,9 @@ resolution: Final failure reporting retains Exception.ToString() (including inne
 origin: migrated from legacy ledger ("Deferred from: code review of 15-1-release-edge-case-preflight-hardening (2026-05-13)"), 2026-09-01
 location: tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs
 reason: - **15.1-RV4 - accepted.** `CiTestInventoryTests` workflow-string assertions are brittle to cosmetic edits. - ID: 15.1-RV4 - Status: accepted - Source story: 15-1-release-edge-case-preflight-hardening - Target artifact: tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs - Re-open trigger: A future workflow edit needs `npm ci --ignore-scripts`, a renamed step name, or `pwsh ./tools/release-preflight.ps1` invocation form, and the existing strict `ShouldBe` assertions fail without a real contract violation. - Rationale: Exact-match `ShouldBe` for `Run`, `Name`, and `Shell` is consistent with the rest of `CiTestInventoryTests`. Loosening to `ShouldContain`/`ShouldStartWith` should be done as a sweep across the file, not in isolation. Story 19.3 (2026-06-30) buckets this as accept-until-trigger (no current failure or trigger; the fix is a release-owner decision); natural future home: release test-helper hardening sweep. Owner: release maintainer.
-status: open
+status: resolved 2026-10-28
+resolution: `spec-five-deferred-ci-inventory.md` — Release operation lookup now matches a narrow command vocabulary instead of display names, accepts npm ci --ignore-scripts and explicit pwsh invocation, and retains ordering/blocking assertions. IsReleaseCommand_RecognizesOnlySupportedEquivalentOperations and GetReleaseWorkflowStep_DuplicateOperations_FailsLoudly cover positive and negative controls. Final inventory suite passed 117/117 cases and the complete CLI assembly passed 564/564, with no failures/skips.
+reopen_trigger: A release workflow or deferred-register format change escapes or falsely fails the corresponding inventory regression.
 
 ### DW-61: 15.1-RV5: accepted. Windows tempdir cleanup can raise `PermissionError`.
 
@@ -543,7 +545,9 @@ resolution: Missing paths, files and existing non-Git directories now receive ac
 origin: migrated from legacy ledger ("Deferred from: code review of 15-1-release-edge-case-preflight-hardening (2026-05-13)"), 2026-09-01
 location: tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs
 reason: - **15.1-RV16 - accepted.** `GetReleaseWorkflowJobScalar` depends on 4-space indentation. - ID: 15.1-RV16 - Status: accepted - Source story: 15-1-release-edge-case-preflight-hardening - Target artifact: tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs - Re-open trigger: A future `release.yml` reformat (2-space, tabs) silently passes the job-scalar contract test without actually inspecting the right scope. - Rationale: Structural YAML parsing would be ideal, but a hand-rolled prefix parser is consistent with the rest of `CiTestInventoryTests`. A broader test-helper sweep is the natural home. Story 19.3 (2026-06-30) buckets this as accept-until-trigger (no current failure or trigger; the fix is a release-owner decision); natural future home: release test-helper hardening sweep. Owner: release maintainer.
-status: open
+status: resolved 2026-10-28
+resolution: `spec-five-deferred-ci-inventory.md` — GetReleaseWorkflowJobScalar scopes block mappings by indentation and reads only immediate jobs.release properties. Width-1/2/4 fixtures exclude nested and sibling decoys; duplicate/missing jobs, duplicate scalars, tab indentation and unsupported inline/block forms fail loudly. Final inventory suite passed 117/117 cases and the complete CLI assembly passed 564/564, with no failures/skips.
+reopen_trigger: A release workflow or deferred-register format change escapes or falsely fails the corresponding inventory regression.
 
 ### DW-73: 13.7-RV4: resolved. The AppHost and Aspire integration fixture now share the
 
@@ -1117,7 +1121,9 @@ resolution: already resolved: src/Hexalith.Memories.Server/Ingestion/EmbeddingPr
 origin: migrated from legacy ledger ("Deferred from: code review of story-12.6 (2026-05-02)"), 2026-09-01
 location: tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:217-224
 reason: - **12.6-RV1 — Real-repo positive parser canary lost.** `ReadAcceptedReleaseFilters_RealRepo_HasNoAcceptedBaselineFilters` and `TestReleaseBaselineFilters_ShouldMatchOpenDeferredWorkEntries` both now expect empty against the real repo files; only fixture-shaped tests prove `ReadOpenDeferredBaselines` parses anything. Add a smoke test that exercises the parser against a fixture mirroring the current `deferred-work.md` (or a separate non-baseline open `S11-F*` entry) so future structural drift in the file format is caught loudly. (`tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:217-224`)
-status: open
+status: resolved 2026-10-28
+resolution: `spec-five-deferred-ci-inventory.md` — ReadOpenDeferredBaselines_RealLedgerWithPositiveCanary_ReturnsExactPair appends a complete synthetic canary to an in-memory copy of the actual register and asserts its exact ID/test pair. The real-ledger empty-inventory controls remain unchanged. Final inventory suite passed 117/117 cases and the complete CLI assembly passed 564/564, with no failures/skips.
+reopen_trigger: A release workflow or deferred-register format change escapes or falsely fails the corresponding inventory regression.
 
 ### DW-147: 12.6-RV2 [resolved in 14.5] — `baselineRelated` heuristic backs the unconditional `ShouldBeEmpty` assertion.
 
@@ -1132,7 +1138,9 @@ resolution: already resolved: tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInvento
 origin: migrated from legacy ledger ("Deferred from: code review of story-12.6 (2026-05-02)"), 2026-09-01
 location: tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:198-214
 reason: - **12.6-RV3 — Single-item parser fixture masks over-matching.** `ReadAcceptedReleaseFilters_ValidKeyedFilter_ReturnsFilter` exercises exactly one comment + one filter line and uses `ShouldHaveSingleItem()`, which would pass even if the parser is matching on the wrong line and dedupes. Strengthen with a 2-filter fixture or one with a comment-line that resembles a filter, to verify the proximity guard and uniqueness logic. (`tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:198-214`)
-status: open
+status: resolved 2026-10-28
+resolution: `spec-five-deferred-ci-inventory.md` — ReadAcceptedReleaseFilters_TwoPairsAndCommentDecoys_PreserveExactAssociations pins two distinct pairs with misleading comment directives; comment-only directives are ignored. ReadAcceptedReleaseFilters_SecondFilterWithoutFreshKey_FailsLoudly preserves per-filter key consumption. Final inventory suite passed 117/117 cases and the complete CLI assembly passed 564/564, with no failures/skips.
+reopen_trigger: A release workflow or deferred-register format change escapes or falsely fails the corresponding inventory regression.
 
 ### DW-149: 12.6-RV4: Discoverability breadcrumb removed from `tools/test-release.ps1`. Along with the `$projectFilters` block went the only on-script reference to deferred-work bookkeeping. Consider a one-line trailing comment such as `# No per-project baseline waivers; if one becomes necessary, register it in _bmad-output/implementation-artifacts/deferred-work.md and pair it here.` so a future maintainer searching the script for "baseline" finds the policy. (`tools/test-release.ps1:25`)
 
@@ -2491,7 +2499,9 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of stories 11-1 + 11-2 (2026-04-26)"), 2026-09-01
 location: tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:79-84
 reason: - **W24. `CiTestInventoryTests` opaque error if `RepoRoot` AssemblyMetadata missing.** Minor diagnostic improvement; emit a wire-up hint message. (`tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:79-84`)
-status: open
+status: resolved 2026-10-28
+resolution: `spec-five-deferred-ci-inventory.md` — ResolveRepoRoot validates missing/blank metadata with an actionable AssemblyMetadata Include="RepoRoot" hint naming Hexalith.Memories.Cli.Tests.csproj and rebuild instructions; null/empty/whitespace and absolute-path positive cases execute that resolver. Final inventory suite passed 117/117 cases and the complete CLI assembly passed 564/564, with no failures/skips.
+reopen_trigger: A release workflow or deferred-register format change escapes or falsely fails the corresponding inventory regression.
 
 ### DW-331: S11-FB. Compile-time symbol verification for `tools/integration-fast-required-surfaces.txt` (review patch P9).
 
