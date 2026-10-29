@@ -14,6 +14,237 @@ context:
 
 # Story 27.4 — active functional retention contract
 
+## Approved Platform S3 calibration integration — 2026-10-29 (active continuation)
+
+The owner replied **“approve”** to using Platform's existing Scaleway backup
+route with selected host **node1 / 192.168.1.30**. Implement the necessary
+Platform-owned S3 adapter now. This replaces only independent calibration's
+requirement for a different-host mounted Linux backup directory when the explicit
+S3 mode is selected. Preserve independent off-node custody, legacy Linux mode,
+full campaign admission, all workload/resource/security limits and technical gates.
+Existing one-run approval persists, with its attempt unused. This implementation
+itself launches no infrastructure, installs no dependency, contacts no live
+provider, reads no real credential values and performs no Git write. Actual
+engine/reservations/runtime/authority/time inputs still precede any live attempt.
+
+### Intent and approved decisions
+
+Provide an opt-in closed `s3Backup` configuration bound into the exact independent
+plan/profile identity. Omitted configuration keeps legacy identity, admission and
+execution compatible. Pin Platform's existing destination: project
+`bed84924-0e48-4275-8b7c-5d9a1f57a8dd`, bucket `hexalith-recovery-points`,
+`https://s3.fr-par.scw.cloud`, region `fr-par`, a fresh exact-run key under
+`memories/`. The ordinary Velero bucket is not this destination. Local
+`paths.backup` in S3 mode is private staging only and confers no independence.
+Its space consumption must fit the existing host-workspace reservation; preserve
+at least 20% headroom. Use a signed current provider/project/bucket/region/prefix/
+failure-domain/capacity reservation in place of the Linux backup reservation;
+compute and primary reservation checks stay unchanged. Missing, stale, reused,
+unsigned or mismatched bindings refuse before mutation. Finite campaign continues
+to reject independent plans; no campaign or legacy allocation is relabelled.
+
+Reuse the existing bounded runner and the available pinned curl 8.18.0 transport,
+not a new SDK/CLI dependency or a separate environment runner. Bind curl, CA,
+source closure and distinct writer/validator credential references in the plan.
+Never source env files or expose credentials in argv, logs, receipts or results.
+Use explicit authenticated HTTPS/SigV4, payload SHA256, TLS CA/hostname validation,
+no ambient curl configuration/proxy, no redirects, no retries, bounded response/
+artifact sizes and timeouts inside the original execution budget. Credential
+values are read only by the future authorized execution path, through exact
+private refs, with distinct actual access identities. Recheck current action
+and reservation authority before remote work. Use Platform's existing provider
+setup as a destination definition, not as fresh credential/provider proof.
+
+After verified measurement quiescence, capture the exact owned PostgreSQL database
+as a real custom archive, preserving binary bytes in private files rather than
+UTF-8 stdout. Bound its size and staging/readback footprint before transfer. Use
+exact Pod UID/namespace/container binding and the existing pinned image/tools;
+verify native archive validity without claiming an actual restore. Record durable
+upload intent before the one create-only PUT. Require current versioning/object
+lock, provider-managed AES256 (Scaleway SSE-ONE) and at least 30-day COMPLIANCE
+retention with validator readback. The current [SSE-ONE provider contract](https://www.scaleway.com/en/docs/object-storage/api-cli/enable-sse-one/)
+requires actual per-object verification; historical AES256 labels prove nothing
+about current settings or objects. Do not silently substitute unencrypted upload
+or introduce customer-held encryption keys.
+Bind the returned nonempty immutable VersionId to exact bucket/key/run/profile,
+size and SHA256, then independently download that exact version with the distinct
+validator and compare actual bytes and storage/retention properties. Never use
+ETag as content SHA256 or silently select latest. Preserve uncertainty and never
+replay a consumed/uncertain upload. No delete, overwrite, retention shortening,
+permission or bucket-configuration change is part of this adapter.
+
+S3 success is required before independent calibration can publish a completed
+result or remove the primary copy. On backup failure/uncertainty, capture failure,
+stop exact owned compute within the original cleanup budget and retain primary/
+staging custody with an explicit unverified backup disposition. No successful
+backup/restore/qualification is inferred. Full restore/C1/C2/Production/A41 credit
+remains false, including after a verified transfer. Retain the actual immutable
+object identity and verification receipt on success; separate restore proof stays
+outside this bounded implementation.
+
+### Code map and tasks
+
+- [x] `references/Hexalith.Platform/eng/helm-qualification/independent_calibration.py`:
+  wire optional S3 identity/admission/provider reservation, independent-only source
+  closure, monitoring/result/inspect and completion/cleanup gates. Remove the
+  confirmed duplicate monitor dispatch in `launch` (the superclass already calls
+  the overridden monitor), preserving one-attempt semantics and legacy behavior.
+- [x] `references/Hexalith.Platform/eng/helm-qualification/calibration_s3_backup.py`:
+  implement focused configuration/custody checks, bounded native curl S3 transport,
+  real archive capture, one-shot immutable upload and independent exact-version
+  readback. Reuse lifecycle process/state/ownership primitives; do not import or
+  execute the old recovery preparation's offline or historical operational scripts.
+- [x] `references/Hexalith.Platform/eng/helm-qualification/test_calibration_s3_backup.py`
+  and `test_independent_calibration.py`: verify actual private-file end-state,
+  binary fidelity, exact-version/identity/checksum/retention validation, native
+  transport construction, denial-before-command, invalid/aliased/stale credentials
+  and reservations, uncertain upload/no replay, capacity/time bounds, failed-backup
+  primary retention, single monitor dispatch and legacy/campaign compatibility.
+  Use fictional credentials and offline doubles; include a loopback TLS/curl
+  fixture where practical, with no provider/daemon/cluster access.
+- [x] `references/Hexalith.Platform/eng/helm-qualification/README.md`: document
+  explicit schema/commands, actual transfer semantics, limits, failure retention
+  and absence of restore/qualification credit. Existing campaign code/chart and
+  dependency files remain byte-stable unless a demonstrated necessary seam cannot
+  be specialized in the independent subclass.
+- [x] Coordinator: perform one ordinary inspection of this new delta, run focused
+  S3+independent regressions and unchanged campaign/capacity/chart checks. Update
+  this active spec, the single retention report and existing preparation index/
+  catalogue with authentic results/source hashes, explicit current nulls and a
+  clearly incomplete optional-S3 draft. Preserve historical receipt/draft bytes;
+  no replacement numbered spec, repeated old review campaign or fake readiness.
+
+### Acceptance and verification
+
+- Given an exact approved S3-mode plan and current independently scoped inputs,
+  when its measurement finishes, then a real binary PostgreSQL archive is uploaded
+  once and independently verified at its immutable version before success/disposal.
+- Given wrong endpoint/bucket/run/profile/credentials, stale/unsigned reservation,
+  lost authority, excess space/time, failed readback, substituted version/content or
+  insufficient retention, when checked, then refuse without fallback/retry and
+  retain the primary copy if its backup is unverified.
+- Given a legacy independent plan or full campaign, when checked, then original
+  identity/admission/defaults remain compatible, and no small/S3 transfer earns
+  campaign/restore/Production/A41 credit or a new operational attempt.
+- Given completed offline implementation, when reported, then exact executed
+  commands/results distinguish verified code from missing real engine, capacity,
+  secrets, runtime/monitor/clock/action and backup/restore observations. Overall
+  Story 27.4 remains in progress and A41 open until its separate full requirements.
+
+### S3 final review triage — 2026-10-29
+
+One three-layer pass reviewed this S3 delta. All13 individual findings are
+retained below; B4/E1 share one cleanup cause. No intent gap or spec re-derivation
+is needed: patches correct demonstrated existing states without a new public
+surface. Provider IAM/project observations remain unverified operational inputs,
+not inferred technical passes.
+
+| Finding | Verdict | Route and verified evidence |
+| :--- | :--- | :--- |
+| B1 | medium | patch (resolved): Remote backup usage is read but not added to the pending archive; an80%-used allocation can cross headroom. Use existing backup observation before capture/PUT. |
+| B2 | medium | patch (resolved): pg_restore --list reads only TOC; native archive integrity claim needs bounded full decode without a database restore. Existing captured archive is the demonstrated state. |
+| B3 | medium | patch (resolved): verified() accepts a rehashed receipt missing archive/security/native fields. Reject malformed existing receipt state and bind it to durable upload intent before removal. |
+| B4 | medium | patch (resolved): Inherited stop exceptions bypass the S3 disposition save; exact existing failure state lacks mandatory custody reporting. |
+| B5 | maybe-false | defer: Different actual access-key/secret pairs do not independently measure IAM principal identity. The current outside-approved plan binds claimed identity+digest, but no real provider keys/authority were inspected. Severity medium, unverified; settle with current native credential-to-principal evidence before operational admission. |
+| B6 | maybe-false | defer: Project metadata is uploader-supplied; fixed destination and signed reservation bind the owner assertion, not a native current bucket-owner measurement. Severity medium, unverified; settle with current native bucket/project ownership evidence before admission. |
+| B7 | medium | patch (resolved): Synchronous archive hash loops have no chunk-level deadline/cancellation/authority checks; large/slow reads can overrun original execution bounds. |
+| B8 | low | patch (resolved): This fixed Days30 destination route rejects Years defaults. Correct README to state explicit Days-only support; do not broaden the provider/profile in this patch. |
+| B9 | low | patch (resolved): Expected TLS hostname denial can emit BrokenPipeError, not only ConnectionResetError; direct fixture exception correction is enough. |
+| B10 | medium | patch (resolved): Active cleanup summaries promise removal even though new S3 mode retains primary/staging until verified; correct current metadata, retaining previous text under history. |
+| E1 | medium | patch (resolved): Confirmed same stop-exception disposition issue asB4; shared cause, separately retained finding row. |
+| V1 | medium | patch (resolved): Pre-verified gap: removing bucket prerequisites leaves18 S3 tests green. Add invalid versioning/lock/retention/encryption cases proving zero uploads and retained unverified state. |
+| V2 | medium | patch (resolved): Pre-verified gap: removing kubectl --stdin leaves18 tests green. Add real kube-to-run offline executable transport coverage for binary forwarding and validation. |
+
+All 11 patch findings (10 root causes, including the duplicated B4/E1 claim)
+are corrected and verified. B5/B6 remain medium-unverified provider identity/
+ownership prerequisites in the deferred ledger; neither waives a gate.
+
+### Implementation result and current handoff
+
+Platform's optional S3 adapter and its single ordinary inspection are complete.
+Five concrete issues found during this delta were corrected: binary-input log
+redaction, setup failure descriptor cleanup, FIFO refusal before blocking open,
+credential-byte rechecks before every provider request, and exact approved-plan
+metadata on the immutable object/readback. None was deferred. The necessary
+shared seam is `eng/helm-qualification/qualify.py`'s bounded private binary stdin/
+stdout; ordinary defaults stay compatible. No campaign admission, topology,
+workload, dependency or toolchain input changed. Its source/byte evidence is in
+[the single report](tests/27-4-retention-verification-evidence.md#platform-s3-calibration-integration--2026-10-29-current).
+
+The coordinator's final reviewed run passes 60/60 tests (24 S3 + 36 independent)
+in 21.534s with zero failures/errors/skips or traceback. Earlier 53/53 and 3/3
+checks are archived snapshots; their source changes were covered by this final run.
+Campaign/capacity/chart74/74 and14 qualifier cases pass. One of the89 shared
+cases remains environment-blocked by an absent nested Builds source, reproduced
+on pristine HEAD; separate root-declared source evaluations pass2/2 without
+passing that broader gate. The report records exact commands, raw results,
+initial duplicate-discovery/fixture issues and the named blocker/reopen trigger.
+No red/green, live-provider, actual-restore or full-qualification claim is made.
+
+The existing index/catalogue now select a clearly incomplete optional-S3 small
+draft with **37 nulls** and10 current native-source bindings. Actual destination,
+local candidate curl and CA references are bound; real credential values were
+not read. The former31-null Linux drafts, approvals and historical23/9 readiness
+receipts retain their original bytes. Those old source checks are historical
+after this change; they are not rerun or relabelled as current verification.
+The new mode uses local same-filesystem staging and a genuinely off-node signed
+S3 reservation, replacing only its Linux backup transport prerequisite.
+
+The selected host remains192.168.1.30/node1. Its recorded containerd runtime and
+missing Docker socket are unchanged observations: this integration does not
+install an engine or adopt the protected cluster. Actual engine, signed net
+capacity/primary/provider allocations, private staging/archive bound, exact
+credential/runtime/monitoring refs, run/key/profile and UTC/action/window still
+precede prepare/launch. Original calibration approval persists and its one attempt
+is unused; host capture stays consumed. Story27.4 remains in progress, full
+qualification/Production unproved and A41 open.
+
+### Final reviewed outcome
+
+The approved S3 implementation is complete. One three-layer final pass
+produced 13 individual findings: 11 patch findings (10 root causes) were
+corrected; two medium-unverified provider IAM/project observations remain
+operational prerequisites. The final native path now checks additive remote
+headroom, fully decodes archive data to `/dev/null`, validates closed receipts
+against durable upload intent, preserves cleanup custody through exceptions
+and checks original authority/time/stop state between hashing chunks. Bucket
+prerequisite negatives and actual executable kubectl binary transport are
+covered. Selected default-retention support is explicitly Days-only.
+
+Final code verification is **60/60**; existing campaign/capacity/chart **74/74**
+and qualifier **14/15** evidence stands, with its unchanged missing-nested-Builds
+error still explicit. No broader gate is claimed green. Current selectors
+bind the reviewed 37-null draft and ten native sources; earlier drafts and
+receipts preserve their bytes. Story frontmatter returns to `in-progress`
+because full qualification and A41 remain open; this does not reopen a code
+review or consume the existing approved calibration attempt.
+
+## Owner-selected Platform host — 2026-10-29 (current)
+
+The owner directed **“use the one defined in Hexalith.Platform : 192.168.1.30”**.
+Use Platform's existing `node1` definition for this continuation; no additional
+host-selection approval is needed. This identifies the host, not a signed
+reservation, isolated engine or independent backup allocation.
+
+Platform's [recovery destination definition](../../references/Hexalith.Platform/_bmad-output/implementation-artifacts/evidence/epic-4/recovery-destination-setup.md)
+backs its source node up to Scaleway `hexalith-recovery-points`, region `fr-par`,
+under `memories/`. The defined destination is object storage, not a mounted Linux
+directory on node1. Its historical setup grants no current calibration proof.
+The existing calibration runner requires private primary/backup directories and
+different host, pool, filesystem and failure-domain identities. Platform's read-only
+S3 readback helper and offline PostgreSQL recovery planner supply no live backup
+adapter. A node1-local second directory cannot establish independent backup.
+
+The [single report](tests/27-4-retention-verification-evidence.md#owner-selected-platform-host--2026-10-29-current)
+and existing preparation index/catalogue bind exact source hashes and the owner
+selection. The remaining choice is to integrate Platform's existing S3 backup or
+bind a genuine independent Linux mount; no transport or independence requirement
+has been silently substituted. Existing run approval persists, its attempt is
+unused, and the host capture remains consumed. The small draft's 31 technical
+nulls, original source/approval bytes and absent operational state are preserved.
+No remote contact, credential read, installation, prepare or launch occurred.
+Story 27.4 remains in progress; full qualification/Production unproved, A41 open.
+
 ## Resumption after pushed changes — 2026-10-28 (current)
 
 Existing implementation/source bindings remain intact: focused verification

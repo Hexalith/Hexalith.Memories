@@ -1,5 +1,233 @@
 # Story 27.4 — current retention results
 
+## Platform S3 calibration integration — 2026-10-29 (current)
+
+### Final reviewed snapshot
+
+Final current record verification also passed **116/116**, exit 0:
+`python3 -B /home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/s3-calibration-integration-20261029-6w3b45uc/verify-integration-final-records.py`.
+The index/catalogue bind its exact command/result/verifier hashes. This covers
+the final source/draft/discovery and complete review disposition, original
+deferred-ledger prefix, private custody, historical text and exact 12-file scope.
+Earlier 96-check results below are the preserved pre-review record snapshot.
+
+The coordinator's final run passes **60/60** tests (24 S3 + 36 independent) in
+**21.534s**, exit 0, with zero errors/failures/skips or traceback. Exact command
+from Platform root, using the same `PYTHONPATH` and pinned `HELM_BIN` below:
+`python3 -B -m unittest test_calibration_s3_backup test_independent_calibration -v`.
+The final raw log and argv/environment/timing are retained in
+`coordinator-final-focused.log` and `coordinator-final-focused-command.json`.
+Earlier 53/3/54 counts below identify earlier source snapshots, not the final run.
+
+The single three-layer final pass produced 13 individual findings. All 11 patch
+findings (10 root causes, including duplicate B4/E1) are corrected. Review patches
+passed 27/27 and final targeted 4/4 before the coordinator's complete 60-case run.
+Current code adds remote backup usage to pending archive demand before capture
+and PUT; executes both TOC listing and full `pg_restore --file=/dev/null` decode
+without restoring a database; validates closed receipt/security/native fields
+against durable upload intent; persists S3 custody before shutdown and through
+cleanup exceptions; and checks original deadline/authority/stop state between
+hash chunks. Negative bucket settings and a real executable kubectl binary
+stdin/stdout pipeline are covered. The selected route explicitly supports default
+retention expressed in Days; Years is rejected. Expected TLS disconnects are quiet.
+The active catalogue now states primary/staging retention until backup verification.
+
+B5/B6 remain **medium-unverified operational observations**, owned by Jérôme
+Piquot / Platform Operations and appended without changing existing ledger bytes.
+Current outside-approved plans bind declared IAM principal IDs/credential digests
+and provider destination/reservation assertions. Different key pairs and
+uploader-supplied project metadata do not themselves measure actual IAM principal
+or bucket ownership. Current native principal/scope and bucket-owner/project
+observations, bound to actual input digests, must precede operational admission.
+No real credentials or provider APIs were used to settle them in this code phase.
+These holds grant no independence, ownership, live qualification or Production pass.
+
+The existing 89-case compatibility gate remains **88 passed / 1 environment
+error**, independently reproduced on pristine HEAD. Its 74 campaign/capacity/chart
+and 14 qualifier passes plus two separate root-declared MSBuild evaluations stand;
+it was not repeated after patches confined to independent S3 behavior. All 16
+unaffected qualification inputs and the shared binary process seam retain their
+verified bytes. The final current record/draft/source manifest and review-patch
+artifacts are separately bound in the preparation index/catalogue; all earlier
+record and draft bytes remain. The optional-S3 draft still has 37 nulls and ten
+current source bindings. Final record verification also includes the exact
+12-file delta (six Platform files and six Memories records, including the ledger).
+Overall Story 27.4 remains in progress, A41 open and the approved launch unused.
+
+The owner replied **“approve”** to Platform's existing Scaleway backup route for
+selected **node1 / 192.168.1.30**. The optional independent-calibration adapter is
+implemented and its one ordinary inspection is complete. It binds the existing
+project/bucket/region and fresh exact-run `memories/calibration/<runId>.dump` key
+into the approved plan/profile, with a signed current independent provider
+reservation. Legacy Linux mode remains supported. Local `paths.backup` becomes
+private staging in S3 mode, charged to host-workspace with20% headroom; it is
+never described as independent storage.
+
+After verified measurement quiescence, the exact owned PostgreSQL Pod/image
+supplies a real custom `pg_dump` archive through bounded private binary files.
+Native `pg_restore --list` verifies archive readability only. The pinned curl
+transport uses SigV4/payload SHA256, explicit CA/hostname checks, private data-only
+writer/validator refs, no redirects/retries and original time/space caps. It
+rechecks credential bytes and current authority before provider requests.
+Current versioning, object lock and encryption must pass, followed by one
+create-only PUT and a distinct-validator readback of its exact immutable VersionId.
+Actual bytes/size/SHA256, run/profile/approved-plan/project metadata, AES256 and
+COMPLIANCE retention are required before success or primary removal. The current
+[Scaleway SSE-ONE contract](https://www.scaleway.com/en/docs/object-storage/api-cli/enable-sse-one/)
+defines the supported managed AES256 mode; old setup labels supply no current
+object or credential proof. Failure/uncertainty stops owned compute within the
+original budget and retains primary/staging with an unverified backup disposition.
+No upload replay, deletion, overwrite or bucket/permission change is supplied.
+Even verified transfer grants no actual-restore/C1/C2/Production/A41 credit.
+
+The implementation also removes a demonstrated duplicate monitor dispatch: the
+superclass already calls the overridden monitor. Ordinary process defaults stay
+compatible. The only necessary shared code seam is `qualify.py`'s optional
+exclusive0600 binary file stdin/stdout under0700 custody; it uses the same process
+supervision/output/deadline limits and redacted evidence. All16 other original
+qualification inputs, including campaign admission/environment/capacity, chart,
+workload and package/toolchain files, are byte-identical to the captured baseline.
+
+### Exact verification and limits
+
+Commands below ran from `references/Hexalith.Platform`, with
+`PYTHONPATH=eng/helm-qualification` and
+`HELM_BIN=/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/tools/helm`.
+Private evidence is `s3-calibration-integration-20261029-6w3b45uc` under the
+existing preparation root. The index/catalogue bind its record, exact command
+JSON, raw stdout/stderr logs, source hashes and draft; no private values are in
+this report.
+
+| Executed command | Actual result and scope |
+| :--- | :--- |
+| `python3 -B -m unittest test_calibration_s3_backup test_independent_calibration -v` | Focused53/53 passed in18.783s, exit0, before final plan-object metadata correction.17 S3+36 existing cases; zero failures/errors/skips. |
+| `python3 -B -m unittest -v test_calibration_s3_backup.S3BackupTests.test_real_private_file_end_state_binary_fidelity_immutable_identity_and_no_restore_credit test_calibration_s3_backup.S3BackupTests.test_failed_or_uncertain_upload_readback_properties_retention_and_native_archive_never_pass test_calibration_s3_backup.S3BackupTests.test_foreign_plan_verification_receipt_cannot_authorize_primary_removal` | Final affected3/3 passed in3.827s, exit0, including one new test and16 failure subcases. Final unique discovery54=18 S3+36 independent; no single all-final54 execution is claimed. |
+| `python3 -B -m unittest test_campaign_lifecycle test_campaign_capacity test_chart test_qualify -v` |89 executed in117.724s, exit1: campaign/capacity/chart74 and qualifier14 pass; one qualifier case errors on absent nested Builds source. This broad gate is not green. |
+| `python3 -B /home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/s3-calibration-integration-20261029-6w3b45uc/baseline-blocker-proof.py` | Pristine HEAD qualifier reproduces the identical missing-file error:1 executed, exit1. No nested dependency was initialized. |
+| Exact two `dotnet msbuild ... -getItem:PackageVersion` argv in `root-declared-catalog-checks.json` | Separate read-only root-declared Builds/EventStore source evaluations pass2/2; both cryptography pins remain10.0.14 exactly once and Commons' ByteAether.Ulid remains present. This focused evidence does not pass the89-case gate. |
+| Private final source/parser/diff checks |16 original qualification files unchanged;5 Python files parse; Platform `git diff --check` exit0. |
+
+The first combined run passed83 executions but included36 duplicated baseline
+cases from an imported TestCase alias (47 unique then). The import was corrected
+before the unique53-case run. The expected TLS hostname-denial fixture initially
+emitted a loopback reset traceback; its handler was corrected before that final
+run. The initial developer baseline also encountered the pre-existing unset
+HELM_BIN locator error, resolved by using the existing pinned binary. New cases
+were not exercised meaningfully red before implementation; no red/green claim.
+
+The native loopback TLS fixture executes the real curl GET/PUT, actual binary
+file transfer, SigV4 credential/payload headers, create-only header and hostname
+mismatch denial. Other provider/Pod/authority measurements are fictional doubles.
+These checks establish implementation behavior, not real Scaleway credentials,
+provider capacity, native PostgreSQL execution, actual restore or qualification.
+
+### Ordinary inspection and attached negative evidence
+
+Five findings were corrected with focused regressions; none deferred: binary
+stdin forces log redaction, setup failures close file descriptors, FIFO inputs
+refuse without blocking, exact current credential bytes are rechecked before
+every provider request, and immutable object metadata/readback includes the
+approved plan SHA. The final wrong-plan receipt cannot authorize primary removal.
+The one inspection covered this new delta only; no old review campaign repeated.
+
+Affected scope is operator calibration backup namespace/Pod, bucket/key and
+run/profile/plan attribution. No product tenant/case routing, authorization or
+persisted domain behavior changed. Named denial evidence from the commands above:
+`test_configuration_wrong_destination_key_identity_bounds_and_extra_fields_refuse_before_command`,
+`test_missing_unsigned_reused_stale_revoked_mismatched_provider_reservation_refuses`,
+`test_failed_or_uncertain_upload_readback_properties_retention_and_native_archive_never_pass`,
+`test_foreign_plan_verification_receipt_cannot_authorize_primary_removal` and
+`test_replaced_credentials_deny_before_a_subsequent_remote_request` pass. They
+preserve the Story20.2 denial-before-dependency and Story24.3 verifier/tenant-marker
+principles for this operator boundary; no new product or live isolation pass is
+inferred from these offline tests.
+
+The unresolved broad-gate blocker belongs to **Jérôme Piquot / Platform
+qualification maintainers**. Exact failing case:
+`test_qualify.QualifierFailureTests.test_source_package_boundary_keeps_catalog_pins_and_exposes_conflicts`.
+It raises `FileNotFoundError` for
+`references/Hexalith.Platform/references/Hexalith.Builds/Props/Directory.Packages.props`.
+Consequence: the89-case broad gate remains blocked, with no waiver or overall
+completion. Reopen in an owning Platform workspace with its permitted direct
+Builds dependency, or address workspace-aware source evaluation separately.
+Nested initialization and weakening the check were not performed.
+
+### Current preparation and scope reconciliation
+
+Coordinator verification command from Memories root:
+`python3 -B /home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/s3-calibration-integration-20261029-6w3b45uc/verify-integration-records.py`.
+It passed **96/96** local record/source/preservation checks, including actual
+18+36 unique discovery, ten current source hashes, all six Platform path hashes,
+the37-null draft, unchanged original approvals/drafts/limits, broad-gate
+disclosure, exact11-file scope, private custody and historical Markdown bytes.
+The first scratch metadata updater raised a nesting KeyError in memory before
+any repository JSON write; its corrected run and preserved-byte checks are
+retained as `record-update-correction.json`. No admission rule changed.
+
+The existing index/catalogue now select a clearly incomplete S3 small draft with
+**37 nulls**, the former31 plus six S3-specific unresolved inputs. It binds the
+actual destination and local candidate curl/CA refs with10 current native-source
+hashes. Real credential values were not read. Exact source revisions are Memories
+`daa06183c0c9baa8bda71df259a7264d34684e2a` and Platform
+`eee6ce27965b7c7108bbfcc02d447038e0553751`; reviewed uncommitted source hashes/diff,
+not the Platform revision alone, identify this implementation. Earlier Linux
+drafts/receipts/approvals retain their exact bytes. Their23/9 checks are historical
+after these source changes and are not relabelled as current verification.
+
+The delta comprises six Platform files (adapter, its tests, independent mode,
+existing independent test, minimal qualifier seam and README) and five Memories
+records (this report, Spec14, campaign register, preparation index and catalogue).
+No other repository content is attributed to this change. No commit/gitlink,
+dependency, infrastructure or gate mutation occurred. Original calibration
+approval remains accepted, its launch unused and node1 host capture consumed.
+Actual isolated engine, signed net capacity/primary/provider allocations, private
+staging/archive bound, runtime/credential/monitoring refs and run/key/profile/
+UTC/action/window inputs still precede prepare/launch. Node1's recorded containerd
+runtime and missing Docker socket are unchanged; no engine was installed and the
+protected cluster was not adopted. Story27.4 remains in progress; full
+qualification/Production unproved and A41 open.
+
+## Owner-selected Platform host — 2026-10-29 (current)
+
+The owner selected **192.168.1.30**, using the host defined in Hexalith.Platform.
+Platform identifies it as `node1`, its source single-node Kubernetes host. This
+selection is retained; it does not establish an independent backup location or
+admit an isolated calibration engine.
+
+The [Platform recovery destination setup](../../../references/Hexalith.Platform/_bmad-output/implementation-artifacts/evidence/epic-4/recovery-destination-setup.md)
+defines Scaleway bucket `hexalith-recovery-points`, region `fr-par`, endpoint
+`https://s3.fr-par.scw.cloud`, with a `memories/` prefix. Recorded encryption,
+versioning and 30-day COMPLIANCE retention describe the original setup, not fresh
+campaign proof. Credential values were not read. The separately configured
+Velero bucket is outside Story 4.0's qualified recovery destination.
+
+The exact compatibility gap is Platform's
+`eng/helm-qualification/independent_calibration.py`: `load_plan` requires private
+Linux primary/backup directories, and `reservations` requires distinct host,
+pool, filesystem and failure domain. No independent mount is defined by the
+selected host. `S3ImmutableProvider` in `immutable_readback_driver.py` is read-only
+and has no default live connector; `telemetry_postgres_adapter.py` is an offline
+planner with no uploader or dispatcher. Neither is a calibration backup adapter.
+The next route must therefore integrate the existing S3 backup in owning Platform
+or bind an actual independent Linux mount. No directory/URI substitution was made.
+
+The existing preparation index/catalogue bind the private selection receipt and
+five exact Platform definition hashes, with full current Git revisions. Source
+inspection used local files only; no host/provider query, secret read, completed
+review/test repetition, installation, prepare or launch occurred. All 31 draft
+nulls and original approval/draft bytes remain. Existing one-run approval persists
+and its launch is unused; node1 host capture stays consumed. Story 27.4 remains
+in progress, full qualification/Production unproved and A41 open.
+
+Verification from the Memories root: `python3 -B /home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/platform-host-selection-20261029-qaww_r4k/verify-selection.py`
+passed **31/31** local record checks, including five exact Platform definition
+hashes, index/catalogue parity, preserved historical Markdown/JSON, CRLF,
+private custody and the exact four-path diff. The retained readiness contract
+still passes 23/23 artifact hashes and 9/9 native-source hashes with 31 nulls.
+The private command/result/verifier receipts are bound in the preparation
+index/catalogue. `git diff --check` passed. These are record checks, not a
+live calibration or backup/restore pass.
+
 ## Resumption after pushed changes — 2026-10-28 (current)
 
 Memories `7520a601a1420fd238a48ef6415d47b409a824a1` and Platform

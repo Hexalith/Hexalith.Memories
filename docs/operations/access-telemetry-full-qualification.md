@@ -1,5 +1,41 @@
 # Access-telemetry full qualification — pending campaign
 
+## Approved node1/Scaleway calibration route — 2026-10-29 (current)
+
+Final reviewed code passes **60/60** S3/independent tests. All code, coverage and
+documentation findings are resolved; two medium-unverified live IAM/project
+observations remain prerequisites alongside the explicit existing environment
+blocker. Current backup receipt validation includes complete archive decoding,
+additive remote headroom, guarded hashing and failure-safe custody reporting.
+See the single report for exact commands and separately retained source snapshots.
+No live launch, actual restore, full qualification or A41 closure follows.
+
+The owner selected **192.168.1.30/node1** and approved Platform's existing Scaleway
+backup route. Independent calibration now has an explicit optional S3 adapter:
+real binary PostgreSQL archive capture, native archive-list validation, one
+create-only immutable upload and exact-version readback using distinct validator
+credentials, with current encryption/retention, exact plan/profile/run metadata,
+signed provider capacity and original bounded lifecycle. Local backup paths are
+staging only in this mode; a different-host Linux mount is no longer its required
+backup transport. Legacy Linux mode and full campaign admission/topology remain
+compatible. No actual restore or qualification credit follows from transfer.
+
+The [single report](../../_bmad-output/implementation-artifacts/tests/27-4-retention-verification-evidence.md#platform-s3-calibration-integration--2026-10-29-current)
+retains exact commands,53/53 focused plus final3/3 results,74/74 campaign/capacity/
+chart and14 passing qualifier cases, and the one unchanged missing-nested-Builds
+broad-gate error. All five ordinary-inspection findings are fixed. No old review
+campaign, live provider call, real credential read, installation or launch occurred.
+
+The current index/catalogue select a clearly incomplete optional-S3 small draft
+with37 technical nulls and10 current source bindings. Old31-null Linux drafts and
+historical23/9 readiness receipts preserve their original bytes. Actual isolated
+Docker engine on node1, signed net compute/primary/provider reservations, local
+staging/archive allocation, complete runtime/credential/monitoring inputs and
+exact run/key/profile/window/independent UTC/action bindings still precede launch.
+Node1's previously observed containerd/missing Docker socket is unchanged; the
+protected cluster is not adopted. Existing one-run approval persists, launch is
+unused, host capture consumed, Story27.4 in progress and A41 open.
+
 ## Host capture completed through kubectl — 2026-10-28 (current)
 
 The approved node1 metadata capture completed once through `jpiquot@local`.

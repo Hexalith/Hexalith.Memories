@@ -5892,3 +5892,14 @@ status: open
 - source_spec: `_bmad-output/implementation-artifacts/spec-five-deferred-preflight-harness.md`
   summary: Add routine Python 3.9 module/annotation and harness verification for the preflight harness minimum runtime.
   evidence: Actual CPython 3.9.25 collection, typing.get_type_hints and all nine helper cases pass locally after the Optional correction; the exact command is documented in tests/README.md. Restoring Python 3.10 union annotations still passes helper checks on Python 3.14, and the existing release workflow uses only its runner-default interpreter. Owner: CI/release maintainer. Reopen with a maintained lower-runtime lane that rejects the baseline union-annotation mutation while accepting current source; this entry concerns recurring qualification rather than the already executed compatibility proof.
+
+
+## Deferred from: Story 27.4 S3 integration final review (2026-10-29)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-14.md`
+  summary: Medium-unverified: measure actual writer/validator credential-to-IAM-principal bindings before S3 calibration admission.
+  evidence: B5; owner Jérôme Piquot / Platform Operations. Current outside-approved plan pins declared principal IDs and credential digests, but implementation/tests did not inspect real credentials or native IAM ownership. Distinct access-key pairs alone do not establish distinct principals. Reopen with current native, source-bound principal/scope evidence for both actual credential digests before admission; no independent identity, live qualification or Production credit is granted.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-14.md`
+  summary: Medium-unverified: measure the selected Scaleway bucket's actual owning project before S3 calibration admission.
+  evidence: B6; owner Jérôme Piquot / Platform Operations. Fixed endpoint/bucket/project and signed provider reservation bind owner assertions; x-amz-meta-project-id proves metadata round-trip only. No native current bucket-owner/project observation was executed. Reopen with authoritative current bucket/project evidence bound to the actual destination and reservation before admission; no ownership, live qualification or A41 closure is inferred.

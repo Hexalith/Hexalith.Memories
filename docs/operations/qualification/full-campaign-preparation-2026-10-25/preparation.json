@@ -11,7 +11,7 @@
     },
     "command-catalog.json": {
       "path": "/home/administrator/projects/hexalith/memories/docs/operations/qualification/full-campaign-preparation-2026-10-25/command-catalog.json",
-      "sha256": "ca080711f757a307d48acc62446ceff2fe4b6351819963eb040b15c598468a74"
+      "sha256": "9e9973ea697adfed2a3e2b90176140d36cd7730209b6c662426867d75f93643b"
     },
     "evidence-discovery.json": {
       "path": "/home/administrator/projects/hexalith/memories/docs/operations/qualification/full-campaign-preparation-2026-10-25/evidence-discovery.json",
@@ -332,12 +332,8 @@
         "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/access-resumption-20261027-4txekp_v/access-checks.json",
         "sha256": "01535db7962488f96109cf93a4a4fbae6063cb07c3a3d030585e135e9f2a30e5"
       }
-    }
-  },
-  "independentCalibration": {
-    "campaignAllocationBytes": null,
-    "campaignRenewalCount": null,
-    "capability": {
+    },
+    "independentCalibrationBeforeS3Integration-2026-10-29": {
       "cleanup": "Original inherited exact-run lifecycle. First failure captures sanitized resource status before owned removal; stop/remove share original <=900s and do not reopen changed authority or source. Foreign/unrecorded/uncertain remnants stay retained/unverified. Evidence and independent backup retained.",
       "commands": [
         {
@@ -560,6 +556,597 @@
       "launchReady": false,
       "launchAuthorizationNote": "Owner approval and smaller-profile steering accepted; exact executable plan, actual reservations and operational authority remain unbound. The unchanged single attempt is unused and launch is not ready.",
       "resourceSelection": "small-configured-candidate-unmeasured"
+    },
+    "ownerSelectedPlatformHostBeforeS3Approval-2026-10-29": {
+      "selectedHost": "192.168.1.30",
+      "node": "node1",
+      "selection": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/platform-host-selection-20261029-qaww_r4k/selection.json",
+        "sha256": "770af80cadd5ece5efb6ca57c6f8f12c16a05f718fcceca15e2ca27e0cea3806"
+      },
+      "status": "owner-selected-existing-host-backup-transport-unresolved",
+      "launchReady": false,
+      "verification": {
+        "verifier": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/platform-host-selection-20261029-qaww_r4k/verify-selection.py",
+          "sha256": "182ee0853ec1c04fc9c7182962900d2ed3cf13c3f610870b71fbe39e0aa6a750"
+        },
+        "command": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/platform-host-selection-20261029-qaww_r4k/verification-command.json",
+          "sha256": "573480c909fc78f24f1169328bea59e04720df3280747de24291cfd3a3442627"
+        },
+        "result": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/platform-host-selection-20261029-qaww_r4k/verification-result.json",
+          "sha256": "097c7305c0add3dbb3092942d5fe5b96ba6ccf878adcb58a894506ca2e10c465"
+        },
+        "passedChecks": 31
+      }
+    },
+    "s3IntegrationBeforeFinalReview-2026-10-29": {
+      "record": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/s3-calibration-integration-20261029-6w3b45uc/s3-integration-record.json",
+        "sha256": "834774af445e35da4155ede5ae57acaa998b9e74a505acf84a68026ec25e0c82"
+      },
+      "status": "implemented-offline-verified-shared-check-environment-blocked-operational-inputs-missing",
+      "draft": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/s3-calibration-integration-20261029-6w3b45uc/calibration-plan-s3-small.draft.json",
+        "sha256": "b5b3052bd685f15ee042407601bd3bb7f67a6b7767867058b01acd86ecf07c40"
+      },
+      "unresolvedNullCount": 37,
+      "verification": {
+        "focusedInitial": {
+          "executed": 83,
+          "unique": 47,
+          "passed": true,
+          "duplicateBaselineCases": 36
+        },
+        "focusedFinalBeforePlanMetadata": {
+          "executed": 53,
+          "passed": true
+        },
+        "planBindingFinal": {
+          "executed": 3,
+          "passed": true,
+          "newCases": 1
+        },
+        "currentUniqueDiscovery": 54,
+        "campaignCapacityChart": {
+          "executed": 74,
+          "passed": true
+        },
+        "sharedQualifier": {
+          "executed": 15,
+          "passed": 14,
+          "errors": 1,
+          "blocker": "missing uninitialized nested references/Hexalith.Builds/Props/Directory.Packages.props; reproduced on pristine HEAD qualifier"
+        },
+        "separateRootDeclaredCatalogReadOnly": {
+          "evaluations": 2,
+          "passed": true
+        },
+        "unchangedBaselineInputs": 16
+      },
+      "broadGatePassed": false,
+      "broadGateBlocker": {
+        "owner": "J\u00e9r\u00f4me Piquot / Platform qualification maintainers",
+        "test": "test_qualify.QualifierFailureTests.test_source_package_boundary_keeps_catalog_pins_and_exposes_conflicts",
+        "cause": "missing uninitialized nested Platform/references/Hexalith.Builds/Props/Directory.Packages.props",
+        "broadCommand": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/s3-calibration-integration-20261029-6w3b45uc/compatibility-command.json",
+          "sha256": "bf3b972ec88cfd1b594ac4be28469618aa8e29279ae410d65ca5b9c1b0485cb9"
+        },
+        "result": "exit1: 89 executed,88 passed,1 error; unchanged pristine-HEAD reproduction also exit1",
+        "consequence": "89-case broad gate is not green; no overall story/qualification completion inferred",
+        "reopenTrigger": "Run in an owning Platform workspace with the permitted direct Builds dependency, or address workspace-aware source evaluation separately; no nested initialization or gate weakening is authorized here",
+        "separateFocusedEvidence": "2/2 read-only MSBuild evaluations using existing root-declared Builds/EventStore/Commons sources pass; this does not pass the broad gate"
+      },
+      "launchAuthorized": true,
+      "launchReady": false,
+      "recordsVerification": {
+        "verifier": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/s3-calibration-integration-20261029-6w3b45uc/verify-integration-records.py",
+          "sha256": "33b57b3df44f1d0d329295d8c0866c5c819e927045aa228ea3d6c3e0a40d9cda"
+        },
+        "command": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/s3-calibration-integration-20261029-6w3b45uc/records-verification-command.json",
+          "sha256": "bbc3a36de615224397afdc98c9639f9745d8914113ddadfab527d0a229a1e021"
+        },
+        "result": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/s3-calibration-integration-20261029-6w3b45uc/records-verification-result.json",
+          "sha256": "24180e79d1ca42c5488fdb6d44a4599e06ef50ab96b1094570beefd703a405cc"
+        },
+        "correction": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/s3-calibration-integration-20261029-6w3b45uc/record-update-correction.json",
+          "sha256": "a160e36bf06b47dc92cbf21ce0bca21f32dcf1cebeaea14b400d1f678c84a659"
+        },
+        "passedChecks": 96
+      }
+    },
+    "capabilityBeforeFinalReview-2026-10-29": {
+      "cleanup": "Original exact-run lifecycle and cumulative <=900s cleanup apply. Failure captures sanitized status and stops owned compute. S3 mode retains primary/private staging whenever its immutable backup receipt is unverified, including failed cleanup; only verified backup permits owned removal. Inspection exposes s3Backup state, cleanup.backupVerified and cleanup.backupDisposition. Foreign/uncertain remnants remain retained/unverified; immutable objects and evidence stay retained.",
+      "commands": [
+        {
+          "action": "prepare",
+          "argv": [
+            "python3",
+            "-B",
+            "eng/helm-qualification/qualify.py",
+            "--calibration",
+            "prepare",
+            "--calibration-state",
+            "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/independent-calibration-state",
+            "--calibration-plan",
+            "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/independent-calibration-plan.json",
+            "--approved-plan-sha256",
+            "${OUTSIDE_APPROVED_INDEPENDENT_PLAN_SHA256}"
+          ],
+          "cwd": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform",
+          "executed": false,
+          "operationallyReady": false,
+          "supported": true
+        },
+        {
+          "action": "inspect",
+          "argv": [
+            "python3",
+            "-B",
+            "eng/helm-qualification/qualify.py",
+            "--calibration",
+            "inspect",
+            "--calibration-state",
+            "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/independent-calibration-state"
+          ],
+          "cwd": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform",
+          "executed": false,
+          "operationallyReady": false,
+          "supported": true
+        },
+        {
+          "action": "launch",
+          "argv": [
+            "python3",
+            "-B",
+            "eng/helm-qualification/qualify.py",
+            "--calibration",
+            "launch",
+            "--calibration-state",
+            "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/independent-calibration-state",
+            "--approved-plan-sha256",
+            "${OUTSIDE_APPROVED_INDEPENDENT_PLAN_SHA256}"
+          ],
+          "cwd": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform",
+          "executed": false,
+          "operationallyReady": false,
+          "supported": true
+        },
+        {
+          "action": "monitor",
+          "argv": [
+            "python3",
+            "-B",
+            "eng/helm-qualification/qualify.py",
+            "--calibration",
+            "monitor",
+            "--calibration-state",
+            "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/independent-calibration-state",
+            "--approved-plan-sha256",
+            "${OUTSIDE_APPROVED_INDEPENDENT_PLAN_SHA256}"
+          ],
+          "cwd": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform",
+          "executed": false,
+          "operationallyReady": false,
+          "supported": true
+        },
+        {
+          "action": "stop",
+          "argv": [
+            "python3",
+            "-B",
+            "eng/helm-qualification/qualify.py",
+            "--calibration",
+            "stop",
+            "--calibration-state",
+            "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/independent-calibration-state"
+          ],
+          "cwd": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform",
+          "executed": false,
+          "operationallyReady": false,
+          "supported": true
+        },
+        {
+          "action": "remove",
+          "argv": [
+            "python3",
+            "-B",
+            "eng/helm-qualification/qualify.py",
+            "--calibration",
+            "remove",
+            "--calibration-state",
+            "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/independent-calibration-state"
+          ],
+          "cwd": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform",
+          "executed": false,
+          "operationallyReady": false,
+          "supported": true
+        }
+      ],
+      "draft": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/s3-calibration-integration-20261029-6w3b45uc/calibration-plan-s3-small.draft.json",
+        "sha256": "b5b3052bd685f15ee042407601bd3bb7f67a6b7767867058b01acd86ecf07c40"
+      },
+      "draftExecutable": false,
+      "executed": false,
+      "launchAuthorized": true,
+      "limits": {
+        "attempts": 1,
+        "retries": 0,
+        "restarts": 0,
+        "startupSeconds": 600,
+        "executionSeconds": 50400,
+        "stoppingSeconds": 900,
+        "totalSeconds": 51900,
+        "postgresCpuMilli": 2000,
+        "postgresMemoryBytes": 4294967296,
+        "cpuMilli": 10250,
+        "memoryBytes": 20401094656,
+        "writers": 2,
+        "recordsPerWriterSecond": 125,
+        "overlapMilliseconds": 1800000,
+        "acceptedRecords": 450000,
+        "componentOperations": 900000,
+        "backlogRecords": 150000
+      },
+      "nativeSource": [
+        {
+          "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/qualify.py",
+          "sha256": "60a3a2db92c0b595da7537fdddaad669ea0804974be59233a2bfc2f82008f778"
+        },
+        {
+          "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/campaign_capacity.py",
+          "sha256": "f80e2a4862842bbe452e68e73e495920e624cf37f2f1276b36408ce22492036f"
+        },
+        {
+          "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/campaign_lifecycle.py",
+          "sha256": "398ce0fdb351dafe800e021549acdfd212755a6417235f4317c756dbb7841766"
+        },
+        {
+          "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/campaign_environment.py",
+          "sha256": "3fdfce96793e8213725376baba106bfed490c94101d0d7ebb857f061a44174b9"
+        },
+        {
+          "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/independent_calibration.py",
+          "sha256": "4effcf4999bfa86880ca285078d9c3dfcf9fc35efe896fca45b8fb71c42f0ffa"
+        },
+        {
+          "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/calibration_workload.py",
+          "sha256": "c619612020f57f8be7c0453217ab1ba046fd52e7cd803d1cc0240cdadaf5e7cc"
+        },
+        {
+          "path": "/home/administrator/projects/hexalith/memories/src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/AccessTelemetryQualificationGate.cs",
+          "sha256": "35e789069949509cbd96af1e76667f4f7d3d987f203d4590b2a4dee46cc8ca30"
+        },
+        {
+          "path": "/home/administrator/projects/hexalith/memories/src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/AccessTelemetryQualificationEndpointExtensions.cs",
+          "sha256": "0a6f3e84e6b8307aef7679f620dd3ea57f2e90032ee940223c935e0dbfb0cfb4"
+        },
+        {
+          "path": "/home/administrator/projects/hexalith/memories/src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/AccessTelemetryQualificationWorkloadRunner.cs",
+          "sha256": "c750046f4e32944be22c3916280aa8963b989396adb77af98a19600856c65b76"
+        },
+        {
+          "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/calibration_s3_backup.py",
+          "sha256": "76da9d255bb9a05f3f6f1dc928eee56d4a07aab2ab10248e8b4916c38ad3c19e"
+        }
+      ],
+      "owner": "Platform",
+      "profileId": "PG-INDEPENDENT-CALIBRATION-1",
+      "qualified": false,
+      "remainingOperationalInputs": [
+        "actual isolated Docker engine on selected node1; the consumed capture found containerd and no configured Docker socket",
+        "signed current net CPU/RAM and primary allocation plus independent Scaleway project/bucket/key/pool/capacity reservation; private same-filesystem staging and bounded archive allocation",
+        "actual complete application/provider/reporter/CNI/component/credential artifacts and current exact writer/validator refs; no values read during implementation",
+        "independently authenticated UTC/current action status and actual allocation/operational collector",
+        "complete absolute window,run/key/profile identity and outside-bound executable plan/operational authority; existing one-run owner approval is accepted",
+        "current native credential-to-principal/scope and bucket-owner/project evidence bound to actual input digests; self-supplied metadata is not provider ownership proof"
+      ],
+      "schema": "hexalith.platform.independent-calibration/v1",
+      "status": "implemented-offline-verified-shared-check-environment-blocked-operational-inputs-missing",
+      "target": {
+        "candidateHost": "owner-selected node1 / 192.168.1.30",
+        "currentCapacity": null,
+        "physicalTarget": null,
+        "primary": null,
+        "reservation": null,
+        "hostMetadataObservation": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/kubectl-host-channel-20261028-r3p_1yr3/host-readiness-summary.json",
+          "sha256": "4c078eeee910eda2565330c044cd51527784254296c9757e92043b2a6b7b5da3"
+        },
+        "backupDestination": {
+          "provider": "scaleway",
+          "projectId": "bed84924-0e48-4275-8b7c-5d9a1f57a8dd",
+          "bucket": "hexalith-recovery-points",
+          "endpoint": "https://s3.fr-par.scw.cloud",
+          "region": "fr-par",
+          "keyPrefix": "memories/"
+        }
+      },
+      "workload": {
+        "backlogCommandContract": "Supported --calibration launch executes the separate backlog lane before writers. There is no separate ungated backlog entry point.",
+        "measurementCommands": [
+          "existing authenticated bodyless fixed-workload HTTP route via exact kubectl exec",
+          "lifecycle /metrics state-operation counters with stable Pod UIDs",
+          "psql PHYSICAL_SQL: database, heap/TOAST, every access_telemetry/pg_toast relation/index, WAL and exact record count",
+          "Kubernetes metrics API: fresh complete Pod/container CPU/memory, missing provider refuses",
+          "quiesce exact gate/Lease/writers then bounded VACUUM (FULL, ANALYZE) and physical readback"
+        ],
+        "remainingProof": "Independent lane occupancy is not C1.10 expired-backlog drain, C2 replacement/fault, C3 real retention/24h physical reclamation, compatible renewals or full admission. Those checks remain mandatory.",
+        "separateBacklogLane": "1200 fixed 125-record segments through real typed-logger endpoint; require exact 150000-row SQL snapshot",
+        "writerLane": "two distinct Pod writers, 1801 one-second segments each; require >=1800000ms measured common overlap, >=450000 accepted and actual >=900000 component-operation counter delta"
+      },
+      "reservationFieldsRequired": [
+        "issuer",
+        "reservationId",
+        "owner",
+        "validFromUtcMs",
+        "validUntilUtcMs",
+        "disposition=active",
+        "revokedUtcMs=null",
+        "exact backing and available/competing/reserved operands"
+      ],
+      "monitoring": "Launch owns startup, native lanes, physical rewrite, monitoring and removal in one foreground supervision. Per-allocation >=20% free, WAL<=4GiB, actual resource/latency/error readbacks; original execution and cumulative cleanup budgets persist.",
+      "launchReady": false,
+      "launchAuthorizationNote": "Owner host/S3 integration and original one-run approval accepted; exact runtime plan,reservations,credentials,isolated engine,monitor/time/window inputs remain unbound. Attempt unused.",
+      "resourceSelection": "small-configured-candidate-unmeasured",
+      "backupMode": "scaleway-s3",
+      "s3IntegrationRecord": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/s3-calibration-integration-20261029-6w3b45uc/s3-integration-record.json",
+        "sha256": "834774af445e35da4155ede5ae57acaa998b9e74a505acf84a68026ec25e0c82"
+      }
+    }
+  },
+  "independentCalibration": {
+    "campaignAllocationBytes": null,
+    "campaignRenewalCount": null,
+    "capability": {
+      "cleanup": "Original exact-run lifecycle and cumulative <=900s cleanup apply. Failure captures sanitized status and stops owned compute. S3 mode retains primary/private staging whenever its immutable backup receipt is unverified, including failed cleanup; only verified backup permits owned removal. Inspection exposes s3Backup state, cleanup.backupVerified and cleanup.backupDisposition. Foreign/uncertain remnants remain retained/unverified; immutable objects and evidence stay retained.",
+      "commands": [
+        {
+          "action": "prepare",
+          "argv": [
+            "python3",
+            "-B",
+            "eng/helm-qualification/qualify.py",
+            "--calibration",
+            "prepare",
+            "--calibration-state",
+            "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/independent-calibration-state",
+            "--calibration-plan",
+            "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/independent-calibration-plan.json",
+            "--approved-plan-sha256",
+            "${OUTSIDE_APPROVED_INDEPENDENT_PLAN_SHA256}"
+          ],
+          "cwd": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform",
+          "executed": false,
+          "operationallyReady": false,
+          "supported": true
+        },
+        {
+          "action": "inspect",
+          "argv": [
+            "python3",
+            "-B",
+            "eng/helm-qualification/qualify.py",
+            "--calibration",
+            "inspect",
+            "--calibration-state",
+            "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/independent-calibration-state"
+          ],
+          "cwd": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform",
+          "executed": false,
+          "operationallyReady": false,
+          "supported": true
+        },
+        {
+          "action": "launch",
+          "argv": [
+            "python3",
+            "-B",
+            "eng/helm-qualification/qualify.py",
+            "--calibration",
+            "launch",
+            "--calibration-state",
+            "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/independent-calibration-state",
+            "--approved-plan-sha256",
+            "${OUTSIDE_APPROVED_INDEPENDENT_PLAN_SHA256}"
+          ],
+          "cwd": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform",
+          "executed": false,
+          "operationallyReady": false,
+          "supported": true
+        },
+        {
+          "action": "monitor",
+          "argv": [
+            "python3",
+            "-B",
+            "eng/helm-qualification/qualify.py",
+            "--calibration",
+            "monitor",
+            "--calibration-state",
+            "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/independent-calibration-state",
+            "--approved-plan-sha256",
+            "${OUTSIDE_APPROVED_INDEPENDENT_PLAN_SHA256}"
+          ],
+          "cwd": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform",
+          "executed": false,
+          "operationallyReady": false,
+          "supported": true
+        },
+        {
+          "action": "stop",
+          "argv": [
+            "python3",
+            "-B",
+            "eng/helm-qualification/qualify.py",
+            "--calibration",
+            "stop",
+            "--calibration-state",
+            "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/independent-calibration-state"
+          ],
+          "cwd": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform",
+          "executed": false,
+          "operationallyReady": false,
+          "supported": true
+        },
+        {
+          "action": "remove",
+          "argv": [
+            "python3",
+            "-B",
+            "eng/helm-qualification/qualify.py",
+            "--calibration",
+            "remove",
+            "--calibration-state",
+            "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/independent-calibration-state"
+          ],
+          "cwd": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform",
+          "executed": false,
+          "operationallyReady": false,
+          "supported": true
+        }
+      ],
+      "draft": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/s3-calibration-integration-20261029-6w3b45uc/calibration-plan-s3-small-reviewed.draft.json",
+        "sha256": "a41c5b75b0b7d578db52cae908ee3e98eedba4a2691391f1968baec7edf99803"
+      },
+      "draftExecutable": false,
+      "executed": false,
+      "launchAuthorized": true,
+      "limits": {
+        "attempts": 1,
+        "retries": 0,
+        "restarts": 0,
+        "startupSeconds": 600,
+        "executionSeconds": 50400,
+        "stoppingSeconds": 900,
+        "totalSeconds": 51900,
+        "postgresCpuMilli": 2000,
+        "postgresMemoryBytes": 4294967296,
+        "cpuMilli": 10250,
+        "memoryBytes": 20401094656,
+        "writers": 2,
+        "recordsPerWriterSecond": 125,
+        "overlapMilliseconds": 1800000,
+        "acceptedRecords": 450000,
+        "componentOperations": 900000,
+        "backlogRecords": 150000
+      },
+      "nativeSource": [
+        {
+          "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/qualify.py",
+          "sha256": "60a3a2db92c0b595da7537fdddaad669ea0804974be59233a2bfc2f82008f778"
+        },
+        {
+          "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/campaign_capacity.py",
+          "sha256": "f80e2a4862842bbe452e68e73e495920e624cf37f2f1276b36408ce22492036f"
+        },
+        {
+          "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/campaign_lifecycle.py",
+          "sha256": "398ce0fdb351dafe800e021549acdfd212755a6417235f4317c756dbb7841766"
+        },
+        {
+          "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/campaign_environment.py",
+          "sha256": "3fdfce96793e8213725376baba106bfed490c94101d0d7ebb857f061a44174b9"
+        },
+        {
+          "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/independent_calibration.py",
+          "sha256": "3f07643b1687aa0264f9f4330e4ec8d935db1e276ac4c71958e4e0c7576172fd"
+        },
+        {
+          "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/calibration_workload.py",
+          "sha256": "c619612020f57f8be7c0453217ab1ba046fd52e7cd803d1cc0240cdadaf5e7cc"
+        },
+        {
+          "path": "/home/administrator/projects/hexalith/memories/src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/AccessTelemetryQualificationGate.cs",
+          "sha256": "35e789069949509cbd96af1e76667f4f7d3d987f203d4590b2a4dee46cc8ca30"
+        },
+        {
+          "path": "/home/administrator/projects/hexalith/memories/src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/AccessTelemetryQualificationEndpointExtensions.cs",
+          "sha256": "0a6f3e84e6b8307aef7679f620dd3ea57f2e90032ee940223c935e0dbfb0cfb4"
+        },
+        {
+          "path": "/home/administrator/projects/hexalith/memories/src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/AccessTelemetryQualificationWorkloadRunner.cs",
+          "sha256": "c750046f4e32944be22c3916280aa8963b989396adb77af98a19600856c65b76"
+        },
+        {
+          "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/calibration_s3_backup.py",
+          "sha256": "64e25811e7c49b7823fd050ca13381680d7b71065e7ad71cd57aebdc0ebb48a3"
+        }
+      ],
+      "owner": "Platform",
+      "profileId": "PG-INDEPENDENT-CALIBRATION-1",
+      "qualified": false,
+      "remainingOperationalInputs": [
+        "actual isolated Docker engine on selected node1; the consumed capture found containerd and no configured Docker socket",
+        "signed current net CPU/RAM and primary allocation plus independent Scaleway project/bucket/key/pool/capacity reservation; private same-filesystem staging and bounded archive allocation",
+        "actual complete application/provider/reporter/CNI/component/credential artifacts and current exact writer/validator refs; no values read during implementation",
+        "independently authenticated UTC/current action status and actual allocation/operational collector",
+        "complete absolute window,run/key/profile identity and outside-bound executable plan/operational authority; existing one-run owner approval is accepted",
+        "current native credential-to-principal/scope and bucket-owner/project evidence bound to actual input digests; self-supplied metadata is not provider ownership proof"
+      ],
+      "schema": "hexalith.platform.independent-calibration/v1",
+      "status": "reviewed-offline-implemented-operational-identity-and-environment-holds",
+      "target": {
+        "candidateHost": "owner-selected node1 / 192.168.1.30",
+        "currentCapacity": null,
+        "physicalTarget": null,
+        "primary": null,
+        "reservation": null,
+        "hostMetadataObservation": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/kubectl-host-channel-20261028-r3p_1yr3/host-readiness-summary.json",
+          "sha256": "4c078eeee910eda2565330c044cd51527784254296c9757e92043b2a6b7b5da3"
+        },
+        "backupDestination": {
+          "provider": "scaleway",
+          "projectId": "bed84924-0e48-4275-8b7c-5d9a1f57a8dd",
+          "bucket": "hexalith-recovery-points",
+          "endpoint": "https://s3.fr-par.scw.cloud",
+          "region": "fr-par",
+          "keyPrefix": "memories/"
+        }
+      },
+      "workload": {
+        "backlogCommandContract": "Supported --calibration launch executes the separate backlog lane before writers. There is no separate ungated backlog entry point.",
+        "measurementCommands": [
+          "existing authenticated bodyless fixed-workload HTTP route via exact kubectl exec",
+          "lifecycle /metrics state-operation counters with stable Pod UIDs",
+          "psql PHYSICAL_SQL: database, heap/TOAST, every access_telemetry/pg_toast relation/index, WAL and exact record count",
+          "Kubernetes metrics API: fresh complete Pod/container CPU/memory, missing provider refuses",
+          "quiesce exact gate/Lease/writers then bounded VACUUM (FULL, ANALYZE) and physical readback"
+        ],
+        "remainingProof": "Independent lane occupancy is not C1.10 expired-backlog drain, C2 replacement/fault, C3 real retention/24h physical reclamation, compatible renewals or full admission. Those checks remain mandatory.",
+        "separateBacklogLane": "1200 fixed 125-record segments through real typed-logger endpoint; require exact 150000-row SQL snapshot",
+        "writerLane": "two distinct Pod writers, 1801 one-second segments each; require >=1800000ms measured common overlap, >=450000 accepted and actual >=900000 component-operation counter delta"
+      },
+      "reservationFieldsRequired": [
+        "issuer",
+        "reservationId",
+        "owner",
+        "validFromUtcMs",
+        "validUntilUtcMs",
+        "disposition=active",
+        "revokedUtcMs=null",
+        "exact backing and available/competing/reserved operands"
+      ],
+      "monitoring": "Launch owns startup, native lanes, physical rewrite, monitoring and removal in one foreground supervision. Per-allocation >=20% free, WAL<=4GiB, actual resource/latency/error readbacks; original execution and cumulative cleanup budgets persist.",
+      "launchReady": false,
+      "launchAuthorizationNote": "Owner host/S3 integration and original one-run approval accepted; exact runtime plan,reservations,credentials,isolated engine,monitor/time/window inputs remain unbound. Attempt unused.",
+      "resourceSelection": "small-configured-candidate-unmeasured",
+      "backupMode": "scaleway-s3",
+      "s3IntegrationRecord": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/s3-calibration-integration-20261029-6w3b45uc/s3-integration-reviewed-record.json",
+        "sha256": "2d4103680eb5276450aa5f3c3cc2bbba75eee3970484873462386901ae68eb77"
+      }
     },
     "discovery": {
       "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/discovery-results.json",
@@ -837,6 +1424,125 @@
       "hostCaptureAttemptConsumed": true,
       "qualificationCredit": false,
       "scope": "Existing bound artifacts/source and bounded local host/Docker metadata only. Completed implementation suites/reviews and node1 capture were not repeated. No prepare/launch, reservation, allocation or runtime mutation."
+    },
+    "ownerSelectedPlatformHost": {
+      "selectedHost": "192.168.1.30",
+      "node": "node1",
+      "selection": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/platform-host-selection-20261029-qaww_r4k/selection.json",
+        "sha256": "770af80cadd5ece5efb6ca57c6f8f12c16a05f718fcceca15e2ca27e0cea3806"
+      },
+      "status": "owner-selected-existing-host-s3-integration-approved-offline-implemented",
+      "launchReady": false,
+      "verification": {
+        "verifier": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/platform-host-selection-20261029-qaww_r4k/verify-selection.py",
+          "sha256": "182ee0853ec1c04fc9c7182962900d2ed3cf13c3f610870b71fbe39e0aa6a750"
+        },
+        "command": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/platform-host-selection-20261029-qaww_r4k/verification-command.json",
+          "sha256": "573480c909fc78f24f1169328bea59e04720df3280747de24291cfd3a3442627"
+        },
+        "result": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/platform-host-selection-20261029-qaww_r4k/verification-result.json",
+          "sha256": "097c7305c0add3dbb3092942d5fe5b96ba6ccf878adcb58a894506ca2e10c465"
+        },
+        "passedChecks": 31
+      }
+    },
+    "s3Integration": {
+      "record": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/s3-calibration-integration-20261029-6w3b45uc/s3-integration-reviewed-record.json",
+        "sha256": "2d4103680eb5276450aa5f3c3cc2bbba75eee3970484873462386901ae68eb77"
+      },
+      "status": "reviewed-offline-implemented-operational-identity-and-environment-holds",
+      "implementationStatus": "complete",
+      "draft": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/s3-calibration-integration-20261029-6w3b45uc/calibration-plan-s3-small-reviewed.draft.json",
+        "sha256": "a41c5b75b0b7d578db52cae908ee3e98eedba4a2691391f1968baec7edf99803"
+      },
+      "unresolvedNullCount": 37,
+      "verification": {
+        "coordinatorFinalFocused": {
+          "executed": 60,
+          "passed": 60,
+          "elapsedSeconds": 21.534,
+          "errors": 0,
+          "failures": 0,
+          "skips": 0
+        },
+        "currentUniqueDiscovery": 60,
+        "S3Cases": 24,
+        "independentCases": 36,
+        "reviewPatchFocused": {
+          "executed": 27,
+          "passed": true
+        },
+        "reviewPatchFinalTargeted": {
+          "executed": 4,
+          "passed": true
+        },
+        "campaignCapacityChart": {
+          "executed": 74,
+          "passed": true
+        },
+        "sharedQualifier": {
+          "executed": 15,
+          "passed": 14,
+          "errors": 1,
+          "blocker": "missing uninitialized nested references/Hexalith.Builds/Props/Directory.Packages.props; reproduced on pristine HEAD qualifier"
+        },
+        "separateRootDeclaredCatalogReadOnly": {
+          "evaluations": 2,
+          "passed": true
+        },
+        "unchangedBaselineInputs": 16
+      },
+      "finalReview": {
+        "layers": 3,
+        "individualFindings": 13,
+        "patchedIndividualFindings": 11,
+        "patchedRootCauses": 10,
+        "codeOrCoverageFindingsUnresolved": 0,
+        "mediumUnverifiedOperationalPrerequisites": 2,
+        "triage": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/s3-calibration-integration-20261029-6w3b45uc/review-triage.json",
+          "sha256": "26f3da016cb4001ee0354a5b50d865cbe8e3195e16705fa04f49c7a1d0502a7f"
+        },
+        "ledger": "_bmad-output/implementation-artifacts/deferred-work.md",
+        "noReviewLoopback": true
+      },
+      "broadGatePassed": false,
+      "broadGateBlocker": {
+        "owner": "J\u00e9r\u00f4me Piquot / Platform qualification maintainers",
+        "test": "test_qualify.QualifierFailureTests.test_source_package_boundary_keeps_catalog_pins_and_exposes_conflicts",
+        "cause": "missing uninitialized nested Platform/references/Hexalith.Builds/Props/Directory.Packages.props",
+        "broadCommand": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/s3-calibration-integration-20261029-6w3b45uc/compatibility-command.json",
+          "sha256": "bf3b972ec88cfd1b594ac4be28469618aa8e29279ae410d65ca5b9c1b0485cb9"
+        },
+        "result": "exit1: 89 executed,88 passed,1 error; unchanged pristine-HEAD reproduction also exit1",
+        "consequence": "89-case broad gate is not green; no overall story/qualification completion inferred",
+        "reopenTrigger": "Run in an owning Platform workspace with the permitted direct Builds dependency, or address workspace-aware source evaluation separately; no nested initialization or gate weakening is authorized here",
+        "separateFocusedEvidence": "2/2 read-only MSBuild evaluations using existing root-declared Builds/EventStore/Commons sources pass; this does not pass the broad gate"
+      },
+      "launchAuthorized": true,
+      "launchReady": false,
+      "recordsVerification": {
+        "verifier": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/s3-calibration-integration-20261029-6w3b45uc/verify-integration-final-records.py",
+          "sha256": "1635275f86042f5ec3d98a791f789efe7105a3d2a9a4fde8392bf29d8db95f13"
+        },
+        "command": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/s3-calibration-integration-20261029-6w3b45uc/final-records-verification-command.json",
+          "sha256": "0e825f9fbda3363058bd5a17c7983ccc0dc1e9e433a0c3971c680d5577cd345f"
+        },
+        "result": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/s3-calibration-integration-20261029-6w3b45uc/final-records-verification-result.json",
+          "sha256": "7329ebb31932efce672ad2d53a7128ff8b43a3946493e697e9a76d083afedfe3"
+        },
+        "passedChecks": 116
+      }
     }
   },
   "lifecyclePlanDraft": {
@@ -860,7 +1566,7 @@
   "privateRoot": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg",
   "qualificationCredit": false,
   "statePathReservedButNotCreated": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/campaign-state",
-  "status": "host-capture-complete-calibration-operational-inputs-blocked",
+  "status": "reviewed-offline-implemented-operational-identity-and-environment-holds",
   "story27_4": "in-progress",
   "toolInputsDraft": {
     "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/tool-inputs.draft.json",
@@ -870,5 +1576,9 @@
     "path": "/home/administrator/projects/hexalith/memories/docs/operations/qualification/full-campaign-preparation-2026-10-25/verification.json",
     "sha256": "fb10a137ffba2efea2cea780e9cb2c0386034a522fe78f4ce12f1c9f6eb476c8"
   },
-  "verificationScope": "verification.json retains the initial inventory result; operationalPrerequisiteVerification records only this continuation and its changed inputs."
+  "verificationScope": "verification.json retains the initial inventory result; operationalPrerequisiteVerification records only this continuation and its changed inputs.",
+  "selectedCalibrationDraft": {
+    "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/s3-calibration-integration-20261029-6w3b45uc/calibration-plan-s3-small-reviewed.draft.json",
+    "sha256": "a41c5b75b0b7d578db52cae908ee3e98eedba4a2691391f1968baec7edf99803"
+  }
 }
