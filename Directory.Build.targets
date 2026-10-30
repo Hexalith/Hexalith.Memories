@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup Condition="'$(HexalithEventStoreFromSource)' == 'true'"><DefineConstants>$(DefineConstants);HEXALITH_DEVELOPMENT_CATALOG_SOURCE</DefineConstants></PropertyGroup>
-  <PropertyGroup Condition="('$(MSBuildProjectName)' == 'Hexalith.Memories.Server' or '$(MSBuildProjectName)' == 'Hexalith.Memories.Server.Tests') and '$(HexalithEventStoreFromSource)' == 'true'">
+  <PropertyGroup Condition="('$(MSBuildProjectName)' == 'Hexalith.Memories.Server' or '$(MSBuildProjectName)' == 'Hexalith.Memories.Server.Tests') and ('$(HexalithEventStoreFromSource)' == 'true' or $([MSBuild]::VersionGreaterThanOrEquals('$(HexalithEventStoreVersion)', '3.128.5')))">
     <DefineConstants>$(DefineConstants);HEXALITH_EVENTSTORE_MULTI_DOMAIN_WORKLOAD</DefineConstants>
   </PropertyGroup>
   <PropertyGroup Condition="'$(EnableContainer)' == 'true'">
