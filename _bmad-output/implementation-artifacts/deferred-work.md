@@ -5903,3 +5903,14 @@ status: open
 - source_spec: `_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-14.md`
   summary: Medium-unverified: measure the selected Scaleway bucket's actual owning project before S3 calibration admission.
   evidence: B6; owner Jérôme Piquot / Platform Operations. Fixed endpoint/bucket/project and signed provider reservation bind owner assertions; x-amz-meta-project-id proves metadata round-trip only. No native current bucket-owner/project observation was executed. Reopen with authoritative current bucket/project evidence bound to the actual destination and reservation before admission; no ownership, live qualification or A41 closure is inferred.
+
+
+## Deferred from: Story 27.4 workspace package-boundary verification (2026-10-30)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-14.md`
+  summary: Add a genuinely owner-only package fixture to the shared source-package boundary verification.
+  evidence: Review B2 verified the existing ByteAether.Ulid assertion predates this correction and shared Builds already declares that package; it cannot prove preservation of an owner-only addition. This pre-existing coverage gap can miss a future regression dropping an owner-specific package. Current resolver correction and 92-case result remain valid; no package loss was observed. Owner: Platform qualification maintainers; reopen when strengthening source-packages.props coverage.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-14.md`
+  summary: Assert exact single-occurrence cryptography catalogue pins in the Commons source-package boundary evaluation.
+  evidence: Review B3 verified both original and corrected tests apply pin assertions to Platform composition, while Commons evaluation checks only ByteAether.Ulid presence. This pre-existing coverage gap could miss Commons-specific pin removal or duplication; no current incorrect version was demonstrated. Owner: Platform qualification maintainers; reopen with the Commons boundary test-hardening change.

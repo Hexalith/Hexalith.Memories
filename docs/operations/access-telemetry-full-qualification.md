@@ -1,5 +1,22 @@
 # Access-telemetry full qualification — pending campaign
 
+## Workspace source verification — 2026-10-30 (current)
+
+The qualifier's test-only dependency resolver now uses supported existing
+sibling sources or the standalone nested layout without initializing submodules.
+The previously blocked compatibility group passes **92/92** (74 existing
+campaign/capacity/chart plus 18 qualifier), zero errors/failures/skips. Both
+cryptography pins, Commons additions and conflicting-version assertions remain
+active. The single report and preparation index bind exact before/after evidence;
+the original 89-case failed snapshot below remains history.
+
+No executable source or operational binding changed: the selected S3 draft still
+has 37 nulls and its 10 native-source hashes match. Read-only inspect refuses the
+absent prepared state. Existing run approval persists, launch remains unused;
+actual isolated node1 engine, signed net allocations/reservations, complete runtime,
+credential/monitor/clock/action/window bindings and real IAM/project observations
+remain required. This verification supplies no live qualification or A41 closure.
+
 ## Approved node1/Scaleway calibration route — 2026-10-29 (current)
 
 Final reviewed code passes **60/60** S3/independent tests. All code, coverage and

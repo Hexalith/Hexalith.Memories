@@ -1,5 +1,51 @@
 # Story 27.4 — current retention results
 
+## Workspace package-boundary verification — 2026-10-30 (current)
+
+The qualifier's missing-nested-Builds blocker is resolved with a test-only source
+resolver matching Platform/EventStore sibling and standalone layouts. No nested
+submodule was initialized. The original case failed before the fix; final focused
+verification passes 4/4 and the final qualifier suite passes 18/18 in 2.335s.
+
+The coordinator reran the previously blocked compatibility group from Platform
+root with `PYTHONPATH=eng/helm-qualification` and the existing pinned `HELM_BIN`:
+`python3 -B -m unittest test_campaign_lifecycle test_campaign_capacity test_chart test_qualify -v`.
+It passes **92/92 in 125.040s**, exit 0, zero errors/failures/skips (74 existing
+campaign/capacity/chart cases plus 18 qualifier). The former 89-case failure and
+S3 review remain authentic historical snapshots; they were not rewritten or
+relabelled. Final S3 code and its 60-case review campaign were not repeated.
+
+Private evidence is `workspace-package-boundary-20261030-44gix5aq` under the
+existing preparation root. `verification-record.json` and its exact raw logs,
+argv/environment/timing and pre/post source hashes are bound in the existing
+preparation index and command catalogue. Source revisions: Memories
+`466e3b9dacec3f7c16edb3b5f242a6727c55583f`; Platform
+`c3926f10154c33f26b0bd82e823be3190830d2c7`, plus the recorded uncommitted test
+SHA256. Both cryptography pins remain 10.0.14; Commons ByteAether.Ulid and
+conflicting-version assertions remain active. Temporary-directory cases cover
+both layouts, precedence, fallback and fail-closed missing owner inputs.
+
+All 10 native executable hashes and the selected 37-null S3 draft still match.
+Supported local inspect returned exit 1 / `invalid-operational-input` in 0.183s
+without creating state. Owner approval persists and the launch is unused.
+Actual isolated node1 Docker engine, signed net capacity/primary/provider
+reservations, runtime/credential/staging inputs, independent clock/action/window
+and current provider principal/bucket-owner observations still precede admission.
+No live contact, credential read, install, prepare or launch occurred. Story 27.4
+remains in progress; qualification/Production unproved, A41 open.
+
+One three-layer review completed. Edge-case and verification-gap layers found no
+issues. Blind review supplied five observations: one additive result-supersession
+metadata correction is fixed, two observations were rejected on the owner selector
+and actual property-evaluation evidence, and two unchanged pre-existing Commons
+coverage gaps are appended to the deferred ledger. No new code finding remains.
+The existing preparation selectors now bind that review triage and its preserved
+ledger-prefix proof. Initial local record checks passed 48/48. Final verification of corrected
+selectors, historical bytes, exact file scope and private custody passes 69/69.
+Its verifier/result hashes are bound in both preparation selectors; the initial
+output-file permission check and correction remain explicitly recorded. No current operational
+hold was waived and no old review campaign was repeated.
+
 ## Platform S3 calibration integration — 2026-10-29 (current)
 
 ### Final reviewed snapshot

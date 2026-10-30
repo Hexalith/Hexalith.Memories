@@ -291,6 +291,84 @@
         "sha256": "7329ebb31932efce672ad2d53a7128ff8b43a3946493e697e9a76d083afedfe3"
       },
       "passedChecks": 116
+    },
+    "workspacePackageBoundaryVerification": {
+      "supersession": {
+        "supersededOfflineResultPointers": [
+          "preparation.json#/independentCalibration/s3Integration/broadGatePassed",
+          "preparation.json#/independentCalibration/s3Integration/broadGateBlocker",
+          "preparation.json#/independentCalibration/s3Integration/verification/sharedQualifier"
+        ],
+        "preservedHistoricalResultPointer": "preparation.json#/history/s3IntegrationBeforeFinalReview-2026-10-29",
+        "interpretation": "The unchanged blocked-result entries preserve the earlier 89-case result (88 passed,1 error). This verification supersedes only their current offline blocker interpretation with qualifier18/18 and compatibility92/92; it does not relabel the earlier run or resolve operational holds.",
+        "remainingOperationalHoldPointers": [
+          "preparation.json#/independentCalibration/capability/remainingOperationalInputs",
+          "preparation.json#/independentCalibration/capability/launchReady",
+          "command-catalog.json#/calibrationAction/remainingOperationalInputs",
+          "command-catalog.json#/calibrationAction/launchReady"
+        ],
+        "operationalHoldsSuperseded": false
+      },
+      "record": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/workspace-package-boundary-20261030-44gix5aq/verification-record.json",
+        "sha256": "f4e1b94cc4bffa9a074099a58790387bd8fdc24caaab7339577debb90f02683c"
+      },
+      "status": "offline-verification-passed-operational-inputs-still-held",
+      "qualifier": {
+        "executed": 18,
+        "passed": 18,
+        "errors": 0,
+        "failures": 0,
+        "skips": 0,
+        "elapsedSeconds": 2.335
+      },
+      "compatibility": {
+        "executed": 92,
+        "passed": 92,
+        "errors": 0,
+        "failures": 0,
+        "skips": 0,
+        "elapsedSeconds": 125.04
+      },
+      "resolvedBlocker": "qualifier source-package test hardcoded absent nested dependencies despite supported sibling sources",
+      "historicalRunPreserved": "2026-10-29 compatibility: 89 executed,88 passed,1 error; unchanged historical receipt",
+      "selectedDraftUnchanged": true,
+      "currentNativeSourceBindingsUnchanged": 10,
+      "draftNullCount": 37,
+      "launchReady": false,
+      "launchAttemptConsumed": false,
+      "qualificationCredit": false,
+      "review": {
+        "record": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/workspace-package-boundary-20261030-44gix5aq/review-triage.json",
+          "sha256": "38962c81987f5b0263e62fe0e1ccf3fc392d874967e5854ce8c97c4f2a1305e6"
+        },
+        "layers": 3,
+        "findings": 5,
+        "patched": 1,
+        "deferredPreExistingCoverage": 2,
+        "unresolvedNewCodeFindings": 0
+      },
+      "recordsVerification": {
+        "command": [
+          "python3",
+          "-B",
+          "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/workspace-package-boundary-20261030-44gix5aq/verify-final-records.py"
+        ],
+        "verifier": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/workspace-package-boundary-20261030-44gix5aq/verify-final-records.py",
+          "sha256": "90491ec8c91dbd80fffc63833b5897ee1564e83efb18eb0e6f00a9195ba04a07"
+        },
+        "result": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/workspace-package-boundary-20261030-44gix5aq/final-records-verification.json",
+          "sha256": "8c8fdc79dd57ad9d3190a2d1e1e3757bd18e6902f1b985c01c9bc7f318a5883c"
+        },
+        "passedChecks": 69,
+        "initialOutputCustodyCorrection": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/workspace-package-boundary-20261030-44gix5aq/record-verifier-output-correction.json",
+          "sha256": "c96970b89b6ae6371da364f61b2a6f80d0e079b43c15fd67c32b5e27f0efb3da"
+        }
+      }
     }
   },
   "history": {

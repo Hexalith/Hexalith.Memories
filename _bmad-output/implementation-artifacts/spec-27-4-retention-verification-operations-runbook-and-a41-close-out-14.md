@@ -14,6 +14,106 @@ context:
 
 # Story 27.4 — active functional retention contract
 
+## Workspace package-boundary verification — 2026-10-30 (active continuation)
+
+Resume the existing story after its changes were pushed. Reopen the precisely
+identified offline broad-gate blocker through workspace-aware source evaluation,
+as permitted by the existing report. Completed S3 implementation and review below
+remain historical evidence, not work to repeat. This small correction grants no
+live operational readiness, gate credit or A41 closure. Keep the existing story
+baseline, owner approval, unused calibration attempt and consumed host capture.
+
+### Code map and tasks
+
+- [x] `references/Hexalith.Platform/eng/helm-qualification/test_qualify.py`:
+  correct `test_source_package_boundary_keeps_catalog_pins_and_exposes_conflicts`
+  to resolve existing Builds, EventStore and Commons sources in the supported
+  sibling-workspace and standalone nested layouts. Match Platform's existing
+  `Directory.Build.props` precedence and actual owner files; preserve both
+  cryptography pins, owner-specific ByteAether.Ulid and conflicting-version
+  assertions. Missing sources must fail explicitly, never skip or initialize.
+  Keep this test-only resolver local and cover both layouts, precedence and
+  missing inputs with temporary directories rather than real submodule changes.
+- [x] Execute the previously failing case meaningfully before and after the
+  correction, then the complete `test_qualify` suite with the existing pinned
+  `HELM_BIN` and `PYTHONPATH=eng/helm-qualification`. Use Debug source evaluation;
+  no restore, build-output cleanup, dependency install or remote operation.
+- [x] Coordinator: inspect the small delta, preserve all ten current native-source
+  bindings and the selected 37-null draft, and update this spec, the single
+  report, full-campaign runbook, existing preparation index/catalogue and
+  append-only deferred ledger with
+  authentic new evidence. Preserve prior receipts and failed-gate results as
+  history; do not relabel the earlier 89-case run as passing. No new numbered
+  execution specification, completed S3 review campaign or live launch.
+
+### Acceptance
+
+- Given either supported source layout, when the source-package boundary is
+  evaluated, then both catalog pins occur exactly once, Commons owner additions
+  survive, and conflicting versions remain visible rather than deduplicated away.
+- Given both layouts or missing dependencies, when resolved, then existing sibling
+  inputs have Platform's documented priority and missing source fails with the
+  dependency/path identified; no recursive discovery, submodule mutation or skip.
+- Given the correction, when the affected qualifier suite runs, then every case
+  executes and passes; retain exact command/result and pre-fix failure separately.
+- Given completed offline verification, when readiness is reported, then the
+  absent isolated node1 Docker engine, actual reservations/runtime/credentials,
+  independent clock/action/window and real provider identity/ownership observations
+  remain blockers. Story 27.4 stays in progress, A41 open and launch unused.
+
+### Implementation Notes
+
+The parent workspace and Platform working trees were clean before this
+continuation. Capture full canonical source revisions directly from Git for evidence. This continuation owns only the test path above and the six named
+Memories records. Work from the owning repository. Follow the root AGENTS.md and
+ordinary Hexalith baseline; never discover, load or execute skills under
+`references/`. Prior live permissions are not broadened: no infrastructure,
+cluster/provider contact, secret-value read, installation, staging, commit or
+push. The coordinator updates records after the implementer returns. The
+implementer changes only the test, captures verification and reports its result.
+
+### Verification result — current continuation
+
+The original source-package case reproduced its missing-nested-Builds error
+before the correction. The corrected final qualifier passes 18/18 (2.335s),
+including three new layout/precedence/missing-source cases. The coordinator's
+complete compatibility command passes 92/92 (125.040s), exit 0, with no errors,
+failures or skips: 74 existing campaign/capacity/chart and 18 qualifier cases.
+The earlier 89-case failed run remains historical evidence, unchanged.
+
+Only Platform's `eng/helm-qualification/test_qualify.py` changed. Both actual
+cryptography catalogue pins remain 10.0.14; Commons additions and conflicting
+versions remain asserted. The ten native executable source hashes, selected
+37-null draft, original owner approval and absent operational state are unchanged.
+Local inspect returns exit 1 / `invalid-operational-input` in 0.183s without
+creating state. No prepare/launch, provider/cluster contact or credential read
+occurred. Full source revisions, pre/post logs, final file hash and exact command
+receipts are bound by `independentCalibration.workspacePackageBoundaryVerification`
+in the existing preparation index; current review applies only to this delta.
+The existing story baseline and all earlier accepted evidence are retained.
+
+### Review Triage Log — workspace package boundary
+
+All three review layers completed once. Edge-case and verification-gap layers
+reported no findings. Each blind-review finding is retained individually below.
+
+| Finding | Verdict | Route and evidence |
+| :--- | :--- | :--- |
+| B1 | false | Rejected: owner source selection uses the existing Contracts directory marker. The package-boundary test validates required catalogues, not a complete project build graph; missing package inputs already fail explicitly. Requiring a project file would change the owner selector. |
+| B2 | medium | Deferred: the unchanged original ByteAether.Ulid assertion names a shared Builds package, so it cannot prove an owner-only addition survives. A distinct pre-existing coverage entry is appended to the ledger. |
+| B3 | medium | Deferred: the unchanged original Commons evaluation lacks the Platform evaluation's exact cryptography pin/count assertions. A separate pre-existing coverage entry is appended; no current wrong pin is demonstrated. |
+| B4 | low | Rejected: two actual owner MSBuild property evaluations, without root overrides, agree for all three roots. All existing selector orders have temporary-layout coverage. A future-policy drift harness would add complexity for a rare change without a demonstrated current mismatch. |
+| B5 | low | Patched: both new verification objects explicitly supersede the named older blocked-result fields and preserve their historical result; operational holds remain active. |
+
+The correction is complete: 92/92 compatibility cases pass on the final unchanged
+test source; no code finding remains. Two pre-existing coverage gaps are deferred.
+New JSON supersession metadata passed focused pointer, preservation and digest
+checks; no product suite needed repeating after this record-only patch. Final artifact verification passes 69/69; the
+single report and private review triage retain exact evidence. This closes only the
+current offline correction. Overall Story 27.4 and its sprint entry remain
+`in-progress`, its live attempt is unused and A41 open; no commit is authorized
+by this continuation's explicit no-staging/no-commit boundary.
+
 ## Approved Platform S3 calibration integration — 2026-10-29 (active continuation)
 
 The owner replied **“approve”** to using Platform's existing Scaleway backup
