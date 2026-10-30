@@ -25,6 +25,13 @@
             "resourceId": "memories-access-telemetry",
             "enabled": true,
             "required": true
+          },
+          {
+            "id": "domain",
+            "appId": "memories-domain-service",
+            "resourceId": "memories-domain-service",
+            "enabled": true,
+            "required": true
           }
         ],
         "dependencies": [
@@ -114,6 +121,24 @@
             "configurationKey": "NaturalLanguage:DaprComponentName",
             "servers": [
               "server"
+            ]
+          },
+          {
+            "role": "state",
+            "capability": "state",
+            "recoveryClass": "authoritative-restore",
+            "configurationKey": "EventStore:ReadModelStore:StateStoreName",
+            "servers": [
+              "domain"
+            ]
+          },
+          {
+            "role": "state",
+            "capability": "state",
+            "recoveryClass": "authoritative-restore",
+            "configurationKey": "EventStore:StateStoreName",
+            "servers": [
+              "domain"
             ]
           }
         ],
@@ -372,6 +397,12 @@
             "volumes": []
           },
           {
+            "server": "domain",
+            "requests": {},
+            "limits": {},
+            "volumes": []
+          },
+          {
             "server": "clock",
             "requests": {},
             "limits": {},
@@ -607,6 +638,37 @@
                 ]
               }
             ]
+          },
+          {
+            "name": "memories-domain",
+            "server": "domain",
+            "protocol": "http",
+            "routePrefix": "/",
+            "exposure": "internal-only",
+            "surfaceClass": "service",
+            "authorization": {
+              "policy": "authenticated",
+              "permissions": []
+            },
+            "callers": [
+              "eventstore"
+            ],
+            "operations": [
+              {
+                "name": "process",
+                "kind": "command",
+                "authorizationPolicy": "authenticated"
+              }
+            ],
+            "invocationRules": [
+              {
+                "caller": "eventstore",
+                "path": "/process",
+                "verbs": [
+                  "POST"
+                ]
+              }
+            ]
           }
         ]
       },
@@ -797,6 +859,11 @@
         "readiness": [
           {
             "server": "server",
+            "kind": "http",
+            "endpoint": "/ready"
+          },
+          {
+            "server": "domain",
             "kind": "http",
             "endpoint": "/ready"
           },

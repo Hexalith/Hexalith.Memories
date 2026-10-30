@@ -1,4 +1,5 @@
 <Project>
+  <PropertyGroup Condition="'$(HexalithEventStoreFromSource)' == 'true'"><DefineConstants>$(DefineConstants);HEXALITH_DEVELOPMENT_CATALOG_SOURCE</DefineConstants></PropertyGroup>
   <PropertyGroup Condition="('$(MSBuildProjectName)' == 'Hexalith.Memories.Server' or '$(MSBuildProjectName)' == 'Hexalith.Memories.Server.Tests') and '$(HexalithEventStoreFromSource)' == 'true'">
     <DefineConstants>$(DefineConstants);HEXALITH_EVENTSTORE_MULTI_DOMAIN_WORKLOAD</DefineConstants>
   </PropertyGroup>

@@ -7,7 +7,8 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Hexalith.Memories.EventStore\Hexalith.Memories.EventStore.csproj" />
-    <PackageReference Include="Hexalith.EventStore.DomainService" />
+    <ProjectReference Include="$(HexalithEventStoreRoot)/src/Hexalith.EventStore.DomainService/Hexalith.EventStore.DomainService.csproj" Condition="'$(HexalithEventStoreFromSource)' == 'true'" />
+    <PackageReference Include="Hexalith.EventStore.DomainService" Condition="'$(HexalithEventStoreFromSource)' != 'true'" />
     <InternalsVisibleTo Include="Hexalith.Memories.DomainService.Tests" />
   </ItemGroup>
 </Project>
