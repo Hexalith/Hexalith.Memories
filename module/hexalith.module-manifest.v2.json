@@ -658,12 +658,24 @@
                 "name": "process",
                 "kind": "command",
                 "authorizationPolicy": "authenticated"
+              },
+              {
+                "name": "admin-operational-index-metadata",
+                "kind": "administration",
+                "authorizationPolicy": "authenticated"
               }
             ],
             "invocationRules": [
               {
                 "caller": "eventstore",
                 "path": "/process",
+                "verbs": [
+                  "POST"
+                ]
+              },
+              {
+                "caller": "eventstore",
+                "path": "/admin/operational-index-metadata",
                 "verbs": [
                   "POST"
                 ]
