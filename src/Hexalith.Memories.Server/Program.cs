@@ -23,7 +23,7 @@ builder.AddMemoriesServerServices();
 Hexalith.EventStore.ServiceDefaults.Routing.DevelopmentRouteCatalogBootstrap.AddEventStoreDevelopmentRouteCatalogBootstrap(
     builder.Services, builder.Configuration, (_, token) =>
         Hexalith.EventStore.ServiceDefaults.Routing.DevelopmentRouteCatalogInputs.CaptureAsync(
-            builder.Configuration, "memories", [], [], [], [], [], token));
+            builder.Configuration, builder.Configuration["EventStore:DomainService:AppId"] ?? "memories", [], [], [], [], [], token));
 #endif
 
 WebApplication app = builder.Build();
