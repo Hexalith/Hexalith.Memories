@@ -5,6 +5,7 @@
 
 namespace Hexalith.Memories.Server.Tests.Deployment;
 
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -125,17 +126,38 @@ public sealed class AppHostSecurityConfigurationTests
         }
     }
 
-    [Fact]
-    public void Server_ReferencesEventStoreClientWithoutInlineVersion()
+    [Theory]
+    [InlineData(false, false, false, false)]
+    [InlineData(true, false, false, true)]
+    [InlineData(true, true, false, false)]
+    [InlineData(true, true, true, true)]
+    public async Task Server_ReferencesEventStoreClientWithoutInlineVersionAsync(bool fromSource, bool hostedProfile, bool publishing, bool expectedSource)
     {
         string serverProject = ReadRepoFile(
             "src",
             "Hexalith.Memories.Server",
             "Hexalith.Memories.Server.csproj");
 
-        serverProject.ShouldContain(
-            "<PackageReference Include=\"Hexalith.EventStore.Client\" Condition=\"'$(HexalithEventStoreFromSource)' != 'true'\" />",
-            Case.Sensitive);
+        XElement clientReference = XDocument.Parse(serverProject).Descendants("PackageReference")
+            .Single(element => (string?)element.Attribute("Include") == "Hexalith.EventStore.Client");
+        clientReference.Attribute("Version").ShouldBeNull();
+        clientReference.Elements("Version").ShouldBeEmpty();
+        string serverPath = Path.Combine(ResolveRepoRoot(), "src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj");
+        using JsonDocument evaluation = await EvaluateProjectAsync(serverPath,
+            $"-p:Configuration={(fromSource ? "Debug" : "Release")}",
+            $"-p:UseHexalithProjectReferences={fromSource.ToString().ToLowerInvariant()}",
+            $"-p:HexalithEventStoreFromSource={fromSource.ToString().ToLowerInvariant()}",
+            $"-p:HexalithUsePublishedSdkForHostedTests={hostedProfile.ToString().ToLowerInvariant()}",
+            $"-p:IsPublishing={publishing.ToString().ToLowerInvariant()}",
+            "-p:HexalithMemoriesVersion=3.0.13", "-p:HexalithEventStoreVersion=3.129.0");
+        JsonElement items = evaluation.RootElement.GetProperty("Items");
+        items.GetProperty("ProjectReference").EnumerateArray().Count(item =>
+            Path.GetFileNameWithoutExtension(item.GetProperty("Identity").GetString()!.Replace('\\', '/')) == "Hexalith.EventStore.Client")
+            .ShouldBe(expectedSource ? 1 : 0);
+        items.GetProperty("PackageReference").EnumerateArray().Count(item => item.GetProperty("Identity").GetString() == "Hexalith.EventStore.Client")
+            .ShouldBe(expectedSource ? 0 : 1);
+        items.GetProperty("PackageVersion").EnumerateArray().Single(item => item.GetProperty("Identity").GetString() == "Hexalith.EventStore.Client")
+            .GetProperty("Version").GetString().ShouldBe("3.129.0");
         serverProject.ShouldNotContain(
             "Hexalith.EventStore.Client\" Version=",
             Case.Sensitive);
@@ -187,8 +209,14 @@ public sealed class AppHostSecurityConfigurationTests
         registration.ShouldContain("builder.Services.AddEventStoreGatewayClient(options =>", Case.Sensitive);
     }
 
-    [Fact]
-    public void RootDirectoryPackages_RequiresDeliveredCatalogSdkWithoutLoweringNewerSelections()
+    [Theory]
+    [InlineData("", false, "3.129.0")]
+    [InlineData("3.128.4", false, "3.129.0")]
+    [InlineData("3.129.0", false, "3.129.0")]
+    [InlineData("3.129.1", false, "3.129.1")]
+    [InlineData("3.130.0", false, "3.130.0")]
+    [InlineData("3.128.4", true, "3.128.4")]
+    public async Task RootDirectoryPackages_RequiresDeliveredCatalogSdkWithoutLoweringNewerSelectionsAsync(string selected, bool fromSource, string expected)
     {
         string rootCatalog = ReadRepoFile("Directory.Packages.props");
 
@@ -200,9 +228,38 @@ public sealed class AppHostSecurityConfigurationTests
         floor.Value.ShouldBe("3.129.0");
         ((string?)floor.Attribute("Condition")).ShouldBe(
             "'$(HexalithEventStoreFromSource)' != 'true' and ('$(HexalithEventStoreVersion)' == '' or $([MSBuild]::VersionLessThan('$(HexalithEventStoreVersion)', '3.129.0')))");
-        XElement update = owningCatalog.Descendants("PackageVersion").Single();
+        XElement update = owningCatalog.Descendants("PackageVersion").Single(element => (string?)element.Attribute("Update") == "Hexalith.EventStore.*");
         ((string?)update.Attribute("Update")).ShouldBe("Hexalith.EventStore.*");
         ((string?)update.Attribute("Version")).ShouldBe("$(HexalithEventStoreVersion)");
+        string fixture = Path.Combine(Path.GetTempPath(), "memories-evaluated-floor-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(fixture);
+        try
+        {
+            string project = Path.Combine(fixture, "Floor.proj");
+            new XDocument(new XElement("Project",
+                new XElement("PropertyGroup",
+                    new XElement("HexalithEventStoreVersion", selected),
+                    new XElement("HexalithEventStoreFromSource", fromSource.ToString().ToLowerInvariant()),
+                    new XElement("HexalithUsePublishedSdkForHostedTests", "true"),
+                    new XElement("HexalithMemoriesVersion", "3.0.13")),
+                new XElement("Import", new XAttribute("Project", Path.Combine(ResolveRepoRoot(), "Directory.Packages.props")))))
+                .Save(project);
+            using JsonDocument evaluation = await EvaluateProjectAsync(project);
+            evaluation.RootElement.GetProperty("Properties").GetProperty("HexalithEventStoreVersion").GetString().ShouldBe(expected);
+            JsonElement[] versions = [.. evaluation.RootElement.GetProperty("Items").GetProperty("PackageVersion").EnumerateArray()];
+            JsonElement[] sdk = [.. versions.Where(item => item.GetProperty("Identity").GetString()!.StartsWith(EventStorePackagePrefix, StringComparison.Ordinal))];
+            sdk.ShouldNotBeEmpty();
+            sdk.ShouldAllBe(item => item.GetProperty("Version").GetString() == expected);
+            foreach (string ownerPackage in new[] { "Hexalith.Memories.ServiceDefaults", "Hexalith.Memories.Telemetry" })
+            {
+                versions.Single(item => item.GetProperty("Identity").GetString() == ownerPackage)
+                    .GetProperty("Version").GetString().ShouldBe("3.0.13");
+            }
+        }
+        finally
+        {
+            Directory.Delete(fixture, recursive: true);
+        }
     }
 
     [Fact]
@@ -282,6 +339,43 @@ public sealed class AppHostSecurityConfigurationTests
         Should.Throw<ShouldAssertException>(() => ReadSelectedBuildsCatalog(
             ReadBuildMetadata("EventStoreCatalogPath"), ReadBuildMetadata("EventStoreCatalogVersion"), "0.0.0"))
             .Message.ShouldContain("Client item", Case.Sensitive);
+    }
+
+    private static async Task<JsonDocument> EvaluateProjectAsync(string project, params string[] properties)
+    {
+        var start = new ProcessStartInfo("dotnet")
+        {
+            WorkingDirectory = ResolveRepoRoot(),
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        foreach (string key in new[] { "CustomBeforeDirectoryBuildProps", "CustomAfterMicrosoftCommonProps", "CustomBeforeDirectoryBuildTargets",
+            "CustomAfterDirectoryBuildTargets", "AfterMicrosoftNETSdkTargets", "HEXALITH_SOURCE_MAPPING_HASH" })
+        {
+            start.Environment.Remove(key);
+        }
+        foreach (string argument in new[] { "msbuild", project, "-nologo", "-getProperty:HexalithEventStoreVersion",
+            "-getItem:ProjectReference,PackageReference,PackageVersion" }.Concat(properties))
+        {
+            start.ArgumentList.Add(argument);
+        }
+        using Process process = Process.Start(start)!;
+        Task<string> output = process.StandardOutput.ReadToEndAsync();
+        Task<string> error = process.StandardError.ReadToEndAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+        try
+        {
+            await process.WaitForExitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            process.Kill(entireProcessTree: true);
+            await process.WaitForExitAsync();
+            throw;
+        }
+        process.ExitCode.ShouldBe(0, await output + await error);
+        return JsonDocument.Parse(await output);
     }
 
     private static string ReadBuildMetadata(string key)
