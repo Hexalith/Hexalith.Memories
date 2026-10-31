@@ -17,6 +17,8 @@ floor, CPM selections, source support, public inventory or release version.
 
 ## File Scope
 
+Allowed files for this story:
+
 - `tests/Hexalith.Memories.Server.Tests/Deployment/AppHostSecurityConfigurationTests.cs`
 - `_bmad-output/implementation-artifacts/spec-evaluate-hosted-catalog-guards.md`
 
