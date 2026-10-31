@@ -87,16 +87,17 @@ def technical(number):
 
 class OwnerFixture:
     def __init__(self, root, *, now=None, runtime_sha256=SHA, profile_sha256=_PROFILE,
-                 profile_id="PG-ONPREM-2", technical_factory=technical, target_override=None, campaign_schedule=None, campaign_origin_ms=None, renewal_round=None):
+                 profile_id="PG-ONPREM-2", technical_factory=technical, target_override=None, campaign_schedule=None, campaign_origin_ms=None, renewal_round=None, repository_root=None):
         self.root = root
+        self.repository_root = ROOT if repository_root is None else repository_root
         root.chmod(0o700)
         self.now = datetime.now(timezone.utc) if now is None else now
         self.ms = int(self.now.timestamp() * 1000)
-        self.commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+        self.commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=self.repository_root, text=True).strip()
         # Use an unchanged real owner source for synthetic C1 command contracts;
         # producer closure fixtures independently bind all edited consumer files.
         self.source = "tools/access_telemetry_c1_approval_policy.py"
-        source_sha = digest(subprocess.check_output(["git", "show", f"{self.commit}:{self.source}"], cwd=ROOT))
+        source_sha = digest(subprocess.check_output(["git", "show", f"{self.commit}:{self.source}"], cwd=self.repository_root))
         self.target = dict(apiServer="https://fixture.invalid:6443", apiCaSha256=digest(b"fixture-api-ca"), clusterUid="fixture-cluster", namespaceUid="fixture-namespace", initialRuntimeIdentitySha256=runtime_sha256, context="operator@local", namespace="memories-qualification", selector="app=qualification", appId="memories-access-telemetry", actorType="AccessTelemetryLifecycleActor")
         self.target.update(target_override or {})
         self.scope = dict(profileId=profile_id, profileSha256=profile_sha256, workloadSha256=_WORKLOAD, sessionId="fixture-session", sourceCommit=self.commit, targetSha256=digest(j1_bytes(self.target)), ownerPrincipal="github:user:6775094", assuranceMode="sole-owner/self-reviewed")
@@ -232,7 +233,7 @@ class OwnerFixture:
 
     def verify(self, **kwargs):
         with patch.dict(os.environ, self.env):
-            return lifecycle._validate_predecessor(self.predecessor, ROOT, self.root, **kwargs)
+            return lifecycle._validate_predecessor(self.predecessor, self.repository_root, self.root, **kwargs)
 
 
 class OwnerAuthorityTests(unittest.TestCase):

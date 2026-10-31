@@ -53,7 +53,7 @@ class CampaignReviewFixTests(unittest.TestCase):
         origin = self.now - (self.profile["renewalSchedule"]["phases"]["c3"][0] * 1000 if now is not None else 48 * 3600000)
         elapsed = ((self.now if now is None else now) - origin) // 1000
         round_ = next(r for r in reversed(self.profile["renewalSchedule"]["rounds"]) if r["readySeconds"] <= elapsed < r["collectionEndSeconds"])
-        return OwnerFixture(root, now=datetime.fromtimestamp((self.now if now is None else now) / 1000, timezone.utc),
+        return OwnerFixture(root, repository_root=self.repository_root, now=datetime.fromtimestamp((self.now if now is None else now) / 1000, timezone.utc),
             runtime_sha256=runtime_sha, profile_sha256=self.sha, profile_id=capacity.PROFILE_ID, technical_factory=self.facts,
             target_override={"context": self.profile["target"]["context"], "namespace": self.profile["target"]["namespace"]},
             campaign_schedule=self.profile["renewalSchedule"], campaign_origin_ms=origin, renewal_round=round_)
@@ -74,12 +74,12 @@ class CampaignReviewFixTests(unittest.TestCase):
         self.env["HEXALITH_CAMPAIGN_APPROVED_PROFILE_SHA256"] = outer["sha256"]
         self.refresh(self.now)
         with patch.dict(os.environ, self.env), self.assertRaises(lifecycle.EvidenceValidationError):
-            profiles.selected_campaign_profile(ROOT, now_ms=self.now, launch=True)
-        result = subprocess.run([sys.executable, "-B", str(base.PLATFORM / "campaign_capacity.py"),
+            profiles.selected_campaign_profile(self.repository_root, now_ms=self.now, launch=True)
+        result = subprocess.run([sys.executable, "-B", str(self.platform / "campaign_capacity.py"),
             "--profile", outer["path"], "--approved-sha256", outer["sha256"],
             "--current-capacity-receipt", self.env["HEXALITH_CAMPAIGN_CAPACITY_RECEIPT"],
             "--approved-capacity-sha256", self.env["HEXALITH_CAMPAIGN_APPROVED_CAPACITY_SHA256"]],
-            cwd=ROOT, capture_output=True, text=True, timeout=10)
+            cwd=self.repository_root, capture_output=True, text=True, timeout=10)
         self.assertEqual(1, result.returncode)
         self.assertFalse(json.loads(result.stdout)["capacityAdmitted"])
 
@@ -91,11 +91,11 @@ class CampaignReviewFixTests(unittest.TestCase):
         real_clock = capacity.time.clock_gettime_ns
         clock = lambda kind: tick if kind == capacity.time.CLOCK_BOOTTIME else real_clock(kind)
         with patch.dict(os.environ, self.env), self.assertRaises(lifecycle.EvidenceValidationError):
-            lifecycle.validate_current_profile_inputs(ROOT, launch_admission=True, require_original_admission=True)
+            lifecycle.validate_current_profile_inputs(self.repository_root, launch_admission=True, require_original_admission=True)
         with patch.dict(os.environ, self.env), patch.object(lifecycle, "_run_bounded_process") as child:
             self.assertEqual(1, lifecycle.run_story_27_4_producer_checkpoint(checkpoint="c3-retention-reclamation",
                 scenario_input_path=self.root / "unread-scenario.json", predecessor_path=self.root / "unread-predecessor.json",
-                evidence_path=self.root / "unwritten.json", owner="owner", repository_root=ROOT, evidence_root=self.root))
+                evidence_path=self.root / "unwritten.json", owner="owner", repository_root=self.repository_root, evidence_root=self.root))
             child.assert_not_called()
         with patch.object(capacity.time, "clock_gettime_ns", clock), patch.object(capacity.time, "time", return_value=future / 1000):
             fixture = self.owner(now=future)
@@ -105,7 +105,7 @@ class CampaignReviewFixTests(unittest.TestCase):
             self.bind_original(fixture, original)
             self.refresh(future)
             with patch.dict(os.environ, self.env):
-                selected = profiles.selected_campaign_profile(ROOT, now_ms=future, launch=True, require_original=True)
+                selected = profiles.selected_campaign_profile(self.repository_root, now_ms=future, launch=True, require_original=True)
                 self.assertEqual(capacity.digest(self.profile), capacity.digest(selected))
                 current = fixture.verify()
                 from access_telemetry_c1_owner_authority import c3_remaining_seconds
@@ -114,7 +114,7 @@ class CampaignReviewFixTests(unittest.TestCase):
             for field, wrong in (("capacityAdmissionIssuer", "foreign-issuer"), ("initialCapacityAdmission", {**fixture.plan["initialCapacityAdmission"], "sha256": "a" * 64})):
                 saved = fixture.plan[field]; fixture.plan[field] = wrong; fixture.approve(); self.env.update(fixture.env)
                 with patch.dict(os.environ, self.env), self.assertRaises(lifecycle.EvidenceValidationError):
-                    profiles.selected_campaign_profile(ROOT, now_ms=future, launch=True, require_original=True)
+                    profiles.selected_campaign_profile(self.repository_root, now_ms=future, launch=True, require_original=True)
                 fixture.plan[field] = saved
 
     def fake_runtime(self):
@@ -134,7 +134,7 @@ class CampaignReviewFixTests(unittest.TestCase):
             result, _ = producer._run_operation(target, "c2-production-replacement", "qualification-target-identity")
         fixture = self.owner(runtime_sha=result["runtime_identity_sha256"])
         env.update(fixture.env, HEXALITH_C1_PREDECESSOR_PATH=str(fixture.root / "predecessor.json"),
-                   HEXALITH_C1_REPOSITORY_ROOT=str(ROOT), HEXALITH_C1_EXECUTION_ID="e" * 32)
+                   HEXALITH_C1_REPOSITORY_ROOT=str(self.repository_root), HEXALITH_C1_EXECUTION_ID="e" * 32)
         scenario = fixture.root / "scenario.json"
         fixture.write("scenario.json", {"schema_version": 1, "target": fixture.plan["executionTarget"]}, active=False)
         return env, fixture, scenario, script
@@ -142,7 +142,7 @@ class CampaignReviewFixTests(unittest.TestCase):
     def cleanup(self, env, scenario):
         return subprocess.run([sys.executable, "-B", str(ROOT / "tools/access_telemetry_c2_producer.py"),
             "--scenario-input", str(scenario), "--platform-operations-reviewer", "owner-6775094", "--disable-only"],
-            cwd=ROOT, env={**os.environ, **env}, capture_output=True, text=True, timeout=20)
+            cwd=self.repository_root, env={**os.environ, **env}, capture_output=True, text=True, timeout=20)
 
     def test_actual_disable_only_survives_component_and_measurement_drift_but_denies_foreign_scope(self):
         env, fixture, scenario, script = self.fake_runtime()
@@ -150,7 +150,7 @@ class CampaignReviewFixTests(unittest.TestCase):
         for path in (Path(self.profile["inputs"]["components"][0]["path"]), Path(self.profile["measurements"]["evidence"]["path"])):
             raw = path.read_bytes(); path.write_bytes(raw + b" ")
             with patch.dict(os.environ, env), self.assertRaises(lifecycle.EvidenceValidationError):
-                profiles.selected_campaign_profile(ROOT, launch=True)
+                profiles.selected_campaign_profile(self.repository_root, launch=True)
             result = self.cleanup(env, scenario)
             self.assertEqual(0, result.returncode, result.stderr)
             self.assertIn("qualification-disable", log.read_text())
@@ -167,7 +167,7 @@ class CampaignReviewFixTests(unittest.TestCase):
 
     def test_parent_fallback_and_failure_packet_survive_drift(self):
         # Bind the real registered common source for this actual parent launch.
-        source = ROOT / "tools/access_telemetry_producer_common.py"
+        source = self.repository_root / "tools/access_telemetry_producer_common.py"
         source_ref = dict(path=str(source), sha256=hashlib.sha256(source.read_bytes()).hexdigest())
         self.profile["inputs"]["source"].append(source_ref)
         plan_ref = self.profile["inputs"]["workloadPlan"][0]
@@ -182,7 +182,7 @@ class CampaignReviewFixTests(unittest.TestCase):
         measured["evidence"] = self.write("measured.json", {k: v for k, v in measured.items() if k != "evidence"})
         outer = self.write("profile.json", self.profile); self.env["HEXALITH_CAMPAIGN_APPROVED_PROFILE_SHA256"] = outer["sha256"]
         self.refresh(self.now)
-        with patch.dict(os.environ, self.env): self.sha = profiles.active_profile_sha256(ROOT)
+        with patch.dict(os.environ, self.env): self.sha = profiles.active_profile_sha256(self.repository_root)
         env, self.fixture, scenario, _ = self.fake_runtime()
         log = self.root / "fallback.log"; env["QUALIFICATION_OPERATION_LOG"] = str(log)
         drift = self.profile["inputs"]["components"][0]["path"]
@@ -193,7 +193,7 @@ class CampaignReviewFixTests(unittest.TestCase):
             reviewed.ReviewFixTests.source_fixture(self, stack, ("tools/access_telemetry_c2_producer.py", child))
             code = lifecycle.run_story_27_4_producer_checkpoint(checkpoint="c2-production-replacement",
                 scenario_input_path=scenario, predecessor_path=self.fixture.root / "predecessor.json",
-                evidence_path=output, owner="owner-6775094", repository_root=ROOT, evidence_root=self.fixture.root)
+                evidence_path=output, owner="owner-6775094", repository_root=self.repository_root, evidence_root=self.fixture.root)
         self.assertEqual(1, code)
         packet = json.loads(output.read_bytes())
         self.assertEqual(self.sha, packet["profile_sha256"])
