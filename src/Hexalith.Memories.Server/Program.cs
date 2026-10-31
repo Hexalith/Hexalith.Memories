@@ -19,10 +19,12 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 builder.AddMemoriesServerServices();
+#if HEXALITH_DEVELOPMENT_CATALOG_SOURCE
 Hexalith.EventStore.ServiceDefaults.Routing.DevelopmentRouteCatalogBootstrap.AddEventStoreDevelopmentRouteCatalogBootstrap(
     builder.Services, builder.Configuration, (_, token) =>
         Hexalith.EventStore.ServiceDefaults.Routing.DevelopmentRouteCatalogInputs.CaptureAsync(
             builder.Configuration, "memories", [], [], [], [], [], token));
+#endif
 
 WebApplication app = builder.Build();
 

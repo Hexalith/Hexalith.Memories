@@ -12,7 +12,9 @@ public partial class Program
         WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
         builder.AddEventStoreDomainService(typeof(MemoriesTenantAggregateAdapter).Assembly, typeof(Hexalith.Memories.EventStore.Domain.Events.IMemoriesEventPayload).Assembly);
         builder.Services.AddEventStoreReadModelStore();
+#if HEXALITH_DEVELOPMENT_CATALOG_SOURCE
         builder.Services.AddEventStoreDevelopmentDomainCatalog(builder.Configuration, typeof(Hexalith.Memories.EventStore.Routing.MemoriesCatalogDeclarations).Assembly);
+#endif
         WebApplication app = builder.Build();
         app.UseEventStoreDomainService();
         app.Run();

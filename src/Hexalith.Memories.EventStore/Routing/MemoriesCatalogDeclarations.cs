@@ -3,18 +3,23 @@ using Hexalith.EventStore.Contracts.Commands;
 using Hexalith.EventStore.Contracts.Routing;
 using Hexalith.Memories.EventStore.Domain.Commands;
 
+#if HEXALITH_DEVELOPMENT_CATALOG_SOURCE
 [assembly: RouteCatalogDeclarationSource(typeof(Hexalith.Memories.EventStore.Routing.MemoriesCatalogDeclarations))]
+#endif
 
 namespace Hexalith.Memories.EventStore.Routing;
 
 /// <summary>The six existing internal service commands; no REST or MCP operation is added.</summary>
 public static class MemoriesCatalogDeclarations
 {
+#if HEXALITH_DEVELOPMENT_CATALOG_SOURCE
     /// <summary>Exact existing command payload schemas; every operation remains an internal workload operation.</summary>
     public static IReadOnlyList<RouteOperationContract> Operations => Routes.Select(route => RouteOperationSchema.Create(route,
         typeof(MemoriesCatalogDeclarations).Assembly.GetType(route.Execution!.HandlerType, throwOnError: true)!,
         typeof(Hexalith.EventStore.Contracts.Results.DomainServiceWireResult), "internal", "UI-only",
         new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))).ToArray();
+#endif
+
     /// <summary>Actual owner receiver methods, selected without changing declaration identities.</summary>
     public static IReadOnlyDictionary<string, string> ReceiverMethods => Routes.ToDictionary(route => route.RouteId,
         route => route.Kind switch { "command" => "process", "query" => "query", _ => "project/v2" }, StringComparer.Ordinal);

@@ -207,6 +207,26 @@ jobs:
       - name: Build solution (Debug/source)
         run: dotnet build Hexalith.Memories.slnx --configuration Debug -p:UseHexalithProjectReferences=true --no-restore
 
+      - name: Verify source-selected owner catalog contracts
+        run: |
+          mkdir -p TestResults
+          dotnet tests/Hexalith.Memories.EventStore.Tests/bin/Debug/net10.0/Hexalith.Memories.EventStore.Tests.dll -class Hexalith.Memories.EventStore.Tests.MemoriesCatalogTests -xml TestResults/source-catalog.xml
+          python3 - <<'PYTHON'
+          import xml.etree.ElementTree as ET
+          assemblies = ET.parse('TestResults/source-catalog.xml').getroot().findall('assembly')
+          assert assemblies, 'Source catalog test report contains no assemblies'
+          assert sum(int(a.get('total', '0')) for a in assemblies) >= 3, 'Source catalog tests were not selected'
+          for assembly in assemblies:
+              assert all(int(assembly.get(key, '0')) == 0 for key in ('failed', 'errors', 'skipped', 'not-run')), assembly.attrib
+          PYTHON
+
+      - name: Upload source catalog verification
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: source-catalog-verification
+          path: TestResults/source-catalog.xml
+          if-no-files-found: error
+
   test-unit-contract:
     name: test-unit-contract
     runs-on: ubuntu-latest

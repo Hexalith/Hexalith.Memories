@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Hexalith.Memories.EventStore\Hexalith.Memories.EventStore.csproj" />
+    <ProjectReference Include="..\..\src\Hexalith.Memories.EventStoreExtensions\Hexalith.Memories.EventStoreExtensions.csproj" />
     <ProjectReference Include="..\..\src\Hexalith.Memories.Contracts\Hexalith.Memories.Contracts.csproj" />
   </ItemGroup>
 
