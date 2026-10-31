@@ -6,7 +6,8 @@ param(
         'memories',
         'memories-mcp',
         'memories-access-telemetry',
-        'memories-access-telemetry-clock')
+        'memories-access-telemetry-clock',
+        'memories-domain-service')
 )
 
 $ErrorActionPreference = 'Stop'

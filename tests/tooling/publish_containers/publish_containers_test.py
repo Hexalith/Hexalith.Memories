@@ -16,7 +16,8 @@ SERVER_IMAGE = f"registry.test/memories:{VERSION}"
 MCP_IMAGE = f"registry.test/memories-mcp:{VERSION}"
 ACCESS_TELEMETRY_IMAGE = f"registry.test/memories-access-telemetry:{VERSION}"
 ACCESS_TELEMETRY_CLOCK_IMAGE = f"registry.test/memories-access-telemetry-clock:{VERSION}"
-ALL_IMAGES = [SERVER_IMAGE, MCP_IMAGE, ACCESS_TELEMETRY_IMAGE, ACCESS_TELEMETRY_CLOCK_IMAGE]
+DOMAIN_SERVICE_IMAGE = f"registry.test/memories-domain-service:{VERSION}"
+ALL_IMAGES = [SERVER_IMAGE, MCP_IMAGE, ACCESS_TELEMETRY_IMAGE, ACCESS_TELEMETRY_CLOCK_IMAGE, DOMAIN_SERVICE_IMAGE]
 
 
 def write_executable(path: Path, content: str) -> None:
@@ -46,6 +47,8 @@ def write_fake_dotnet(directory: Path) -> None:
                 image = "mcp"
             elif project.endswith("Hexalith.Memories.AccessTelemetry.Clock.csproj"):
                 image = "access-telemetry-clock"
+            elif project.endswith("Hexalith.Memories.DomainService.csproj"):
+                image = "domain-service"
             elif project.endswith("Hexalith.Memories.AccessTelemetry.csproj"):
                 image = "access-telemetry"
             else:
@@ -140,10 +143,13 @@ def write_fake_skopeo(directory: Path) -> None:
                 "mcp": "sha256:mcp-config",
                 "access-telemetry": "sha256:access-telemetry-config",
                 "access-telemetry-clock": "sha256:access-telemetry-clock-config",
+                "domain-service": "sha256:domain-service-config",
             }}
 
             def image_for_archive(path: str) -> str:
                 archive_name = Path(path).name
+                if archive_name.startswith("domain-service"):
+                    return "domain-service"
                 if archive_name.startswith("access-telemetry-clock"):
                     return "access-telemetry-clock"
                 if archive_name.startswith("access-telemetry"):
@@ -157,6 +163,7 @@ def write_fake_skopeo(directory: Path) -> None:
                     "memories-mcp": "mcp",
                     "memories-access-telemetry": "access-telemetry",
                     "memories-access-telemetry-clock": "access-telemetry-clock",
+                    "memories-domain-service": "domain-service",
                 }}[repository]
 
             entry = {{"command": "skopeo", "args": args}}
@@ -209,6 +216,7 @@ def write_fake_skopeo(directory: Path) -> None:
                         "mcp": "memories-mcp",
                         "access-telemetry": "memories-access-telemetry",
                         "access-telemetry-clock": "memories-access-telemetry-clock",
+                        "domain-service": "memories-domain-service",
                     }}[image]
                     print(json.dumps({{"RepoTags": [f"{{repository}}:{VERSION}"]}}))
                 state_path.write_text(json.dumps(state), encoding="utf-8")
@@ -289,6 +297,7 @@ def prepare_archives(output: Path) -> None:
     (output / "mcp.tar.gz").write_bytes(b"mcp-archive")
     (output / "access-telemetry.tar.gz").write_bytes(b"access-telemetry-archive")
     (output / "access-telemetry-clock.tar.gz").write_bytes(b"access-telemetry-clock-archive")
+    (output / "domain-service.tar.gz").write_bytes(b"domain-service-archive")
 
 
 def run_publish(
@@ -380,14 +389,16 @@ class PublishContainersTests(unittest.TestCase):
                 f"{registry}/memories-mcp:{VERSION}",
                 f"{registry}/memories-access-telemetry:{VERSION}",
                 f"{registry}/memories-access-telemetry-clock:{VERSION}",
+                f"{registry}/memories-domain-service:{VERSION}",
             ]
             self.assertEqual(expected_images, copy_references(root))
             summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
             self.assertEqual(registry, summary["source"])
             self.assertEqual(expected_images, [image["image"] for image in summary["images"]])
             deployment = (output / "production-deployment.yaml").read_text(encoding="utf-8-sig")
-            for image in expected_images:
+            for image in expected_images[:-1]:
                 self.assertIn(image, deployment)
+            self.assertNotIn(expected_images[-1], deployment, "DomainService publication grants no hosted activation")
             assert_authenticated_calls_use_scoped_authfile(self, root)
 
     def test_invalid_registry_override_fails_before_build_or_push(self) -> None:
@@ -426,12 +437,13 @@ class PublishContainersTests(unittest.TestCase):
             self.assertGreater((output / "mcp.tar.gz").stat().st_size, 0)
             self.assertGreater((output / "access-telemetry.tar.gz").stat().st_size, 0)
             self.assertGreater((output / "access-telemetry-clock.tar.gz").stat().st_size, 0)
+            self.assertGreater((output / "domain-service.tar.gz").stat().st_size, 0)
             summary = json.loads((output / "build-summary.json").read_text(encoding="utf-8-sig"))
             self.assertEqual("succeeded", summary["status"])
 
             calls = [entry for entry in command_log(root) if entry["command"] == "dotnet"]
             self.assertEqual(
-                ["server", "mcp", "access-telemetry", "access-telemetry-clock"],
+                ["server", "mcp", "access-telemetry", "access-telemetry-clock", "domain-service"],
                 [entry["image"] for entry in calls],
             )
             expected_repositories = [
@@ -439,6 +451,7 @@ class PublishContainersTests(unittest.TestCase):
                 "memories-mcp",
                 "memories-access-telemetry",
                 "memories-access-telemetry-clock",
+                "memories-domain-service",
             ]
             for call, repository in zip(calls, expected_repositories, strict=True):
                 args = call["args"]
@@ -490,7 +503,7 @@ class PublishContainersTests(unittest.TestCase):
             }
             plan = {
                 image: [denial]
-                for image in ["server", "mcp", "access-telemetry", "access-telemetry-clock"]
+                for image in ["server", "mcp", "access-telemetry", "access-telemetry-clock", "domain-service"]
             }
             _, env = prepare_environment(root, plan)
             output = root / "artifacts"
@@ -559,7 +572,7 @@ class PublishContainersTests(unittest.TestCase):
             server = next(image for image in summary["images"] if image["name"] == "server")
             self.assertEqual("archive-reference-invalid", server["disposition"])
             self.assertIn("wrong-repo", server["error"])
-            self.assertEqual([MCP_IMAGE, ACCESS_TELEMETRY_IMAGE, ACCESS_TELEMETRY_CLOCK_IMAGE], copy_references(root))
+            self.assertEqual([MCP_IMAGE, ACCESS_TELEMETRY_IMAGE, ACCESS_TELEMETRY_CLOCK_IMAGE, DOMAIN_SERVICE_IMAGE], copy_references(root))
 
     def test_archive_without_embedded_references_still_publishes(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -594,7 +607,7 @@ class PublishContainersTests(unittest.TestCase):
             self.assertNotEqual(0, result.returncode)
             summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
             self.assertEqual("publish-failed", summary["status"])
-            self.assertEqual(4, len(summary["notAttempted"]))
+            self.assertEqual(len(ALL_IMAGES), len(summary["notAttempted"]))
             self.assertTrue(all(image["disposition"] == "authentication-failed" for image in summary["images"]))
             self.assertIn("HEXALITH_ZOT_USERNAME", result.stdout + result.stderr)
             self.assertEqual([], skopeo_calls(root))
@@ -662,7 +675,7 @@ class PublishContainersTests(unittest.TestCase):
             self.assertNotEqual(0, result.returncode)
             summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
             self.assertEqual("publish-failed", summary["status"])
-            self.assertEqual(4, len(summary["notAttempted"]))
+            self.assertEqual(len(ALL_IMAGES), len(summary["notAttempted"]))
             self.assertTrue(all(image["disposition"] == "tooling-missing" for image in summary["images"]))
             self.assertIn("skopeo-missing-for-tests", result.stdout + result.stderr)
             self.assertEqual([], skopeo_calls(root))
@@ -714,7 +727,7 @@ class PublishContainersTests(unittest.TestCase):
             serialized = json.dumps(summary)
             self.assertNotIn(env["HEXALITH_ZOT_USERNAME"], serialized)
             self.assertNotIn(env["HEXALITH_ZOT_API_KEY"], serialized)
-            self.assertEqual([MCP_IMAGE, ACCESS_TELEMETRY_IMAGE, ACCESS_TELEMETRY_CLOCK_IMAGE], copy_references(root))
+            self.assertEqual([MCP_IMAGE, ACCESS_TELEMETRY_IMAGE, ACCESS_TELEMETRY_CLOCK_IMAGE, DOMAIN_SERVICE_IMAGE], copy_references(root))
 
     def test_remote_inspect_error_still_attempts_push(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -758,7 +771,7 @@ class PublishContainersTests(unittest.TestCase):
             summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
             server = next(image for image in summary["images"] if image["name"] == "server")
             self.assertEqual("remote-inspect-failed", server["disposition"])
-            self.assertEqual([MCP_IMAGE, ACCESS_TELEMETRY_IMAGE, ACCESS_TELEMETRY_CLOCK_IMAGE], copy_references(root))
+            self.assertEqual([MCP_IMAGE, ACCESS_TELEMETRY_IMAGE, ACCESS_TELEMETRY_CLOCK_IMAGE, DOMAIN_SERVICE_IMAGE], copy_references(root))
 
     def test_partial_publish_writes_redacted_summary_and_returns_nonzero(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -781,7 +794,7 @@ class PublishContainersTests(unittest.TestCase):
             self.assertNotEqual(0, result.returncode)
             summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
             self.assertEqual("partial-publish", summary["status"])
-            self.assertEqual([SERVER_IMAGE, ACCESS_TELEMETRY_IMAGE, ACCESS_TELEMETRY_CLOCK_IMAGE], summary["pushed"])
+            self.assertEqual([SERVER_IMAGE, ACCESS_TELEMETRY_IMAGE, ACCESS_TELEMETRY_CLOCK_IMAGE, DOMAIN_SERVICE_IMAGE], summary["pushed"])
             self.assertEqual(42, summary["failed"][0]["exitCode"])
             serialized = json.dumps(summary)
             self.assertNotIn("SECRET_GITHUB_TOKEN_SHOULD_NOT_LEAK", serialized)
@@ -812,7 +825,7 @@ class PublishContainersTests(unittest.TestCase):
             self.assertEqual("already-present", dispositions["server"])
             self.assertEqual("pushed", dispositions["mcp"])
             self.assertEqual(
-                [SERVER_IMAGE, MCP_IMAGE, ACCESS_TELEMETRY_IMAGE, ACCESS_TELEMETRY_CLOCK_IMAGE, MCP_IMAGE],
+                ALL_IMAGES + [MCP_IMAGE],
                 copy_references(root),
             )
             assert_authenticated_calls_use_scoped_authfile(self, root)
@@ -839,7 +852,7 @@ class PublishContainersTests(unittest.TestCase):
             summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
             server = next(image for image in summary["images"] if image["name"] == "server")
             self.assertEqual("digest-conflict", server["disposition"])
-            self.assertEqual([MCP_IMAGE, ACCESS_TELEMETRY_IMAGE, ACCESS_TELEMETRY_CLOCK_IMAGE], copy_references(root))
+            self.assertEqual([MCP_IMAGE, ACCESS_TELEMETRY_IMAGE, ACCESS_TELEMETRY_CLOCK_IMAGE, DOMAIN_SERVICE_IMAGE], copy_references(root))
             assert_authenticated_calls_use_scoped_authfile(self, root)
 
     def test_render_failure_happens_before_push_and_writes_current_summary(self) -> None:
@@ -855,7 +868,7 @@ class PublishContainersTests(unittest.TestCase):
             self.assertNotEqual(0, result.returncode)
             summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
             self.assertEqual("publish-failed", summary["status"])
-            self.assertEqual(4, len(summary["notAttempted"]))
+            self.assertEqual(len(ALL_IMAGES), len(summary["notAttempted"]))
             self.assertEqual([], copy_references(root))
 
     def test_successful_kubectl_warning_is_not_written_to_deployment(self) -> None:
@@ -878,6 +891,7 @@ class PublishContainersTests(unittest.TestCase):
                 "mcp": [{"exitCode": 12, "stderr": "mcp failed"}],
                 "access-telemetry": [{"exitCode": 13, "stderr": "access telemetry failed"}],
                 "access-telemetry-clock": [{"exitCode": 14, "stderr": "clock failed"}],
+                "domain-service": [{"exitCode": 15, "stderr": "domain service failed"}],
             }
             _, env = prepare_environment(root, plan)
             output = root / "artifacts"

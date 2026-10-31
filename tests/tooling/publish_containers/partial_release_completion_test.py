@@ -42,12 +42,13 @@ def git(root: Path, *args: str) -> None:
 def prepare_tagged_source(
     root: Path,
     image_repositories: list[str] | None = None,
+    package_ids: list[str] | None = None,
 ) -> tuple[Path, Path]:
     repositories = list(image_repositories or IMAGE_REPOSITORIES)
     tools = root / "tools"
     tools.mkdir(parents=True)
     (tools / "release-packages.json").write_text(
-        json.dumps({"packages": [{"packageId": package_id} for package_id in PACKAGE_IDS]}),
+        json.dumps({"packages": [{"packageId": package_id} for package_id in (package_ids or PACKAGE_IDS)]}),
         encoding="utf-8",
     )
     marker = root / "release-source.txt"
@@ -107,10 +108,10 @@ def package_bytes(package_id: str) -> bytes:
 
 
 class PackageServer:
-    def __init__(self) -> None:
+    def __init__(self, package_ids: list[str] | None = None) -> None:
         packages = {
             f"/{package_id.lower()}/{VERSION}/{package_id.lower()}.{VERSION}.nupkg": package_bytes(package_id)
-            for package_id in PACKAGE_IDS
+            for package_id in (package_ids or PACKAGE_IDS)
         }
 
         class Handler(BaseHTTPRequestHandler):
@@ -265,10 +266,11 @@ class PartialReleaseCompletionTests(unittest.TestCase):
         self,
         root: Path,
         image_repositories: list[str] | None = None,
+        package_ids: list[str] | None = None,
     ) -> tuple[Path, Path, Path, dict[str, str]]:
         source = root / "source"
         source.mkdir()
-        summary, deployment = prepare_tagged_source(source, image_repositories=image_repositories)
+        summary, deployment = prepare_tagged_source(source, image_repositories=image_repositories, package_ids=package_ids)
         fake_bin = root / "bin"
         fake_bin.mkdir()
         write_fake_gh(fake_bin)
@@ -308,6 +310,27 @@ class PartialReleaseCompletionTests(unittest.TestCase):
             self.assertEqual(1, sum(command[:2] == ["issue", "close"] for command in commands))
             combined = first.stdout + first.stderr + second.stdout + second.stderr
             self.assertNotIn(env["GH_TOKEN"], combined)
+
+    def test_new_catalog_unit_completes_with_ten_packages_and_domain_service(self) -> None:
+        packages = PACKAGE_IDS + ["Hexalith.Memories.EventStoreExtensions"]
+        images = IMAGE_REPOSITORIES + ["memories-domain-service"]
+        with tempfile.TemporaryDirectory() as temp, PackageServer(packages) as nuget:
+            source, summary, deployment, env = self.prepare(
+                Path(temp), image_repositories=images, package_ids=packages)
+            result = run_completion(source, summary, deployment, nuget.origin, env)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            evidence = json.loads((source / "recovery-output/completion-summary.json").read_text(encoding="utf-8-sig"))
+            self.assertEqual(10, len(evidence["packages"]))
+            self.assertEqual(5, len(evidence["images"]))
+            self.assertEqual(11, len(evidence["releaseAssets"]))
+
+    def test_new_catalog_unit_refuses_missing_domain_service_before_package_reads(self) -> None:
+        packages = PACKAGE_IDS + ["Hexalith.Memories.EventStoreExtensions"]
+        with tempfile.TemporaryDirectory() as temp, PackageServer(packages) as nuget:
+            source, summary, deployment, env = self.prepare(Path(temp), package_ids=packages)
+            result = run_completion(source, summary, deployment, nuget.origin, env)
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("DomainService", result.stdout + result.stderr)
 
     def test_historical_two_image_unit_completes_without_access_telemetry(self) -> None:
         with tempfile.TemporaryDirectory() as temp, PackageServer() as nuget:

@@ -36,6 +36,10 @@
     {
       "packageId": "Hexalith.Memories.Telemetry",
       "project": "src/Hexalith.Memories.Telemetry/Hexalith.Memories.Telemetry.csproj"
+    },
+    {
+      "packageId": "Hexalith.Memories.EventStoreExtensions",
+      "project": "src/Hexalith.Memories.EventStoreExtensions/Hexalith.Memories.EventStoreExtensions.csproj"
     }
   ],
   "nonPackableProjects": [
@@ -45,7 +49,6 @@
     "src/Hexalith.Memories.Web/Hexalith.Memories.Web.csproj",
     "src/Hexalith.Memories.AccessTelemetry/Hexalith.Memories.AccessTelemetry.csproj",
     "src/Hexalith.Memories.AccessTelemetry.Clock/Hexalith.Memories.AccessTelemetry.Clock.csproj",
-    "src/Hexalith.Memories.AccessTelemetry.Contracts/Hexalith.Memories.AccessTelemetry.Contracts.csproj",
-    "src/Hexalith.Memories.EventStoreExtensions/Hexalith.Memories.EventStoreExtensions.csproj"
+    "src/Hexalith.Memories.AccessTelemetry.Contracts/Hexalith.Memories.AccessTelemetry.Contracts.csproj"
   ]
 }

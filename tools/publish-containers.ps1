@@ -86,6 +86,13 @@ $imageCandidates = @(
         repository = "$RepositoryPrefix-access-telemetry-clock"
         archive = Join-Path $outputPath 'access-telemetry-clock.tar.gz'
         renderParameter = 'AccessTelemetryClockImage'
+    },
+    [ordered]@{
+        name = 'domain-service'
+        project = 'src/Hexalith.Memories.DomainService/Hexalith.Memories.DomainService.csproj'
+        repository = "$RepositoryPrefix-domain-service"
+        archive = Join-Path $outputPath 'domain-service.tar.gz'
+        renderParameter = $null
     }
 )
 $images = @($imageCandidates | Where-Object {
@@ -94,8 +101,8 @@ $images = @($imageCandidates | Where-Object {
 if (@($images | Where-Object { $_.name -in @('server', 'mcp') }).Count -ne 2) {
     throw "Container publication requires Server and MCP projects under '$repoRoot'; found: $((@($images.name) -join ', '))."
 }
-if ($images.Count -notin @(2, 4)) {
-    throw "Container publication requires a 2- or 4-member image unit under '$repoRoot'; found $($images.Count): $((@($images.name) -join ', '))."
+if ($images.Count -notin @(2, 4, 5)) {
+    throw "Container publication requires a 2-, 4- or 5-member image unit under '$repoRoot'; found $($images.Count): $((@($images.name) -join ', '))."
 }
 
 function Protect-LogText {
@@ -438,6 +445,9 @@ try {
             '-OutputPath', $deploymentPath))
     foreach ($image in $images) {
         $parameterName = [string]$image.renderParameter
+        # The existing DomainService image is published for Platform local/CI composition.
+        # Hosted activation remains outside the routing-catalog release.
+        if ([string]::IsNullOrEmpty($parameterName)) { continue }
         if ($parameterName -notin $renderParameterNames) {
             throw "Selected container member '$($image.name)' requires render parameter '-$parameterName', but '$renderScript' does not declare it."
         }

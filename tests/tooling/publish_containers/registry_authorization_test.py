@@ -16,6 +16,7 @@ REPOSITORIES = [
     "memories-mcp",
     "memories-access-telemetry",
     "memories-access-telemetry-clock",
+    "memories-domain-service",
 ]
 
 
@@ -148,7 +149,7 @@ class RegistryAuthorizationTests(unittest.TestCase):
         self.assertEqual([None], state.get_authorizations)
         self.assertEqual(REPOSITORIES, state.posts)
         self.assertEqual([f"/uploads/{repository}" for repository in REPOSITORIES], state.deletes)
-        self.assertEqual(4, len([value for value in state.delete_authorizations if value]))
+        self.assertEqual(len(REPOSITORIES), len([value for value in state.delete_authorizations if value]))
         self.assertNotIn(USERNAME, result.stdout + result.stderr)
         self.assertNotIn(API_KEY, result.stdout + result.stderr)
 
@@ -190,7 +191,7 @@ class RegistryAuthorizationTests(unittest.TestCase):
             [f"/uploads/{repository}" for repository in REPOSITORIES],
             cancellation_state.deletes,
         )
-        self.assertEqual([None, None, None, None], cancellation_state.delete_authorizations)
+        self.assertEqual([None] * len(REPOSITORIES), cancellation_state.delete_authorizations)
         self.assertNotIn(USERNAME, result.stdout + result.stderr)
         self.assertNotIn(API_KEY, result.stdout + result.stderr)
 
@@ -215,7 +216,7 @@ class RegistryAuthorizationTests(unittest.TestCase):
             result = run_probe(registry.origin)
 
         self.assertNotEqual(0, result.returncode)
-        self.assertEqual(4, len(state.deletes))
+        self.assertEqual(len(REPOSITORIES), len(state.deletes))
         self.assertIn("could not cancel every", result.stdout + result.stderr)
 
     def test_missing_credentials_fail_without_contacting_registry(self) -> None:

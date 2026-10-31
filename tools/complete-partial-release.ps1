@@ -203,15 +203,16 @@ try {
         $requiredImages +
         @(
             "$Registry/memories-access-telemetry:$Version",
-            "$Registry/memories-access-telemetry-clock:$Version"
+            "$Registry/memories-access-telemetry-clock:$Version",
+            "$Registry/memories-domain-service:$Version"
         )
     )
     $summaryImages = @($images.image)
-    if ($summaryImages.Count -notin @(2, 4) -or
+    if ($summaryImages.Count -notin @(2, 4, 5) -or
         @($requiredImages | Where-Object { $_ -notin $summaryImages }).Count -gt 0 -or
         @($summaryImages | Where-Object { $_ -notin $allowedImages }).Count -gt 0 -or
         $summaryImages.Count -ne @($summaryImages | Select-Object -Unique).Count) {
-        throw "Container recovery evidence must include the Server/MCP unit as a 2- or 4-image set of allowed repositories for '$Version'."
+        throw "Container recovery evidence must include the Server/MCP unit as a 2-, 4- or 5-image set of allowed repositories for '$Version'."
     }
 
     foreach ($image in $images) {
@@ -227,8 +228,21 @@ try {
 
     $inventory = Get-Content -LiteralPath $inventoryPath -Raw | ConvertFrom-Json
     $packages = @($inventory.packages)
-    if ($packages.Count -ne 9) {
-        throw "Tagged release inventory must contain exactly nine packages; found $($packages.Count)."
+    $approvedInventory = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'release-packages.json') -Raw | ConvertFrom-Json
+    $expectedPackageIds = @($approvedInventory.packages.packageId)
+    $packageIds = @($packages.packageId)
+    $catalogAdapter = 'Hexalith.Memories.EventStoreExtensions'
+    if ($catalogAdapter -cnotin $packageIds) {
+        # Historical releases predate the catalog adapter and retain their nine-package unit.
+        $expectedPackageIds = @($expectedPackageIds | Where-Object { $_ -cne $catalogAdapter })
+    }
+    if ($packageIds.Count -ne $expectedPackageIds.Count -or
+        @($packageIds | Select-Object -Unique).Count -ne $packageIds.Count -or
+        @(Compare-Object -ReferenceObject $expectedPackageIds -DifferenceObject $packageIds -CaseSensitive).Count -gt 0) {
+        throw "Tagged release inventory must match the approved current ten-package or historical nine-package unit; found $($packages.Count)."
+    }
+    if ($catalogAdapter -cin $packageIds -and "$Registry/memories-domain-service:$Version" -cnotin $summaryImages) {
+        throw 'Catalog adapter recovery requires the published DomainService image.'
     }
 
     foreach ($path in @($packagePath, $assetPath, $downloadPath)) {
@@ -366,7 +380,7 @@ try {
             $issueNumber = [string]$matchingIssues[0].number
             $comment = Invoke-NativeCommand -Command 'gh' -Arguments @(
                 'issue', 'comment', $issueNumber, '--repo', $Repository,
-                '--body', "Recovery verified tag $tag, nine NuGet packages, $($images.Count) immutable image(s), the versioned deployment, and all GitHub Release assets. Evidence: partial-release-completion-v$Version.")
+                '--body', "Recovery verified tag $tag, $($packages.Count) NuGet packages, $($images.Count) immutable image(s), the versioned deployment, and all GitHub Release assets. Evidence: partial-release-completion-v$Version.")
             Assert-NativeSuccess -Result $comment -Action "Attach recovery evidence to issue #$issueNumber"
             $close = Invoke-NativeCommand -Command 'gh' -Arguments @(
                 'issue', 'close', $issueNumber, '--repo', $Repository,

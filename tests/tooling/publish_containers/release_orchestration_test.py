@@ -325,7 +325,7 @@ class ReleaseOrchestrationTests(unittest.TestCase):
             self.assertIn("-Version", generated_validation["args"])
             self.assertNotIn("publish-containers.ps1", child_scripts)
             dotnet_commands = [entry["args"][0] for entry in entries if entry["command"] == "dotnet"]
-            self.assertEqual(["build"] + ["pack"] * 9, dotnet_commands)
+            self.assertEqual(["build"] + ["pack"] * 10, dotnet_commands)
 
     def test_pack_release_package_only_propagates_generated_validation_failure(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

@@ -8,6 +8,7 @@
     <Project Path="src/Hexalith.Memories.Cli/Hexalith.Memories.Cli.csproj" />
     <Project Path="src/Hexalith.Memories.Client.Rest/Hexalith.Memories.Client.Rest.csproj" />
     <Project Path="src/Hexalith.Memories.Contracts/Hexalith.Memories.Contracts.csproj" />
+    <Project Path="src/Hexalith.Memories.EventStoreExtensions/Hexalith.Memories.EventStoreExtensions.csproj" />
     <Project Path="src/Hexalith.Memories.DomainService/Hexalith.Memories.DomainService.csproj" />
     <Project Path="src/Hexalith.Memories.EventStore/Hexalith.Memories.EventStore.csproj" />
     <Project Path="src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj" />
