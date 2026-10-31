@@ -285,11 +285,11 @@ public sealed partial class CiTestInventoryTests
 
         Dictionary<string, string> expectedDirectDependencies = new(StringComparer.Ordinal)
         {
-            ["@commitlint/cli"] = "^21.2.2",
-            ["@commitlint/config-conventional"] = "^21.2.2",
+            ["@commitlint/cli"] = "^21.2.4",
+            ["@commitlint/config-conventional"] = "^21.2.4",
             ["@semantic-release/commit-analyzer"] = "^13.0.1",
             ["@semantic-release/exec"] = "^7.1.0",
-            ["@semantic-release/github"] = "^12.0.9",
+            ["@semantic-release/github"] = "^12.0.10",
             ["@semantic-release/release-notes-generator"] = "^14.1.1",
             ["cosmiconfig"] = "9.0.2",
             ["semantic-release"] = "25.0.8",
@@ -327,11 +327,11 @@ public sealed partial class CiTestInventoryTests
 
         Dictionary<string, string> expectedLockedVersions = new(StringComparer.Ordinal)
         {
-            ["node_modules/@commitlint/cli"] = "21.2.2",
-            ["node_modules/@commitlint/config-conventional"] = "21.2.2",
+            ["node_modules/@commitlint/cli"] = "21.2.4",
+            ["node_modules/@commitlint/config-conventional"] = "21.2.4",
             ["node_modules/@semantic-release/commit-analyzer"] = "13.0.1",
             ["node_modules/@semantic-release/exec"] = "7.1.0",
-            ["node_modules/@semantic-release/github"] = "12.0.9",
+            ["node_modules/@semantic-release/github"] = "12.0.10",
             ["node_modules/@semantic-release/release-notes-generator"] = "14.1.1",
             ["node_modules/cosmiconfig"] = "9.0.2",
             ["node_modules/fast-uri"] = "3.1.8",
@@ -977,7 +977,6 @@ public sealed partial class CiTestInventoryTests
         string workflowsRoot = Path.Combine(repoRoot, ".github", "workflows");
 
         Regex usesRegex = new(@"^\s*uses:\s*(?<ref>\S+)");
-        Regex majorTagRegex = new(@"^v[1-9]\d*$");
         bool foundAny = false;
 
         foreach (string workflowPath in Directory.GetFiles(workflowsRoot, "*.yml"))
@@ -997,17 +996,52 @@ public sealed partial class CiTestInventoryTests
                     continue;
                 }
 
-                int atIndex = reference.LastIndexOf('@');
-                atIndex.ShouldBeGreaterThan(0, $"third-party action reference '{reference}' must include a '@<ref>' suffix");
-                string refSuffix = reference[(atIndex + 1)..];
-                bool isHexalithBuildsAction = reference.StartsWith("Hexalith/Hexalith.Builds/", StringComparison.Ordinal);
-                bool isAllowedRef = isHexalithBuildsAction ? refSuffix == "main" : majorTagRegex.IsMatch(refSuffix);
-                isAllowedRef.ShouldBeTrue($"third-party action '{reference}' must use a major version tag like '@v7'; Hexalith.Builds actions must use '@main' so CI consumes the latest shared build logic.");
+                IsAllowedExternalActionReference(reference).ShouldBeTrue(
+                    $"third-party action '{reference}' must use a major version tag like '@v7', or the exact reviewed upload-artifact v7.0.2 SHA; Hexalith.Builds actions must use '@main'.");
                 foundAny = true;
             }
         }
 
         foundAny.ShouldBeTrue("expected workflows to declare at least one third-party action under 'uses:'.");
+    }
+
+    [Theory]
+    [InlineData("actions/checkout@v7", true)]
+    [InlineData("actions/upload-artifact@v7", true)]
+    [InlineData("actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9", true)]
+    [InlineData("Hexalith/Hexalith.Builds/Github/initialize-build@main", true)]
+    [InlineData("actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd8", false)]
+    [InlineData("actions/upload-artifact@0000000000000000000000000000000000000000", false)]
+    [InlineData("actions/download-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9", false)]
+    [InlineData("other/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9", false)]
+    [InlineData("actions/upload-artifact@main", false)]
+    [InlineData("actions/upload-artifact@v7.0.2", false)]
+    [InlineData("actions/upload-artifact", false)]
+    [InlineData("actions/upload-artifact@", false)]
+    [InlineData("@v7", false)]
+    [InlineData("Hexalith/Hexalith.Builds/Github/initialize-build@v7", false)]
+    [InlineData("Hexalith/Hexalith.Builds/Github/initialize-build@cf430e030ddbb5b0abf93d22962f4752f3646cd9", false)]
+    public void Workflows_ExternalActionReferenceSecurityMatrix(string reference, bool expected)
+        => IsAllowedExternalActionReference(reference).ShouldBe(expected);
+
+    private static bool IsAllowedExternalActionReference(string reference)
+    {
+        // This exception authorizes only the reviewed upload-artifact v7.0.2 identity.
+        if (reference == "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9")
+        {
+            return true;
+        }
+
+        int atIndex = reference.LastIndexOf('@');
+        if (atIndex <= 0)
+        {
+            return false;
+        }
+
+        string refSuffix = reference[(atIndex + 1)..];
+        return reference.StartsWith("Hexalith/Hexalith.Builds/", StringComparison.Ordinal)
+            ? refSuffix == "main"
+            : Regex.IsMatch(refSuffix, @"^v[1-9]\d*$");
     }
 
     [Fact]
