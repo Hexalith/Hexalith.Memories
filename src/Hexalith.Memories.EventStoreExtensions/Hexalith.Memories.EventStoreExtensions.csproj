@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><Description>Memories-owned local internal EventStore intent adapter enrollment.</Description><IsPackable>true</IsPackable><IsPublishable>false</IsPublishable></PropertyGroup>
+  <PropertyGroup><Description>Memories-owned local internal EventStore intent adapter enrollment.</Description><IsPackable>false</IsPackable><IsPublishable>false</IsPublishable></PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Hexalith.Memories.EventStore/Hexalith.Memories.EventStore.csproj" />
     <ProjectReference Include="$(HexalithEventStoreRoot)/src/Hexalith.EventStore.DomainService/Hexalith.EventStore.DomainService.csproj" Condition="'$(HexalithEventStoreFromSource)' == 'true'" />
