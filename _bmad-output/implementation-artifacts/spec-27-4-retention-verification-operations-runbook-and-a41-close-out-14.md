@@ -14,6 +14,263 @@ context:
 
 # Story 27.4 — active functional retention contract
 
+## Node1 setup approval and prerequisite observation — 2026-10-31 (current)
+
+The owner's **“i approve”** accepts the presented Platform-owned isolated rootless
+Docker setup. That approval remains valid while routine inputs are bound; do not
+request it again. It supersedes the preparation-only restriction for this approved
+scope. The existing calibration approval remains accepted/unused, original host
+capture consumed, completed S3 review unchanged, Story 27.4 in progress and A41 open.
+
+A new, bounded **read-only setup-prerequisite** Pod used existing `jpiquot@local`
+access to the same node UID/machine/boot identity. This was a separate action under
+the new setup approval; the consumed host-capture script was not replayed. Pod
+`default/platform-rootless-preflight-ca5f6895af`, UID
+`8f5526cd-dae6-4265-938f-973e1007bead`, had no host network/PID/IPC namespace, token
+or privileged flag: only SYS_CHROOT, 100m CPU/128MiB, 60s active deadline and a
+48s host-script bound. The host-root mount was proved recursively read-only by
+actual runtime status before attaching the fixed-file script. Offline guards
+checked identity refusal and unreserved/nonoverlapping UID/range candidates.
+
+The host script completed in **0.501711s**; orchestration took **6.660850s**. Its
+actual exit 1 and immediate runtime-removal uncertainty remain unchanged history:
+API deletion succeeded, while kubelet still reported the terminating Pod. Separate
+native verification at **2026-10-31T05:14:11.312715Z** proved its exact UID/name absent.
+Final removal is verified and protected workload UID/container/restart projections
+are byte-equal before/after. No host configuration, account, package, service,
+quota, AppArmor policy or engine was changed; no calibration launched.
+
+Current facts: systemd **255.4-1ubuntu8.18**, cgroup v2 with cpu/io/memory/pids
+available, required iptables/overlay modules loaded and slirp4netns **1.2.1**.
+The required UID-mapping helpers and rootless wrapper/RootlessKit were absent at
+the checked standard paths. Docker/containerd/runc binaries already exist; no
+engine identity is inferred. AppArmor's unprivileged-userns restriction is **1**;
+an applicable private RootlessKit profile is unverified, not a measured denial.
+The observed persistent mounts are ext4 with no observed quota options; quota
+utilities and an enforced bounded allocation were not established. These facts
+do not prove the superblock cannot support quotas or that no alternative tool
+path exists. UID/GID **5000** and subordinate range **1000000:65536** are observed
+available candidates only; nothing was reserved or created.
+
+### Available preparation and remaining decisions
+
+- [x] Record both accepted approvals distinctly and preserve the previous prepared
+  proposal/bundle, original capture and all runtime source/draft hashes.
+- [x] Observe prerequisites using the new read-only Pod, verify its actual
+  recursive read-only status, own UID cleanup and unchanged protected workloads.
+- [x] Stage Docker **29.8.2** rootless extras / RootlessKit **3.1.0** locally from
+  official HTTPS with frozen raw hashes, without executing its setuptool. Stage
+  Ubuntu **1:4.13+dfsg1-4ubuntu3.2** uidmap/libsubid4 candidate packages with signed
+  InRelease -> package-index -> .deb SHA256 verification. These are local source
+  artifacts; actual host dependency compatibility remains unobserved. Do not
+  upgrade/downgrade or remove an existing dependency. A narrow candidate profile
+  for the exact private RootlessKit path passes local AppArmor preprocessing only;
+  no policy was loaded into any kernel.
+- [ ] Resolve the owner's storage preference. The owner asked **“why you need
+  quota?”**: Docker can run without quotas. The proposed 24GiB hard disk boundary
+  protects the disk shared with Kubernetes from images/build caches/log growth;
+  it is an initial ceiling, not a measured Docker minimum. A bounded volume gives
+  the same boundary. Monitoring/free-space stops offer a lighter safeguard with
+  residual fill risk. The owner has not waived or selected a replacement for the
+  approved plan's boundary. Do not fabricate a quota, adopt protected volumes or
+  enable quotas/remount/repartition/create a loop disk under existing authority.
+- [ ] Bind actual net reservations, host I/O/network/tool/dependency inputs and
+  host-write transport. Installing privileged mapping helpers, adding a private
+  AppArmor exception, a new disk facility or a write-capable installer Pod are
+  additional changes outside the presented setup scope. The staged proposal is
+  not approval; obtain only the specific new scope when its concrete action is
+  ready. Existing setup and calibration approval must not be requested again.
+- [ ] Apply/verify the approved empty-engine setup after these prerequisites;
+  keep the continuous engine/scratch/node-restart collector and remaining native
+  runtime/S3/clock/authority/window admission explicit before calibration launch.
+
+Exact evidence is `isolated-docker-approved-20261031-sl84w1p3` under the existing
+preparation root, selected by `independentCalibration.isolatedDockerEngine` in
+the existing index/catalogue. It preserves the earlier 19-test / 94-check snapshot
+without replaying completed tests/reviews. Ten native executable hashes and the
+selected **37-null** S3 draft are unchanged. No Git writes or retained-resource
+disposal occurred. Live qualification/Production remain unproved and A41 open.
+Approval-adoption custody verification passes **98/98**, exit 0; the existing
+index/catalogue bind its exact verifier, command and result separately from the
+preserved 94-check offline snapshot. No completed product suite was rerun.
+
+## Platform-owned isolated node1 Docker engine — 2026-10-30 (active continuation)
+
+This section is the active implementation scope; earlier sections are retained
+history and completed tasks, not instructions to replay. Continue Story 27.4 on
+owner-selected **node1 / 192.168.1.30**. Deliver a concrete, reviewable offline
+setup for a dedicated rootless Docker engine owned by Platform. Kubernetes,
+host containerd, existing workloads, retained runs/disks and their networks stay
+protected. Existing calibration approval remains accepted and unused; host
+capture is consumed and the S3 adapter review is complete. Do not repeat them.
+
+### Code map, decisions and tasks
+
+- [x] Platform implementer: inspect ordinary owner guidance/configuration,
+  `eng/helm-qualification/{README.md,independent_calibration.py,campaign_lifecycle.py}`,
+  and `eng/cluster-management/{README.md,RANCHER.md,QUALIFICATION.md}`. Read the
+  permitted workspace Hexalith baseline, never skills below `references/`.
+  Work from `references/Hexalith.Platform`, whose starting revision is
+  `7efec1ad0b45b413c9ed85f5f565ebbeaae26c65`; the working tree was clean.
+- [x] Add a small Platform-owned offline preparation utility and meaningful tests
+  under `eng/helm-qualification/` (suggested `isolated_docker.py` and
+  `test_isolated_docker.py`), with its operational recipe in
+  `eng/helm-qualification/ISOLATED-DOCKER.md` and an additive README link. The
+  utility renders only a fresh private local bundle; it must never contact a
+  daemon, run host commands, install packages, create accounts, or start/stop
+  services. Reject existing/symlink outputs, preserve all prior bytes, use private
+  permissions and record exact generated-file hashes. It is an offline setup
+  proposal, not an executable calibration plan or reservation signer.
+- [x] Prepare the exact rootless user-service/configuration proposal, using a
+  dedicated `hexalith-calibration` account and private home, Unix socket, data,
+  exec, PID, RootlessKit and managed private containerd paths. No host Docker
+  socket, TCP API, docker group, host networking, host containerd endpoint,
+  system Docker service enablement or ambient Docker context. Use existing
+  verified binaries from a private versioned path; their actual versions/hashes,
+  account UID/subordinate ranges and host prerequisite observations remain
+  explicit operational inputs. No package-manager dependency replacement.
+  RootlessKit/slirp networking must disable host-loopback and published ports
+  bind loopback; local isolation is not an egress security boundary. No existing
+  host firewall/routes/sysctls/kernel modules/AppArmor/cgroup boot setting is
+  changed silently. Missing user namespaces, helpers, nonoverlapping >=65536
+  subordinate IDs, native overlay compatibility, cgroup v2/systemd delegation,
+  rootless kind networking or required kernel settings block setup.
+- [x] Make aggregate enforcement explicit: preserve calibration's small workload
+  **10250m CPU / 19GiB** and PostgreSQL **2000m / 4GiB**. Propose an additional
+  **2000m CPU / 4GiB** daemon/build/unpack allowance, for a dedicated user-slice
+  ceiling **12250m CPU / 23GiB**, swap disabled and bounded PIDs/logs. Cap the
+  entire dedicated user's slice so systemd container scopes and runner siblings
+  cannot escape a service-only cap. These are proposed ceilings, not net
+  reservations, measurements or capacity qualification. Reserve **24GiB** extra
+  bounded engine/image/build scratch separately from existing primary/S3 staging
+  allocations; require an actual enforced filesystem/quota boundary and free
+  margin before use. A directory, free-space observation or shell ulimit is
+  insufficient. Do not create a loop disk/repartition or change kubelet
+  reservations. Host custodian must account competing Kubernetes/OS/management
+  reservations and approve enforceable headroom and I/O limits before activation.
+- [x] Document staged installation/preflight, empty-engine verification, explicit
+  local runner routing and teardown. Execute on node1, with the runner in the
+  same capped account: the current plan requires `unix:///...`, not a remote
+  SSH/TCP engine or the protected cluster. Inspect actual rootless security,
+  engine ID, cgroup v2/systemd, data/containerd/process ownership, effective
+  ancestor CPU/memory/swap/PID and disk limits, empty containers/volumes and
+  private networking. Only then bind real observations to the existing draft;
+  preserve runtime authority, trusted time, reservations, S3 identity/credentials,
+  window and monitoring gates. Verification creates no test container or kind
+  cluster and consumes no calibration attempt. Actual kind compatibility is
+  tested inside the already-approved one calibration attempt, after admission.
+  Record protected Kubernetes/service/process/network baselines before/after the
+  newly authorized setup, refuse drift, and keep absent evidence explicit.
+- [x] Cleanup recipe: first supported calibration disposal under its original
+  cumulative **900s** allowance and exact run/engine/UID selectors; preserve
+  locked S3 objects and evidence. Engine teardown is separate, empty-only and
+  identity/ownership checked: stop only the dedicated unit/user, verify process,
+  socket/network/mount absence, then remove only freshly owned paths if
+  authorized. Never prune shared Docker, delete by broad label, stop host
+  containerd/kubelet, remove pre-existing accounts/artifacts or reuse old cleanup
+  approvals. Failed/unknown cleanup remains retained/unverified.
+- [x] Run focused offline tests, generated-file/configuration syntax checks where
+  available, and one scoped review of this new delta. Report actual results and
+  limitations. Do not rerun completed S3 or full qualification reviews.
+- [x] Coordinator only, after implementer returns: materialize one private bundle
+  and receipt, inspect existing local access metadata without credentials or
+  remote execution, then update this Spec 14, the single retention report and
+  existing preparation index/catalogue. Preserve original hashes and historic
+  receipts, ten native bindings, selected 37-null draft and approval accounting.
+  Leave actual host installation/activation pending an exact new-host-change
+  approval; no prepare/launch, infrastructure/provider contact, secret-value
+  reads, staging, commit, push, submodule/dependency updates or old-resource
+  disposal. No additional numbered spec, report or independent CLI/MCP server.
+
+### Acceptance
+
+- Given a fresh local output, when preparation runs, then it writes a private,
+  hash-bound reproducible proposal without host contact; existing/symlink output
+  refuses without altering prior contents. Tests verify actual filesystem state.
+- Given node1's existing containerd workloads, when proposed setup is inspected,
+  then daemon, network, storage, user and cgroups are separately owned, full-user
+  limits include all descendants, and missing operational evidence blocks use.
+- Given completed offline work, when readiness is recorded, then setup approval
+  covers only newly enumerated host changes, existing calibration approval is
+  not requested again, capture stays consumed, Story 27.4 stays in progress and
+  A41 open until live qualification passes.
+
+### Access and evidence known before implementation
+
+The retained 2026-10-28 capture binds node UID
+`46d8d528-420d-4501-a6d8-12680d8a6ac6`, machine ID
+`af92d428c6104784a4011c389e3bc6e6`, containerd 2.3.3 and an unavailable
+`unix:///var/run/docker.sock`. Gross CPU/RAM/free disk are not reservations.
+Current local kubeconfig metadata selects `jpiquot@local` at
+`https://192.168.1.30:6443`; it is Kubernetes access, not an approved host-write
+channel. Earlier SSH attempts failed before remote execution; historical Platform
+host access is encrypted and does not confer a current account mapping. The
+coordinator is on `DESKTOP-VIOG240`, not node1. No new host capture or SSH retry.
+
+Official design references (2026-10-30):
+[Docker rootless prerequisites](https://docs.docker.com/engine/security/rootless/),
+[user-service and cgroup limits](https://docs.docker.com/engine/security/rootless/tips/),
+[kind rootless requirements](https://kind.sigs.k8s.io/docs/user/rootless/).
+Documentation commands that disable shared Docker, restart global services or
+change global sysctls are not adopted. If practical evidence requires deviation,
+record it as an explicit new host change before asking the coordinator to proceed.
+
+### Review Triage Log — isolated Docker engine
+
+One three-layer review of this new delta returned 13 individually retained
+findings (12 patch root causes, B1/E3 duplicate). No completed S3 review or
+historical source campaign was repeated. All corrections are small owner-code,
+coverage or operational-recipe changes; actual host controls remain unverified.
+All corrections were inspected against the reviewed input. Final focused
+verification passes 19/19; no current delta finding remains unresolved.
+
+| Finding | Verdict | Route and evidence |
+| :--- | :--- | :--- |
+| B1 | medium | patch: Receipt fsync can fail after complete JSON is visible; publish a final receipt only after successful staged persistence and cover that failure. Same root cause as E3. |
+| B2 | medium | patch: Upstream rootless startup invokes sysctl; current PATH omits common system administrative utility locations. Include verified sbin paths while pinning runtime executables. |
+| B3 | medium | patch: The retained script reads DOCKERD, _DOCKERD_ROOTLESS_CHILD and extra RootlessKit flags. Bind/clear these manager overrides explicitly. |
+| B4 | medium | patch: Current lifecycle source bind-mounts the owned primary data directory; pinned kind also mounts /lib/modules read-only. Replace blanket mount prose with an exact allowlist and operational identity checks. |
+| B5 | medium | patch: Daemon environment is separate from the runner and native child whitelist drops some cache variables. Specify retained TMPDIR/NUGET_PACKAGES and enforced allocation for default-home growth. |
+| B6 | medium | patch: The new network checklist omits transit, pod/service and CNI ranges; inventory/check all layers before launch rather than infer compatibility. |
+| B7 | medium | patch: Existing monitoring has a closed original allocation set and does not cover new scratch. Define freshness/cadence/stop requirements and keep the actual continuous collector an explicit launch hold. |
+| B8 | medium | patch: New empty setup can fail before calibration state exists. Document identity-checked setup rollback using separate authority, without attempting nonexistent native state disposal. |
+| B9 | medium | patch: Pinned kind 0.31.0 selects on-failure:1. Existing RestartCount capture alone is not proof of continuous zero-restart enforcement; disclose policy and actual observer/failed-disposition prerequisite, leaving native sources unchanged. |
+| E1 | medium | patch: Dockerd official configuration has no default-pids-limit directive; remove it and the unsupported per-container claim, retain full-user TasksMax. |
+| E2 | medium | patch: Docker lookupBinPath checks system libexec directories before PATH. Bind userland-proxy-path to the private verified helper. |
+| E3 | medium | patch: A failed final receipt fsync leaves complete=true readable. Same verified defect as B1; one persistence fix with one actual failure regression. |
+| V1 | medium | patch: The verified gap is real: all original refusals exercise render directly. Add actual CLI subprocess exit/stdout/preservation assertions for existing output and invalid parent. |
+
+### Offline result and remaining live work
+
+The private eight-file setup proposal is materialized and hash-bound by
+`independentCalibration.isolatedDockerEngine` in the existing preparation index.
+The final Platform filesystem/refusal/isolation suite passes 19/19 in 0.423s,
+including real CLI refusal and receipt-fsync failure. Python AST 2/2, generated
+JSON 3/3, local substituted systemd syntax 3/3 (no warnings) and both owner
+whitespace checks pass. One scoped three-layer review completed; all 13 findings
+(12 root causes) are corrected. The initial 17-case pass and the restrictive-umask
+fixture failure/correction remain separately retained. Exact commands and
+custody are retained in the single
+[report](tests/27-4-retention-verification-evidence.md#platform-owned-isolated-node1-docker-preparation--2026-10-30-current).
+Final local custody/preservation verification passes 94/94; the existing
+index/catalogue bind its verifier, exact command and result.
+No host action, credential read or calibration prepare/launch occurred. All ten
+native source bindings and the selected 37-null draft remain unchanged.
+
+- [ ] Bind actual custodian transport, UID/ranges, verified tools, supported host
+  controls, enforceable quota/device/I/O/CIDRs, net reservations and protected
+  before baseline plus exact after-verification/rollback plan; obtain approval
+  for the exact newly bound host changes, then apply
+  and verify the empty private engine. Existing run approval is not requested again.
+- [ ] Implement and bind continuous engine/scratch/ancestor/node-restart
+  observation and finite failure-to-stop enforcement before calibration launch.
+  The existing allocation collector does not cover these added resources; its
+  absence is an explicit prerequisite, not an offline pass. Bounded empty-engine
+  setup uses separate custodian checks and newly approved setup rollback.
+- [ ] Pass actual admitted live qualification with runtime/S3/clock/authority/
+  monitoring/window prerequisites and original attempt/time/cleanup bounds.
+  Keep Story 27.4 in progress and A41 open until that evidence exists.
+
 ## Workspace package-boundary verification — 2026-10-30 (active continuation)
 
 Resume the existing story after its changes were pushed. Reopen the precisely

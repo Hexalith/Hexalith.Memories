@@ -1,5 +1,172 @@
 # Story 27.4 — current retention results
 
+## Approved node1 setup — 2026-10-31 (current)
+
+The owner's **“i approve”** is recorded for the presented dedicated rootless
+node1 setup. **Setup approval and calibration approval remain accepted; neither
+is requested again.** Technical prerequisites still block host installation.
+Story 27.4 stays in progress; A41 open, no qualification or Production credit.
+
+Under the new setup scope, one read-only prerequisite Pod ran on the same Ready
+node1 / 192.168.1.30, node UID `46d8d528-420d-4501-a6d8-12680d8a6ac6`, machine
+`af92d428c6104784a4011c389e3bc6e6`, containerd 2.3.3. The original consumed capture
+was not replayed. Pod `platform-rootless-preflight-ca5f6895af`, UID
+`8f5526cd-dae6-4265-938f-973e1007bead`, used a cached immutable image, no token or
+host namespaces, privileged:false, only SYS_CHROOT, 100m/128MiB and a 60s deadline.
+Its host-root mount's **recursiveReadOnly: Enabled** was actually observed before
+running the fixed-file script, which executed no child commands or network calls.
+
+The script succeeded in **0.501711s**. The orchestration command
+`python3 -B /home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/isolated-docker-approved-20261031-sl84w1p3/run-readonly-preflight.py` completed in **6.660850s**, exit **1**:
+its immediate kubelet read still saw the terminating Pod although API deletion
+had succeeded. This authentic uncertainty/result remains preserved. The separate
+exact UID/name runtime absence check passed at **05:14:11.312715Z**; final cleanup
+is verified. Existing workload UID/container/restart projections are byte-equal
+before/after. Existing host configuration/workloads/retained resources remain
+untouched; no account, package, policy, disk allocation or engine was created.
+
+The check establishes concrete prerequisites, not capacity or compatibility:
+
+| Observation | Current implication |
+| :--- | :--- |
+| systemd 255.4-1ubuntu8.18, cgroup v2 cpu/io/memory/pids, existing overlay/iptables modules, slirp4netns 1.2.1 | Useful installed prerequisites; no effective dedicated-user enforcement or running-engine proof. |
+| `/usr/bin/newuidmap`, `/usr/bin/newgidmap`, `/usr/bin/rootlesskit` and `/usr/bin/dockerd-rootless.sh` absent | No verified complete rootless tool chain. Alternate private locations were not exhaustively searched. Docker/containerd/runc binaries do exist. |
+| AppArmor unprivileged-userns restriction 1 | Actual private-path permission remains unverified; no denial was experimentally produced. A narrow profile is prepared, not loaded. |
+| ext4 root/other persistent mounts, no observed quota flags/tools or hard allocation | The planned scratch boundary remains unbound. No assertion that quota support is impossible; no filesystem/quota/storage change occurred. |
+| unused UID/GID 5000, sub-ID range 1000000:65536 | Candidate values only; no account/range reservation. Gross root free bytes are not net capacity. |
+
+The owner asked **“why you need quota?”**. Docker can run without quotas. This
+was a proposed safety boundary to protect Kubernetes' shared disk from Docker
+images/builds/logs; **24GiB is an initial ceiling, not a measured minimum**. A
+bounded dedicated volume gives the same boundary; monitoring/free-space stop
+thresholds are a lighter safeguard with residual fill risk. The storage preference
+question is unresolved; no waiver or permission to change shared filesystems is
+inferred from the question.
+
+Available local preparation is complete: Docker 29.8.2 rootless extras with
+RootlessKit 3.1.0 are staged and raw-hash bound from official HTTPS. Ubuntu uidmap
+and reference libsubid4 **1:4.13+dfsg1-4ubuntu3.2** candidates are staged with
+InRelease signature, index SHA256 and package SHA256/size verified. Host dependency
+compatibility is still missing; existing packages may not be upgraded/downgraded.
+The exact private-path AppArmor candidate passes local preprocessing only, with
+skip-kernel-load/skip-cache; no host or workstation kernel policy was loaded.
+Installing missing privileged helpers, loading a new profile, providing a new
+storage facility and a write-capable installer Pod require their specific new
+scope. The already-approved setup is not being requested again.
+
+Private `isolated-docker-approved-20261031-sl84w1p3/approved-setup-record.json`
+binds approval, before snapshots, actual commands/results, both cleanup receipts,
+read-only script/manifest, artifact provenance and the unapproved additional-change
+proposal. Both existing preparation selectors point to it and retain the previous
+offline preparation record. The 19-test/94-check evidence remains its earlier
+snapshot; completed implementation/S3 reviews were not repeated. All ten native
+source bindings and the selected 37-null draft remain unchanged. Calibration
+launch remains unused and blocked by the continuing operational inputs/collector.
+Approval-adoption custody verification passes **98/98**, exit 0; the existing
+index/catalogue bind its exact verifier, command and result separately from the
+preserved 94-check offline snapshot. No completed product suite was rerun.
+
+## Platform-owned isolated node1 Docker preparation — 2026-10-30 (current)
+
+Platform now owns an **offline** isolated-engine preparation utility and the
+[exact setup/ownership/verification/cleanup recipe](../../../references/Hexalith.Platform/eng/helm-qualification/ISOLATED-DOCKER.md).
+The renderer writes only a fresh private local bundle: user-service and dedicated
+UID cgroup templates, private daemon/client configuration, unresolved operational
+observations, the exact recipe and a raw-hash inventory. It performs no host
+command, socket/provider contact, installation or calibration operation.
+
+The proposed dedicated `hexalith-calibration` rootless service uses its own local
+Unix socket, data/exec/PID/RootlessKit and managed containerd paths. The whole
+user slice encloses daemon, container scopes and runner siblings, with proposed
+**12.25 CPU / 23GiB**, zero swap and **32768 tasks**: unchanged workload
+**10.25 CPU / 19GiB**, including PostgreSQL **2 CPU / 4GiB**, plus a configured
+**2 CPU / 4GiB** engine allowance. **24GiB** extra engine/image/build scratch
+requires an enforced existing quota or bounded filesystem, inode limit and 20%
+free margin, separately from primary/S3 staging. These are initial configured
+ceilings, not reservations or measured capacity. Device I/O rates, network CIDRs
+and effective ancestor limits require actual observations. Missing enforcement
+blocks activation; no filesystem enablement, host network or shared-runtime
+change is silently proposed.
+
+Final coordinator verification passes **19/19** focused filesystem/refusal/CLI/
+receipt-persistence checks in **0.423s** (process 0.509s), exit 0, no errors,
+failures or skips, under inherited **umask 077**. Python AST passes **2/2**,
+generated JSON parsing **3/3**, local substituted systemd syntax **3/3** with no
+warnings, and whitespace checks pass in both repositories.
+Exact test command from Platform root:
+`PYTHONPATH=eng/helm-qualification python3 -B -m unittest -v test_isolated_docker`.
+The systemd fixtures use a fake UID, /usr/bin/true and /dev/null I/O solely for
+syntax; no unit executes. Local source/configuration checks establish no node1
+kernel, daemon, quota,
+network, cgroup or kind compatibility. Real `dockerd --validate` remains pending
+with an actual verified toolset and resolved configuration.
+
+The private receipt directory is
+`isolated-docker-preparation-20261030-zm3x4i98` under the existing preparation root.
+`preparation-reviewed-record.json` binds local-only command receipts, source revisions,
+exact new source hashes, the persistent eight-file bundle and its seven-payload
+hash inventory, preserved original approvals/capture/S3 review and draft. The
+existing preparation index and command catalogue bind this record and separately
+list the new host setup action. One three-layer review of only this continuation
+retained all 13 findings individually and corrected their 12 root causes. The
+current delta has no unresolved finding; real operational observations stay held.
+
+The review removed an unsupported Docker PID directive, pinned the private
+daemon/proxy and verified system-utility paths, cleared rootless overrides, made
+receipt publication follow successful persistence, and added actual CLI refusal
+and fsync-failure regressions. The recipe now inventories required primary/module
+mounts and every network layer, bounds sibling home/build/cache growth separately,
+and specifies continuous engine/scratch/cgroup/node-restart observation plus
+setup-only rollback without nonexistent calibration state. The initial 17-case
+pass/bundle is preserved. A subsequent umask-077 coordinator run executed 19 cases
+and produced four assertions in two fixture methods: mkdir permissions had been
+narrowed, making the alleged invalid parent valid. Explicit fixture chmods fixed
+that assumption; renderer/admission behavior did not change. Its authentic failed
+command/log are retained in `umask-fixture-correction.json`, separately from the
+final pass. No completed S3 review or historical gate run was repeated.
+
+Final local record verification passes **94/94**, exit 0: selected source/bundle
+hashes, exact file scope, private custody, prior JSON/document content, approval/
+capture accounting, original draft/native bytes and explicit holds. Its verifier,
+command and result hashes are bound by both existing preparation selectors.
+
+Current local access inspection found configured context `jpiquot@local` at
+`https://192.168.1.30:6443`; this is local kubeconfig metadata, not a new API call
+or host-write grant. `ssh -G` only expanded local configuration; no SSH retry or
+host command occurred. The workstation is `DESKTOP-VIOG240`, not node1. The
+retained capture still reports containerd 2.3.3 and an unavailable configured
+Docker socket. The completed diagnostic capture was not replayed. Platform's
+existing runner pins a Unix engine ID and private kubeconfig; its environment
+scrubs `DOCKER_CONFIG`, so the recipe installs a clean default `.docker/config.json`
+inside the dedicated home. All ten native executable bindings stay unchanged.
+
+**New host setup remains unapproved and unexecuted.** Trusted custodian transport,
+actual UID/sub-ID ranges, verified binaries, current rootless prerequisites,
+quota/device/I/O/CIDR bindings, net reservations, protected before baseline and
+exact after-verification/finite rollback plan must be resolved before requesting
+exact new-host-change approval. Actual private engine identity, effective limit
+readback and protected after observations precede readiness after that approval.
+Only its enumerated new account/private paths/quotas/instance drop-ins and empty
+engine activation would need that approval; existing Kubernetes/containerd,
+workloads, shared services and retained resources stay protected. Any proposed
+write-capable Kubernetes installer Pod needs a separate exact manifest and
+cleanup approval; none was prepared, created or authorized here.
+
+The existing calibration approval is **accepted and unused**, its launch attempt
+is unconsumed; the host capture stays **consumed**, and completed S3 review was
+not repeated. The selected S3 draft still has **37 nulls**; no executable plan,
+prepared state, engine identity or reservation was fabricated. Runtime/S3
+principal/project/credential/staging inputs, independent UTC/action authority,
+monitoring and absolute window still precede prepare/launch. An implemented,
+bound continuous engine/scratch/ancestor/node-restart collector remains a
+**calibration launch prerequisite**: the original allocation monitor does not
+cover these additions. Its plan requires <=5s samples, <=10s freshness and
+failure/withdrawal with the unchanged cumulative 900s disposal allowance. The
+bundle supplies no such collector. Pinned kind retains `on-failure:1`; daemon
+`Restart=no` alone earns no zero-node-restart proof. Bounded empty-engine setup
+uses custodian checks and separate setup/rollback authority. Story 27.4 remains
+**in progress**, live qualification and Production unproved, **A41 open**.
+
 ## Workspace package-boundary verification — 2026-10-30 (current)
 
 The qualifier's missing-nested-Builds blocker is resolved with a test-only source

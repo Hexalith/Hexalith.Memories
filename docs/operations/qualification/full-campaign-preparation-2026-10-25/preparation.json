@@ -1621,6 +1621,158 @@
           "sha256": "c96970b89b6ae6371da364f61b2a6f80d0e079b43c15fd67c32b5e27f0efb3da"
         }
       }
+    },
+    "isolatedDockerEngine": {
+      "record": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/isolated-docker-approved-20261031-sl84w1p3/approved-setup-record.json",
+        "sha256": "a5bba35b9e0e68eea99986bc37e0f7b60d132feda292528ecd8c694afb4eb377"
+      },
+      "status": "owner-approved-prerequisite-observation-complete-host-setup-blocked",
+      "owner": "Platform Operations / Jerome Piquot",
+      "setupRecipe": "references/Hexalith.Platform/eng/helm-qualification/ISOLATED-DOCKER.md",
+      "bundleReceipt": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/isolated-docker-preparation-20261030-zm3x4i98/bundle-reviewed/receipt.json",
+        "sha256": "40b3cd74f07b65a24822294c0d507cc9addeaf7d9cabc470e823b03b4f012519"
+      },
+      "offlineVerification": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/isolated-docker-preparation-20261030-zm3x4i98/final-offline-verification.json",
+        "sha256": "13120a38126e30676af3f7068ac94b79da9ac48d7b2691af637c16ab7f4ea033"
+      },
+      "wholeUserCeilings": {
+        "cpuMilli": 12250,
+        "memoryBytes": 24696061952,
+        "swapBytes": 0,
+        "tasks": 32768,
+        "additionalScratchBytes": 25769803776
+      },
+      "reservation": false,
+      "hostChangesAuthorized": true,
+      "hostChangesExecuted": false,
+      "launchAuthorized": true,
+      "launchReady": false,
+      "launchAttemptConsumed": false,
+      "hostCaptureConsumed": true,
+      "selectedDraftUnchanged": true,
+      "draftNullCount": 37,
+      "nativeSourceBindingsUnchanged": 10,
+      "qualificationCredit": false,
+      "review": {
+        "status": "corrections-inspected-and-final-focused-verification-passed",
+        "layers": 3,
+        "individualFindings": 13,
+        "correctedRootCauses": 12,
+        "unresolvedCurrentDeltaFindings": 0,
+        "triage": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/isolated-docker-preparation-20261030-zm3x4i98/review-triage-final.json",
+          "sha256": "a64606f401d45f49f36339caacd5e0a10b429aeb1c2d156b7fc1f318503eba0a"
+        }
+      },
+      "initialOfflineSnapshot": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/isolated-docker-preparation-20261030-zm3x4i98/preparation-record.json",
+        "sha256": "2d1550a77c3e82a0edec0c13c3918c1b5ce2e60df390256ec4c06cf958e435ca"
+      },
+      "initialBundlePreserved": true,
+      "continuousCollector": {
+        "implemented": false,
+        "bound": false,
+        "requiredBefore": "calibration-launch",
+        "samplingSeconds": 5,
+        "maximumSampleSeconds": 5,
+        "maximumFreshnessSeconds": 10,
+        "observes": [
+          "engine and process ownership/liveness",
+          "scratch and separately bounded home/source/evidence bytes and inodes",
+          "effective ancestor CPU/memory/swap/PID/I/O limits and events",
+          "exact kind node IDs, restart counts/start times and continuous lifecycle events"
+        ],
+        "failureDisposition": "fail/withdraw and supported exact-state disposal inside the original cumulative 900s; no retry/restart credit"
+      },
+      "finalFocusedVerification": {
+        "executed": 19,
+        "passed": 19,
+        "elapsedSeconds": 0.423,
+        "errors": 0,
+        "failures": 0,
+        "skips": 0
+      },
+      "syntaxVerification": {
+        "pythonAst": 2,
+        "jsonParse": 3,
+        "systemdSubstitutedFixtures": 3,
+        "systemdWarnings": 0
+      },
+      "recordsVerification": {
+        "verifier": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/isolated-docker-approved-20261031-sl84w1p3/verify-adoption.py",
+          "sha256": "62dfaa3746708e19964c244f0903e79cc098899644ae9aab816ed9033413c302"
+        },
+        "command": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/isolated-docker-approved-20261031-sl84w1p3/adoption-verification-command.json",
+          "sha256": "f1ef8367df12940d7148eb541fb7d2fc4f59abd51341c0a7392190924342324f"
+        },
+        "result": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/isolated-docker-approved-20261031-sl84w1p3/approval-adoption-verification.json",
+          "sha256": "9921aa56b6f0877b6944199f26bc38cbcb9cda0f57f6c2e615fe892b01848364"
+        },
+        "passedChecks": 98,
+        "scope": "new setup approval adoption and actual prerequisite/cleanup receipts; earlier offline code suite unchanged"
+      },
+      "offlinePreparationRecord": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/isolated-docker-preparation-20261030-zm3x4i98/preparation-reviewed-record.json",
+        "sha256": "62886508e2ee2812c4a143fadb93702ff50420a97f3135abd9a62b044ff7b01c"
+      },
+      "ownerSetupApproval": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/isolated-docker-approved-20261031-sl84w1p3/owner-approval.json",
+        "sha256": "62069b1d50e8ed83e998ba667069ddf803a0fcbba8eb1dcbd4635b433584e362"
+      },
+      "hostChangesAuthorizedScope": "only previously presented dedicated rootless setup; new privileged helper installation/AppArmor/storage changes and write-capable installer Pod remain separately unapproved",
+      "additionalPrerequisiteChangesAuthorized": false,
+      "temporaryPrerequisitePodRemoved": true,
+      "engineSetupAttemptStarted": false,
+      "engineProvisionedByThisAction": false,
+      "approvalAdoption": {
+        "record": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/isolated-docker-approved-20261031-sl84w1p3/approved-setup-record.json",
+          "sha256": "a5bba35b9e0e68eea99986bc37e0f7b60d132feda292528ecd8c694afb4eb377"
+        },
+        "prerequisiteReceipt": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/isolated-docker-approved-20261031-sl84w1p3/preflight-receipt.json",
+          "sha256": "121d3d74d20bc37fd82b827e1d31a35f5d39d4eb52f3b5a29f71a95fce709ea9"
+        },
+        "hostObservations": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/isolated-docker-approved-20261031-sl84w1p3/rootless-host-prerequisites.json",
+          "sha256": "e4a65288c30f14fd2558347e5bec845128c273b62a1a408020ea8dfd8063ffaf"
+        },
+        "cleanupFollowup": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/isolated-docker-approved-20261031-sl84w1p3/preflight-removal-followup.json",
+          "sha256": "5c2faa12ced4f63c3ae4b6cfda9e62bba39f73f540e7514180eae6603b8abc82"
+        },
+        "cleanupVerified": true,
+        "protectedPodProjectionUnchanged": true,
+        "storageDecisionPending": true,
+        "storageConstraintOrigin": "assistant-proposed storage guard in the approved setup plan; not a Docker installation requirement",
+        "additionalPrerequisiteProposal": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/isolated-docker-approved-20261031-sl84w1p3/additional-prerequisites/additional-changes.json",
+          "sha256": "0e04fa0e424ad8a6a73cf8dec717369f8ae762f32345525a90332364f293b8d6"
+        }
+      },
+      "offlinePreparationRecordsVerification": {
+        "verifier": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/isolated-docker-preparation-20261030-zm3x4i98/verify-final-records.py",
+          "sha256": "abfe7bf57f794ede3f5ce73b4a0c8556068d87baaa08c90aaad275d90868dad8"
+        },
+        "command": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/isolated-docker-preparation-20261030-zm3x4i98/final-records-command.json",
+          "sha256": "7cdbf81409559a11dda3637faeb91ec8124751955294d49a917b4f711f4ffd50"
+        },
+        "result": {
+          "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/isolated-docker-preparation-20261030-zm3x4i98/final-records-verification.json",
+          "sha256": "d541d1bd66a466e3222939c33228298bcd799f430d9b36a51f23b6584cb7bb53"
+        },
+        "passedChecks": 94,
+        "hostContact": false
+      },
+      "offlineVerificationScope": "unchanged Platform preparation code; prior 2026-10-30 suite and review"
     }
   },
   "lifecyclePlanDraft": {
