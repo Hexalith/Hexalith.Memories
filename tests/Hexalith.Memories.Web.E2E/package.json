@@ -11,10 +11,10 @@
     "validate:artifacts": "node scripts/validate-artifacts.mjs"
   },
   "devDependencies": {
-    "@axe-core/playwright": "^4.12.1",
-    "@playwright/test": "^1.61.1",
-    "@types/node": "^26.0.1",
-    "typescript": "^6.0.3"
+    "@axe-core/playwright": "^4.14.0",
+    "@playwright/test": "^1.64.1",
+    "@types/node": "^24.19.2",
+    "typescript": "^7.0.2"
   },
   "engines": {
     "node": ">=24.0.0"
