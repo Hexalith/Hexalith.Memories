@@ -2717,6 +2717,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         readinessCts.CancelAfter(timeout);
         CancellationToken readinessToken = readinessCts.Token;
         Exception? lastException = null;
+        string lastReadiness = "unobserved";
         try
         {
             while (true)
@@ -2732,6 +2733,8 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                     {
                         throw new InvalidOperationException("The workflow metadata is not from the fixture-owned Dapr app.");
                     }
+
+                    lastReadiness = DescribeWorkflowWorkerReadiness(root, expectedAppId);
 
                     // Dapr 1.18.2 increments connectedWorkers just before registering actor types.
                     // Require both registration entries and placement readiness as well as the stream.
@@ -2771,8 +2774,51 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         {
             throw new TimeoutException(
                 $"The fixture-owned Dapr workflow worker did not become ready within {timeout}. "
-                + $"Last error: {FormatException(lastException)}.");
+                + $"Last error: {FormatException(lastException)}. Last readiness: {lastReadiness}.");
         }
+    }
+
+    /// <summary>Returns only bounded, non-secret facts about the existing readiness predicates.</summary>
+    private static string DescribeWorkflowWorkerReadiness(JsonElement root, string expectedAppId)
+    {
+        string workers = "missing";
+        if (root.TryGetProperty("workflows", out JsonElement workflows) &&
+            workflows.ValueKind == JsonValueKind.Object &&
+            workflows.TryGetProperty("connectedWorkers", out JsonElement connectedWorkers))
+        {
+            workers = connectedWorkers.ValueKind == JsonValueKind.Number && connectedWorkers.TryGetInt32(out int count)
+                ? count.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                : "invalid";
+        }
+
+        string hostReady = "missing";
+        if (root.TryGetProperty("actorRuntime", out JsonElement actorRuntime) &&
+            actorRuntime.ValueKind == JsonValueKind.Object &&
+            actorRuntime.TryGetProperty("hostReady", out JsonElement ready))
+        {
+            hostReady = ready.ValueKind is JsonValueKind.True or JsonValueKind.False
+                ? ready.GetBoolean().ToString().ToLowerInvariant()
+                : "invalid";
+        }
+
+        bool workflowActor = false;
+        bool activityActor = false;
+        if (root.TryGetProperty("actors", out JsonElement actors) && actors.ValueKind == JsonValueKind.Array)
+        {
+            string actorPrefix = $"dapr.internal.default.{expectedAppId}.";
+            foreach (JsonElement actor in actors.EnumerateArray())
+            {
+                if (actor.ValueKind == JsonValueKind.Object && actor.TryGetProperty("type", out JsonElement type) &&
+                    type.ValueKind == JsonValueKind.String)
+                {
+                    workflowActor |= string.Equals(type.GetString(), actorPrefix + "workflow", StringComparison.Ordinal);
+                    activityActor |= string.Equals(type.GetString(), actorPrefix + "activity", StringComparison.Ordinal);
+                }
+            }
+        }
+
+        return $"connectedWorkers={workers}; hostReady={hostReady}; "
+            + $"workflowActor={workflowActor.ToString().ToLowerInvariant()}; activityActor={activityActor.ToString().ToLowerInvariant()}";
     }
 
     /// <summary>Polls a status-only endpoint probe until it converges or reaches a bounded failure.</summary>

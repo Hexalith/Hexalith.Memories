@@ -71,6 +71,46 @@ public sealed class WorkflowWorkerReadinessTests
                 CancellationToken.None));
 
         exception.Message.ShouldContain("workflow worker did not become ready");
+        exception.Message.ShouldContain("connectedWorkers=missing; hostReady=missing");
+        exception.Message.ShouldNotContain("metadata-secret-sentinel");
+    }
+
+    [Theory]
+    [InlineData(0, true, true, "connectedWorkers=0")]
+    [InlineData(1, false, true, "activityActor=false")]
+    [InlineData(1, true, false, "hostReady=false")]
+    public async Task UnreadyWorker_ReportsTheMissingPredicateWithoutMetadataDisclosure(
+        int connectedWorkers, bool registered, bool hostReady, string missingPredicate)
+    {
+        string metadata = Metadata(connectedWorkers, registered, hostReady)
+            .Replace("{\"id\":", "{\"secret\":\"metadata-secret-sentinel\",\"id\":", StringComparison.Ordinal);
+        TimeoutException exception = await Should.ThrowAsync<TimeoutException>(() =>
+            AspireIngestionPipelineFixture.WaitForWorkflowWorkerReadyAsync(
+                _ => Task.FromResult(JsonDocument.Parse(metadata)),
+                AppId,
+                TimeSpan.FromMilliseconds(30),
+                TimeSpan.FromMilliseconds(5),
+                CancellationToken.None));
+
+        exception.Message.ShouldContain(missingPredicate);
+        exception.Message.ShouldNotContain("metadata-secret-sentinel");
+        exception.Message.ShouldNotContain(AppId);
+        exception.Message.Length.ShouldBeLessThan(400);
+    }
+
+    [Fact]
+    public async Task UnreadyWorker_DiagnosticIgnoresArbitraryActorRecords()
+    {
+        string metadata = $$"""{"id":"{{AppId}}","workflows":{"connectedWorkers":0},"actorRuntime":{"hostReady":false},"actors":[null,{"type":"metadata-secret-sentinel"}]}""";
+        TimeoutException exception = await Should.ThrowAsync<TimeoutException>(() =>
+            AspireIngestionPipelineFixture.WaitForWorkflowWorkerReadyAsync(
+                _ => Task.FromResult(JsonDocument.Parse(metadata)),
+                AppId,
+                TimeSpan.FromMilliseconds(30),
+                TimeSpan.FromMilliseconds(5),
+                CancellationToken.None));
+
+        exception.Message.ShouldContain("connectedWorkers=0; hostReady=false; workflowActor=false; activityActor=false");
         exception.Message.ShouldNotContain("metadata-secret-sentinel");
     }
 
