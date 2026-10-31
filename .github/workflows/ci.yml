@@ -167,8 +167,24 @@ jobs:
         # baseline_commit would reintroduce the drift the CI range already avoids.
         run: python3 tools/check-story-review-readiness.py --branch-name "$BRANCH_NAME" --commit-message-file "$COMMIT_MESSAGE_FILE" --changed-files-file "$CHANGED_FILES_FILE"
 
-  build:
-    name: build
+  shared-ci:
+    uses: Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@81c88b34d09d34260b92d7f0928dbbc1c7446baa
+    with:
+      solution: Hexalith.Memories.slnx
+      dotnet-global-json: global.json
+      builds-execution-sha: 81c88b34d09d34260b92d7f0928dbbc1c7446baa
+      test-platform: microsoft-testing-platform
+      # The shared shard has no integration-exclusion input. Keep the full
+      # Docker-free inventory and its canonical Coverlet reports in the local lane.
+      unit-test-projects: tests/Hexalith.Memories.Contracts.Tests/Hexalith.Memories.Contracts.Tests.csproj
+      integration-test-projects: ''
+      aspire-test-project: ''
+      run-consumer-validation: false
+      run-coverage-gate: false
+      build-timeout-minutes: 20
+
+  source-debug:
+    name: source-debug
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -186,20 +202,10 @@ jobs:
           global-json-file: global.json
 
 
-      - name: Restore solution
-        # Directory.Build.props keeps NU1901-1904 non-fatal (Hexalith ci-cd-standards.md,
-        # "Dependency Auditing"), but that only reaches this repo's own projects. Repeat it here
-        # via -p: so the same restore graph's Hexalith.FrontComposer submodule project (a separate
-        # Directory.Build.props chain) isn't fatally blocked by the AngleSharp/bunit NU1902 chain.
-        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904
-
-      - name: Build solution
-        run: dotnet build Hexalith.Memories.slnx --configuration Release --no-restore
-
       - name: Restore solution (Debug/source)
         # Story 28.1: Debug/source mode consumes Hexalith.EventStore via ProjectReference
         # instead of PackageReference (Directory.Build.props UseHexalithProjectReferences),
-        # which is a distinct restore graph from the Release/package build above. Both
+        # which is a distinct restore graph from the shared Release/package build. Both
         # modes must independently pass so the pinned source identity stays provably
         # buildable, not just the packaged one.
         run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Debug -p:UseHexalithProjectReferences=true -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904
@@ -209,23 +215,52 @@ jobs:
 
       - name: Verify source-selected owner catalog contracts
         run: |
+          set -euo pipefail
           mkdir -p TestResults
           dotnet tests/Hexalith.Memories.EventStore.Tests/bin/Debug/net10.0/Hexalith.Memories.EventStore.Tests.dll -class Hexalith.Memories.EventStore.Tests.MemoriesCatalogTests -xml TestResults/source-catalog.xml
           python3 - <<'PYTHON'
           import xml.etree.ElementTree as ET
           assemblies = ET.parse('TestResults/source-catalog.xml').getroot().findall('assembly')
           assert assemblies, 'Source catalog test report contains no assemblies'
-          assert sum(int(a.get('total', '0')) for a in assemblies) >= 3, 'Source catalog tests were not selected'
+          passed = 0
           for assembly in assemblies:
-              assert all(int(assembly.get(key, '0')) == 0 for key in ('failed', 'errors', 'skipped', 'not-run')), assembly.attrib
+              counts = {key: int(assembly.attrib[key]) for key in ('total', 'passed', 'failed', 'errors', 'skipped', 'not-run')}
+              assert all(value >= 0 for value in counts.values()), assembly.attrib
+              assert counts['total'] == sum(counts[key] for key in ('passed', 'failed', 'skipped', 'not-run')), assembly.attrib
+              assert all(counts[key] == 0 for key in ('failed', 'errors', 'skipped', 'not-run')), assembly.attrib
+              tests = assembly.findall('./collection/test')
+              assert len(tests) == counts['total'], 'Source catalog result count contradicts total'
+              assert sum(test.get('result') == 'Pass' for test in tests) == counts['passed'], 'Source catalog result count contradicts passed'
+              passed += counts['passed']
+          assert passed >= 3, 'Fewer than three source catalog tests passed'
           PYTHON
 
       - name: Upload source catalog verification
+        if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: source-catalog-verification
           path: TestResults/source-catalog.xml
           if-no-files-found: error
+
+  build:
+    name: build
+    if: ${{ always() }}
+    needs: [shared-ci, source-debug]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require shared Release and source Debug success
+        shell: bash
+        env:
+          SHARED_CI_RESULT: ${{ needs.shared-ci.result }}
+          SOURCE_DEBUG_RESULT: ${{ needs.source-debug.result }}
+        run: |
+          set -euo pipefail
+          if [[ "$SHARED_CI_RESULT" != "success" || "$SOURCE_DEBUG_RESULT" != "success" ]]; then
+            printf '::error::Build verification failed: shared-ci=%s, source-debug=%s\n' "$SHARED_CI_RESULT" "$SOURCE_DEBUG_RESULT"
+            exit 1
+          fi
 
   test-unit-contract:
     name: test-unit-contract
@@ -285,6 +320,9 @@ jobs:
 
       - name: Verify repository line-ending policy
         run: python3 -m unittest discover -s tests/tooling/line_endings -p "*_test.py"
+
+      - name: Run shared CI alignment fixtures
+        run: python3 -m unittest discover -s tests/tooling/ci_alignment -p "*_test.py"
 
       - name: Run coverage gate fixtures
         run: python3 -m unittest discover -s tests/tooling/coverage_gate -p "*_test.py"
@@ -415,12 +453,12 @@ jobs:
 
 
       - name: Restore solution
-        # See the "Restore solution" step in the build job above for the NU1901-1904 rationale.
+        # Retain the NU1901-1904 exception for the source dependency restore graph.
         run: dotnet restore Hexalith.Memories.slnx -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904
 
       # Build the Debug configuration the Playwright webServer runs (see playwright.config.ts),
       # so the browser lane exercises the same build this job produced instead of a discarded
-      # Release build. Release compile coverage for the host is already provided by the `build` job.
+      # Release build. Release compile coverage for the host is provided by the shared-ci lane.
       - name: Build Memories web specimen host
         run: dotnet build tests/Hexalith.Memories.Web.SpecimenHost/Hexalith.Memories.Web.SpecimenHost.csproj --configuration Debug --no-restore -m:1
 

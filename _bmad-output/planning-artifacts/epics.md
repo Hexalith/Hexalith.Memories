@@ -890,7 +890,7 @@ Aspire-hosted services resolve application secrets exclusively through Dapr secr
 **Scope boundary:** Epic 29 owns the Aspire/AppHost-local secret topology and provider-neutral composition. The deployed-cluster OpenBao platform and the runtime Dapr `secretstore` migration are Epic 31.
 
 ### Epic 30: CI/CD Pipeline Ownership and Alignment
-Memories adopts the EventStore-shaped Hexalith CI/CD model: reusable Hexalith.Builds workflows own standard build, test, and release mechanics, while Memories retains only named module-specific verification and recovery lanes. Tenants supplies compatible coverage and consumer-validation patterns where those shared inputs fit. The existing four-image container release and partial-recovery scope remains independently owned inside this epic.
+Release maintainers can publish and recover one complete, identity-bound Memories release set without silent partial success. Reusable Hexalith.Builds workflows own standard CI and pinned release preparation; Memories retains module-specific verification, caller-owned OIDC Trusted Publishing, publication hooks, deployment assets, and recovery. The active inventory remains ten packages and five images. The bounded 2026-10-31 reconciliation orders shared CI, local qualification, guarded dispatch, publication, recovery, and cutover; prior story identities remain historical aliases.
 **Lifecycle label:** Operational Readiness / CI/CD Engineering
 **Alignment target:** EventStore's shared-core plus companion-lane structure, with Tenants-style coverage and consumer validation where supported. Alignment must not weaken tenant-negative evidence, web E2E, integration, deployment, benchmark, package-inventory, or partial-release recovery gates.
 **Driven by:** Sprint Change Proposal 2026-07-26 — DW 27.3-CR5 split approved by Administrator 2026-07-21
@@ -5592,54 +5592,34 @@ So that consumers can use OpenBao without product code depending on OpenBao.
 
 ## Epic 30: CI/CD Pipeline Ownership and Alignment
 
-Memories adopts the EventStore-shaped Hexalith CI/CD model: reusable Hexalith.Builds workflows own standard build, test, and release mechanics, while Memories retains only named module-specific verification and recovery lanes. Tenants supplies compatible coverage and consumer-validation patterns where those shared inputs fit. The existing four-image container release and partial-recovery scope remains independently owned inside this epic.
+Release maintainers can publish and recover one complete, identity-bound Memories release set without silent partial success. Reusable Hexalith.Builds workflows own standard CI and release preparation; Memories retains named module-specific verification, caller-owned OIDC Trusted Publishing, publication hooks, deployment assets, and recovery. Compatible EventStore companion-lane and Tenants coverage/consumer-validation patterns guide alignment without weakening existing gates.
 
 **Lifecycle label:** Operational Readiness / CI/CD Engineering.
 
-**Alignment target:** EventStore's shared-core plus companion-lane structure, with Tenants-style coverage and consumer validation where supported. Alignment must not weaken tenant-negative evidence, web E2E, integration, deployment, benchmark, package-inventory, or partial-release recovery gates.
+**Bounded reconciliation approved 2026-10-31:** The Administrator selected shared CI first and authorized this adoption of EPIC-6 from the approved 2026-08-03 implementation-readiness remediation. This changes unfinished Epic 30 planning only, preserves the current ten-package/five-image release, and selects pinned `Github/prepare-domain-release` for later guarded release so the ordinary caller-owned production job retains NuGet OIDC Trusted Publishing. It passes no qualification, predecessor, review, activation, or publication gate and settles no unrelated readiness finding.
 
-**Driven by:** Sprint Change Proposal 2026-07-26, executing DW 27.3-CR5 (split approved by the Administrator on 2026-07-21 during Story 27.3 code review).
+**Historical origin:** The 2026-07-26 ownership correction removed CI/CD artifacts from Story 27.3's single adapter-qualification slice. The 2026-07-27 DW 27.3-CR16 split separated dispatch, publication, recovery, and cutover after the earlier umbrella reproduced an eight-checkpoint anti-template. Historical proposals, evidence, and citations retain their original identities and must be interpreted through this alias map, never globally rewritten.
 
-**Scope origin:** The pipeline artifacts already exist in the repository and were ledgered as an external CI/CD lane while bundled into Story 27.3's single C1 adapter-qualification slice. This epic gives them an owner, not a new implementation.
+| Historical key | Current key | Outcome |
+| --- | --- | --- |
+| `30-2-shared-ci-core-and-module-specific-verification-lanes` | `30-1-shared-ci-core-and-module-specific-verification-lanes` | Shared CI |
+| No predecessor | `30-2-pinned-builds-publication-and-recovery-qualification` | Pinned contract qualification |
+| `30-1-guarded-release-dispatch-and-shared-caller-adoption` | `30-3-guarded-release-dispatch-and-shared-caller-adoption` | Guarded dispatch |
+| `30-3-four-image-publication-contract` | `30-4-five-image-publication-contract` | Complete image publication |
+| `30-4-partial-release-recovery` | `30-5-partial-release-recovery` | Partial recovery |
+| `30-5-release-cutover-parity-and-rollback` | `30-6-release-cutover-parity-and-rollback` | Cutover and rollback |
 
-**Scope boundary (corrected 2026-08-03; prior 2026-07-27 ownership statement retained as superseded history in Story 27.3).** Epic 30 owns future registry-publication hardening; it is not a predecessor-status gate for Story 27.3. Production deployment rendering, verification, and evidence tooling (`tools/render-production-deployment.ps1`, `tools/verify-production-deployment.ps1`, `tools/validate-production-deployment-evidence.ps1`) and the `production-deployment-verification` CI job remain Story 27.3-owned under AC6/C2. That job invokes the checked-in `tools/publish-containers.ps1` local producer before verification and consumes all four archives from the same reviewed source SHA. Story 30.3 remains independently `backlog` behind its Hexalith.Builds activation gate and must preserve the four stable archive names and their ability to feed the Story 27.3 lane.
+**Current inventory:** `tools/release-packages.json` is authoritative and currently contains ten packages, including `Hexalith.Memories.EventStoreExtensions`. The five images are server, MCP compatibility host, access telemetry, access-telemetry clock, and domain service. Historical nine-package/four-image acceptance is superseded for active Epic 30 only; no member is dropped to reproduce it.
 
-### Story 30.1: Guarded Release Dispatch and Shared Caller Adoption
+**Scope boundary:** Story 27.3 independently owns production rendering, verification, evidence tooling (`tools/render-production-deployment.ps1`, `tools/verify-production-deployment.ps1`, `tools/validate-production-deployment-evidence.ps1`) and `production-deployment-verification` under AC6/C2. Its four stable archives (`server.tar.gz`, `mcp.tar.gz`, `access-telemetry.tar.gz`, `access-telemetry-clock.tar.gz`) must remain compatible and come from one reviewed source SHA. Preserve the current additional `domain-service.tar.gz` too. Epic 30 owns future registry-publication hardening; its backlog or qualification status never gates that independent lane or supplies its evidence.
 
-**Status:** backlog. **Owner:** Memories Maintainer.
+**Evidence rule:** Unless explicitly marked verified locally, checkpoint rows below name planned producers or artifacts, not achieved results. Every independently verifiable gate needs its own accountable owner, exact command or artifact, review state, and completion state. Story files refine those producers without merging gates or deriving completion from the umbrella.
 
-**Split note (2026-07-27).** Created by approved Sprint Change Proposal 2026-07-27 executing DW 27.3-CR16. The pre-split Story 30.1 carried seven Given/When/Then blocks and eight checkpoints with no owner, evidence command, review state or completion state, reproducing the anti-template shape its own split was executed to cure. Its scope is now Stories 30.1, 30.3, 30.4 and 30.5; no scope was added or dropped. The pre-split activation gate moved to Stories 30.3, 30.4 and 30.5, which are the stories that actually require multi-container Hexalith.Builds support. **Story 30.1 has no external activation gate.**
+### Story 30.1: Shared CI Core and Module-Specific Verification Lanes
 
-As a maintainer,
-I want release publication to be reachable only from a guarded dispatch against a shared, pinned caller,
-So that no release can be published from an unverified source, an unprotected environment, or an unpinned shared workflow.
+**Status:** done. **Owner:** Memories Maintainer + Hexalith.Builds Maintainer.
 
-**Acceptance Criteria:**
-
-**Given** an operator intentionally dispatches a release from `main`,
-**When** the release caller starts,
-**Then** an unprotected preflight proves the dispatch SHA is the current `main` tip with successful exact-source push CI
-**And** the release job uses a protected `production` environment, `cancel-in-progress: false`, and `domain-release.yml` pinned to the same approved 40-character Hexalith.Builds SHA passed as `builds-execution-sha`
-**And** ordinary pushes to `main` never publish a release.
-
-**Given** exact-source CI already tested the release candidate,
-**When** the reusable release job is invoked,
-**Then** `test-projects` remains empty to avoid duplicate release compute
-**And** `expected-package-count` is fixed at `9`
-**And** any failed source, package-count, environment, destination-absence, or Builds-identity proof stops before publication.
-
-**Given** the shared publication preflight reads `packages[].id`,
-**When** Memories adopts the shared release,
-**Then** `tools/release-packages.json`, its schema, validators, pack scripts, recovery tooling, and fixtures migrate atomically from `packageId` to `id`
-**And** the canonical inventory remains exactly the existing nine package IDs.
-
-**Implementation evidence:** The story file must carry a checkpoint table in which every row has an accountable owner, an exact evidence command or artifact, a review state, and a completion state. Required rows: guarded-dispatch preflight rejection of a non-tip SHA; protected-environment and pinned-Builds-SHA configuration; no-publish-on-push proof; and the atomic `packageId` to `id` migration with the nine-ID inventory unchanged.
-
-**Owned paths:** `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs`. Story 27.3 retains the declared cross-story edit it made under the 2026-07-26 Administrator decision.
-
-### Story 30.2: Shared CI Core and Module-Specific Verification Lanes
-
-**Status:** backlog. **Owner:** Memories Maintainer + Hexalith.Builds Maintainer.
+**Historical alias:** Former Story 30.2. This bounded CI slice does not migrate release callers or depend on multi-container publication qualification.
 
 As a maintainer,
 I want Memories CI aligned to the shared Hexalith.Builds contract,
@@ -5649,15 +5629,16 @@ So that standard checks remain consistent across modules without losing Memories
 
 **Given** pull requests and pushes to `main`,
 **When** `ci.yml` runs,
-**Then** its standard restore, Release build, warnings-as-errors, and compatible per-project test work is delegated to `Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@main`
-**And** test projects and platform selection are explicit rather than inferred.
+**Then** its standard restore, Release build, warnings-as-errors, and compatible per-project test work is delegated to `Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml` pinned to an approved lowercase 40-character SHA identical to `builds-execution-sha`
+**And** test projects and platform selection are explicit rather than inferred. The bounded shared MTP lane selects `Hexalith.Memories.Contracts.Tests` only; the existing seven-project local Coverlet inventory remains authoritative for unioned coverage, including the documented small Contracts overlap.
+**And** the existing Debug/source build becomes `source-debug`; the stable required check `build` always runs and succeeds only when both `shared-ci` and `source-debug` succeeded, rejecting failures, cancellations, and skipped predecessors.
 
 **Given** Memories has verification that the reusable workflow does not model,
 **When** the pipeline is reorganized,
 **Then** story-file scope, tenant-negative evidence, tooling fixtures, release-package topology, web E2E, fast integration, and production-deployment verification remain named local jobs or companion workflows
 **And** nightly slow integration and benchmark lanes remain intact.
 
-**Given** consumer validation, coverage, or package validation cannot use an existing shared input without weakening evidence,
+**Given** consumer validation, Coverlet unioned coverage, source-debug verification, or package validation cannot use an existing shared input without weakening evidence,
 **When** alignment is implemented,
 **Then** the missing reusable capability is added to Hexalith.Builds or retained locally with a documented exception
 **And** shared workflow logic is not copied into Memories.
@@ -5672,28 +5653,127 @@ So that standard checks remain consistent across modules without losing Memories
 
 **Implementation evidence:** The story file must contain a lane-by-lane migration table naming the old owner, new owner, trigger, required-check name, validation command or artifact, and rollback path.
 
-### Story 30.3: Four-Image Publication Contract
+
+**Checkpoint evidence:** Local implementation and preservation checks are verified in the Story 30.1 record. Live GitHub adoption and later release qualification remain separate; these rows claim neither.
+
+| Checkpoint | Owner | Evidence command or artifact | Review state | Completion state |
+| --- | --- | --- | --- | --- |
+| Approved immutable CI identity | Build Maintainer | `.github/workflows/ci.yml` full-SHA caller and identity-refusal fixtures | reviewed locally 2026-10-31 | complete locally 2026-10-31 |
+| Explicit per-project MTP selection | Memories Maintainer | `CiTestInventoryTests` and Contracts-only shared-caller fixtures | reviewed locally 2026-10-31 | complete locally 2026-10-31 |
+| Named local gates preserved | Memories Maintainer | Story 30.1 lane migration table and caller-equivalence fixtures | reviewed locally 2026-10-31 | complete locally 2026-10-31 |
+| Seven-project Coverlet union | Memories Maintainer | Preserved seven-project Coverlet configuration; `coverage_gate` 36 passing validator cases | reviewed locally 2026-10-31 | complete locally 2026-10-31 |
+| Source-debug lane retained | Memories Maintainer | `source-debug` workflow and lane-preservation fixtures | reviewed locally 2026-10-31 | complete locally 2026-10-31 |
+| Always-run build result | Memories Maintainer | Aggregate fixtures for success, failure, cancellation, and skipped predecessors | reviewed locally 2026-10-31 | complete locally 2026-10-31 |
+| PR title and commit validation | Memories Maintainer | Edited-title trigger and explicit-title commitlint fixtures | reviewed locally 2026-10-31 | complete locally 2026-10-31 |
+| Downloadable TRX and coverage | Memories Maintainer | Uploader identity/retention assertions and local XML preservation scenarios | reviewed locally 2026-10-31 | complete locally 2026-10-31 |
+| Required-check parity and rollback | Memories Maintainer | Story 30.1 lane migration table and branch-protection check-name documentation | reviewed locally 2026-10-31 | complete locally 2026-10-31 |
+
+### Story 30.2: Pinned Builds Publication and Recovery Qualification
+
+**Status:** backlog. **Owner:** Hexalith.Builds Maintainer + Memories Release Engineer.
+
+**Origin:** New outcome from the approved remediation. **Prerequisite:** Story 30.1 completes. Shared CI implementation supplies no publication qualification credit.
+
+As a release maintainer,
+I want the pinned Builds contract qualified against the complete Memories release set,
+So that upstream capabilities are proven locally before release migration consumes them.
+
+**Acceptance Criteria:**
+
+**Given** a candidate immutable Builds revision exposes multi-container identity and repeated per-container verification,
+**When** local qualification evaluates today's ten-package/five-image release set,
+**Then** upstream fixtures and Memories-owned complete-set dry-run, set-drift, repeated-verification, partial-publication, recovery, and evidence-upload results bind to the exact revision and receive owner approval
+**And** upstream fixture success alone never qualifies Memories or marks this story done.
+
+**Given** a mismatched identity, missing member, unsupported phase, ambiguous destination, or incomplete evidence,
+**When** qualification evaluates the candidate,
+**Then** it fails closed and dependent release stories remain unselectable until the blocker is resolved and independently reviewed.
+
+
+**Checkpoint evidence:** All artifacts below are planned; no gate has passed. Each independently verifiable gate has its own row.
+
+| Checkpoint | Owner | Evidence command or artifact | Review state | Completion state |
+| --- | --- | --- | --- | --- |
+| Upstream candidate fixtures | Builds Maintainer | `pwsh -NoProfile -File references/Hexalith.Builds/Tools/test-publish-containers.ps1` at the candidate revision | pending | not complete |
+| Complete Memories set dry-run | Memories Release Engineer | `_bmad-output/implementation-artifacts/30-2-qualification/complete-set-dry-run.json` | pending | not complete |
+| Set-drift refusal | Memories Release Engineer | `_bmad-output/implementation-artifacts/30-2-qualification/set-drift.json` | pending | not complete |
+| Repeated per-image verification | Memories Release Engineer | `_bmad-output/implementation-artifacts/30-2-qualification/phase-verification.json` | pending | not complete |
+| Partial-publication result | Memories Release Engineer | `_bmad-output/implementation-artifacts/30-2-qualification/partial-publication.json` | pending | not complete |
+| Missing-member recovery | Memories Release Engineer | `_bmad-output/implementation-artifacts/30-2-qualification/recovery.json` | pending | not complete |
+| Immutable evidence upload | Memories Release Engineer | `_bmad-output/implementation-artifacts/30-2-qualification/evidence-upload.json` | pending | not complete |
+| Exact-revision owner approval | Builds Maintainer + Memories Release Engineer | `_bmad-output/implementation-artifacts/30-2-qualification/approval.md` | pending | not complete |
+
+### Story 30.3: Guarded Release Dispatch and Shared Caller Adoption
 
 **Status:** backlog. **Owner:** Memories Maintainer.
 
-**Split note (2026-07-27).** Created by approved Sprint Change Proposal 2026-07-27 executing DW 27.3-CR16, from the pre-split Story 30.1.
-
-**Activation gate:** Story 30.3 must not enter implementation until an owner-approved Hexalith.Builds revision supports a frozen multi-container publication identity and repeated per-container verification without phase collisions. The current single `container_repository` identity and single-use container phase do not satisfy the four-image contract.
+**Historical alias:** Former Story 30.1. Its earlier no-external-gate wording is historical. The approved qualified sequence now requires Stories 30.1 and 30.2 to complete before this story enters implementation. Pinned shared preparation preserves the ordinary caller-owned production job and NuGet OIDC Trusted Publishing; it does not migrate credentials to a supplied API key.
 
 As a maintainer,
-I want all four release images published and verified under one declared mapping set,
+I want release publication to be reachable only from a guarded dispatch against a shared, pinned caller,
+So that no release can be published from an unverified source, an unprotected environment, or an unpinned shared workflow.
+
+**Acceptance Criteria:**
+
+**Given** an operator intentionally dispatches a release from `main`,
+**When** the release caller starts,
+**Then** an unprotected preflight proves the dispatch SHA is the current `main` tip with successful exact-source push CI
+**And** the release job uses a protected `production` environment, `cancel-in-progress: false`, and `Hexalith/Hexalith.Builds/Github/prepare-domain-release` pinned to the same approved 40-character Hexalith.Builds SHA passed as `builds-execution-sha`
+**And** ordinary pushes to `main` never publish a release.
+
+**Given** exact-source CI already tested the release candidate,
+**When** shared release preparation is invoked,
+**Then** application tests are not rerun because exact-source push CI is the test authority, and the caller retains OIDC Trusted Publishing, existing publication hooks, and evidence
+**And** `expected-package-count` is fixed at `10`
+**And** any failed source, package-count, environment, destination-absence, or Builds-identity proof stops before publication.
+
+**Given** the shared publication preflight reads `packages[].id`,
+**When** Memories adopts the shared release,
+**Then** `tools/release-packages.json`, its schema, validators, pack scripts, recovery tooling, and fixtures migrate atomically from `packageId` to `id`
+**And** the canonical inventory remains exactly the existing ten package IDs
+**And** recovery continues consuming immutable historical tagged `packageId` manifests without rewriting historical evidence.
+
+**Implementation evidence:** The story file must carry a checkpoint table in which every row has an accountable owner, an exact evidence command or artifact, a review state, and a completion state. Required rows: guarded-dispatch preflight rejection of a non-tip SHA; protected-environment and pinned-Builds-SHA configuration; no-publish-on-push proof; and the atomic `packageId` to `id` migration with the ten-ID inventory unchanged.
+
+**Owned paths:** `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs`. Story 27.3 retains the declared cross-story edit it made under the 2026-07-26 Administrator decision.
+
+
+**Checkpoint evidence:** All artifacts below are planned; no gate has passed. Each independently verifiable gate has its own row.
+
+| Checkpoint | Owner | Evidence command or artifact | Review state | Completion state |
+| --- | --- | --- | --- | --- |
+| Non-tip dispatch rejection | Memories Release Engineer | Guarded-dispatch non-tip fixture and preflight result | pending | not complete |
+| Exact-source push CI proof | Memories Release Engineer | Candidate SHA-bound CI proof and missing-CI refusal fixture | pending | not complete |
+| Protected production approval | Memories Release Engineer | Environment protection readback and caller configuration | pending | not complete |
+| Matching pinned Builds identity | Memories Release Engineer | Full-SHA composite caller and mismatch-refusal fixture | pending | not complete |
+| No publication on push | Memories Release Engineer | Trigger and publication-reachability fixtures | pending | not complete |
+| OIDC publication retained | Memories Release Engineer | Trusted Publishing caller and hook-preservation fixtures | pending | not complete |
+| No duplicate application tests | Memories Release Engineer | Preparation/caller test-invocation fixtures | pending | not complete |
+| Atomic ten-package migration | Memories Release Engineer | Release-package validator and unchanged-membership fixtures | pending | not complete |
+| Historical manifest recovery | Memories Release Engineer | Tagged `packageId` recovery compatibility fixtures | pending | not complete |
+| Destination absence refusal | Memories Release Engineer | Occupied and ambiguous destination negative fixtures | pending | not complete |
+
+### Story 30.4: Five-Image Publication Contract
+
+**Status:** backlog. **Owner:** Memories Maintainer.
+
+**Historical alias:** Former Story 30.3, Four-Image Publication Contract. **Activation gate:** Stories 30.2 and 30.3 must complete, including owner-approved frozen multi-container publication identity and repeated per-container verification without phase collisions. Candidate support being present never establishes qualification.
+
+As a maintainer,
+I want all five release images published and verified under one declared mapping set,
 So that every shipped container has a provable identity, platform set, and health contract.
 
 **Acceptance Criteria:**
 
 **Given** the approved multi-container Hexalith.Builds contract,
 **When** semantic-release publishes version `${nextRelease.version}`,
-**Then** the caller supplies exactly these mappings:
+**Then** the caller supplies exactly these mappings under one source/workflow/set identity:
 
 - `src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj|memories`
 - `src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj|memories-mcp`
 - `src/Hexalith.Memories.AccessTelemetry/Hexalith.Memories.AccessTelemetry.csproj|memories-access-telemetry`
 - `src/Hexalith.Memories.AccessTelemetry.Clock/Hexalith.Memories.AccessTelemetry.Clock.csproj|memories-access-telemetry-clock`
+- `src/Hexalith.Memories.DomainService/Hexalith.Memories.DomainService.csproj|memories-domain-service`
 
 **And** every image is verified against its declared platforms and workload-appropriate health contract
 **And** Memories-specific production-deployment asset generation remains in the caller rather than being copied into Hexalith.Builds.
@@ -5704,19 +5784,36 @@ So that every shipped container has a provable identity, platform set, and healt
 
 **Known risk (carried, not yet re-verified):** a prior investigation recorded that the zot registry rejected challenge-response push authentication - Docker and skopeo pushes returned 401 while a preemptive single-connection preflight probe succeeded - and suspected a registry-side replica/state issue requiring server-side diagnosis. Re-verify this against the current registry before treating the publish path as green; if it reproduces, record it as an accepted blocker per the acceptance criterion above.
 
-**Implementation evidence:** The story file must carry a checkpoint table in which every row has an accountable owner, an exact evidence command or artifact, a review state, and a completion state. Required rows: the four declared mappings; per-image platform verification; per-image health verification; and the recorded registry authorization mode with any named blocker.
+**Implementation evidence:** The story file must carry a checkpoint table in which every row has an accountable owner, an exact evidence command or artifact, a review state, and a completion state. Required rows: the five declared mappings; per-image platform verification; per-image health verification; and the recorded registry authorization mode with any named blocker.
 
-**Owned paths:** `tools/publish-containers.ps1`, `tools/verify-container-registry.ps1`, the four `tests/tooling/publish_containers/*` suites, and the four-image expansion of `docs/dev/release-runbook.md`.
+**Owned paths:** `tools/publish-containers.ps1`, `tools/verify-container-registry.ps1`, the four `tests/tooling/publish_containers/*` suites, and the five-image expansion of `docs/dev/release-runbook.md`.
 
-**Downstream obligation (corrected 2026-08-03):** the checked-in `tools/publish-containers.ps1` local-build contract produces `server.tar.gz`, `mcp.tar.gz`, `access-telemetry.tar.gz`, and `access-telemetry-clock.tar.gz` from the reviewed source SHA before the Story 27.3 `production-deployment-verification` job consumes them under AC6/C2. That same-SHA local build is current Story 27.3 execution input, not a gate on Story 30.3 reaching any status. Story 30.3 owns future registry-publication hardening and must not regress those stable names or their lane compatibility; its `backlog` status and Hexalith.Builds activation gate remain independent.
+**Downstream obligation:** Preserve `server.tar.gz`, `mcp.tar.gz`, `access-telemetry.tar.gz`, and `access-telemetry-clock.tar.gz` plus the current `domain-service.tar.gz` from one reviewed source SHA. The historical first four remain Story 27.3 deployment-verification inputs. Story 30.4's status and activation gate remain independent from that lane.
 
-### Story 30.4: Partial-Release Recovery
+
+**Checkpoint evidence:** All artifacts below are planned; no gate has passed. Each independently verifiable gate has its own row.
+
+| Checkpoint | Owner | Evidence command or artifact | Review state | Completion state |
+| --- | --- | --- | --- | --- |
+| Five declared mappings | Memories Release Engineer | Complete-set mapping and drift fixtures | pending | not complete |
+| Server platform verification | Memories Release Engineer | server source/version-bound platform verdict | pending | not complete |
+| MCP platform verification | Memories Release Engineer | mcp source/version-bound platform verdict | pending | not complete |
+| Access telemetry platform verification | Memories Release Engineer | access-telemetry source/version-bound platform verdict | pending | not complete |
+| Telemetry clock platform verification | Memories Release Engineer | access-telemetry-clock source/version-bound platform verdict | pending | not complete |
+| Domain service platform verification | Memories Release Engineer | domain-service source/version-bound platform verdict | pending | not complete |
+| Server health verification | Memories Release Engineer | server workload-specific health verdict | pending | not complete |
+| MCP health verification | Memories Release Engineer | mcp workload-specific health verdict | pending | not complete |
+| Access telemetry health verification | Memories Release Engineer | access-telemetry workload-specific health verdict | pending | not complete |
+| Telemetry clock health verification | Memories Release Engineer | access-telemetry-clock workload-specific health verdict | pending | not complete |
+| Domain service health verification | Memories Release Engineer | domain-service workload-specific health verdict | pending | not complete |
+| Recorded registry authorization | Memories Release Engineer | Registry authorization mode and named blocker record | pending | not complete |
+| Deployment archive compatibility | Memories Release Engineer | Stable archive same-source fixture and Story 27.3 input compatibility result | pending | not complete |
+
+### Story 30.5: Partial-Release Recovery
 
 **Status:** backlog. **Owner:** Memories Maintainer.
 
-**Split note (2026-07-27).** Created by approved Sprint Change Proposal 2026-07-27 executing DW 27.3-CR16, from the pre-split Story 30.1.
-
-**Activation gate:** Story 30.4 must not enter implementation until the approved Hexalith.Builds revision emits evidence sufficient for partial-release recovery.
+**Historical alias:** Former Story 30.4. **Activation gate:** Story 30.4 must complete and the owner-approved Builds revision must emit qualified immutable evidence sufficient for partial-release recovery.
 
 As a maintainer,
 I want a publish run that fails after some images are pushed to recover deterministically,
@@ -5726,20 +5823,29 @@ So that a partial release is completed exactly once without overwriting or retag
 
 **Given** a publish run that fails after some images are pushed,
 **When** recovery is authorized,
-**Then** `.github/workflows/recover-partial-release.yml` consumes immutable release evidence, proves the exact source/version/inventory, skips already-published members, and publishes only the missing members
+**Then** `.github/workflows/recover-partial-release.yml` consumes immutable release evidence, proves the exact source/version/inventory, skips already-published members, and publishes only the missing members of the ten-package/five-image set
 **And** recovery never overwrites, retags, or silently treats an ambiguous destination response as success.
 
 **Implementation evidence:** The story file must carry a checkpoint table in which every row has an accountable owner, an exact evidence command or artifact, a review state, and a completion state. Required rows: an exercised partial-failure scenario; the source/version/inventory proof; the skip-already-published result; and a negative proof that an ambiguous destination response fails rather than passes.
 
 **Owned paths:** `.github/workflows/recover-partial-release.yml`, `tools/complete-partial-release.ps1`.
 
-### Story 30.5: Release Cutover Parity and Rollback
+
+**Checkpoint evidence:** All artifacts below are planned; no gate has passed. Each independently verifiable gate has its own row.
+
+| Checkpoint | Owner | Evidence command or artifact | Review state | Completion state |
+| --- | --- | --- | --- | --- |
+| Exercised partial failure | Platform Operations | Intentionally partial-release fixture and captured evidence | pending | not complete |
+| Source/version/inventory proof | Memories Maintainer | Immutable recovery identity and drift fixtures | pending | not complete |
+| Already-published members skipped | Memories Maintainer | Skip-existing recovery fixture result | pending | not complete |
+| Missing members published once | Memories Maintainer | Complete-set recovery end-state fixture | pending | not complete |
+| Ambiguous destination refusal | Memories Maintainer | Ambiguous response negative fixture | pending | not complete |
+
+### Story 30.6: Release Cutover Parity and Rollback
 
 **Status:** backlog. **Owner:** Memories Maintainer.
 
-**Split note (2026-07-27).** Created by approved Sprint Change Proposal 2026-07-27 executing DW 27.3-CR16, from the pre-split Story 30.1.
-
-**Activation gate:** Story 30.5 must not enter implementation until Stories 30.1, 30.3 and 30.4 are `done`, because parity is proven against their completed lanes.
+**Historical alias:** Former Story 30.5. **Activation gate:** Stories 30.3, 30.4, and 30.5 must be done, including their inherited CI/qualification prerequisites, because parity is proven against completed lanes.
 
 As a maintainer,
 I want the migration from the existing custom publisher proven at parity before the old path is removed,
@@ -5747,15 +5853,26 @@ So that cutover cannot lose a capability and rollback cannot alter anything alre
 
 **Acceptance Criteria:**
 
-**Given** the existing automatic release and custom publisher,
+**Given** the existing caller and retained custom publisher,
 **When** migration is cut over,
-**Then** a dry run and controlled release rehearsal prove nine-package, four-image, GitHub Release asset, registry authorization, failure, and recovery parity
+**Then** a dry run and controlled release rehearsal prove ten-package, five-image, GitHub Release asset, OIDC/registry authorization, failure, and recovery parity
 **And** the old path is removed only after parity succeeds
 **And** rollback restores the prior caller without changing a published version or mutable tag.
 
 **Implementation evidence:** The story file must carry a checkpoint table in which every row has an accountable owner, an exact evidence command or artifact, a review state, and a completion state. Required rows: the dry-run result; the controlled rehearsal result; the lane-by-lane parity comparison; the old-path removal, gated on parity; and a rollback proof showing no published version or mutable tag changed.
 
 **Owned paths:** the cutover and rollback sections of `docs/dev/release-runbook.md`.
+
+**Checkpoint evidence:** All artifacts below are planned; no gate has passed. Each independently verifiable gate has its own row.
+
+| Checkpoint | Owner | Evidence command or artifact | Review state | Completion state |
+| --- | --- | --- | --- | --- |
+| Dry-run parity | Memories Release Engineer | Complete-set dry-run comparison artifact | pending | not complete |
+| Controlled rehearsal | Memories Release Engineer | Authorized rehearsal run and immutable evidence | pending | not complete |
+| Lane-by-lane comparison | Memories Release Engineer | Package/image/asset/authorization/failure/recovery parity matrix | pending | not complete |
+| Prior publisher removal gate | Memories Release Engineer | Parity approval and gated removal diff | pending | not complete |
+| Rollback without artifact mutation | Platform Operations | Rollback rehearsal and before/after published identity comparison | pending | not complete |
+
 
 ---
 

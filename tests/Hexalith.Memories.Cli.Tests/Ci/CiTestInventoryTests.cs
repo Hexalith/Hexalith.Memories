@@ -768,9 +768,22 @@ public sealed partial class CiTestInventoryTests
         // matching on the flag made a new restore step added *without* it invisible to this guard,
         // so the count stayed at 4 and the guard stayed green on exactly the drift it exists to catch.
         MatchCollection restoreInvocations = Regex.Matches(workflow, @"dotnet restore [^\r\n]*");
+        string[] workflowLines = File.ReadAllLines(Path.Combine(repoRoot, ".github", "workflows", "ci.yml"));
+        string[] localRestoreOwners = ["source-debug", "test-unit-contract", "web-e2e-specimen", "integration-fast"];
+        foreach (string owner in localRestoreOwners)
+        {
+            Regex.Matches(string.Join('\n', GetWorkflowJobLines(workflowLines, owner)), @"dotnet restore [^\r\n]*")
+                .Count.ShouldBe(1, $"Local lane '{owner}' must own exactly one restore.");
+        }
+
+        string[] sharedJob = GetWorkflowJobLines(workflowLines, "shared-ci");
+        GetWorkflowJobScalar(sharedJob, "uses").ShouldBe(
+            "Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@81c88b34d09d34260b92d7f0928dbbc1c7446baa");
+        sharedJob.ShouldContain("      solution: Hexalith.Memories.slnx");
+        string.Join('\n', sharedJob).ShouldNotContain("dotnet restore");
         restoreInvocations.Count.ShouldBe(
-            5,
-            "Every CI restore invocation must be accounted for by this guard; found a different number of restore steps.");
+            localRestoreOwners.Length,
+            "Every restore must belong to one of the retained local lanes; the shared Release restore is delegated.");
 
         Match[] restoreSteps = [.. restoreInvocations
             .Where(static invocation => invocation.Value.Contains("-p:WarningsNotAsErrors=", StringComparison.Ordinal))];
@@ -997,7 +1010,7 @@ public sealed partial class CiTestInventoryTests
                 }
 
                 IsAllowedExternalActionReference(reference).ShouldBeTrue(
-                    $"third-party action '{reference}' must use a major version tag like '@v7', or the exact reviewed upload-artifact v7.0.2 SHA; Hexalith.Builds actions must use '@main'.");
+                    $"third-party action '{reference}' must use a major version tag like '@v7', or the exact reviewed upload-artifact v7.0.2 SHA; Hexalith.Builds actions must use '@main' except the exact reviewed domain-ci workflow SHA.");
                 foundAny = true;
             }
         }
@@ -1010,6 +1023,10 @@ public sealed partial class CiTestInventoryTests
     [InlineData("actions/upload-artifact@v7", true)]
     [InlineData("actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9", true)]
     [InlineData("Hexalith/Hexalith.Builds/Github/initialize-build@main", true)]
+    [InlineData("Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@81c88b34d09d34260b92d7f0928dbbc1c7446baa", true)]
+    [InlineData("Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@81c88b34d09d34260b92d7f0928dbbc1c7446bab", false)]
+    [InlineData("Hexalith/Hexalith.Builds/.github/workflows/release.yml@81c88b34d09d34260b92d7f0928dbbc1c7446baa", false)]
+    [InlineData("Hexalith/Hexalith.Builds/Github/initialize-build@81c88b34d09d34260b92d7f0928dbbc1c7446baa", false)]
     [InlineData("actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd8", false)]
     [InlineData("actions/upload-artifact@0000000000000000000000000000000000000000", false)]
     [InlineData("actions/download-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9", false)]
@@ -1028,6 +1045,12 @@ public sealed partial class CiTestInventoryTests
     {
         // This exception authorizes only the reviewed upload-artifact v7.0.2 identity.
         if (reference == "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9")
+        {
+            return true;
+        }
+
+        // Story 30.1 authorizes this workflow identity, not arbitrary Builds actions or SHAs.
+        if (reference == "Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@81c88b34d09d34260b92d7f0928dbbc1c7446baa")
         {
             return true;
         }

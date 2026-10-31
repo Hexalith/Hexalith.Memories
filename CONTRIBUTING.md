@@ -433,6 +433,7 @@ The Docker-free lane maps `Category!=Integration` to
 ```text
 Contracts.Tests
 Server.Tests
+AccessTelemetry.Tests
 Cli.Tests
 Mcp.Tests
 EventStore.Tests
@@ -494,12 +495,35 @@ The scheduled `.github/workflows/nightly.yml` workflow remains the Tier 3 slow i
 | Check | Purpose |
 | --- | --- |
 | `story-file-scope` | Validate changed files against the originating story's `File Scope`, and require attached cross-tenant negative evidence when a tenant-isolation surface changed. |
-| `build` | Restore and build `Hexalith.Memories.slnx` in Release. |
-| `test-unit-contract` | Run Docker-free unit/contract coverage, enforce the scoped line gate, and pack/validate the approved NuGet topology before merge. |
+| `build` | Always-run aggregate requiring both shared Release verification and local Debug/source verification to succeed. |
+| `shared-ci / build-and-test` | Pinned shared Release restore/build with warnings as errors and the explicit Contracts MTP shard. |
+| `source-debug` | Debug/source restore/build and at least three passing, unskipped source-selected catalog tests. |
+| `test-unit-contract` | Run seven Docker-free unit/contract projects with Coverlet, enforce the 76.5% line gate, and pack/validate the approved NuGet topology before merge. |
 | `integration-fast` | Run Docker-backed `Category=Integration&Category!=IntegrationSlow&Category!=Performance` tests and verify required surface evidence. |
 
-All jobs checkout root-declared submodules under `references/` and use the SDK from `global.json`. The
-`test-unit-contract` check uploads TRX plus per-project Cobertura reports as the 14-day
+Build and test lanes initialize root-declared submodules under `references/` and use the SDK from `global.json`.
+`shared-ci` calls `Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml` at
+`81c88b34d09d34260b92d7f0928dbbc1c7446baa`, with a matching `builds-execution-sha`, a 20-minute
+budget, explicit `microsoft-testing-platform` and only `Contracts.Tests` selected. Integration and
+Aspire selections are empty. Shared consumer validation and coverage stay disabled: Memories keeps
+its package topology verifier and seven-project Coverlet contract locally. Contracts intentionally
+runs in both lanes until collector/report equivalence is proved. No collector or package pin changes.
+
+`build` runs with `always()` after `shared-ci` and `source-debug`; failure, cancellation, skipping or
+an unknown result from either dependency fails the stable check. Shared tests retain their TRX in
+`blocking-test-results` for seven days. The source lane retains `TestResults/source-catalog.xml` as
+`source-catalog-verification`, including after test failure. The four local restore owners remain
+`source-debug`, `test-unit-contract`, `web-e2e-specimen` and `integration-fast`, each preserving the
+NU1901–NU1904 audit exceptions for its existing dependency graph; the delegated Release restore
+uses the repository audit policy without a new suppression.
+
+Scope/isolation/slice/readiness, web E2E, fast integration, deployment and SQL contract checks remain
+blocking local lanes. Explicit PR-title commitlint and scheduled slow integration/benchmarks retain
+their existing owners. The `ci_alignment` regression fixtures run inside `test-unit-contract` and
+exercise gate mutations and all build dependency-result combinations. See the
+[release runbook](docs/dev/release-runbook.md#shared-ci-adoption-and-rollback) for lane rollback.
+
+The `test-unit-contract` check uploads TRX plus per-project Cobertura reports as the 14-day
 `test-unit-contract-results` artifact. The scheduled/manual benchmark job uploads its TRX and exact
 quality JSON separately as `nightly-benchmark-trx` and `nightly-benchmark-quality-result`. Other test
 lanes write TRX files under `TestResults/<lane>` and upload those folders as workflow artifacts. The test scripts fail if a
@@ -514,7 +538,7 @@ real inventory-driven package path without publishing:
 ./tools/pack-release.ps1 -Version 0.0.264 -OutputDirectory artifacts/packages/ci -PackageOnly
 ```
 
-Package-only mode builds and packs exactly the nine projects in `tools/release-packages.json`, runs
+Package-only mode builds and packs exactly the ten projects in `tools/release-packages.json`, runs
 `validate-release-packages.ps1` against the generated `.nupkg` directory and version, and stops before
 container/deployment preparation. It does not invoke semantic-release, contact NuGet, or require a
 publishing credential.
@@ -524,11 +548,11 @@ PR lanes; `./tools/test.ps1` is the Windows-first variant and is used in `CONTRI
 brevity.
 
 Required branch protection for `main` is documented in `docs/dev/branch-protection.md`. Maintainers
-must select the exact checks `story-file-scope`, `build`, `test-unit-contract`, and
+must preserve the required checks `story-file-scope`, `build`, `test-unit-contract`, and
 `integration-fast` after the workflow has run at least once and GitHub exposes the check names.
 
-Package publication, semantic-release, and `NUGET_API_KEY` remain release automation scope. PR CI
-packs and validates local artifacts only; it never publishes them.
+Package publication, semantic-release, and caller-owned NuGet Trusted Publishing remain release
+automation scope. PR CI packs and validates local artifacts only; it never publishes them.
 
 ## Code Review
 
@@ -598,6 +622,7 @@ The approved NuGet package inventory is checked in at `tools/release-packages.js
 | `Hexalith.Memories.ServiceDefaults` | Yes | Shared health, resilience, discovery, and telemetry defaults |
 | `Hexalith.Memories.EventStore` | Yes | EventStore integration package |
 | `Hexalith.Memories.Telemetry` | Yes | Shared telemetry constants |
+| `Hexalith.Memories.EventStoreExtensions` | Yes | EventStore catalog integration |
 | `Hexalith.Memories.Server` | No | Runtime service |
 | `Hexalith.Memories.AppHost` | No | Aspire host |
 | `Hexalith.Memories.Web` | No | Web application host |
@@ -606,7 +631,7 @@ Do not add a project to the release package set by changing only `<IsPackable>tr
 Update `tools/release-packages.json`, package metadata, README packaging, and validation evidence in
 the same change.
 
-The inventory currently contains nine approved packages. Every approved package must declare package
+The inventory currently contains ten approved packages. Every approved package must declare package
 ID, description, authors, company, license, project URL,
 repository URL, tags, and `PackageReadmeFile`. Package dependency versions stay in
 `Directory.Packages.props`; do not add dependency versions to individual project files.

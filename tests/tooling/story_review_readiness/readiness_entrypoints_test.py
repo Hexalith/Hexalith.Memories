@@ -23,6 +23,16 @@ def workflow_step(name: str) -> str:
     return matches[0]
 
 
+def workflow_job(name: str, workflow: str) -> str:
+    """Stop at the next job regardless of its name or conditions."""
+    match = re.search(
+        rf"(?ms)^  {re.escape(name)}:\n.*?(?=^  [A-Za-z0-9_-]+:\n|\Z)", workflow,
+    )
+    if match is None:
+        raise AssertionError(f"Expected CI job {name!r}")
+    return match.group(0)
+
+
 def workflow_command(name: str) -> str:
     """Read one named CI step's literal shell command, without copying its behavior."""
     lines = workflow_step(name).splitlines()
@@ -193,10 +203,18 @@ class ReadinessEntryPointTests(unittest.TestCase):
         step = workflow_step("Validate story review readiness")
         self.assertNotRegex(step, r"(?m)^        (?:if|continue-on-error):")
         workflow = (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
-        job = workflow.split("  story-file-scope:\n", 1)[1].split("\n  build:", 1)[0]
+        job = workflow_job("story-file-scope", workflow)
         self.assertNotRegex(job, r"(?m)^    continue-on-error:")
         self.assertEqual(re.findall(r"(?m)^    if: (.+)$", job),
                          ["${{ github.event_name != 'push' || github.ref_name != 'main' }}"])
+
+    def test_ci_scope_job_extraction_excludes_a_later_jobs_unrelated_condition(self):
+        workflow = (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        workflow = workflow.replace("  shared-ci:\n", "  renamed-shared-ci:\n    if: false\n", 1)
+        job = workflow_job("story-file-scope", workflow)
+        self.assertEqual(re.findall(r"(?m)^    if: (.+)$", job),
+                         ["${{ github.event_name != 'push' || github.ref_name != 'main' }}"])
+        self.assertNotIn("renamed-shared-ci", job)
 
 
 if __name__ == "__main__":

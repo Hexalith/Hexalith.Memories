@@ -30,12 +30,29 @@ The three required check names map to job IDs in `.github/workflows/ci.yml`:
 
 | Required check | Source | Status |
 | --- | --- | --- |
-| `build` | `.github/workflows/ci.yml` job `build` (line 19) | required to pass |
-| `test-unit-contract` | `.github/workflows/ci.yml` job `test-unit-contract` (line 40) | required to pass |
-| `integration-fast` | `.github/workflows/ci.yml` job `integration-fast` (line 73) | required to pass |
+| `build` | `.github/workflows/ci.yml` job `build`, aggregating `shared-ci` and `source-debug` | required to pass |
+| `test-unit-contract` | `.github/workflows/ci.yml` job `test-unit-contract` | required to pass |
+| `integration-fast` | `.github/workflows/ci.yml` job `integration-fast` | required to pass |
 
 If a job is renamed in `ci.yml`, the corresponding required check entry must be re-added through
 the branch protection UI; GitHub does not auto-rename required checks.
+
+## Shared CI Adoption
+
+Story 30.1 preserves all three exact required-check names. `build` uses `always()` and depends on
+both `shared-ci` and `source-debug`; it succeeds only when both report `success`. Failure,
+cancellation, skipping and unknown results fail the aggregate. Results are passed through
+environment variables to the shell check. No remote branch-protection settings change is part of
+this adoption. Preserve any additional required checks already configured, including `story-file-scope`;
+this migration removes none.
+
+`shared-ci / build-and-test` comes from the Builds `domain-ci.yml` workflow pinned to
+`81c88b34d09d34260b92d7f0928dbbc1c7446baa`; `source-debug` retains the Debug/source build and
+source-selected catalog evidence. These dependency identities do not replace the required `build`
+check. See [lane ownership and rollback](release-runbook.md#shared-ci-adoption-and-rollback).
+
+The historical API output below records the settings observed in April; it is not a fresh settings
+readback or release-qualification claim.
 
 ## Activation Sequence
 

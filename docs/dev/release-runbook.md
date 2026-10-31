@@ -18,6 +18,47 @@ This durable note records the omitted change for release review (DW-600). Publis
 release history remain intact. Local and CI commit validation now apply the Conventional Commit
 rules to merge, revert and version-shaped messages as well as ordinary subjects.
 
+## Shared CI Adoption And Rollback
+
+Story 30.1 adopts the shared CI core before guarded release work. The approved registry order is
+30.1 shared CI, 30.2 pinned Builds publication/recovery qualification, 30.3 guarded release,
+30.4 five-image publication, 30.5 partial-release recovery and 30.6 cutover parity/rollback. Former
+30.2 shared CI and former 30.1 guarded release identifiers are historical aliases. Later release prerequisites and qualification remain
+pending; this change does not publish artifacts or change `release.yml` or remote settings.
+
+The approved scope remains the ten packages in `tools/release-packages.json` and the five existing
+images (Server, MCP, DomainService, access-telemetry lifecycle and clock). Later guarded release
+will use pinned `prepare-domain-release` with caller-owned NuGet Trusted Publishing; current CI
+adoption does not establish that implementation or qualify recovery parity.
+
+| Previous owner | Current owner and check | Evidence / retained behavior | Rollback |
+| --- | --- | --- | --- |
+| Local Release portion of `build` | `shared-ci / build-and-test`, Builds `domain-ci.yml@81c88b34d09d34260b92d7f0928dbbc1c7446baa` | Release restore/build with warnings as errors; explicit Contracts MTP shard; `blocking-test-results`, seven days | Restore local Release steps from the baseline below |
+| Local Debug/source portion of `build` | `source-debug` | Debug source graph; at least three catalog tests, none failed/errors/skipped/not-run; `source-catalog-verification` XML uploaded even after test failure | Restore the original combined build job |
+| Required `build` status | Always-run local aggregate | Requires success from both shared and source jobs; unsuccessful/skipped/cancelled/unknown dependencies fail | Restore the original combined build job, preserving the `build` name |
+| Unit/contract and package validation | Local `test-unit-contract` | Seven Coverlet project reports, 76.5% line coverage, package topology; `test-unit-contract-results`, 14 days | Retain unchanged |
+| Tenant-negative/scope/slice/readiness, web E2E, fast integration, deployment and SQL | Existing local jobs | Existing mandatory commands and failure artifacts; no advisory conversion | Retain unchanged |
+| Explicit PR-title commitlint, nightly slow integration and benchmarks | Existing workflows | Existing triggers, blocking tests and artifacts | Retain unchanged |
+
+Shared consumer validation and coverage remain disabled; the compatible shared shard selects only
+`Contracts.Tests`, with empty integration/Aspire selections and a 20-minute build timeout. The
+shared workflow has no integration-exclusion input. The full local coverage lane therefore retains
+Contracts intentionally until collector/report equivalence is proved. Shared Release restore relies
+on `Directory.Build.props` audit policy; four local restores retain their existing explicit audit
+exceptions. No new collector, package source, dependency pin or governed provenance is introduced.
+
+To prepare a rollback, inspect the original workflow without modifying the working tree:
+
+```bash
+git show 00919bdd6fe97284da5f4f1657da4a5b336867cc:.github/workflows/ci.yml
+```
+
+Restore its original combined `build` steps through a normal PR, removing the shared caller,
+source job and aggregate together. Preserve every specialized lane, the three required check names,
+and the audit exceptions. Adjust adoption fixtures to the approved rollback and run actionlint,
+`ci_alignment`, coverage, scope/readiness and CLI inventory checks before merge. The April branch
+protection evidence below stays historical evidence; this story performs no remote settings write.
+
 ## Current Release Contract
 
 - Releases are produced by `.github/workflows/release.yml` on `push` events targeting `main`. With
@@ -80,9 +121,9 @@ rules to merge, revert and version-shaped messages as well as ordinary subjects.
 - `tools/validate-release-packages.ps1` is the canonical package verifier (used both before
   semantic-release runs and inside `pack-release.ps1` after pack).
 - `tools/release-packages.json` is the approved package inventory.
-- The current inventory contains nine approved packages: Aspire, Contracts, Client.Rest, Redis,
-  Cli, Mcp, ServiceDefaults, EventStore, and Telemetry. The historical `v1.2.0` evidence below
-  remains a record of the seven packages published by that release.
+- The current inventory contains ten approved packages: Aspire, Contracts, Client.Rest, Redis,
+  Cli, Mcp, ServiceDefaults, EventStore, Telemetry, and EventStoreExtensions. The historical `v1.2.0`
+  evidence below remains a record of the seven packages published by that release.
 - NuGet.org publication uses Trusted Publishing. The release job exchanges its GitHub OIDC
   token through `NuGet/login` for a one-hour key immediately before semantic-release. The
   repository variable `NUGET_USER` names the individual nuget.org account that owns the policy
@@ -390,7 +431,7 @@ those actions can move the published state away from the CI-recorded audit ancho
 14. Confirm `Build`, `Test unit and non-Docker suite`, `Validate package inventory before release`,
    `Run release preflight`, `Run semantic-release`, and `Upload package artifacts` all succeed.
 15. Confirm the new tag exists.
-16. Confirm the GitHub Release contains the nine approved package assets and the versioned
+16. Confirm the GitHub Release contains the ten approved package assets and the versioned
     `hexalith-memories-production.yaml` deployment asset.
 17. Confirm NuGet flat-container APIs show the new version for all approved packages.
 18. Confirm semantic-release created the new tag and GitHub Release without attempting to push a

@@ -48,7 +48,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-05T17:40:39+02:00
-last_updated: '2026-10-06'
+last_updated: '2026-10-31'
 project: memories
 project_key: NOKEY
 tracking_system: file-system
@@ -177,13 +177,21 @@ story_execution_order:
       - 29-1-openbao-backed-apphost-secret-topology
       - 29-2-provider-neutral-aspire-composition-and-secret-verification
   epic-30:
-    reason: "The guarded release requires a successful exact-source ci.yml contract, so shared CI alignment must complete before release migration. Dispatch and manifest precede the publication contract that consumes them; recovery must be able to resume a four-image publish; cutover rehearses all of it. Document order in epics.md is numeric; this list is the execution order of record."
+    reason: "Bounded reconciliation approved 2026-10-31 applies the approved 2026-08-03 EPIC-6 sequence. Shared CI precedes local pinned-contract qualification; guarded dispatch consumes both; complete five-image publication precedes partial recovery and cutover. Current inventory remains ten packages/five images. Registration passes no qualification, predecessor, review, activation, or publication gate."
     order:
-      - 30-2-shared-ci-core-and-module-specific-verification-lanes
-      - 30-1-guarded-release-dispatch-and-shared-caller-adoption
-      - 30-3-four-image-publication-contract
-      - 30-4-partial-release-recovery
-      - 30-5-release-cutover-parity-and-rollback
+      - 30-1-shared-ci-core-and-module-specific-verification-lanes
+      - 30-2-pinned-builds-publication-and-recovery-qualification
+      - 30-3-guarded-release-dispatch-and-shared-caller-adoption
+      - 30-4-five-image-publication-contract
+      - 30-5-partial-release-recovery
+      - 30-6-release-cutover-parity-and-rollback
+    # Historical citations only; aliases are not active status rows.
+    historical_aliases:
+      30-2-shared-ci-core-and-module-specific-verification-lanes: 30-1-shared-ci-core-and-module-specific-verification-lanes
+      30-1-guarded-release-dispatch-and-shared-caller-adoption: 30-3-guarded-release-dispatch-and-shared-caller-adoption
+      30-3-four-image-publication-contract: 30-4-five-image-publication-contract
+      30-4-partial-release-recovery: 30-5-partial-release-recovery
+      30-5-release-cutover-parity-and-rollback: 30-6-release-cutover-parity-and-rollback
   epic-31:
     reason: "The runtime secret-store migration must be evaluated against a documented, hardened platform whose accepted single-node limitations are already on record."
     order:
@@ -497,18 +505,18 @@ development_status:
   epic-29-retrospective: optional
 
   # Epic 30: CI/CD Pipeline Ownership and Alignment
-  # Expanded by the approved Memories CI/CD alignment course correction.
-  # Story 30.2 precedes 30.1 because guarded release requires exact-source green CI.
-  # Story 30.1 renamed and Stories 30.3-30.5 registered on 2026-07-27 by the approved
-  # Sprint Change Proposal 2026-07-27, executing the DW 27.3-CR16 split. The pre-split
-  # 30-1-four-image-container-release-and-partial-recovery-pipeline bundled four
-  # independently demonstrable outcomes; no scope was added or dropped by the split.
-  epic-30: backlog
-  30-1-guarded-release-dispatch-and-shared-caller-adoption: backlog
-  30-2-shared-ci-core-and-module-specific-verification-lanes: backlog
-  30-3-four-image-publication-contract: backlog
-  30-4-partial-release-recovery: backlog
-  30-5-release-cutover-parity-and-rollback: backlog
+  # Historical origin: 2026-07-26 ownership and 2026-07-27 DW 27.3-CR16 split.
+  # Bounded reconciliation approved 2026-10-31 adopts the approved 2026-08-03 EPIC-6 sequence.
+  # Prior identities remain in story_execution_order.epic-30.historical_aliases.
+  # Retain today's ten packages/five images; earlier nine/four wording is historical.
+  # Registration passes no qualification, predecessor, review, activation, or publication gate.
+  epic-30: in-progress
+  30-1-shared-ci-core-and-module-specific-verification-lanes: done
+  30-2-pinned-builds-publication-and-recovery-qualification: backlog
+  30-3-guarded-release-dispatch-and-shared-caller-adoption: backlog
+  30-4-five-image-publication-contract: backlog
+  30-5-partial-release-recovery: backlog
+  30-6-release-cutover-parity-and-rollback: backlog
   epic-30-retrospective: optional
 
   # Epic 31: OpenBao Secrets Platform and Runtime Secret-Store Migration
