@@ -276,6 +276,14 @@ public sealed class AppHostSecurityConfigurationTests
             .Message.ShouldContain("tracked import", Case.Sensitive);
     }
 
+    [Fact]
+    public void BuildsCatalog_RefusesClientItemOutsideEffectivePackageSelection()
+    {
+        Should.Throw<ShouldAssertException>(() => ReadSelectedBuildsCatalog(
+            ReadBuildMetadata("EventStoreCatalogPath"), ReadBuildMetadata("EventStoreCatalogVersion"), "0.0.0"))
+            .Message.ShouldContain("Client item", Case.Sensitive);
+    }
+
     private static string ReadBuildMetadata(string key)
     {
         string value = typeof(AppHostSecurityConfigurationTests).Assembly
