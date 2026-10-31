@@ -22,6 +22,7 @@ PACKAGE_IDS = [
     "Hexalith.Memories.ServiceDefaults",
     "Hexalith.Memories.EventStore",
     "Hexalith.Memories.Telemetry",
+    "Hexalith.Memories.EventStoreExtensions",
 ]
 
 
@@ -458,6 +459,29 @@ class PublishNuGetTests(unittest.TestCase):
             self.assertEqual([], summary["pushed"])
             self.assertEqual([], summary["failed"])
             self.assertIn("Package validation failed", summary["notAttempted"][0]["reason"])
+
+    def test_missing_catalog_adapter_refuses_publish_before_push(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            package_directory = root / "packages"
+            fake_bin = root / "bin"
+            package_directory.mkdir()
+            fake_bin.mkdir()
+            create_packages(package_directory)
+            adapter = package_directory / "Hexalith.Memories.EventStoreExtensions.1.2.3.nupkg"
+            adapter.unlink()
+            write_fake_dotnet(fake_bin)
+
+            result, log_path, _ = run_publish(package_directory, fake_bin, {})
+
+            self.assertNotEqual(0, result.returncode)
+            self.assertFalse(log_path.exists())
+            summary = json.loads((package_directory / "publish-summary.json").read_text(encoding="utf-8"))
+            self.assertEqual("publish-failed", summary["status"])
+            self.assertEqual([], summary["pushed"])
+            self.assertEqual([], summary["failed"])
+            self.assertEqual(9, len(summary["notAttempted"]))
+            self.assertIn("Hexalith.Memories.EventStoreExtensions", summary["notAttempted"][0]["reason"])
 
     def test_issue_helper_creates_deterministic_partial_publish_issue(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
