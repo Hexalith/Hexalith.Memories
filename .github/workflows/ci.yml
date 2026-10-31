@@ -289,6 +289,9 @@ jobs:
       - name: Run coverage gate fixtures
         run: python3 -m unittest discover -s tests/tooling/coverage_gate -p "*_test.py"
 
+      - name: Run published host profile fixtures
+        run: python3 -m unittest discover -s tests/tooling/published_host_profile -p "*_test.py"
+
       - name: Run release package fixtures
         run: python3 -m unittest discover -s tests/tooling/release_packages -p "*_test.py"
 

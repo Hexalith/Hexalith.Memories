@@ -19,6 +19,7 @@ floor, CPM selections, source support, public inventory or release version.
 
 Allowed files for this story:
 
+- `.github/workflows/ci.yml`
 - `tests/Hexalith.Memories.Server.Tests/Deployment/AppHostSecurityConfigurationTests.cs`
 - `_bmad-output/implementation-artifacts/spec-evaluate-hosted-catalog-guards.md`
 
@@ -48,3 +49,17 @@ in3.018s. Logs: `/tmp/memories-evaluated-host-fixtures-build.log` and
 
 The patch is test-only and does not change the pending3.0.13 release candidate.
 Parent owns hosted CI/release qualification and publication approval.
+
+## Follow-up CI inventory
+
+Release41209783896 passed the repaired Server class and then correctly refused
+the missing workflow execution of the existing published_host_profile fixtures.
+Run that suite in the existing test-unit-contract job. Preserve the inventory
+assertion and all existing workflow gates; production code and version stay fixed.
+
+The actual profile suite passes2/2 in9.160s. In a genuine disposable detached
+owner worktree, Release CLI.Tests builds with zero warnings/errors and the complete
+affected CiTestInventoryTests class passes132/132, zero skips. The initial ordinary
+archive proof passed131 controls but its source-control check correctly required a
+real Git checkout; no test was changed. Logs: `/tmp/memories-host-profile-ci-fixtures.log`
+and `/tmp/memories-host-profile-ci-inventory-git-{build,tests}.log`.
