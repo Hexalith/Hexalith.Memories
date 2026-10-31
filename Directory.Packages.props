@@ -17,4 +17,9 @@
   <ItemGroup>
     <PackageVersion Update="Hexalith.EventStore.*" Version="$(HexalithEventStoreVersion)" />
   </ItemGroup>
+  <!-- Existing public compatibility packages are consumed only by the explicit hosted-test profile. -->
+  <ItemGroup Condition="'$(HexalithUsePublishedSdkForHostedTests)' == 'true' and '$(IsPublishing)' != 'true'">
+    <PackageVersion Include="Hexalith.Memories.ServiceDefaults" Version="$(HexalithMemoriesVersion)" Condition="'@(PackageVersion->WithMetadataValue('Identity', 'Hexalith.Memories.ServiceDefaults'))' == ''" />
+    <PackageVersion Include="Hexalith.Memories.Telemetry" Version="$(HexalithMemoriesVersion)" Condition="'@(PackageVersion->WithMetadataValue('Identity', 'Hexalith.Memories.Telemetry'))' == ''" />
+  </ItemGroup>
 </Project>

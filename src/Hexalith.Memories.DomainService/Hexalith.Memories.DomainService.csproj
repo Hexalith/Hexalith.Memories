@@ -1,14 +1,27 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
     <IsPackable>false</IsPackable>
+    <!-- Closed integration profile: ordinary native/publish builds retain their own source libraries. -->
+    <MemoriesPublishedHostedTestProfile Condition="'$(HexalithUsePublishedSdkForHostedTests)' == 'true' and '$(IsPublishing)' != 'true'">true</MemoriesPublishedHostedTestProfile>
     <IsPublishable>true</IsPublishable>
     <EnableContainer>true</EnableContainer>
     <ContainerRepository>memories-domain-service</ContainerRepository>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Hexalith.Memories.EventStore\Hexalith.Memories.EventStore.csproj" />
-    <ProjectReference Include="$(HexalithEventStoreRoot)/src/Hexalith.EventStore.DomainService/Hexalith.EventStore.DomainService.csproj" Condition="'$(HexalithEventStoreFromSource)' == 'true'" />
-    <PackageReference Include="Hexalith.EventStore.DomainService" Condition="'$(HexalithEventStoreFromSource)' != 'true'" />
+    <ProjectReference Include="..\Hexalith.Memories.EventStore\Hexalith.Memories.EventStore.csproj" Condition="'$(MemoriesPublishedHostedTestProfile)' != 'true'" />
+    <ProjectReference Include="$(HexalithEventStoreRoot)/src/Hexalith.EventStore.DomainService/Hexalith.EventStore.DomainService.csproj" Condition="'$(HexalithEventStoreFromSource)' == 'true' and '$(MemoriesPublishedHostedTestProfile)' != 'true'" />
+    <PackageReference Include="Hexalith.EventStore.DomainService" Condition="'$(HexalithEventStoreFromSource)' != 'true' or '$(MemoriesPublishedHostedTestProfile)' == 'true'" />
     <InternalsVisibleTo Include="Hexalith.Memories.DomainService.Tests" />
   </ItemGroup>
+
+  <ItemGroup Condition="'$(MemoriesPublishedHostedTestProfile)' == 'true'">
+    <PackageReference Include="Hexalith.Memories.EventStore" />
+    <PackageReference Include="Hexalith.Memories.EventStoreExtensions" />
+  </ItemGroup>
+
+  <Target Name="ValidatePublishedHostedTestProfile" BeforeTargets="PrepareForBuild" Condition="'$(MemoriesPublishedHostedTestProfile)' == 'true'">
+    <Error Condition="'$(HexalithMemoriesVersion)' == '' or $([MSBuild]::VersionLessThan('$(HexalithMemoriesVersion)', '3.0.13'))"
+           Text="The explicit hosted package profile requires an evaluated published Memories version3.0.13 or later." />
+  </Target>
+
 </Project>
