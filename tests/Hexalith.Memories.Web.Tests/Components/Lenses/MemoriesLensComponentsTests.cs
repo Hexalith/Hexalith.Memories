@@ -81,6 +81,43 @@ public sealed class MemoriesLensComponentsTests : FrontComposerTestBase
     }
 
     [Fact]
+    public void OperatorHealthMatrix_ActionNamesKeepVisibleLabelsAndDisabledReasonsRemainDescriptions()
+    {
+        List<RecoveryActionInvocation> captured = [];
+        IRenderedComponent<MemoriesOperatorHealthMatrix> component = Render<MemoriesOperatorHealthMatrix>(parameters => parameters
+            .Add(p => p.Packet, LensPacketFixtures.Compressed())
+            .Add(p => p.OnNextAction, (RecoveryActionInvocation action) => captured.Add(action)));
+        IStringLocalizer<MemoriesWebResources> localizer = Services.GetRequiredService<IStringLocalizer<MemoriesWebResources>>();
+        IElement[] buttons = component.FindAll("[data-testid='mem-health-action-button']").ToArray();
+        IElement[] disabled = buttons.Where(button => button.HasAttribute("disabled")).ToArray();
+        IElement[] enabled = buttons.Where(button => !button.HasAttribute("disabled")).ToArray();
+        disabled.ShouldNotBeEmpty();
+        enabled.ShouldNotBeEmpty();
+
+        foreach (IElement button in buttons)
+        {
+            button.TextContent.Trim().ShouldStartWith(localizer[OperatorHealthResourceKeys.NextActionLabel].Value + ":");
+            button.GetAttribute("role").ShouldBe("button");
+            button.GetAttribute("aria-label").ShouldBeNull();
+            button.GetAttribute("title").ShouldBeNull();
+            button.GetAttribute("aria-description").ShouldBe(button.HasAttribute("disabled")
+                ? localizer[OperatorHealthResourceKeys.NextActionDisabled].Value
+                : null);
+        }
+
+        foreach (IElement button in disabled)
+        {
+            button.Click();
+        }
+        captured.ShouldBeEmpty();
+        enabled[0].Click();
+        RecoveryActionInvocation invocation = captured.ShouldHaveSingleItem();
+        invocation.Kind.ShouldBe(EvidencePacketRecoveryKind.IncreaseTokenBudget);
+        invocation.TenantId.ShouldBe("tenant-a");
+        invocation.CaseId.ShouldBe("case-a");
+    }
+
+    [Fact]
     public void BenchmarkResultComparator_RendersTextEquivalentForAxisBarsAndBenchmarkMetadata()
     {
         IRenderedComponent<MemoriesBenchmarkResultComparator> component = Render<MemoriesBenchmarkResultComparator>(parameters => parameters

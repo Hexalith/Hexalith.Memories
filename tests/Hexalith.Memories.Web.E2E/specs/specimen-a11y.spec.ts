@@ -6,10 +6,20 @@ import { loadSpecimenRoutes } from '../helpers/specimen-routes.js';
 
 test('specimen routes pass blocking axe checks with nonzero target nodes', async ({ page }) => {
   const routes = await loadSpecimenRoutes(page);
+  expect(routes.filter((route) => route.slug === 'operator-health-matrix')).toHaveLength(1);
   const scans = [];
 
   for (const route of routes) {
     scans.push(await scanRouteWithAxe(page, route));
+    if (route.slug === 'operator-health-matrix') {
+      const action = page.getByTestId('mem-health-action-button')
+        .filter({ hasText: 'Next action: Use graph traversal' });
+      await expect(action).toHaveCount(1);
+      await expect(action).toHaveAttribute('disabled');
+      await expect(action).toHaveAccessibleName('Next action: Use graph traversal');
+      await expect(action).toHaveAccessibleDescription('The action is unavailable for the current scope.');
+      await expect(action).not.toHaveAttribute('aria-label');
+    }
   }
 
   const artifactPath = await writeEvidenceFile('axe-summary.json', {

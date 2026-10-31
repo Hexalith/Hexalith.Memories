@@ -188,10 +188,46 @@ class CoverageContractTests(unittest.TestCase):
         )
         self.assertIn("coverlet.MTP", directory_build_props)
         self.assertNotIn("Microsoft.Testing.Extensions.CodeCoverage", directory_build_props)
-        test_packages = (REPO_ROOT / "tests" / "Directory.Packages.props").read_text(
-            encoding="utf-8"
-        )
-        self.assertIn('<PackageVersion Include="coverlet.MTP" Version="10.0.1" />', test_packages)
+        test_packages = ET.parse(REPO_ROOT / "tests" / "Directory.Packages.props").getroot()
+        self._assert_unconditional_mtp_pin(test_packages)
+
+    def test_central_mtp_pin_rejects_conditional_xml(self):
+        pin = '<PackageVersion Include="coverlet.MTP" Version="10.1.0" />'
+        fixtures = {
+            "conditioned item group": f'<Project><ItemGroup Condition="false">{pin}</ItemGroup></Project>',
+            "when branch": f'<Project><Choose><When Condition="false"><ItemGroup>{pin}</ItemGroup></When></Choose></Project>',
+            "inactive otherwise": (
+                '<Project><Choose><When Condition="true"><PropertyGroup><Selected>true</Selected></PropertyGroup></When>'
+                f'<Otherwise><ItemGroup>{pin}</ItemGroup></Otherwise></Choose></Project>'
+            ),
+        }
+        for name, xml in fixtures.items():
+            with self.subTest(name=name):
+                with self.assertRaisesRegex(AssertionError, "unconditional"):
+                    self._assert_unconditional_mtp_pin(ET.fromstring(xml))
+
+    def _assert_unconditional_mtp_pin(self, test_packages: ET.Element) -> None:
+        parents = {child: parent for parent in test_packages.iter() for child in parent}
+        collector_pins = [
+            element
+            for element in test_packages.iter("PackageVersion")
+            if any(element.get(operation) == "coverlet.MTP" for operation in ("Include", "Update", "Remove"))
+        ]
+        self.assertEqual(1, len(collector_pins), "Expected exactly one central MTP collector pin, without mutators")
+        collector_pin = collector_pins[0]
+        self.assertEqual("coverlet.MTP", collector_pin.get("Include"))
+        version = collector_pin.get("Version", "")
+        self.assertRegex(version, r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
+        self.assertGreaterEqual(tuple(int(part) for part in version.split(".")), (10, 0, 1))
+        current = collector_pin
+        while current is not None:
+            self.assertFalse(current.get("Condition"), "The central MTP collector pin must be unconditional")
+            self.assertNotIn(
+                current.tag.rsplit("}", 1)[-1],
+                {"Choose", "When", "Otherwise"},
+                "The central MTP collector pin must be unconditional, outside branch-control elements",
+            )
+            current = parents.get(current)
 
     def test_unit_contract_job_collects_validates_and_retains_coverage(self):
         job = self._read_workflow_job(CI_WORKFLOW_PATH, "test-unit-contract")

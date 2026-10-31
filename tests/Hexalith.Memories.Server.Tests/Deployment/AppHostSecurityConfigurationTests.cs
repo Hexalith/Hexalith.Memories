@@ -7,6 +7,7 @@ namespace Hexalith.Memories.Server.Tests.Deployment;
 
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text.Json;
 using System.Xml.Linq;
 
@@ -14,12 +15,11 @@ using Shouldly;
 
 /// <summary>
 /// Drift guards for the approved 2026-06-26 AppHost security-service correction
-/// and EventStore 3.128.3 owner-approved published catalog/restore consumption
+/// and the centrally selected EventStore published catalog/restore consumption
 /// (nuget.org; supersedes Story 28.1 proof-identity pin).
 /// </summary>
 public sealed class AppHostSecurityConfigurationTests
 {
-    private const string EventStoreCatalogVersion = "3.128.3";
     private const string EventStorePackagePrefix = "Hexalith.EventStore.";
 
     [Fact]
@@ -95,25 +95,15 @@ public sealed class AppHostSecurityConfigurationTests
     }
 
     [Fact]
-    public void BuildsCatalog_PinsEventStoreFamilyAt31283()
+    public void BuildsCatalog_PinsEventStoreFamilyAtSelectedCentralVersion()
     {
-        // Match this repository's three tracked Directory.Packages.props import locations.
-        // Umbrella checkouts use the root-declared sibling Builds; never initialize a nested submodule.
-        string root = ResolveRepoRoot();
-        string[] candidates =
-        [
-            Path.Combine(root, "references", "Hexalith.Builds", "Props", "Directory.Packages.props"),
-            Path.Combine(root, "..", "Hexalith.Builds", "Props", "Directory.Packages.props"),
-            Path.Combine(root, "..", "..", "Hexalith.Builds", "Props", "Directory.Packages.props"),
-        ];
-        string catalogPath = candidates.FirstOrDefault(File.Exists).ShouldNotBeNull("The tracked Builds catalog import must exist.");
-        string catalog = File.ReadAllText(catalogPath);
+        XDocument catalog = ReadSelectedBuildsCatalog();
+        XElement version = catalog.Descendants("HexalithEventStoreVersion").Single();
+        ((string?)version.Attribute("Condition")).ShouldBe("'$(HexalithEventStoreVersion)' == ''");
+        System.Text.RegularExpressions.Regex.IsMatch(version.Value, @"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
+            .ShouldBeTrue("The selected EventStore family must have one concrete stable central version.");
 
-        catalog.ShouldContain(
-            $"<HexalithEventStoreVersion Condition=\"'$(HexalithEventStoreVersion)' == ''\">{EventStoreCatalogVersion}</HexalithEventStoreVersion>",
-            Case.Sensitive);
-
-        XElement[] eventStoreVersions = [.. XDocument.Parse(catalog)
+        XElement[] eventStoreVersions = [.. catalog
             .Descendants("PackageVersion")
             .Where(static element =>
                 ((string?)element.Attribute("Include"))?.StartsWith(EventStorePackagePrefix, StringComparison.Ordinal) == true)];
@@ -212,9 +202,10 @@ public sealed class AppHostSecurityConfigurationTests
     [Fact]
     public void ProjectAssets_RestoreEventStorePackagesAtCatalogVersion()
     {
-        // Owner-approved EventStore 3.128.3 is published on nuget.org; restore via the tracked
-        // NuGet.config (plain `dotnet restore`) must resolve Hexalith.EventStore.* at this catalog
-        // version and populate obj/project.assets.json with the matching library keys.
+        // Resolve the owning tracked import; every restored family identity must match its
+        // exact selected pin, including the library type, without a duplicated version literal.
+        _ = ReadSelectedBuildsCatalog();
+        string selectedVersion = ReadBuildMetadata("EventStoreCatalogVersion");
         string serverAssets = ReadRepoFile(
             "src",
             "Hexalith.Memories.Server",
@@ -223,8 +214,8 @@ public sealed class AppHostSecurityConfigurationTests
 
         using JsonDocument document = JsonDocument.Parse(serverAssets);
         JsonElement libraries = document.RootElement.GetProperty("libraries");
-        libraries.TryGetProperty($"Hexalith.EventStore.Client/{EventStoreCatalogVersion}", out JsonElement client)
-            .ShouldBeTrue($"Server restore must include the exact library key Hexalith.EventStore.Client/{EventStoreCatalogVersion}.");
+        libraries.TryGetProperty($"Hexalith.EventStore.Client/{selectedVersion}", out JsonElement client)
+            .ShouldBeTrue($"Server restore must include the exact library key Hexalith.EventStore.Client/{selectedVersion}.");
         client.GetProperty("type").GetString().ShouldBe("package");
 
         foreach (JsonProperty library in libraries.EnumerateObject())
@@ -240,8 +231,10 @@ public sealed class AppHostSecurityConfigurationTests
                 $"Library identity '{library.Name}' must be packageId/version.");
             string version = library.Name[(slash + 1)..];
             version.ShouldBe(
-                EventStoreCatalogVersion,
-                $"EventStore library '{library.Name}' must restore at exactly {EventStoreCatalogVersion}.");
+                selectedVersion,
+                $"EventStore library '{library.Name}' must restore at exactly {selectedVersion}.");
+            library.Value.GetProperty("type").GetString().ShouldBe("package",
+                $"EventStore library '{library.Name}' must not select an external source project in this package-mode guard.");
         }
     }
 
@@ -258,6 +251,59 @@ public sealed class AppHostSecurityConfigurationTests
         kubernetesConfig.ShouldContain("defaultAction: deny", Case.Sensitive);
         kubernetesConfig.ShouldContain("appId: memories-mcp", Case.Sensitive);
         kubernetesConfig.ShouldContain("namespace: hexalith-memories", Case.Sensitive);
+    }
+
+    [Fact]
+    public void BuildsCatalog_RefusesEvaluatedVersionOverride()
+    {
+        Should.Throw<ShouldAssertException>(() => ReadSelectedBuildsCatalog(
+            ReadBuildMetadata("EventStoreCatalogPath"), "0.0.0", "0.0.0"))
+            .Message.ShouldContain("version override", Case.Sensitive);
+    }
+
+    [Fact]
+    public void BuildsCatalog_RefusesEvaluatedImportOutsideOwningPolicy()
+    {
+        Should.Throw<ShouldAssertException>(() => ReadSelectedBuildsCatalog(
+            Path.Combine(ResolveRepoRoot(), "Directory.Packages.props"),
+            ReadBuildMetadata("EventStoreCatalogVersion"), ReadBuildMetadata("EventStoreClientVersion")))
+            .Message.ShouldContain("tracked import", Case.Sensitive);
+    }
+
+    private static string ReadBuildMetadata(string key)
+    {
+        string value = typeof(AppHostSecurityConfigurationTests).Assembly
+            .GetCustomAttributes<AssemblyMetadataAttribute>().Single(attribute => attribute.Key == key).Value.ShouldNotBeNull();
+        value.ShouldNotBeNullOrWhiteSpace();
+        return value;
+    }
+
+    private static XDocument ReadSelectedBuildsCatalog() => ReadSelectedBuildsCatalog(
+        ReadBuildMetadata("EventStoreCatalogPath"), ReadBuildMetadata("EventStoreCatalogVersion"), ReadBuildMetadata("EventStoreClientVersion"));
+
+    private static XDocument ReadSelectedBuildsCatalog(string evaluatedCatalogPath, string evaluatedVersion, string evaluatedClientVersion)
+    {
+        string root = ResolveRepoRoot();
+        XDocument owningCatalog = XDocument.Load(Path.Combine(root, "Directory.Packages.props"));
+        string[] candidates = [.. owningCatalog.Root!.Elements("Import").Select(import =>
+        {
+            string reference = ((string?)import.Attribute("Project")).ShouldNotBeNull();
+            reference.ShouldStartWith("$(");
+            reference.ShouldEndWith(")");
+            string propertyName = reference[2..^1];
+            string template = owningCatalog.Descendants(propertyName).Single().Value;
+            string path = template.Replace("$(MSBuildThisFileDirectory)", root + Path.DirectorySeparatorChar, StringComparison.Ordinal);
+            path.ShouldNotContain("$(", Case.Sensitive, "The fixture must resolve each owning tracked import without guessing other locations.");
+            return Path.GetFullPath(path.Replace('\\', Path.DirectorySeparatorChar));
+        })];
+        // Candidate templates define allowed provenance; MSBuild metadata determines which import actually ran.
+        string catalogPath = Path.GetFullPath(evaluatedCatalogPath);
+        candidates.ShouldContain(catalogPath, "The evaluated catalog must come from an owning tracked import; path overrides are refused.");
+        XDocument catalog = XDocument.Load(catalogPath);
+        string declaredVersion = catalog.Descendants("HexalithEventStoreVersion").Single().Value;
+        evaluatedVersion.ShouldBe(declaredVersion, "An evaluated version override must not replace the tracked catalog pin.");
+        evaluatedClientVersion.ShouldBe(evaluatedVersion, "The evaluated Client item must use the same exact central version.");
+        return catalog;
     }
 
     private static void AssertPackageReferenceHasNoVersionOverride(string projectXml, string packageId)

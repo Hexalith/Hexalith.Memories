@@ -45,4 +45,12 @@
     <Using Include="Hexalith.Memories.Server.Serialization" />
   </ItemGroup>
 
+  <Target Name="CaptureEvaluatedEventStoreCatalog" BeforeTargets="GetAssemblyAttributes">
+    <ItemGroup>
+      <AssemblyMetadata Include="EventStoreCatalogPath" Value="%(PackageVersion.DefiningProjectFullPath)" Condition="'%(PackageVersion.Identity)' == 'Hexalith.EventStore.Client'" />
+      <AssemblyMetadata Include="EventStoreClientVersion" Value="%(PackageVersion.Version)" Condition="'%(PackageVersion.Identity)' == 'Hexalith.EventStore.Client'" />
+      <AssemblyMetadata Include="EventStoreCatalogVersion" Value="$(HexalithEventStoreVersion)" />
+    </ItemGroup>
+  </Target>
+
 </Project>

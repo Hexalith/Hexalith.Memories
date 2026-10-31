@@ -64,8 +64,9 @@
                         @if (check.NextActionKey is not null)
                         {
                             <FluentButton Appearance="ButtonAppearance.Subtle"
+                                          role="button"
                                           Disabled="@(!check.NextActionAvailable)"
-                                          Title="@(check.NextActionAvailable ? null : Localizer[OperatorHealthResourceKeys.NextActionDisabled].Value)"
+                                          aria-description="@(check.NextActionAvailable ? null : Localizer[OperatorHealthResourceKeys.NextActionDisabled].Value)"
                                           data-testid="mem-health-action-button"
                                           OnClick="@(() => EmitActionAsync(check))">
                                 @Localizer[OperatorHealthResourceKeys.NextActionLabel]: @Localizer[check.NextActionKey]
