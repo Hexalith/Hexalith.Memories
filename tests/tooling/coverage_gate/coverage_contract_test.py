@@ -32,6 +32,7 @@ class CoverageContractTests(unittest.TestCase):
                 "Hexalith.Memories.Client.Rest",
                 "Hexalith.Memories.Contracts",
                 "Hexalith.Memories.EventStore",
+                "Hexalith.Memories.EventStoreExtensions",
                 "Hexalith.Memories.Mcp",
                 "Hexalith.Memories.Server",
                 "Hexalith.Memories.ServiceDefaults",
