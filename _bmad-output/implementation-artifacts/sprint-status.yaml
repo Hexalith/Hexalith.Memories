@@ -510,9 +510,12 @@ development_status:
   # Prior identities remain in story_execution_order.epic-30.historical_aliases.
   # Retain today's ten packages/five images; earlier nine/four wording is historical.
   # Registration passes no qualification, predecessor, review, activation, or publication gate.
+  # Story 30.2 checkpoints (2026-11-01): upstream fixtures and the six qualification results are
+  # verified locally at Builds 81c88b34 and await review. Exact-revision owner approval
+  # (30-2-qualification/approval.md) is pending, so 30.2 stays in review and grants no credit.
   epic-30: in-progress
   30-1-shared-ci-core-and-module-specific-verification-lanes: done
-  30-2-pinned-builds-publication-and-recovery-qualification: backlog
+  30-2-pinned-builds-publication-and-recovery-qualification: review
   30-3-guarded-release-dispatch-and-shared-caller-adoption: backlog
   30-4-five-image-publication-contract: backlog
   30-5-partial-release-recovery: backlog

@@ -5670,7 +5670,7 @@ So that standard checks remain consistent across modules without losing Memories
 
 ### Story 30.2: Pinned Builds Publication and Recovery Qualification
 
-**Status:** backlog. **Owner:** Hexalith.Builds Maintainer + Memories Release Engineer.
+**Status:** review (owner approval pending). **Owner:** Hexalith.Builds Maintainer + Memories Release Engineer.
 
 **Origin:** New outcome from the approved remediation. **Prerequisite:** Story 30.1 completes. Shared CI implementation supplies no publication qualification credit.
 
@@ -5690,17 +5690,17 @@ So that upstream capabilities are proven locally before release migration consum
 **Then** it fails closed and dependent release stories remain unselectable until the blocker is resolved and independently reviewed.
 
 
-**Checkpoint evidence:** All artifacts below are planned; no gate has passed. Each independently verifiable gate has its own row.
+**Checkpoint evidence:** `python3 tools/qualify-builds-publication.py --output-directory _bmad-output/implementation-artifacts/30-2-qualification` generated the six results below on 2026-11-01. They are verified locally and await review. Owner approval is pending, so the story is not done and no row grants publication or later-story credit. Each independently verifiable gate has its own row.
 
 | Checkpoint | Owner | Evidence command or artifact | Review state | Completion state |
 | --- | --- | --- | --- | --- |
-| Upstream candidate fixtures | Builds Maintainer | `pwsh -NoProfile -File references/Hexalith.Builds/Tools/test-publish-containers.ps1` at the candidate revision | pending | not complete |
-| Complete Memories set dry-run | Memories Release Engineer | `_bmad-output/implementation-artifacts/30-2-qualification/complete-set-dry-run.json` | pending | not complete |
-| Set-drift refusal | Memories Release Engineer | `_bmad-output/implementation-artifacts/30-2-qualification/set-drift.json` | pending | not complete |
-| Repeated per-image verification | Memories Release Engineer | `_bmad-output/implementation-artifacts/30-2-qualification/phase-verification.json` | pending | not complete |
-| Partial-publication result | Memories Release Engineer | `_bmad-output/implementation-artifacts/30-2-qualification/partial-publication.json` | pending | not complete |
-| Missing-member recovery | Memories Release Engineer | `_bmad-output/implementation-artifacts/30-2-qualification/recovery.json` | pending | not complete |
-| Immutable evidence upload | Memories Release Engineer | `_bmad-output/implementation-artifacts/30-2-qualification/evidence-upload.json` | pending | not complete |
+| Upstream candidate fixtures | Builds Maintainer | `pwsh -NoProfile -File references/Hexalith.Builds/Tools/test-publish-containers.ps1` at the candidate revision | pending | verified locally 2026-11-01: 158 passed at `81c88b34` |
+| Complete Memories set dry-run | Memories Release Engineer | `_bmad-output/implementation-artifacts/30-2-qualification/complete-set-dry-run.json` | pending | verified locally 2026-11-01: pass at Builds `81c88b34`, source `aa097b52` (dirty tree) |
+| Set-drift refusal | Memories Release Engineer | `_bmad-output/implementation-artifacts/30-2-qualification/set-drift.json` | pending | verified locally 2026-11-01: pass at Builds `81c88b34`, source `aa097b52` (dirty tree) |
+| Repeated per-image verification | Memories Release Engineer | `_bmad-output/implementation-artifacts/30-2-qualification/phase-verification.json` | pending | verified locally 2026-11-01: pass at Builds `81c88b34`, source `aa097b52` (dirty tree) |
+| Partial-publication result | Memories Release Engineer | `_bmad-output/implementation-artifacts/30-2-qualification/partial-publication.json` | pending | verified locally 2026-11-01: pass at Builds `81c88b34`, source `aa097b52` (dirty tree) |
+| Missing-member recovery | Memories Release Engineer | `_bmad-output/implementation-artifacts/30-2-qualification/recovery.json` | pending | verified locally 2026-11-01: pass at Builds `81c88b34`, source `aa097b52` (dirty tree) |
+| Immutable evidence upload | Memories Release Engineer | `_bmad-output/implementation-artifacts/30-2-qualification/evidence-upload.json` | pending | verified locally 2026-11-01: pass at Builds `81c88b34`, source `aa097b52` (dirty tree) |
 | Exact-revision owner approval | Builds Maintainer + Memories Release Engineer | `_bmad-output/implementation-artifacts/30-2-qualification/approval.md` | pending | not complete |
 
 ### Story 30.3: Guarded Release Dispatch and Shared Caller Adoption

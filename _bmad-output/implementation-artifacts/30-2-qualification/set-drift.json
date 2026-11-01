@@ -1,0 +1,544 @@
+{
+  "schemaVersion": "hexalith.memories.builds-publication-qualification.v1",
+  "story": "30-2-pinned-builds-publication-and-recovery-qualification",
+  "checkpoint": "set-drift",
+  "result": "pass",
+  "checksResult": "pass",
+  "overallResult": "pass",
+  "synthetic": true,
+  "bindings": {
+    "builds": {
+      "repository": "Hexalith/Hexalith.Builds",
+      "sha": "81c88b34d09d34260b92d7f0928dbbc1c7446baa",
+      "verified": true,
+      "superprojectGitlink": "81c88b34d09d34260b92d7f0928dbbc1c7446baa",
+      "checkout": "81c88b34d09d34260b92d7f0928dbbc1c7446baa",
+      "executedHelpers": {
+        "publish-containers.sh": "3f8b05e17cd0756cef23f07e2efb992ee76d7d2f59b9f1e1179e3da5d684441d",
+        "oci_registry_validator.py": "3f54edb036642551e64c180b4708a954d84bd55cac381a4459c3f75448488608",
+        "publication_preflight.py": "144331435bb9a7cc778bce5611fdb0449fc30cbbb246126a611125ba7cac265b",
+        "smoke-container-platforms.sh": "f11865658a24ecea906da087d8446c7f631dc5a9328e294676534d590ef0e89e",
+        "smoke_container_platforms.py": "7f1161d6f477c77ddf6a1e2f381df03451168565dd8cabc28010ab23db443491"
+      },
+      "readReferences": {
+        "Github/publish-containers/action.yml": "0262e6fee149f91a046830e941e6010bb46fd1a03b7f40341d8ee12cdf70484b",
+        ".github/workflows/domain-release.yml": "c85bc802f3b0be23a7c7d40b71af683af76902e117d99e56351f78b03ad3b418",
+        "Github/prepare-domain-release/action.yml": "62f3cdf7fe45c35d6eff27960a239a402068aa894cf29c07a60f10bf467d0a9d"
+      }
+    },
+    "source": {
+      "repository": "Hexalith/Hexalith.Memories",
+      "sha": "aa097b52a62b80af32c10267a100646b95be8ac2",
+      "dirty": true
+    },
+    "harness": {
+      "path": "tools/qualify-builds-publication.py",
+      "sha256": "87f066b4d957012c5129a2ceeb146ce090c849eb97379d188bb57a2f1df36a55"
+    },
+    "profile": {
+      "path": "tools/builds-publication-qualification.json",
+      "sha256": "8218c2cc162212ca5cec5d6bab8d9f9a775a3e10679c2c2af2d2755cb5a45473"
+    }
+  },
+  "release": {
+    "repository": "Hexalith/Hexalith.Memories",
+    "registry": "registry.hexalith.com",
+    "version": "0.0.302",
+    "environment": "production",
+    "authorityGate": "disabled (ordinary protected-environment release posture)",
+    "packageCount": 10,
+    "packageIds": [
+      "Hexalith.Memories.Aspire",
+      "Hexalith.Memories.Contracts",
+      "Hexalith.Memories.Client.Rest",
+      "Hexalith.Memories.Redis",
+      "Hexalith.Memories.Cli",
+      "Hexalith.Memories.Mcp",
+      "Hexalith.Memories.ServiceDefaults",
+      "Hexalith.Memories.EventStore",
+      "Hexalith.Memories.Telemetry",
+      "Hexalith.Memories.EventStoreExtensions"
+    ],
+    "containerProjects": [
+      "src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj|memories",
+      "src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj|memories-mcp",
+      "src/Hexalith.Memories.AccessTelemetry/Hexalith.Memories.AccessTelemetry.csproj|memories-access-telemetry",
+      "src/Hexalith.Memories.AccessTelemetry.Clock/Hexalith.Memories.AccessTelemetry.Clock.csproj|memories-access-telemetry-clock",
+      "src/Hexalith.Memories.DomainService/Hexalith.Memories.DomainService.csproj|memories-domain-service"
+    ]
+  },
+  "checks": [
+    {
+      "name": "repository-set-equals-declared-profile",
+      "result": "pass",
+      "detail": {
+        "discovered": [
+          "src/Hexalith.Memories.AccessTelemetry/Hexalith.Memories.AccessTelemetry.csproj|memories-access-telemetry",
+          "src/Hexalith.Memories.AccessTelemetry.Clock/Hexalith.Memories.AccessTelemetry.Clock.csproj|memories-access-telemetry-clock",
+          "src/Hexalith.Memories.DomainService/Hexalith.Memories.DomainService.csproj|memories-domain-service",
+          "src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj|memories-mcp",
+          "src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj|memories"
+        ],
+        "reasons": []
+      }
+    },
+    {
+      "name": "container-dropped:refused-caller-side",
+      "result": "pass",
+      "detail": [
+        "container-member-dropped:src/Hexalith.Memories.DomainService/Hexalith.Memories.DomainService.csproj|memories-domain-service"
+      ]
+    },
+    {
+      "name": "container-dropped:declared-verify-passes",
+      "result": "pass",
+      "detail": {
+        "exitCode": 0,
+        "refusal": null,
+        "refusalLine": null,
+        "stderr": "",
+        "stderrTail": ""
+      }
+    },
+    {
+      "name": "container-dropped:fresh-builds-verdict",
+      "result": "pass",
+      "detail": {
+        "exitCode": 0,
+        "refusal": null,
+        "refusalLine": null,
+        "stderr": "",
+        "stderrTail": "",
+        "expected": "accepted"
+      }
+    },
+    {
+      "name": "container-dropped:between-phase-builds-verdict",
+      "result": "pass",
+      "detail": {
+        "verdict": "publication-identity-changed",
+        "publish": {
+          "exitCode": 1,
+          "refusal": "publication-identity-changed",
+          "refusalLine": "[publication-preflight] publication-identity-changed: Current publication identity differs from the frozen verify phase.",
+          "stderr": "[publication-preflight] publication-identity-changed: Current publication identity differs from the frozen verify phase.",
+          "stderrTail": "[publication-preflight] publication-identity-changed: Current publication identity differs from the frozen verify phase."
+        },
+        "expected": "publication-identity-changed"
+      }
+    },
+    {
+      "name": "container-added:refused-caller-side",
+      "result": "pass",
+      "detail": [
+        "container-member-added:src/Hexalith.Memories.QualificationSyntheticAdded/Hexalith.Memories.QualificationSyntheticAdded.csproj|memories-qualification-synthetic-added"
+      ]
+    },
+    {
+      "name": "container-added:declared-verify-passes",
+      "result": "pass",
+      "detail": {
+        "exitCode": 0,
+        "refusal": null,
+        "refusalLine": null,
+        "stderr": "",
+        "stderrTail": ""
+      }
+    },
+    {
+      "name": "container-added:fresh-builds-verdict",
+      "result": "pass",
+      "detail": {
+        "exitCode": 0,
+        "refusal": null,
+        "refusalLine": null,
+        "stderr": "",
+        "stderrTail": "",
+        "expected": "accepted"
+      }
+    },
+    {
+      "name": "container-added:between-phase-builds-verdict",
+      "result": "pass",
+      "detail": {
+        "verdict": "publication-identity-changed",
+        "publish": {
+          "exitCode": 1,
+          "refusal": "publication-identity-changed",
+          "refusalLine": "[publication-preflight] publication-identity-changed: Current publication identity differs from the frozen verify phase.",
+          "stderr": "[publication-preflight] publication-identity-changed: Current publication identity differs from the frozen verify phase.",
+          "stderrTail": "[publication-preflight] publication-identity-changed: Current publication identity differs from the frozen verify phase."
+        },
+        "expected": "publication-identity-changed"
+      }
+    },
+    {
+      "name": "container-renamed:refused-caller-side",
+      "result": "pass",
+      "detail": [
+        "container-member-renamed:src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj|memories-mcp->memories-mcp-renamed"
+      ]
+    },
+    {
+      "name": "container-renamed:declared-verify-passes",
+      "result": "pass",
+      "detail": {
+        "exitCode": 0,
+        "refusal": null,
+        "refusalLine": null,
+        "stderr": "",
+        "stderrTail": ""
+      }
+    },
+    {
+      "name": "container-renamed:fresh-builds-verdict",
+      "result": "pass",
+      "detail": {
+        "exitCode": 0,
+        "refusal": null,
+        "refusalLine": null,
+        "stderr": "",
+        "stderrTail": "",
+        "expected": "accepted"
+      }
+    },
+    {
+      "name": "container-renamed:between-phase-builds-verdict",
+      "result": "pass",
+      "detail": {
+        "verdict": "publication-identity-changed",
+        "publish": {
+          "exitCode": 1,
+          "refusal": "publication-identity-changed",
+          "refusalLine": "[publication-preflight] publication-identity-changed: Current publication identity differs from the frozen verify phase.",
+          "stderr": "[publication-preflight] publication-identity-changed: Current publication identity differs from the frozen verify phase.",
+          "stderrTail": "[publication-preflight] publication-identity-changed: Current publication identity differs from the frozen verify phase."
+        },
+        "expected": "publication-identity-changed"
+      }
+    },
+    {
+      "name": "container-remapped:refused-caller-side",
+      "result": "pass",
+      "detail": [
+        "container-member-remapped:src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj|memories-mcp->memories",
+        "container-member-remapped:src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj|memories->memories-mcp"
+      ]
+    },
+    {
+      "name": "container-remapped:declared-verify-passes",
+      "result": "pass",
+      "detail": {
+        "exitCode": 0,
+        "refusal": null,
+        "refusalLine": null,
+        "stderr": "",
+        "stderrTail": ""
+      }
+    },
+    {
+      "name": "container-remapped:fresh-builds-verdict",
+      "result": "pass",
+      "detail": {
+        "exitCode": 0,
+        "refusal": null,
+        "refusalLine": null,
+        "stderr": "",
+        "stderrTail": "",
+        "expected": "accepted"
+      }
+    },
+    {
+      "name": "container-remapped:between-phase-builds-verdict",
+      "result": "pass",
+      "detail": {
+        "verdict": "not-detected",
+        "publish": {
+          "exitCode": 0,
+          "refusal": null,
+          "refusalLine": null,
+          "stderr": "",
+          "stderrTail": ""
+        },
+        "publisher": {
+          "exitCode": 1,
+          "refusal": null,
+          "refusalLine": null,
+          "stderr": "[fake-dotnet] synthetic publish failure for memories-mcp",
+          "stderrTail": "[fake-dotnet] synthetic publish failure for memories-mcp"
+        },
+        "firstSdkPublication": {
+          "project": "src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj",
+          "repository": "memories-mcp"
+        },
+        "expected": "not-detected"
+      }
+    },
+    {
+      "name": "package-count-low:refused-caller-side",
+      "result": "pass",
+      "detail": [
+        "package-count-mismatch:9!=10",
+        "package-inventory-drift"
+      ]
+    },
+    {
+      "name": "package-count-low:declared-verify-passes",
+      "result": "pass",
+      "detail": {
+        "exitCode": 0,
+        "refusal": null,
+        "refusalLine": null,
+        "stderr": "",
+        "stderrTail": ""
+      }
+    },
+    {
+      "name": "package-count-low:fresh-builds-verdict",
+      "result": "pass",
+      "detail": {
+        "exitCode": 1,
+        "refusal": "package-inventory-mismatch",
+        "refusalLine": "[publication-preflight] package-inventory-mismatch: Release package inventory must contain exactly 10 unique IDs.",
+        "stderr": "[publication-preflight] package-inventory-mismatch: Release package inventory must contain exactly 10 unique IDs.",
+        "stderrTail": "[publication-preflight] package-inventory-mismatch: Release package inventory must contain exactly 10 unique IDs.",
+        "expected": "package-inventory-mismatch"
+      }
+    },
+    {
+      "name": "package-count-low:between-phase-builds-verdict",
+      "result": "pass",
+      "detail": {
+        "verdict": "package-inventory-mismatch",
+        "publish": {
+          "exitCode": 1,
+          "refusal": "package-inventory-mismatch",
+          "refusalLine": "[publication-preflight] package-inventory-mismatch: Release package inventory must contain exactly 10 unique IDs.",
+          "stderr": "[publication-preflight] package-inventory-mismatch: Release package inventory must contain exactly 10 unique IDs.",
+          "stderrTail": "[publication-preflight] package-inventory-mismatch: Release package inventory must contain exactly 10 unique IDs."
+        },
+        "expected": "package-inventory-mismatch"
+      }
+    },
+    {
+      "name": "package-count-high:refused-caller-side",
+      "result": "pass",
+      "detail": [
+        "package-count-mismatch:11!=10",
+        "package-inventory-drift"
+      ]
+    },
+    {
+      "name": "package-count-high:declared-verify-passes",
+      "result": "pass",
+      "detail": {
+        "exitCode": 0,
+        "refusal": null,
+        "refusalLine": null,
+        "stderr": "",
+        "stderrTail": ""
+      }
+    },
+    {
+      "name": "package-count-high:fresh-builds-verdict",
+      "result": "pass",
+      "detail": {
+        "exitCode": 1,
+        "refusal": "package-inventory-mismatch",
+        "refusalLine": "[publication-preflight] package-inventory-mismatch: Release package inventory must contain exactly 10 unique IDs.",
+        "stderr": "[publication-preflight] package-inventory-mismatch: Release package inventory must contain exactly 10 unique IDs.",
+        "stderrTail": "[publication-preflight] package-inventory-mismatch: Release package inventory must contain exactly 10 unique IDs.",
+        "expected": "package-inventory-mismatch"
+      }
+    },
+    {
+      "name": "package-count-high:between-phase-builds-verdict",
+      "result": "pass",
+      "detail": {
+        "verdict": "package-inventory-mismatch",
+        "publish": {
+          "exitCode": 1,
+          "refusal": "package-inventory-mismatch",
+          "refusalLine": "[publication-preflight] package-inventory-mismatch: Release package inventory must contain exactly 10 unique IDs.",
+          "stderr": "[publication-preflight] package-inventory-mismatch: Release package inventory must contain exactly 10 unique IDs.",
+          "stderrTail": "[publication-preflight] package-inventory-mismatch: Release package inventory must contain exactly 10 unique IDs."
+        },
+        "expected": "package-inventory-mismatch"
+      }
+    },
+    {
+      "name": "package-renamed:refused-caller-side",
+      "result": "pass",
+      "detail": [
+        "package-inventory-drift"
+      ]
+    },
+    {
+      "name": "package-renamed:declared-verify-passes",
+      "result": "pass",
+      "detail": {
+        "exitCode": 0,
+        "refusal": null,
+        "refusalLine": null,
+        "stderr": "",
+        "stderrTail": ""
+      }
+    },
+    {
+      "name": "package-renamed:fresh-builds-verdict",
+      "result": "pass",
+      "detail": {
+        "exitCode": 0,
+        "refusal": null,
+        "refusalLine": null,
+        "stderr": "",
+        "stderrTail": "",
+        "expected": "accepted"
+      }
+    },
+    {
+      "name": "package-renamed:between-phase-builds-verdict",
+      "result": "pass",
+      "detail": {
+        "verdict": "publication-identity-changed",
+        "publish": {
+          "exitCode": 1,
+          "refusal": "publication-identity-changed",
+          "refusalLine": "[publication-preflight] publication-identity-changed: Current publication identity differs from the frozen verify phase.",
+          "stderr": "[publication-preflight] publication-identity-changed: Current publication identity differs from the frozen verify phase.",
+          "stderrTail": "[publication-preflight] publication-identity-changed: Current publication identity differs from the frozen verify phase."
+        },
+        "expected": "publication-identity-changed"
+      }
+    },
+    {
+      "name": "exception-premise:no-caller-set-check",
+      "result": "pass",
+      "detail": "Builds accepted every drifted container set at a fresh verify and let a set-preserving remap reach SDK publication; only the declared caller profile refused them."
+    }
+  ],
+  "observations": {
+    "variants": [
+      {
+        "variant": "container-dropped",
+        "callerRefusal": [
+          "container-member-dropped:src/Hexalith.Memories.DomainService/Hexalith.Memories.DomainService.csproj|memories-domain-service"
+        ],
+        "freshBuildsVerdict": "accepted",
+        "betweenPhaseBuildsVerdict": "publication-identity-changed",
+        "candidate": [
+          "src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj|memories",
+          "src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj|memories-mcp",
+          "src/Hexalith.Memories.AccessTelemetry/Hexalith.Memories.AccessTelemetry.csproj|memories-access-telemetry",
+          "src/Hexalith.Memories.AccessTelemetry.Clock/Hexalith.Memories.AccessTelemetry.Clock.csproj|memories-access-telemetry-clock"
+        ]
+      },
+      {
+        "variant": "container-added",
+        "callerRefusal": [
+          "container-member-added:src/Hexalith.Memories.QualificationSyntheticAdded/Hexalith.Memories.QualificationSyntheticAdded.csproj|memories-qualification-synthetic-added"
+        ],
+        "freshBuildsVerdict": "accepted",
+        "betweenPhaseBuildsVerdict": "publication-identity-changed",
+        "candidate": [
+          "src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj|memories",
+          "src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj|memories-mcp",
+          "src/Hexalith.Memories.AccessTelemetry/Hexalith.Memories.AccessTelemetry.csproj|memories-access-telemetry",
+          "src/Hexalith.Memories.AccessTelemetry.Clock/Hexalith.Memories.AccessTelemetry.Clock.csproj|memories-access-telemetry-clock",
+          "src/Hexalith.Memories.DomainService/Hexalith.Memories.DomainService.csproj|memories-domain-service",
+          "src/Hexalith.Memories.QualificationSyntheticAdded/Hexalith.Memories.QualificationSyntheticAdded.csproj|memories-qualification-synthetic-added"
+        ]
+      },
+      {
+        "variant": "container-renamed",
+        "callerRefusal": [
+          "container-member-renamed:src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj|memories-mcp->memories-mcp-renamed"
+        ],
+        "freshBuildsVerdict": "accepted",
+        "betweenPhaseBuildsVerdict": "publication-identity-changed",
+        "candidate": [
+          "src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj|memories",
+          "src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj|memories-mcp-renamed",
+          "src/Hexalith.Memories.AccessTelemetry/Hexalith.Memories.AccessTelemetry.csproj|memories-access-telemetry",
+          "src/Hexalith.Memories.AccessTelemetry.Clock/Hexalith.Memories.AccessTelemetry.Clock.csproj|memories-access-telemetry-clock",
+          "src/Hexalith.Memories.DomainService/Hexalith.Memories.DomainService.csproj|memories-domain-service"
+        ]
+      },
+      {
+        "variant": "container-remapped",
+        "callerRefusal": [
+          "container-member-remapped:src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj|memories-mcp->memories",
+          "container-member-remapped:src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj|memories->memories-mcp"
+        ],
+        "freshBuildsVerdict": "accepted",
+        "betweenPhaseBuildsVerdict": "not-detected",
+        "candidate": [
+          "src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj|memories-mcp",
+          "src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj|memories",
+          "src/Hexalith.Memories.AccessTelemetry/Hexalith.Memories.AccessTelemetry.csproj|memories-access-telemetry",
+          "src/Hexalith.Memories.AccessTelemetry.Clock/Hexalith.Memories.AccessTelemetry.Clock.csproj|memories-access-telemetry-clock",
+          "src/Hexalith.Memories.DomainService/Hexalith.Memories.DomainService.csproj|memories-domain-service"
+        ]
+      },
+      {
+        "variant": "package-count-low",
+        "callerRefusal": [
+          "package-count-mismatch:9!=10",
+          "package-inventory-drift"
+        ],
+        "freshBuildsVerdict": "package-inventory-mismatch",
+        "betweenPhaseBuildsVerdict": "package-inventory-mismatch",
+        "candidate": {
+          "packageCount": 9
+        }
+      },
+      {
+        "variant": "package-count-high",
+        "callerRefusal": [
+          "package-count-mismatch:11!=10",
+          "package-inventory-drift"
+        ],
+        "freshBuildsVerdict": "package-inventory-mismatch",
+        "betweenPhaseBuildsVerdict": "package-inventory-mismatch",
+        "candidate": {
+          "packageCount": 11
+        }
+      },
+      {
+        "variant": "package-renamed",
+        "callerRefusal": [
+          "package-inventory-drift"
+        ],
+        "freshBuildsVerdict": "accepted",
+        "betweenPhaseBuildsVerdict": "publication-identity-changed",
+        "candidate": {
+          "packageCount": 10
+        }
+      }
+    ]
+  },
+  "findings": [
+    {
+      "code": "builds-identity-omits-project-mapping",
+      "owner": "30-4-five-image-publication-contract",
+      "summary": "The pinned frozen identity binds the sorted container repository set but not the project-to-repository mapping: a remap preserving the set passed all three phases and reached SDK publication. The caller must refuse mapping drift before invoking the publisher.",
+      "premiseObserved": true,
+      "evidence": {
+        "variant": "container-remapped"
+      }
+    }
+  ],
+  "exceptions": [
+    {
+      "code": "no-caller-set-check",
+      "gap": "Builds validates mapping syntax and freezes the repository set, but never checks the caller's declared release set or project-to-repository mapping.",
+      "callerControl": "tools/builds-publication-qualification.json declares the set, and the caller refuses drift before invoking Builds.",
+      "handedTo": [
+        "30-4-five-image-publication-contract"
+      ],
+      "premiseObserved": true,
+      "evidence": "Builds accepted every drifted container set at a fresh verify and let a set-preserving remap reach SDK publication; only the declared caller profile refused them."
+    }
+  ],
+  "reasons": []
+}

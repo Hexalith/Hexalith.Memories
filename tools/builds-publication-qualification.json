@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "hexalith.memories.builds-publication-profile.v1",
+  "buildsSha": "81c88b34d09d34260b92d7f0928dbbc1c7446baa",
+  "expectedPackageCount": 10,
+  "containerProjects": [
+    "src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj|memories",
+    "src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj|memories-mcp",
+    "src/Hexalith.Memories.AccessTelemetry/Hexalith.Memories.AccessTelemetry.csproj|memories-access-telemetry",
+    "src/Hexalith.Memories.AccessTelemetry.Clock/Hexalith.Memories.AccessTelemetry.Clock.csproj|memories-access-telemetry-clock",
+    "src/Hexalith.Memories.DomainService/Hexalith.Memories.DomainService.csproj|memories-domain-service"
+  ]
+}

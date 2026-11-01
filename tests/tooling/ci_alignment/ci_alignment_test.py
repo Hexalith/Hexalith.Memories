@@ -82,6 +82,7 @@ MANDATORY_COMMANDS = {
     ('test-unit-contract', 'Run release package fixtures'): 'python3 -m unittest discover -s tests/tooling/release_packages -p "*_test.py"',
     ('test-unit-contract', 'Run NuGet publish fixtures'): 'python3 -m unittest discover -s tests/tooling/publish_nuget -p "*_test.py"',
     ('test-unit-contract', 'Run container publish fixtures'): 'python3 -m unittest discover -s tests/tooling/publish_containers -p "*_test.py"',
+    ('test-unit-contract', 'Run Builds publication qualification fixtures'): 'python3 -m unittest discover -s tests/tooling/builds_publication_qualification -p "*_test.py"',
     ('test-unit-contract', 'Run production deployment evidence fixtures'): 'python3 -m unittest discover -s tests/tooling/production_deployment_evidence -p "*_test.py"',
     ('test-unit-contract', 'Publish pinned kubectl at the owner-discovery path'): 'installed="$(command -v kubectl)"\ntest -n "$installed"\nif [ "$installed" != "/usr/local/bin/kubectl" ]; then\n  sudo ln -sfn "$installed" /usr/local/bin/kubectl\nfi\ntest -x /usr/local/bin/kubectl\n',
     ('test-unit-contract', 'Run access-telemetry owner discovery fixtures'): 'PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_owner_discovery -p "test_*.py"',
