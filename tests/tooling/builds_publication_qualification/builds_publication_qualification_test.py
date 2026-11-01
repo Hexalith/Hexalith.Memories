@@ -365,8 +365,8 @@ class CommittedEvidenceTests(unittest.TestCase):
 
     def test_committed_approval_is_untouched_pending_or_fully_decided(self):
         rows = {match.group("role"): match for match in re.finditer(
-            r"^\| (?P<role>Builds Maintainer|Memories Release Engineer) \| (?P<owner>[^|]*) \| (?P<decision>[^|]*) \| "
-            r"(?P<date>[^|]*) \| (?P<notes>[^|]*) \|$", self.approval, re.MULTILINE)}
+            r"^\| (?P<role>Builds Maintainer|Memories Release Engineer) \|(?P<owner>[^|]*)\|(?P<decision>[^|]*)\|"
+            r"(?P<date>[^|]*)\|(?P<notes>[^|]*)\|$", self.approval, re.MULTILINE)}
         self.assertEqual({"Builds Maintainer", "Memories Release Engineer"}, set(rows))
         if self.approval_status() == "pending":
             self.assertIsNone(Q.approval_guard(COMMITTED_EVIDENCE))
