@@ -207,8 +207,8 @@ async function readContainingPackage(entryPath) {
 
 async function loadInstalledPluginGraph(root, configuration, packageManifest) {
   ensure(
-    packageManifest.devDependencies?.["semantic-release"] === "25.0.8",
-    "semantic-release must remain pinned exactly to 25.0.8 while the verifier uses its internal plugin loader.",
+    packageManifest.devDependencies?.["semantic-release"] === "25.0.9",
+    "semantic-release must remain pinned exactly to 25.0.9 while the verifier uses its internal plugin loader.",
   );
   ensure(
     packageManifest.devDependencies?.cosmiconfig === "9.0.2",
@@ -225,8 +225,8 @@ async function loadInstalledPluginGraph(root, configuration, packageManifest) {
   const semanticReleaseRoot = dirname(semanticReleaseEntry);
   const semanticReleaseManifest = await readJson(join(semanticReleaseRoot, "package.json"));
   ensure(
-    semanticReleaseManifest.name === "semantic-release" && semanticReleaseManifest.version === "25.0.8",
-    `Installed semantic-release must be 25.0.8; found '${semanticReleaseManifest.name}@${semanticReleaseManifest.version}'.`,
+    semanticReleaseManifest.name === "semantic-release" && semanticReleaseManifest.version === "25.0.9",
+    `Installed semantic-release must be 25.0.9; found '${semanticReleaseManifest.name}@${semanticReleaseManifest.version}'.`,
   );
 
   const semanticReleaseRequire = createRequire(join(semanticReleaseRoot, "package.json"));
@@ -374,7 +374,7 @@ async function main() {
   const arguments_ = process.argv.slice(2);
   if (arguments_.length === 0) {
     await verifyRepository(repositoryRoot);
-    console.log("Verified semantic-release 25.0.8 and the explicit four-plugin lifecycle offline.");
+    console.log("Verified semantic-release 25.0.9 and the explicit four-plugin lifecycle offline.");
     return;
   }
 
