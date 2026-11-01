@@ -7,8 +7,10 @@ namespace Hexalith.Memories.Server.Tests.Authentication;
 
 /// <summary>
 /// Serializes tests that mutate process-wide <c>APP_API_TOKEN</c> / <c>DAPR_API_TOKEN</c>
-/// so they cannot race each other. Host-level WebApplicationFactory tests overlay an empty
-/// <c>APP_API_TOKEN</c> in configuration and therefore do not need this collection.
+/// so they cannot race each other. Development WebApplicationFactory hosts that overlay an empty
+/// <c>Hexalith:Dapr:ApplicationTokenOverride</c> (the EventStore and health-check factories) ignore
+/// process-wide <c>APP_API_TOKEN</c> and do not need this collection; factories without that overlay
+/// still read it. Production hosts ignore the override and refuse to start while it is set.
 /// </summary>
 [CollectionDefinition(Name, DisableParallelization = true)]
 public sealed class DaprTokenEnvironmentCollection

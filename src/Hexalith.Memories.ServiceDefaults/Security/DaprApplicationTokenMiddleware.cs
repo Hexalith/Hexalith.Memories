@@ -12,23 +12,36 @@ using Hexalith.Memories.ServiceDefaults.Health;
 
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 
 /// <summary>Validates the token DAPR attaches to every sidecar-to-application request.</summary>
-public sealed class DaprApplicationTokenMiddleware(RequestDelegate next, IConfiguration configuration)
+/// <param name="next">The next middleware in the request pipeline.</param>
+/// <param name="configuration">Host configuration that may carry the non-Production token override.</param>
+/// <param name="environment">The host environment. Production never honors the token override.</param>
+public sealed class DaprApplicationTokenMiddleware(
+    RequestDelegate next,
+    IConfiguration configuration,
+    IHostEnvironment environment)
 {
     /// <summary>The environment variable containing the sidecar-to-application token.</summary>
     public const string AppApiTokenEnvironmentVariable = "APP_API_TOKEN";
 
     /// <summary>
-    /// Host configuration key that overrides <see cref="AppApiTokenEnvironmentVariable"/>.
+    /// Host configuration key that overrides <see cref="AppApiTokenEnvironmentVariable"/> outside Production.
     /// Test hosts set this to empty so process-wide environment mutations cannot 401 anonymous Dapr routes.
-    /// Do not reuse <c>APP_API_TOKEN</c> as the key: default host configuration already binds that
-    /// environment variable, so an empty in-memory overlay would not win.
+    /// Production hosts ignore it, and hosts that register the service defaults refuse to start in
+    /// Production while it holds a value. Do not reuse <c>APP_API_TOKEN</c> as the key: default host
+    /// configuration already binds that environment variable, so an empty in-memory overlay would not win.
     /// </summary>
     public const string AppApiTokenOverrideConfigurationKey = "Hexalith:Dapr:ApplicationTokenOverride";
 
     /// <summary>The HTTP header used by DAPR for application-token authentication.</summary>
     public const string DaprApiTokenHeader = "dapr-api-token";
+
+    // Epic 27 retro B1: the override is read once, so a configuration reload cannot change the
+    // security boundary. APP_API_TOKEN stays a per-request read of process state, preserving the
+    // existing behavior for hosts and tests that set it after the pipeline is built.
+    private readonly string? _applicationTokenOverride = ResolveApplicationTokenOverride(configuration, environment);
 
     /// <summary>Validates the DAPR application token before invoking the next middleware.</summary>
     /// <param name="context">The current request context.</param>
@@ -36,7 +49,6 @@ public sealed class DaprApplicationTokenMiddleware(RequestDelegate next, IConfig
     public async Task InvokeAsync(HttpContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
-        ArgumentNullException.ThrowIfNull(configuration);
 
         if (IsPodProbe(context.Request.Path))
         {
@@ -44,7 +56,8 @@ public sealed class DaprApplicationTokenMiddleware(RequestDelegate next, IConfig
             return;
         }
 
-        string? expectedToken = ResolveExpectedAppApiToken();
+        string? expectedToken = _applicationTokenOverride
+            ?? Environment.GetEnvironmentVariable(AppApiTokenEnvironmentVariable);
         if (string.IsNullOrWhiteSpace(expectedToken))
         {
             await next(context).ConfigureAwait(false);
@@ -71,24 +84,37 @@ public sealed class DaprApplicationTokenMiddleware(RequestDelegate next, IConfig
         await next(context).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Reads <see cref="AppApiTokenOverrideConfigurationKey"/> with a direct key lookup. Only a non-null
+    /// value counts as an override: an absent key, a null value, or a section that holds only child keys
+    /// is no override. An empty string is an override.
+    /// </summary>
+    /// <param name="configuration">The configuration to read.</param>
+    /// <returns>The configured override, or <see langword="null"/> when none is configured.</returns>
+    internal static string? ReadApplicationTokenOverride(IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        return configuration[AppApiTokenOverrideConfigurationKey];
+    }
+
     private static bool IsPodProbe(PathString path)
         => path.StartsWithSegments(HealthEndpointPaths.Health)
         || path.StartsWithSegments(HealthEndpointPaths.Alive)
         || path.StartsWithSegments(HealthEndpointPaths.Ready);
 
-    private static bool TryGetApplicationTokenOverride(IConfiguration hostConfiguration, out string? overlay)
+    /// <summary>
+    /// Honors the override only outside Production, so a test host can disable token checks without
+    /// racing process-wide <c>APP_API_TOKEN</c> mutations while a Production host always enforces the
+    /// token Dapr injects.
+    /// </summary>
+    /// <param name="configuration">Host configuration.</param>
+    /// <param name="environment">The host environment.</param>
+    /// <returns>The override outside Production when configured; otherwise <see langword="null"/>.</returns>
+    private static string? ResolveApplicationTokenOverride(IConfiguration configuration, IHostEnvironment environment)
     {
-        foreach (KeyValuePair<string, string?> pair in hostConfiguration.AsEnumerable())
-        {
-            if (string.Equals(pair.Key, AppApiTokenOverrideConfigurationKey, StringComparison.OrdinalIgnoreCase))
-            {
-                overlay = pair.Value;
-                return true;
-            }
-        }
-
-        overlay = null;
-        return false;
+        ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentNullException.ThrowIfNull(environment);
+        return environment.IsProduction() ? null : ReadApplicationTokenOverride(configuration);
     }
 
     private static bool TokensMatch(string expectedToken, string suppliedToken)
@@ -96,21 +122,5 @@ public sealed class DaprApplicationTokenMiddleware(RequestDelegate next, IConfig
         byte[] expectedHash = SHA256.HashData(Encoding.UTF8.GetBytes(expectedToken));
         byte[] suppliedHash = SHA256.HashData(Encoding.UTF8.GetBytes(suppliedToken));
         return CryptographicOperations.FixedTimeEquals(expectedHash, suppliedHash);
-    }
-
-    /// <summary>
-    /// Prefers an explicit host override so a test host can disable token checks without racing
-    /// process-wide <c>APP_API_TOKEN</c> mutations. Production hosts omit the override and use the
-    /// environment variable Dapr already injects.
-    /// </summary>
-    /// <returns>The override value when configured; otherwise the process environment token.</returns>
-    private string? ResolveExpectedAppApiToken()
-    {
-        if (TryGetApplicationTokenOverride(configuration, out string? overlay))
-        {
-            return overlay;
-        }
-
-        return Environment.GetEnvironmentVariable(AppApiTokenEnvironmentVariable);
     }
 }

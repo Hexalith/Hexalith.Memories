@@ -796,7 +796,7 @@ action_items:
     epic: 27
     action: "Honor Hexalith:Dapr:ApplicationTokenOverride only outside Production (ignore it or fail startup when present in Production), resolve it once instead of walking configuration per request, and add a DaprTokenStartupValidator Production-with-override negative test"
     owner: "Amelia"
-    status: open
+    status: done  # 2026-11-01: spec-epic-27-retro-62-dapr-app-token-production-guard.md. Production ignores the override and refuses to start while it holds a value; the override is read once by direct key lookup; a null value is no override. Focused runs passed: Server auth, health-check, EventStore and doc-guard classes 239/239, MCP 11/11, AccessTelemetry 31/31. Qualification-environment hardening is deferred in deferred-work.md.
     ref: "_bmad-output/implementation-artifacts/epic-27-retro-2026-11-01.md"
   - id: "epic-27-retro-item-63-make-the-production-overlay-inert-for-th"
     epic: 27
