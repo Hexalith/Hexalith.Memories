@@ -28,8 +28,8 @@
     },
     "source": {
       "repository": "Hexalith/Hexalith.Memories",
-      "sha": "aa097b52a62b80af32c10267a100646b95be8ac2",
-      "dirty": true
+      "sha": "68d0a8609b057f5aafa6975e6bac5bc69bfe3455",
+      "dirty": false
     },
     "harness": {
       "path": "tools/qualify-builds-publication.py",
@@ -181,7 +181,7 @@
       "name": "one-created-instant-for-the-set",
       "result": "pass",
       "detail": [
-        "2026-10-31T23:59:56Z"
+        "2026-11-01T00:05:05Z"
       ]
     },
     {
@@ -223,55 +223,55 @@
         "repository": "memories",
         "project": "src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj",
         "state": "published",
-        "indexDigest": "sha256:f3b0399e7384f93291141a4be31df77a43602b952998b5845aa5cb463dfffc2b",
-        "created": "2026-10-31T23:59:56Z",
+        "indexDigest": "sha256:becbe0e5d15fc28b86d42ffd02b08c5e4e826d2e4317b604b50ea9b8d57a6622",
+        "created": "2026-11-01T00:05:05Z",
         "children": {
-          "linux/amd64": "sha256:bfec36a608a190aaee9d062920bbd1c9f5bd4af6258c790f6e82ca51799178a6",
-          "linux/arm64": "sha256:0e786107857aaff29d66464a1a758183502c56915edb2c6990ff69ca71556160"
+          "linux/amd64": "sha256:467132dd9b2275e875cec8fdb347a77614de6f0394246b7be19de46b09610e8e",
+          "linux/arm64": "sha256:1863713d2dc364a8dbc1fe613630b2aa34a1ed05b334f7451e09a69c10719253"
         }
       },
       {
         "repository": "memories-mcp",
         "project": "src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj",
         "state": "published",
-        "indexDigest": "sha256:2e66225b79b33f21eff749793ed85e6871d2121c06a31e3b58292e00f2354a2f",
-        "created": "2026-10-31T23:59:56Z",
+        "indexDigest": "sha256:c4cbb8f145cd580a44c072f784007a47e006abf7e2e8d509f79857cb4afcd96f",
+        "created": "2026-11-01T00:05:05Z",
         "children": {
-          "linux/amd64": "sha256:dc301142ac8efa7ab13c7c216fd6e46b89d6ae58ad287f317680a5b059da2c26",
-          "linux/arm64": "sha256:b22d4a3e8f9fd951ba37988530f54fe4f30344f2436ad70eab2c4a9b5729daa6"
+          "linux/amd64": "sha256:2c4d6ca9d2acac402d470490bdacb334d2556da339ce7700d9d8fca1ec14aae6",
+          "linux/arm64": "sha256:bbb962d5f5182d3c568e064e0b4788cdf1c80cf1984280d2c8061a91582977bb"
         }
       },
       {
         "repository": "memories-access-telemetry",
         "project": "src/Hexalith.Memories.AccessTelemetry/Hexalith.Memories.AccessTelemetry.csproj",
         "state": "published",
-        "indexDigest": "sha256:276e94e4759eda8152558fa4309bf8b7e874418f74f5fb4007dd17c199545ea2",
-        "created": "2026-10-31T23:59:56Z",
+        "indexDigest": "sha256:6c32f527c90c6652c6425eae7a41dc6406066f3d9f46f8a3087baa6c0161edcb",
+        "created": "2026-11-01T00:05:05Z",
         "children": {
-          "linux/amd64": "sha256:2b9d964cc29316ac13aa4de70537e2cad91d5350b0bc552d9597f5e86ffaebba",
-          "linux/arm64": "sha256:551e62568f583b7578c83167f5c4ea3c377b12e23aca23a137b6d9b1121f20b8"
+          "linux/amd64": "sha256:ed65014686a39e7f37738c61c27bfb3a1b142208cd9effcec32d2656fc8985f3",
+          "linux/arm64": "sha256:38e07c6dc1352ef100579d1d9b1948f4ff19e9bb136c4f6d336a896dad70dbc9"
         }
       },
       {
         "repository": "memories-access-telemetry-clock",
         "project": "src/Hexalith.Memories.AccessTelemetry.Clock/Hexalith.Memories.AccessTelemetry.Clock.csproj",
         "state": "published",
-        "indexDigest": "sha256:098da89459ea88c9abfd3fa11ad3abe0d9fa78f43eda9ad04314039f8efaca44",
-        "created": "2026-10-31T23:59:56Z",
+        "indexDigest": "sha256:e1f0134b852086f141e659fcf6b6341082356abb4616475e51c7dcdc63bfebc8",
+        "created": "2026-11-01T00:05:05Z",
         "children": {
-          "linux/amd64": "sha256:4262a69424c3c39a5b20707ea0b594d28641f9d4344cfddffdf1bfa0b7b46f48",
-          "linux/arm64": "sha256:e19b66a62cf9693fe2add6d62f88da7d9c1ca2abf6058df7972edcd6e26385a4"
+          "linux/amd64": "sha256:4ad2363d6655caf04b59dd48573ab88fed066802f8647b55f935b32a2a1d1e84",
+          "linux/arm64": "sha256:8b3a64ebce8c84f519f163735eff019387c7d256424b0f8abe012403f2203a93"
         }
       },
       {
         "repository": "memories-domain-service",
         "project": "src/Hexalith.Memories.DomainService/Hexalith.Memories.DomainService.csproj",
         "state": "published",
-        "indexDigest": "sha256:add5f25621fc04579f9cb69498aac734e1ddc48370aa160c270b167563fcf02e",
-        "created": "2026-10-31T23:59:56Z",
+        "indexDigest": "sha256:f105988499e811effba0e90ba71ec03e5302940bc7fac000a4aebfd8255b8e1b",
+        "created": "2026-11-01T00:05:05Z",
         "children": {
-          "linux/amd64": "sha256:d1501873ab2b2423591010b75bbb839b0faddeeea52e0272c944488d95a35cd1",
-          "linux/arm64": "sha256:031b46a2adeb5b491d9bfc27d3b3936b2596d80561ef59d4245329cc9dc4cbdc"
+          "linux/amd64": "sha256:0a368430a906aa1b7345d303c8c84d7a32a1d8e1f0d87bf68de4a7491a32671b",
+          "linux/arm64": "sha256:3fe85924d816f600f6e2b5e5decef2ed384318e80f279679a6200ca230efadbb"
         }
       }
     ],

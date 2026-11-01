@@ -5695,12 +5695,12 @@ So that upstream capabilities are proven locally before release migration consum
 | Checkpoint | Owner | Evidence command or artifact | Review state | Completion state |
 | --- | --- | --- | --- | --- |
 | Upstream candidate fixtures | Builds Maintainer | `pwsh -NoProfile -File references/Hexalith.Builds/Tools/test-publish-containers.ps1` at the candidate revision | pending | verified locally 2026-11-01: 158 passed at `81c88b34` |
-| Complete Memories set dry-run | Memories Release Engineer | `_bmad-output/implementation-artifacts/30-2-qualification/complete-set-dry-run.json` | pending | verified locally 2026-11-01: pass at Builds `81c88b34`, source `aa097b52` (dirty tree) |
-| Set-drift refusal | Memories Release Engineer | `_bmad-output/implementation-artifacts/30-2-qualification/set-drift.json` | pending | verified locally 2026-11-01: pass at Builds `81c88b34`, source `aa097b52` (dirty tree) |
-| Repeated per-image verification | Memories Release Engineer | `_bmad-output/implementation-artifacts/30-2-qualification/phase-verification.json` | pending | verified locally 2026-11-01: pass at Builds `81c88b34`, source `aa097b52` (dirty tree) |
-| Partial-publication result | Memories Release Engineer | `_bmad-output/implementation-artifacts/30-2-qualification/partial-publication.json` | pending | verified locally 2026-11-01: pass at Builds `81c88b34`, source `aa097b52` (dirty tree) |
-| Missing-member recovery | Memories Release Engineer | `_bmad-output/implementation-artifacts/30-2-qualification/recovery.json` | pending | verified locally 2026-11-01: pass at Builds `81c88b34`, source `aa097b52` (dirty tree) |
-| Immutable evidence upload | Memories Release Engineer | `_bmad-output/implementation-artifacts/30-2-qualification/evidence-upload.json` | pending | verified locally 2026-11-01: pass at Builds `81c88b34`, source `aa097b52` (dirty tree) |
+| Complete Memories set dry-run | Memories Release Engineer | `_bmad-output/implementation-artifacts/30-2-qualification/complete-set-dry-run.json` | pending | verified locally 2026-11-01: pass at Builds `81c88b34`, clean source `68d0a860` |
+| Set-drift refusal | Memories Release Engineer | `_bmad-output/implementation-artifacts/30-2-qualification/set-drift.json` | pending | verified locally 2026-11-01: pass at Builds `81c88b34`, clean source `68d0a860` |
+| Repeated per-image verification | Memories Release Engineer | `_bmad-output/implementation-artifacts/30-2-qualification/phase-verification.json` | pending | verified locally 2026-11-01: pass at Builds `81c88b34`, clean source `68d0a860` |
+| Partial-publication result | Memories Release Engineer | `_bmad-output/implementation-artifacts/30-2-qualification/partial-publication.json` | pending | verified locally 2026-11-01: pass at Builds `81c88b34`, clean source `68d0a860` |
+| Missing-member recovery | Memories Release Engineer | `_bmad-output/implementation-artifacts/30-2-qualification/recovery.json` | pending | verified locally 2026-11-01: pass at Builds `81c88b34`, clean source `68d0a860` |
+| Immutable evidence upload | Memories Release Engineer | `_bmad-output/implementation-artifacts/30-2-qualification/evidence-upload.json` | pending | verified locally 2026-11-01: pass at Builds `81c88b34`, clean source `68d0a860` |
 | Exact-revision owner approval | Builds Maintainer + Memories Release Engineer | `_bmad-output/implementation-artifacts/30-2-qualification/approval.md` | pending | not complete |
 
 ### Story 30.3: Guarded Release Dispatch and Shared Caller Adoption

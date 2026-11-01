@@ -28,8 +28,8 @@
     },
     "source": {
       "repository": "Hexalith/Hexalith.Memories",
-      "sha": "aa097b52a62b80af32c10267a100646b95be8ac2",
-      "dirty": true
+      "sha": "68d0a8609b057f5aafa6975e6bac5bc69bfe3455",
+      "dirty": false
     },
     "harness": {
       "path": "tools/qualify-builds-publication.py",

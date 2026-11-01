@@ -28,8 +28,8 @@
     },
     "source": {
       "repository": "Hexalith/Hexalith.Memories",
-      "sha": "aa097b52a62b80af32c10267a100646b95be8ac2",
-      "dirty": true
+      "sha": "68d0a8609b057f5aafa6975e6bac5bc69bfe3455",
+      "dirty": false
     },
     "harness": {
       "path": "tools/qualify-builds-publication.py",
@@ -86,21 +86,21 @@
       "name": "verify-record-binds-the-frozen-identity",
       "result": "pass",
       "detail": {
-        "identitySha256": "bc6e849ec04736245f0bbede70e7c6b3a08a8d3a54ac1ce5cfb3cc0a10958070"
+        "identitySha256": "ffa3e05d6efe1a8f5378b703ef2d2faea9f82016d7ff309b57db4bbc179b428e"
       }
     },
     {
       "name": "publish-record-binds-the-frozen-identity",
       "result": "pass",
       "detail": {
-        "identitySha256": "bc6e849ec04736245f0bbede70e7c6b3a08a8d3a54ac1ce5cfb3cc0a10958070"
+        "identitySha256": "ffa3e05d6efe1a8f5378b703ef2d2faea9f82016d7ff309b57db4bbc179b428e"
       }
     },
     {
       "name": "container-record-binds-the-frozen-identity",
       "result": "pass",
       "detail": {
-        "identitySha256": "bc6e849ec04736245f0bbede70e7c6b3a08a8d3a54ac1ce5cfb3cc0a10958070"
+        "identitySha256": "ffa3e05d6efe1a8f5378b703ef2d2faea9f82016d7ff309b57db4bbc179b428e"
       }
     },
     {
@@ -230,8 +230,8 @@
       "name": "repeated-verification-reproduces-the-identity",
       "result": "pass",
       "detail": {
-        "dryRun": "bc6e849ec04736245f0bbede70e7c6b3a08a8d3a54ac1ce5cfb3cc0a10958070",
-        "repeated": "bc6e849ec04736245f0bbede70e7c6b3a08a8d3a54ac1ce5cfb3cc0a10958070"
+        "dryRun": "ffa3e05d6efe1a8f5378b703ef2d2faea9f82016d7ff309b57db4bbc179b428e",
+        "repeated": "ffa3e05d6efe1a8f5378b703ef2d2faea9f82016d7ff309b57db4bbc179b428e"
       }
     },
     {
@@ -380,7 +380,7 @@
     }
   ],
   "observations": {
-    "frozenIdentitySha256": "bc6e849ec04736245f0bbede70e7c6b3a08a8d3a54ac1ce5cfb3cc0a10958070",
+    "frozenIdentitySha256": "ffa3e05d6efe1a8f5378b703ef2d2faea9f82016d7ff309b57db4bbc179b428e",
     "memberEvidenceDirectories": [
       "memories",
       "memories-access-telemetry",

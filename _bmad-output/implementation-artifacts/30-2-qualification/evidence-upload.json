@@ -28,8 +28,8 @@
     },
     "source": {
       "repository": "Hexalith/Hexalith.Memories",
-      "sha": "aa097b52a62b80af32c10267a100646b95be8ac2",
-      "dirty": true
+      "sha": "68d0a8609b057f5aafa6975e6bac5bc69bfe3455",
+      "dirty": false
     },
     "harness": {
       "path": "tools/qualify-builds-publication.py",
@@ -184,243 +184,243 @@
         "retention-days": "30"
       }
     ],
-    "callerHashManifestSha256": "e2c97e5a92fa487f670fd832866c55f76b363b52fa67b82dd772c8f4bb91b793",
+    "callerHashManifestSha256": "a0514c6863b4e0bc97e3476a1f6a53b5c410635882992e99cf055cf7b5c932be",
     "callerHashManifest": [
       {
         "path": "0.0.302/memories-access-telemetry-clock/child-linux-amd64.config.raw",
-        "sha256": "dfa6b9b57e02827709d81696359a8c1d28b3f563c46ffc4a9c7da684e6a1d2dd"
+        "sha256": "bb26b673d64466afd763a22cfecc43af249f495f1cf6a23284f6f0c5bc383cec"
       },
       {
         "path": "0.0.302/memories-access-telemetry-clock/child-linux-amd64.manifest.raw",
-        "sha256": "4262a69424c3c39a5b20707ea0b594d28641f9d4344cfddffdf1bfa0b7b46f48"
+        "sha256": "4ad2363d6655caf04b59dd48573ab88fed066802f8647b55f935b32a2a1d1e84"
       },
       {
         "path": "0.0.302/memories-access-telemetry-clock/child-linux-arm64.config.raw",
-        "sha256": "faee284cc5c6a52b749d3e4e74d6bf85b1d03a88eacd1c07d2fc5e78dc1e64cd"
+        "sha256": "e2a6a6bbe2fb7f752eaff84aa5034e6a4ac2430cb5c195e86f95930b6924a711"
       },
       {
         "path": "0.0.302/memories-access-telemetry-clock/child-linux-arm64.manifest.raw",
-        "sha256": "e19b66a62cf9693fe2add6d62f88da7d9c1ca2abf6058df7972edcd6e26385a4"
+        "sha256": "8b3a64ebce8c84f519f163735eff019387c7d256424b0f8abe012403f2203a93"
       },
       {
         "path": "0.0.302/memories-access-telemetry-clock/index.raw",
-        "sha256": "098da89459ea88c9abfd3fa11ad3abe0d9fa78f43eda9ad04314039f8efaca44"
+        "sha256": "e1f0134b852086f141e659fcf6b6341082356abb4616475e51c7dcdc63bfebc8"
       },
       {
         "path": "0.0.302/memories-access-telemetry-clock/oci-validation.json",
-        "sha256": "368383979ca6f78d63502f66c37044c97d26892b12af18f63699d7568ec21e75"
+        "sha256": "7701f2c3500441b2d3d5cafd8e831ea6cd2605203d2e49c771bdc22e75b27dac"
       },
       {
         "path": "0.0.302/memories-access-telemetry-clock/smoke-linux-amd64.log",
-        "sha256": "d6bd6a34e45041e6577f6b784209a75e7a75d052ec211fc954977935a115c733"
+        "sha256": "457541798595f5bc59a3c94afb53c7d2ff713e7522f9321b835af08bf41c41a2"
       },
       {
         "path": "0.0.302/memories-access-telemetry-clock/smoke-linux-arm64.log",
-        "sha256": "4d0c8fea3b43ba87dc8e65aad974aee3e9423a99389911d0a6c4181f9d746435"
+        "sha256": "d82270bc32bca0a159575bb0284173337bf599173b65164519215851ce73d4e0"
       },
       {
         "path": "0.0.302/memories-access-telemetry-clock/smoke-preflight.log",
-        "sha256": "a8fd70693b6301966e46cc457290e2a708353477c5b3559d1379ce0c1a325252"
+        "sha256": "75b0a3fae9bba5ad16ed4f891284158d398eda36771649187ad33736a8e4a798"
       },
       {
         "path": "0.0.302/memories-access-telemetry-clock/smoke-results.json",
-        "sha256": "31e8e0bedc00a600a8769922e446cca476300ad1bcb017068acc6361b197d64c"
+        "sha256": "f9d45891c258e4ff2537db91641d14fa9037ad9b63cfb1cc38d6d6af54ed0412"
       },
       {
         "path": "0.0.302/memories-access-telemetry-clock/smoke-sha256.txt",
-        "sha256": "b2273f787d9e5ae2ae3ae5efa3d9fde8ecedb41b6a872169150332f50565f66d"
+        "sha256": "b711644fe8e573ced97bc756c7be43f4c47bbc0e05dcd372089590cee75b8a97"
       },
       {
         "path": "0.0.302/memories-access-telemetry/child-linux-amd64.config.raw",
-        "sha256": "445274501466af21ab1ab3acad42e873a06e93e2d4ff8ddaa63fdc2e54ddeea6"
+        "sha256": "21827b75286f8aac94f13700f1dd6496104aa157121e02d1bbfecf7d2016db5a"
       },
       {
         "path": "0.0.302/memories-access-telemetry/child-linux-amd64.manifest.raw",
-        "sha256": "2b9d964cc29316ac13aa4de70537e2cad91d5350b0bc552d9597f5e86ffaebba"
+        "sha256": "ed65014686a39e7f37738c61c27bfb3a1b142208cd9effcec32d2656fc8985f3"
       },
       {
         "path": "0.0.302/memories-access-telemetry/child-linux-arm64.config.raw",
-        "sha256": "906bec5d59a89aaacd5968a533bcb08d9aa5f6120601350041ecf504ba44f53f"
+        "sha256": "685250ed6d1b8c7c91ed3744a012eb15ace2fde3c6782159d0f13709a2b0cbe4"
       },
       {
         "path": "0.0.302/memories-access-telemetry/child-linux-arm64.manifest.raw",
-        "sha256": "551e62568f583b7578c83167f5c4ea3c377b12e23aca23a137b6d9b1121f20b8"
+        "sha256": "38e07c6dc1352ef100579d1d9b1948f4ff19e9bb136c4f6d336a896dad70dbc9"
       },
       {
         "path": "0.0.302/memories-access-telemetry/index.raw",
-        "sha256": "276e94e4759eda8152558fa4309bf8b7e874418f74f5fb4007dd17c199545ea2"
+        "sha256": "6c32f527c90c6652c6425eae7a41dc6406066f3d9f46f8a3087baa6c0161edcb"
       },
       {
         "path": "0.0.302/memories-access-telemetry/oci-validation.json",
-        "sha256": "2476eecc47b636d0dc4ec37e9924138175474442db929f7e7327d33432c0c3d1"
+        "sha256": "ea1b59a09e0e09c07887485a62b07d6c9e3297d3d76f0ad4453dacf89277a647"
       },
       {
         "path": "0.0.302/memories-access-telemetry/smoke-linux-amd64.log",
-        "sha256": "46aed34ca60ab7fb5437c7c0ae5fe64bb0dc542663edcbacb75f293278094b37"
+        "sha256": "cddb0d99c9b28a6466e5597fb0557b861f3fa2e153032fd831599e0e011ab37e"
       },
       {
         "path": "0.0.302/memories-access-telemetry/smoke-linux-arm64.log",
-        "sha256": "b55c2ea58a41b98887714804b01cccecd38d439a81ae7b66da2711c9633bf9ec"
+        "sha256": "4a5c67945461317819b237533427a6abcd374e6c984a3d9228991dda7ea26e9c"
       },
       {
         "path": "0.0.302/memories-access-telemetry/smoke-preflight.log",
-        "sha256": "47b5a0cfa6e27fe868d23085d8ce20a703d14a2d416a1706ce01c53ca3c51901"
+        "sha256": "8195c439f077a74d59254708271396dba6afbc7e1f0253d4bc9559c144589d6a"
       },
       {
         "path": "0.0.302/memories-access-telemetry/smoke-results.json",
-        "sha256": "dd24722adbec0616638e79ceaf2b8cb62568b7ef9a15ee5e812a9aea4519ee18"
+        "sha256": "ca178c7cf0f9e541090c9eb7ebbe86f1bf1a56c24ebbe719440e062e3d862d7a"
       },
       {
         "path": "0.0.302/memories-access-telemetry/smoke-sha256.txt",
-        "sha256": "af25598abadb587dfedf33f3732a4a250fd24fc2241f17677df73f7fc5405158"
+        "sha256": "11855e14c58d4c4919c30586bacb6ae70a9b526d770912ac112ee971b2ad0a26"
       },
       {
         "path": "0.0.302/memories-domain-service/child-linux-amd64.config.raw",
-        "sha256": "60d6ccf6370d1c3f6e366cf63141942e1d1486b90a13ab962fc54bc4a2573fc5"
+        "sha256": "5cb82815f1a054954b4941e85306668539e363149b3b6a6faa886a5a16251c2f"
       },
       {
         "path": "0.0.302/memories-domain-service/child-linux-amd64.manifest.raw",
-        "sha256": "d1501873ab2b2423591010b75bbb839b0faddeeea52e0272c944488d95a35cd1"
+        "sha256": "0a368430a906aa1b7345d303c8c84d7a32a1d8e1f0d87bf68de4a7491a32671b"
       },
       {
         "path": "0.0.302/memories-domain-service/child-linux-arm64.config.raw",
-        "sha256": "2c5a5a7d0c9b561cb1ae8a133ab7142db3291a01163e797ba69744d8ed45224a"
+        "sha256": "c5fd1ba915b47efc2d0b3834dcc0db22102b39eb8e99d26ae39d8c455bc0e775"
       },
       {
         "path": "0.0.302/memories-domain-service/child-linux-arm64.manifest.raw",
-        "sha256": "031b46a2adeb5b491d9bfc27d3b3936b2596d80561ef59d4245329cc9dc4cbdc"
+        "sha256": "3fe85924d816f600f6e2b5e5decef2ed384318e80f279679a6200ca230efadbb"
       },
       {
         "path": "0.0.302/memories-domain-service/index.raw",
-        "sha256": "add5f25621fc04579f9cb69498aac734e1ddc48370aa160c270b167563fcf02e"
+        "sha256": "f105988499e811effba0e90ba71ec03e5302940bc7fac000a4aebfd8255b8e1b"
       },
       {
         "path": "0.0.302/memories-domain-service/oci-validation.json",
-        "sha256": "c400b41ec4d7e3edc556c7815489fac55ee5506952d34787d5001320a69ce6a5"
+        "sha256": "0271cf215c87e84228ecc23aa40abc94a16fdcb89b03e7f53f85dc76fe8e51d1"
       },
       {
         "path": "0.0.302/memories-domain-service/smoke-linux-amd64.log",
-        "sha256": "8e30d071ef311bf086fbddf50247b378703e0d97325e4e27d55141c3326153a1"
+        "sha256": "7df03da045be5a6f132ea38fbb40b2b9a1cd50225675c3b65652b88afa0e2212"
       },
       {
         "path": "0.0.302/memories-domain-service/smoke-linux-arm64.log",
-        "sha256": "984d311f84f21b07d60bce89b4ecf132932bf1bef1bdf12213bb80dee57266cc"
+        "sha256": "2b3a1f754bf2cc91067a99dba2bd65e85f07f39970b149a0e3f29a8b94faec33"
       },
       {
         "path": "0.0.302/memories-domain-service/smoke-preflight.log",
-        "sha256": "59dd9ba9c1262744664c509a55e846a0ebe60eff6fd207873f89eb4b34ef63a9"
+        "sha256": "38128b571a1df180599608f9d376cd5935abaa263beae40580811d0d00ed1ab1"
       },
       {
         "path": "0.0.302/memories-domain-service/smoke-results.json",
-        "sha256": "ced00c39a78e1d4b559d2a548a382c07c77d4ffa8a5ef766d1d7886823c378b7"
+        "sha256": "30e906b35d38d5d7b34b282526696a9cae5a2f48a55c93e36409da2e3629c048"
       },
       {
         "path": "0.0.302/memories-domain-service/smoke-sha256.txt",
-        "sha256": "193ccbe0a1fc8fda1369ba6f4a88af6248ee245ab4eb800783376078d513fc3b"
+        "sha256": "18b9faed01992f0d3d21d46558f2c1ad31064f4ec94aa0fc7ebdf5d4c380e43e"
       },
       {
         "path": "0.0.302/memories-mcp/child-linux-amd64.config.raw",
-        "sha256": "3f82e65a5c6cab19f89e9ee251e461580ca9b36ad41a3b22f5eef28cd2b235c2"
+        "sha256": "8f2098e5e8ebf6e5cb70eeabac5fc4bb43f270e42b4cf91084acb3d408d75a15"
       },
       {
         "path": "0.0.302/memories-mcp/child-linux-amd64.manifest.raw",
-        "sha256": "dc301142ac8efa7ab13c7c216fd6e46b89d6ae58ad287f317680a5b059da2c26"
+        "sha256": "2c4d6ca9d2acac402d470490bdacb334d2556da339ce7700d9d8fca1ec14aae6"
       },
       {
         "path": "0.0.302/memories-mcp/child-linux-arm64.config.raw",
-        "sha256": "40d64bb390b0d73917ed95d2da4d4062288a52bdb5a3614668932623a2fabda0"
+        "sha256": "15476b746ccafc1e64b12b04d5d5827161f336fce3f7f0b7bd26cb3e8fb4b484"
       },
       {
         "path": "0.0.302/memories-mcp/child-linux-arm64.manifest.raw",
-        "sha256": "b22d4a3e8f9fd951ba37988530f54fe4f30344f2436ad70eab2c4a9b5729daa6"
+        "sha256": "bbb962d5f5182d3c568e064e0b4788cdf1c80cf1984280d2c8061a91582977bb"
       },
       {
         "path": "0.0.302/memories-mcp/index.raw",
-        "sha256": "2e66225b79b33f21eff749793ed85e6871d2121c06a31e3b58292e00f2354a2f"
+        "sha256": "c4cbb8f145cd580a44c072f784007a47e006abf7e2e8d509f79857cb4afcd96f"
       },
       {
         "path": "0.0.302/memories-mcp/oci-validation.json",
-        "sha256": "cadd0d5f7723096991bc7269062b155e0f419233643a3b2163273e8b1e8edc8f"
+        "sha256": "11e40406292482a60a1962d53043d812235d5543dbbca2481cb221b4f95087d9"
       },
       {
         "path": "0.0.302/memories-mcp/smoke-linux-amd64.log",
-        "sha256": "3fc7d66e6ac4badc754815e01dcab37d64f842d758ba6675f3a6b87ecce17ad2"
+        "sha256": "f8c2f0f450d4563ac59f413c9763ca10abb9ef06df3468dcb4204be3db3aa3e2"
       },
       {
         "path": "0.0.302/memories-mcp/smoke-linux-arm64.log",
-        "sha256": "8774b210e0838832a3309e57fbf56b405ad26d8374005f8425a0190afff6fc72"
+        "sha256": "ce3cbe4973364834b3ba4fa1bc61b659e5afb3760602059524899e8dcfadd599"
       },
       {
         "path": "0.0.302/memories-mcp/smoke-preflight.log",
-        "sha256": "7696b246ab06f70c111c37e7d6697dcdff73503a483057faea2e43e83ec13f94"
+        "sha256": "2a0470aa5ea44bef01625afa4e6a571950d2571ef5d108f1d4e3971488aede9c"
       },
       {
         "path": "0.0.302/memories-mcp/smoke-results.json",
-        "sha256": "afc1b183ce8be14bb0fa7fce2d4535527574f9044f2a558ba2f071b7c454d642"
+        "sha256": "4ee942cbdaa5bd5e4f54ecccdf094e5ac16defc47535b4e4cfa9a5859785ce31"
       },
       {
         "path": "0.0.302/memories-mcp/smoke-sha256.txt",
-        "sha256": "70e58f0e8f9395ad2306315f28a76404b48e46c3c7cd6522b5ec484c742f468d"
+        "sha256": "0819262a92bbd7a7238dbe25d80d4cc9bd28237ffca029cffb2e2f548a93633f"
       },
       {
         "path": "0.0.302/memories/child-linux-amd64.config.raw",
-        "sha256": "4fe1a6f6eddde7f6705f3e329db700c30d8340400901aca0b9f2d2f84ae4912b"
+        "sha256": "aff1a18cd6a49b95cfc764d4005c760ebda9cdaffc80cfa7c6691f2ad01a8852"
       },
       {
         "path": "0.0.302/memories/child-linux-amd64.manifest.raw",
-        "sha256": "bfec36a608a190aaee9d062920bbd1c9f5bd4af6258c790f6e82ca51799178a6"
+        "sha256": "467132dd9b2275e875cec8fdb347a77614de6f0394246b7be19de46b09610e8e"
       },
       {
         "path": "0.0.302/memories/child-linux-arm64.config.raw",
-        "sha256": "6907180ece2af95febbd5604c6ec3875122c2649b255f3a36530b26b1727c973"
+        "sha256": "af3b188484ed522673303fa483fb2f983cdbb0fc7a45e67bef07a9710dde3af4"
       },
       {
         "path": "0.0.302/memories/child-linux-arm64.manifest.raw",
-        "sha256": "0e786107857aaff29d66464a1a758183502c56915edb2c6990ff69ca71556160"
+        "sha256": "1863713d2dc364a8dbc1fe613630b2aa34a1ed05b334f7451e09a69c10719253"
       },
       {
         "path": "0.0.302/memories/index.raw",
-        "sha256": "f3b0399e7384f93291141a4be31df77a43602b952998b5845aa5cb463dfffc2b"
+        "sha256": "becbe0e5d15fc28b86d42ffd02b08c5e4e826d2e4317b604b50ea9b8d57a6622"
       },
       {
         "path": "0.0.302/memories/oci-validation.json",
-        "sha256": "cc9c1e98fbfce0a3500f0feff7b2850d3cd896d3fb1573dc09706644549a1ad6"
+        "sha256": "21558e263f874b314e6e72b7f8e37e5b5ffe223af3772b9a27a443f68e7e06ba"
       },
       {
         "path": "0.0.302/memories/smoke-linux-amd64.log",
-        "sha256": "fc575dd6b9a791b81785e5c55254c103dbe5025610326982bd320030e5b466f8"
+        "sha256": "b1a6a36046b231b51a9fd0a7b21f69de099c0803e777ab5e1fc3152a4e0b4fc1"
       },
       {
         "path": "0.0.302/memories/smoke-linux-arm64.log",
-        "sha256": "5fb9b3efd1c2a922ea07be7e6ee9a2348ff266883e2aee09d4e53ed85a169360"
+        "sha256": "3f3cdcbade3412dce2f51428204080bc779ab80e564135095c9dd51bc67a9f3a"
       },
       {
         "path": "0.0.302/memories/smoke-preflight.log",
-        "sha256": "3c37db16500de939b3748ef7320261202544161fb0a567dd85b96f7c7f2804a6"
+        "sha256": "b28a8eaba23cc88506492a88c099e4482f59667b5ba3d05187e07d5bce1ffb53"
       },
       {
         "path": "0.0.302/memories/smoke-results.json",
-        "sha256": "4f4fad1b4cd91873f64cbf88ad2a8126383199a345afab3749fc4bc11fbc85f4"
+        "sha256": "a6da5fda28407eb1f20c750010203ad80a3c012b9132e509088558b5547d4e87"
       },
       {
         "path": "0.0.302/memories/smoke-sha256.txt",
-        "sha256": "120eb3fb2b572c7cbcaa2707a644284661ab8b69a0d06b8e0643c897354ec05a"
+        "sha256": "dfa1055a1af718520323748f23457aeca9011a5987d16e7576c4e41f01e7b7a9"
       },
       {
         "path": "0.0.302/preflight/publication-identity.json",
-        "sha256": "bc6e849ec04736245f0bbede70e7c6b3a08a8d3a54ac1ce5cfb3cc0a10958070"
+        "sha256": "ffa3e05d6efe1a8f5378b703ef2d2faea9f82016d7ff309b57db4bbc179b428e"
       },
       {
         "path": "0.0.302/preflight/publication-preflight.container.json",
-        "sha256": "44ca7b482a91d406ffca20fa51dec6e393acc6f045275fff2bec5b01ba95bbc3"
+        "sha256": "56fb729aa842c1ab18739584e1350a86733fa5ac59d8de65e998cb1562fa8dd4"
       },
       {
         "path": "0.0.302/preflight/publication-preflight.publish.json",
-        "sha256": "3a10c5ca4ac1d38c2bd903ebfb544f18eec1511573c3e92874f743b0da4df776"
+        "sha256": "3952a36a976601c51031004bcc4cd59ebd8adb5ac1414f4ebae219fcc6cbbe6e"
       },
       {
         "path": "0.0.302/preflight/publication-preflight.verify.json",
-        "sha256": "9a06c9b1182991551d7a4d8de28f04f9b627f22507640066ecfb7cbbb83657e6"
+        "sha256": "125754b2fe833971bdb4374b4953a7e7edd2db69e42c3239a36f772aa2a7b33d"
       }
     ],
     "buildsHashCoverage": {

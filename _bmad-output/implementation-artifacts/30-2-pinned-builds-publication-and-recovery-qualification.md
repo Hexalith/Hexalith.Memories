@@ -112,6 +112,7 @@ Release tooling only; tenant-negative gates are unchanged.
 - Findings handed on: `Directory.Build.targets` does not import Builds `Props/ContainerProvenance.targets` and emits only the source and version labels, so real images would fail the pinned validator (30.4). `recover-partial-release.yml` still accepts 2 or 4 images and 9 packages (30.5). `prepare-domain-release` cannot publish containers (30.3/30.4). Builds reads `id`, not `packageId` (30.3).
 - The committed evidence binds source `aa097b52` with a dirty tree because this implementation is uncommitted. Regenerate it from the committed revision before requesting owner approval.
 - Step 05 deviation (2026-11-01): the frozen Never forbids marking 30.2 done without owner approval, so the spec stays `in-review` and sprint status is `review`, which grants no credit. The evidence is regenerated from a clean commit before owner approval is requested.
+- Evidence regenerated on 2026-11-01 from clean commit `68d0a8609b057f5aafa6975e6bac5bc69bfe3455` (dirty: no). All six results pass, and `approval.md` is pending with no not-approvable warning. Exact-revision owner approval is the remaining gate.
 
 ## Spec Change Log
 

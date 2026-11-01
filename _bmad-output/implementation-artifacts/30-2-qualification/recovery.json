@@ -28,8 +28,8 @@
     },
     "source": {
       "repository": "Hexalith/Hexalith.Memories",
-      "sha": "aa097b52a62b80af32c10267a100646b95be8ac2",
-      "dirty": true
+      "sha": "68d0a8609b057f5aafa6975e6bac5bc69bfe3455",
+      "dirty": false
     },
     "harness": {
       "path": "tools/qualify-builds-publication.py",
@@ -82,7 +82,7 @@
         "observeCreated": {
           "exitCode": 0,
           "refusal": null,
-          "indexDigest": "sha256:c5126dee8361092f73cb035af7cf8672187ff78d03c85546fb3b27f0e1e4e61d",
+          "indexDigest": "sha256:b33d59fd8535cb3de5ebd1c367ddfa4f721e37100104c56e57b242bad4f79fed",
           "matchesInitialReceipt": true
         },
         "disposition": "published"
@@ -98,7 +98,7 @@
         "observeCreated": {
           "exitCode": 0,
           "refusal": null,
-          "indexDigest": "sha256:c5126dee8361092f73cb035af7cf8672187ff78d03c85546fb3b27f0e1e4e61d",
+          "indexDigest": "sha256:b33d59fd8535cb3de5ebd1c367ddfa4f721e37100104c56e57b242bad4f79fed",
           "matchesInitialReceipt": true
         },
         "disposition": "published"
@@ -114,7 +114,7 @@
         "observeCreated": {
           "exitCode": 0,
           "refusal": null,
-          "indexDigest": "sha256:76ecce68d851c946a617a283728c568b357fe734deafc6ab2abb25e3690ed1c1",
+          "indexDigest": "sha256:690631f6031c088ccfcbe0c406f1993c2032929ff330ae9b9f3572fdc17b9325",
           "matchesInitialReceipt": true
         },
         "disposition": "published"
@@ -130,7 +130,7 @@
         "observeCreated": {
           "exitCode": 0,
           "refusal": null,
-          "indexDigest": "sha256:76ecce68d851c946a617a283728c568b357fe734deafc6ab2abb25e3690ed1c1",
+          "indexDigest": "sha256:690631f6031c088ccfcbe0c406f1993c2032929ff330ae9b9f3572fdc17b9325",
           "matchesInitialReceipt": true
         },
         "disposition": "published"
@@ -233,7 +233,7 @@
         "observeCreated": {
           "exitCode": 0,
           "refusal": null,
-          "indexDigest": "sha256:f636a261e6445f401ff32092ebeba08ee3940056e48a7eeddb932ebd2f559804",
+          "indexDigest": "sha256:6a76fdc2203b3f9315838725674de66708b0ba7d29fc4deece467e9888678b42",
           "matchesInitialReceipt": false
         },
         "disposition": "blocked"
@@ -291,7 +291,7 @@
         "observeCreated": {
           "exitCode": 0,
           "refusal": null,
-          "indexDigest": "sha256:c5126dee8361092f73cb035af7cf8672187ff78d03c85546fb3b27f0e1e4e61d",
+          "indexDigest": "sha256:b33d59fd8535cb3de5ebd1c367ddfa4f721e37100104c56e57b242bad4f79fed",
           "matchesInitialReceipt": true
         },
         "disposition": "published"
@@ -303,7 +303,7 @@
         "observeCreated": {
           "exitCode": 0,
           "refusal": null,
-          "indexDigest": "sha256:76ecce68d851c946a617a283728c568b357fe734deafc6ab2abb25e3690ed1c1",
+          "indexDigest": "sha256:690631f6031c088ccfcbe0c406f1993c2032929ff330ae9b9f3572fdc17b9325",
           "matchesInitialReceipt": true
         },
         "disposition": "published"
@@ -383,7 +383,7 @@
           "observeCreated": {
             "exitCode": 0,
             "refusal": null,
-            "indexDigest": "sha256:f636a261e6445f401ff32092ebeba08ee3940056e48a7eeddb932ebd2f559804",
+            "indexDigest": "sha256:6a76fdc2203b3f9315838725674de66708b0ba7d29fc4deece467e9888678b42",
             "matchesInitialReceipt": false
           },
           "disposition": "blocked"
