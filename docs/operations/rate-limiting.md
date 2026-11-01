@@ -162,8 +162,7 @@ System Health). Inbound HTTP request rejections use the Story 20.5
 
 Story 20.5's inbound per-tenant quota behavior is complete and unchanged. Rate
 limiting neither supplies nor closes access-telemetry retention. The residual
-`20.5-A41-ACCESS-TELEMETRY-RETENTION` remains open until the immutable
-same-profile chain in
-[Access Telemetry Lifecycle Operations](./access-telemetry-lifecycle.md) passes
-remote publish verification; scheduling, documentation, static manifests, or
-quota tests cannot discharge it.
+`20.5-A41-ACCESS-TELEMETRY-RETENTION` is resolved by accepted debt (DW-17, 2026-11-01), not
+closed as qualified; see [Access Telemetry Lifecycle Operations](./access-telemetry-lifecycle.md).
+A qualified closure still needs the parked Production qualification campaign (DW-730);
+scheduling, documentation, static manifests, or quota tests cannot discharge it.

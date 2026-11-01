@@ -1,5 +1,7 @@
 # Access Telemetry PostgreSQL 18.6 Production Appendix
 
+> **Current state, 2026-11-01:** the approved [Story 27.4 scope reset](../../_bmad-output/planning-artifacts/sprint-change-proposal-2026-11-01.md) closed Story 27.4 and Spec 14. This appendix now serves the parked Production qualification campaign (DW-730), which reopens only when a Production deployment path enables lifecycle writes. The "Current execution" and ownership notes below are historical.
+
 **Platform ownership correction, approved 2026-10-16:** Platform owns the local environment and Builds its existing runner lifecycle; Memories owns retention assertions. Functional preparation currently refuses before input reads/writes, spawn or contact. VM boot/disks and fixed 40/56-GiB requirements are historical. Follow [Spec 14](../../_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-14.md) and [the report](../../_bmad-output/implementation-artifacts/tests/27-4-retention-verification-evidence.md) for owning gaps and reopen checks. No operational approval is ready; full/Production gates and old budgets remain unchanged. Earlier VM wording below is historical for this functional route.
 
 

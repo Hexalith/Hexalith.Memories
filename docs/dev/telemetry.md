@@ -218,8 +218,11 @@ upgrade, and decommission details are in the
 Offline repository validation never contacts a target and leaves every external
 checkpoint `operator-pending`.
 
-`20.5-A41-ACCESS-TELEMETRY-RETENTION` remains carried forward and its action
-remains open. Portable logical deletion and evidence hooks are not physical
+`20.5-A41-ACCESS-TELEMETRY-RETENTION` is resolved by accepted debt (DW-17, 2026-11-01): the lifecycle
+mechanism is implemented and functionally validated within stated limits, and Memories does not bound Production
+retention while lifecycle writes stay disabled. Operators bound the console/OTLP emission themselves; see
+[Production access-telemetry retention](../operations/access-telemetry-lifecycle.md#production-access-telemetry-retention).
+Its Epic 20 action is done. Portable logical deletion and evidence hooks are not physical
 reclamation evidence.
 The boundary is bounded infrastructure telemetry only: no tamper evidence,
 append-only integrity, legal compliance, or certified audit retention.

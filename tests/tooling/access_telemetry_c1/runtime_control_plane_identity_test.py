@@ -1365,7 +1365,7 @@ class RuntimeControlPlaneIdentityTests(unittest.TestCase):
         self.assertRegex(spec_text, rf"(?m)^status: '{expected_spec_state}'$")
         self.assertRegex(
             sprint_status,
-            r"(?m)^  27-4-retention-verification-operations-runbook-and-a41-close-out: (?:backlog|in-progress)$",
+            r"(?m)^  27-4-retention-verification-operations-runbook-and-a41-close-out: done$",
         )
 
         slice_proof_match = re.search(
@@ -1468,7 +1468,10 @@ class RuntimeControlPlaneIdentityTests(unittest.TestCase):
             sprint_status,
         )
         self.assertIsNotNone(a41_action_match)
-        self.assertRegex(a41_action_match.group(0), r"(?m)^    status: open(?:\s|$)")
+        self.assertRegex(
+            a41_action_match.group(0),
+            r"(?m)^    status: done  # 2026-11-01: resolved by accepted debt \(DW-17\)",
+        )
 
         epic_context = EPIC_CONTEXT.read_text(encoding="utf-8")
         self.assertIn(
@@ -1489,7 +1492,11 @@ class RuntimeControlPlaneIdentityTests(unittest.TestCase):
             self.assertIsNotNone(section_match)
             deferred_sections[deferred_id] = section_match.group(0)
 
-        self.assertRegex(deferred_sections["17"], r"(?m)^status: open$")
+        self.assertRegex(deferred_sections["17"], r"(?m)^status: done 2026-11-01$")
+        self.assertRegex(
+            deferred_sections["17"],
+            r"(?m)^resolution: 2026-11-01 — Resolved by accepted debt; not closed as qualified",
+        )
         residual = deferred_sections["718"]
         self.assertIn("27.21-C1.15-REAL-PACKET-REVIEW", residual)
         self.assertRegex(residual, r"(?m)^status: done 2026-10-04$")

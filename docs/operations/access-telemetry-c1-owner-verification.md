@@ -1,5 +1,7 @@
 # Owner-bound C1.15 verification
 
+> **Historical as of 2026-11-01.** The approved [Story 27.4 scope reset](../../_bmad-output/planning-artifacts/sprint-change-proposal-2026-11-01.md) closed Story 27.4 and Spec 14, resolved `20.5-A41-ACCESS-TELEMETRY-RETENTION` by accepted debt (DW-17), and parked the C1 campaign in DW-730. Statements below that Story 27.4, A41 or Spec 14 tasks remain open are historical.
+
 `tools/access_telemetry_c1_owner_c115.py` composes the existing owner-run,
 retained-source, strict command and retained-stream inspections for one
 non-Production `PG-ONPREM-2` capture. A matching result binds the supplied byte

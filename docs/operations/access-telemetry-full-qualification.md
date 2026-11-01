@@ -1,4 +1,6 @@
-# Access-telemetry full qualification — pending campaign
+# Access-telemetry full qualification — parked campaign (historical inventory)
+
+> **PARKED 2026-11-01 — historical inventory. Do not execute.** The approved [Story 27.4 scope reset](../../_bmad-output/planning-artifacts/sprint-change-proposal-2026-11-01.md) removed this campaign from Story 27.4 and parked it in deferred-work entry DW-730. It reopens only when a Production deployment path (the Memories overlay or Platform composition) sets `AccessTelemetryLifecycle:Enabled=true` or runs a lifecycle Deployment above zero replicas. When triggered, re-plan against the real Production target; the synthetic-target preparation below is anti-template. Sections marked "(current)" below are historical. `20.5-A41-ACCESS-TELEMETRY-RETENTION` is resolved by accepted debt (DW-17).
 
 ## Workspace source verification — 2026-10-30 (current)
 

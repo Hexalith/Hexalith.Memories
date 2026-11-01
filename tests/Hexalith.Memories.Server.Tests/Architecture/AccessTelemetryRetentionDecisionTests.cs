@@ -450,7 +450,8 @@ public sealed partial class AccessTelemetryRetentionDecisionTests
         security.ShouldContain("fixed-ID Dapr actor", Case.Sensitive);
         security.ShouldContain("container-service neutral", Case.Sensitive);
         security.ShouldContain("component-specific physical-reclamation evidence", Case.Sensitive);
-        security.ShouldContain("`20.5-A41-ACCESS-TELEMETRY-RETENTION` remains open", Case.Sensitive);
+        security.ShouldContain("`20.5-A41-ACCESS-TELEMETRY-RETENTION` is resolved by accepted debt (DW-17)", Case.Sensitive);
+        security.ShouldContain("Memories does not bound Production access-telemetry retention", Case.Sensitive);
         security.ShouldContain(
             "not tamper-evident, append-only, legally compliant, or certified audit retention",
             Case.Sensitive);
@@ -489,7 +490,7 @@ public sealed partial class AccessTelemetryRetentionDecisionTests
         retention.ShouldContain("fixed `AccessTelemetryLifecycleActor/global`", Case.Sensitive);
         retention.ShouldContain("Production overlay keeps the Server provider and lifecycle writes disabled", Case.Sensitive);
         retention.ShouldContain("Story 27.3 must select and pin the exact Production adapter", Case.Sensitive);
-        retention.ShouldContain("`20.5-A41-ACCESS-TELEMETRY-RETENTION` remains carried forward", Case.Sensitive);
+        retention.ShouldContain("`20.5-A41-ACCESS-TELEMETRY-RETENTION` is resolved by accepted debt (DW-17, 2026-11-01)", Case.Sensitive);
 
         string routing = NormalizeWhitespace(telemetry.GetSection("Audit log routing recipe"));
         routing.ShouldContain("typed `AccessTelemetryEvent` logger state", Case.Sensitive);
@@ -572,7 +573,7 @@ public sealed partial class AccessTelemetryRetentionDecisionTests
         verificationHandoff.ShouldContain("A41 deferred entry and action close-out", Case.Sensitive);
 
         NormalizeWhitespace(telemetry.GetSection("Retention lifecycle status")).ShouldContain(
-            "`20.5-A41-ACCESS-TELEMETRY-RETENTION` remains carried forward and its action remains open",
+            "Memories does not bound Production retention while lifecycle writes stay disabled",
             Case.Sensitive);
 
         ContractDocumentGuard.FindLeakedToolCallMarkup(adrMarkdown).ShouldBeEmpty();
@@ -653,7 +654,8 @@ public sealed partial class AccessTelemetryRetentionDecisionTests
         handoff.ShouldContain("business readiness must stay available", Case.Sensitive);
 
         string runbook = ReadRepoFile(LifecycleRunbookRelativePath);
-        runbook.ShouldContain("A41 is open until remote publish verification succeeds", Case.Sensitive);
+        runbook.ShouldContain("`20.5-A41-ACCESS-TELEMETRY-RETENTION` is resolved by accepted debt (DW-17)", Case.Sensitive);
+        runbook.ShouldContain("Configure a retention of **7 days or less**", Case.Sensitive);
         runbook.ShouldContain("Production lifecycle writes remain disabled", Case.Sensitive);
 
         string evidence = ReadRepoFile(EvidenceMatrixRelativePath);

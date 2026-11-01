@@ -234,3 +234,19 @@ review's own patches then move it. Drift is the normal case, not the exception.
   L12's route that writes a claim owns verifying it.
 - Fail closed: do not write an inherited anchor into `epics.md`, a story file,
   `sprint-status.yaml`, or a proposal without re-deriving it first.
+
+## L15 - Finish on Proven Behaviour; Park the Rest Behind a Trigger
+
+- Story 27.4 (2026-10-25 to 2026-11-01) is the reference failure. Its product behaviour passed live on 2026-10-25.
+  The story then spent 15 more commits building a qualification environment for a capability that Production keeps
+  disabled, and executed none of its 34 remaining checkpoints.
+- Root cause: the completion bar was never revisited after the behaviour was proven, and a missing-capability
+  blocker had no stop rule. "Do recommended" on an open story with one remaining checkpoint means "keep going".
+- When a story's remaining work qualifies a capability that is disabled in Production, or needs an environment its
+  owner does not provide, finish the story on the proven behaviour. Park the remainder in one deferred entry that
+  reopens only on a measurable trigger, and resolve any carried residual through its sanctioned accepted-debt route
+  with every required field.
+- Three continuation rounds without a newly passing checkpoint mean running correct-course, not another
+  continuation.
+- This lesson is advisory. It adds no executable gate: more governance is the anti-pattern it records.
+- Reference: `_bmad-output/planning-artifacts/sprint-change-proposal-2026-11-01.md`, DW-17, DW-730.

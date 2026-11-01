@@ -1,5 +1,25 @@
 # Story 27.4 — current retention results
 
+## Story close-out — 2026-11-01 scope reset
+
+**Story 27.4 is done.** The owner approved the
+[Story 27.4 scope reset](../../planning-artifacts/sprint-change-proposal-2026-11-01.md).
+
+- **Functional retention (complete):** run `0673d50339f4e1058c26e3a9b2d680a2` — native completed/Success, TRX 1/1,
+  `functional-observations-passed`, verified disposal
+  ([result](#corrected-window-execution--2026-10-25-local-functional-retention-passed-cleanup-verified)).
+  Limits: one writer, Development, file secrets and development UTC, 3600-second retention; logical expiry, strong
+  absence and due-index/reminder progress only. No physical tuple deletion or reclamation is claimed.
+- **A41:** `20.5-A41-ACCESS-TELEMETRY-RETENTION` is resolved by accepted debt (DW-17), not closed as qualified. Memories does not bound Production
+  access-telemetry retention while the lifecycle store stays disabled. Production lifecycle writes remain disabled.
+- **Full qualification:** parked in DW-730. It reopens only when a Production deployment path (the Memories overlay or Platform composition) sets `AccessTelemetryLifecycle:Enabled=true` or runs a lifecycle Deployment above zero replicas. The canonical C0-C6 matrix and the
+  full-campaign sections below are historical and stay `operator-pending`.
+- **Withdrawn work:** node1 rootless-Docker setup, independent calibration, host capture and S3 calibration
+  preparation stop. Platform code stays in place. No approval recorded below is consumed or revived.
+- **Retained resources:** owner Jérôme Piquot. This correction disposes of nothing. The resources under
+  [Retained resources](#retained-resources) and the private preparation roots named in the sections below are
+  **left in place pending owner cleanup**. Record their disposal here when it happens.
+
 ## Approved node1 setup — 2026-10-31 (current)
 
 The owner's **“i approve”** is recorded for the presented dedicated rootless
@@ -3140,6 +3160,8 @@ Documentation removal does not dispose of resources. Prior failed runs `f482f160
 The [bootstrap recovery result](../27-4-bootstrap-recovery-result-2026-10-16.md) records retained 40/600-GiB disks and a stopped QMP socket. Private raw receipts and these resources remain untouched. Before any new run, Platform must establish isolation from retained resources; old attempts/permissions cannot be replayed.
 
 ## Evidence posture
+
+**Historical as of 2026-11-01:** superseded by the [Story close-out](#story-close-out--2026-11-01-scope-reset). A41 is now resolved by accepted debt (DW-17) and Story 27.4 is done; the posture below records the state before the scope reset.
 
 Latest `WINDOW` run `0673d50339f4e1058c26e3a9b2d680a2` supplies passing local functional evidence: native completed/Success, TRX 1/1, the real retention assertions and verified disposition recorded above. Its local profile is `f17bd8da9c6104df75c192d100bb9c42645307d5ce2f4f89dafc5135dadcd382`, assurance is `sole-owner/self-reviewed`, and `qualificationCredit:false` remains unchanged. Strong TTL absence and due-index cleanup do not establish physical tuple deletion or reclamation. Earlier failed runs, partial observations and changed-input limitations retain their historical outcomes; preparation and offline fixtures earn no live credit. No target was queried. Production lifecycle writes remain disabled; `20.5-A41-ACCESS-TELEMETRY-RETENTION` remains carried forward/open. Overall Story 27.4 stays in progress pending its separately scheduled full campaign.
 

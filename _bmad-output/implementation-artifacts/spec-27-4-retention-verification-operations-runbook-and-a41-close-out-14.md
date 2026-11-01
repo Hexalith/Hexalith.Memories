@@ -2,7 +2,7 @@
 title: 'Story 27.4 sole-owner qualification and A41 close-out'
 type: 'feature'
 created: '2026-10-12'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 1
 story_key: '27-4-retention-verification-operations-runbook-and-a41-close-out'
@@ -13,6 +13,20 @@ context:
 ---
 
 # Story 27.4 — active functional retention contract
+
+## Closed 2026-11-01 — scope reset (current)
+
+The owner approved the [Story 27.4 scope reset](../planning-artifacts/sprint-change-proposal-2026-11-01.md). This spec is
+closed and Story 27.4 is `done`. Its functional outcome is complete: run `0673d50339f4e1058c26e3a9b2d680a2` passed on 2026-10-25.
+
+The full Production qualification campaign is withdrawn from this spec and parked in deferred-work entry DW-730. That
+includes the node1 rootless-Docker setup, independent calibration, host capture and S3 calibration preparation below.
+DW-730 reopens only when a Production deployment path (the Memories overlay or Platform composition) sets `AccessTelemetryLifecycle:Enabled=true` or runs a lifecycle Deployment above zero replicas. `20.5-A41-ACCESS-TELEMETRY-RETENTION` is resolved by accepted debt (DW-17). Production lifecycle writes remain
+disabled.
+
+Do not append continuation sections or resume the task boxes below. Open boxes are marked `[-]` (withdrawn by scope
+reset), not completed, and no earlier approval is revived. Retained resources and their disposition are listed in the
+[report's close-out](tests/27-4-retention-verification-evidence.md#story-close-out--2026-11-01-scope-reset).
 
 ## Node1 setup approval and prerequisite observation — 2026-10-31 (current)
 
@@ -66,7 +80,7 @@ available candidates only; nothing was reserved or created.
   upgrade/downgrade or remove an existing dependency. A narrow candidate profile
   for the exact private RootlessKit path passes local AppArmor preprocessing only;
   no policy was loaded into any kernel.
-- [ ] Resolve the owner's storage preference. The owner asked **“why you need
+- [-] (withdrawn by scope reset 2026-11-01) Resolve the owner's storage preference. The owner asked **“why you need
   quota?”**: Docker can run without quotas. The proposed 24GiB hard disk boundary
   protects the disk shared with Kubernetes from images/build caches/log growth;
   it is an initial ceiling, not a measured Docker minimum. A bounded volume gives
@@ -74,13 +88,13 @@ available candidates only; nothing was reserved or created.
   residual fill risk. The owner has not waived or selected a replacement for the
   approved plan's boundary. Do not fabricate a quota, adopt protected volumes or
   enable quotas/remount/repartition/create a loop disk under existing authority.
-- [ ] Bind actual net reservations, host I/O/network/tool/dependency inputs and
+- [-] (withdrawn by scope reset 2026-11-01) Bind actual net reservations, host I/O/network/tool/dependency inputs and
   host-write transport. Installing privileged mapping helpers, adding a private
   AppArmor exception, a new disk facility or a write-capable installer Pod are
   additional changes outside the presented setup scope. The staged proposal is
   not approval; obtain only the specific new scope when its concrete action is
   ready. Existing setup and calibration approval must not be requested again.
-- [ ] Apply/verify the approved empty-engine setup after these prerequisites;
+- [-] (withdrawn by scope reset 2026-11-01) Apply/verify the approved empty-engine setup after these prerequisites;
   keep the continuous engine/scratch/node-restart collector and remaining native
   runtime/S3/clock/authority/window admission explicit before calibration launch.
 
@@ -257,17 +271,17 @@ index/catalogue bind its verifier, exact command and result.
 No host action, credential read or calibration prepare/launch occurred. All ten
 native source bindings and the selected 37-null draft remain unchanged.
 
-- [ ] Bind actual custodian transport, UID/ranges, verified tools, supported host
+- [-] (withdrawn by scope reset 2026-11-01) Bind actual custodian transport, UID/ranges, verified tools, supported host
   controls, enforceable quota/device/I/O/CIDRs, net reservations and protected
   before baseline plus exact after-verification/rollback plan; obtain approval
   for the exact newly bound host changes, then apply
   and verify the empty private engine. Existing run approval is not requested again.
-- [ ] Implement and bind continuous engine/scratch/ancestor/node-restart
+- [-] (withdrawn by scope reset 2026-11-01) Implement and bind continuous engine/scratch/ancestor/node-restart
   observation and finite failure-to-stop enforcement before calibration launch.
   The existing allocation collector does not cover these added resources; its
   absence is an explicit prerequisite, not an offline pass. Bounded empty-engine
   setup uses separate custodian checks and newly approved setup rollback.
-- [ ] Pass actual admitted live qualification with runtime/S3/clock/authority/
+- [-] (withdrawn by scope reset 2026-11-01) Pass actual admitted live qualification with runtime/S3/clock/authority/
   monitoring/window prerequisites and original attempt/time/cleanup bounds.
   Keep Story 27.4 in progress and A41 open until that evidence exists.
 
@@ -951,7 +965,7 @@ bind the new actual inputs and retained evidence.
   action concrete in the existing command catalogue. Explicitly retain missing
   actual target, independent bootstrap command packet, backlog command, authority
   and reservations; the full campaign cannot bootstrap its own missing measurements.
-- [ ] Obtain the actual net 16250m/31GiB host/engine and Linux primary/independent
+- [-] (withdrawn by scope reset 2026-11-01) Obtain the actual net 16250m/31GiB host/engine and Linux primary/independent
   backup reservation packet, scoped credentials/providers/trust, same-input
   calibration/renewals, application/provider/reporter/CNI artifacts and clean
   adopted source. Only then run supported prepare and present a complete prepared
@@ -985,7 +999,7 @@ bind this continuation. Earlier implementation and review sections remain intact
 - [x] Specify exact supported prepare/inspect/launch/monitor/stop/remove commands,
   producer handoff, original budgets, failure/disposal evidence, and the smallest
   bounded external prerequisite actions with their cleanup plans.
-- [ ] Bind actual compatible measured renewals, immutable runtime/provider/reporter
+- [-] (withdrawn by scope reset 2026-11-01) Bind actual compatible measured renewals, immutable runtime/provider/reporter
   inputs, trusted UTC/status/monitoring, scoped credentials, clean adopted source,
   aggregate reservations/independent backup and outside-approved action authority.
   Only then run supported prepare and present its actual artifacts for launch

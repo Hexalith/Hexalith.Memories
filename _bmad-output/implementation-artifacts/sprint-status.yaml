@@ -48,7 +48,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-05T17:40:39+02:00
-last_updated: '2026-10-31'
+last_updated: '2026-11-01'
 project: memories
 project_key: NOKEY
 tracking_system: file-system
@@ -162,7 +162,8 @@ story_execution_order:
       - 24-8-semantic-isolation-key-family-classification
       - 24-9-non-destructive-tenant-marker-diagnostics
   epic-27:
-    reason: "Story 27.21 is the first registered one-gate successor and owns only C1.15. On 2026-10-04 independently reviewed real evidence completed its runtime/control-plane identity capture outcome (accepted/complete; DW-718 done); Story 27.21 is done after full verification and final implementation code review. Exact PG-ONPREM-2 was approved and adopted on 2026-10-04. Story 27.22 is the single checked backlog owner added for callable C1.16/PG2; capture, connection linkage and independent acceptance remain pending. Story 27.3 still owns C0 and its independent C2/C3/C4 work; the remaining twenty-three C1 gates are held, unregistered, and unowned. Historical PG1 evidence receives no current-profile credit. Story 27.4 authority is unchanged; Production activation/A41 closure still require all properly registered successors and all per-gate/profile/terminal evidence. Production writes remain disabled and A41 remains open. Document order in epics.md is numeric; this list is the current execution order of record."
+    reason: "Approved Story 27.4 scope reset 2026-11-01 (sprint-change-proposal-2026-11-01.md): every Epic 27 story is done. Story 27.4 closed on the proven local functional retention run, the operations runbook and the A41 accepted-debt disposition (DW-17). The full Production qualification campaign is parked in DW-730 and reopens only when a Production deployment path enables lifecycle writes. Production writes remain disabled. Earlier execution-order reasons are historical."
+    # Superseded 2026-11-01 reason, retained as history: Story 27.21 is the first registered one-gate successor and owns only C1.15. On 2026-10-04 independently reviewed real evidence completed its runtime/control-plane identity capture outcome (accepted/complete; DW-718 done); Story 27.21 is done after full verification and final implementation code review. Exact PG-ONPREM-2 was approved and adopted on 2026-10-04. Story 27.22 is the single checked backlog owner added for callable C1.16/PG2; capture, connection linkage and independent acceptance remain pending. Story 27.3 still owns C0 and its independent C2/C3/C4 work; the remaining twenty-three C1 gates are held, unregistered, and unowned. Historical PG1 evidence receives no current-profile credit. Story 27.4 authority is unchanged; Production activation/A41 closure still require all properly registered successors and all per-gate/profile/terminal evidence. Production writes remain disabled and A41 remains open. Document order in epics.md is numeric; this list is the current execution order of record.
     # Historical hardening 2026-09-01: Story 27.21 is in-progress for repository-side producer hardening only; C1.15 remains pending/not complete and every downstream gate remains unchanged.
     order:
       - 27-1-access-telemetry-retention-ownership-decision
@@ -466,14 +467,16 @@ development_status:
   # Epic 27: Access Telemetry Lifecycle Hardening
   # Story 27.3/27.4 split approved by Administrator on 2026-07-20 under
   # sprint-change-proposal-2026-07-19-story-27-3-c1-production-adapter.md.
-  epic-27: in-progress
+  epic-27: done
   27-1-access-telemetry-retention-ownership-decision: done
   27-2-bounded-retention-ttl-and-purge-implementation: done
   27-3-production-adapter-and-deployment-profile: done
   27-21-runtime-and-control-plane-identity: done
   27-22-component-and-backend-identity: done
-  # 2026-10-21: short Spec 14 governs the independently finishable local functional run; full qualification/A41 separately scheduled.
-  27-4-retention-verification-operations-runbook-and-a41-close-out: in-progress
+  # 2026-10-21 (historical): short Spec 14 governed the independently finishable local functional run.
+  # 2026-11-01: approved scope reset (sprint-change-proposal-2026-11-01.md) closes Story 27.4 on the proven functional run,
+  # the runbook and the A41 accepted-debt disposition (DW-17); the full Production campaign is parked in DW-730.
+  27-4-retention-verification-operations-runbook-and-a41-close-out: done
   # Corrected 2026-08-03 by approved Sprint Change Proposal 2026-08-03: Story 27.21 owns only
   # C1.15 as backlog; producer existence does not pass that gate. The remaining twenty-four C1
   # definitions are held without a current story owner or status. Production writes remain
@@ -485,7 +488,9 @@ development_status:
   # Dated correction 2026-10-04: current profile is exact approved PG-ONPREM-2;
   # only Story 27.22/C1.16 is added. Twenty-three remaining gates stay held/unregistered.
   # Prior twenty-four-held and PG1 claims are historical; no security/Production/27.4/A41 credit.
-  epic-27-retrospective: optional
+  # 2026-11-01: the comments above are historical. The approved scope reset removed the C1/C0-C6 campaign from Story 27.4
+  # (parked in DW-730) and resolved A41 by accepted debt (DW-17). Production writes remain disabled.
+  epic-27-retrospective: optional  # 2026-11-01: a short retro is recommended; Story 27.4 was the costliest story in the project.
 
   # Epic 28: Owner-Approved EventStore Runtime Adoption
   # Registered on 2026-07-17 by approved direct course correction. EventStore Story 1.20's external
@@ -630,7 +635,7 @@ action_items:
   - epic: 20
     action: "Keep 20.5-A41-ACCESS-TELEMETRY-RETENTION visible until a retention/TTL mechanism or explicit accepted-debt disposition is implemented"
     owner: "Amelia, Murat"
-    status: open  # 2026-07-16: Approved implementation is registered in Epic 27 by sprint-change-proposal-2026-07-16-access-telemetry-retention-implementation.md; scheduling is not closure, so this remains open until bounded retention/TTL is implemented and validated or explicit accepted debt satisfies the recorded disposition fields.
+    status: done  # 2026-11-01: resolved by accepted debt (DW-17) under the approved Story 27.4 scope reset (sprint-change-proposal-2026-11-01.md). Superseded note: 2026-07-16: Approved implementation is registered in Epic 27 by sprint-change-proposal-2026-07-16-access-telemetry-retention-implementation.md; scheduling is not closure, so this remains open until bounded retention/TTL is implemented and validated or explicit accepted debt satisfies the recorded disposition fields.
   - epic: 20
     action: "Carry the Story 19.4 migration-marker target-consistency cluster into Epic 21 story creation, especially 21.9 and 21.10"
     owner: "Winston, Amelia, Murat"
@@ -783,3 +788,7 @@ action_items:
     action: "Reassess the eight accepted integration skips, representative large-restore boundary proof, and deployment-hardening residuals so each retains an owner, disposition, and executable reopen trigger"
     owner: "Murat, Winston, John"
     status: open
+  - epic: 27
+    action: "Review the A41 accepted-debt disposition (DW-17) and the parked Production access-telemetry qualification entry (DW-730) by 2027-05-01, or earlier if a Production deployment path enables lifecycle writes"
+    owner: "Jérôme Piquot"
+    status: open  # 2026-11-01: created by the approved Story 27.4 scope reset (sprint-change-proposal-2026-11-01.md).

@@ -68,6 +68,22 @@ zero-result command, stale timestamp, hash drift, or approval gap is a stop
 condition. JSON-console and configured OTLP emission
 remain active during lifecycle failure and rollback.
 
+## Production access-telemetry retention
+
+While Production lifecycle writes remain disabled, Production access telemetry exists only as the JSON-console and
+configured OTLP emission of the `Hexalith.Memories.Server.Telemetry.AccessTelemetryCategory` logger category, which
+carries the tenant, user and operation fields of `AccessTelemetryEvent`. Memories does not bound the retention of
+that emission; the operator's log platform does. `20.5-A41-ACCESS-TELEMETRY-RETENTION` is resolved by accepted debt (DW-17,
+2026-11-01) on that basis, and this instruction is one of its compensating controls.
+
+- Configure a retention of **7 days or less** for the access-telemetry category on every log or OTLP backend that
+  receives it. Seven days is the top of the ratified 1 hour to 7 day lifecycle range. The
+  [audit log routing recipe](../dev/telemetry.md#audit-log-routing-recipe) names the category to route to its
+  own sink.
+- Record the configured retention and backend in your deployment records; Memories cannot observe them.
+- Do not set `AccessTelemetryLifecycle:Enabled=true` or scale a lifecycle Deployment above zero on any Production
+  path. That change is the reopen trigger for DW-17 and for the parked Production qualification campaign (DW-730).
+
 ## Ownership and authority separation
 
 | Role | Authority | Responsibility |
@@ -397,7 +413,13 @@ replacement.
 
 ## A41 close-out chain
 
-A41 is open until remote publish verification succeeds. Build a terminal bundle
+**Dated correction 2026-11-01:** `20.5-A41-ACCESS-TELEMETRY-RETENTION` is resolved by accepted debt (DW-17) under the approved
+[Story 27.4 scope reset](../../_bmad-output/planning-artifacts/sprint-change-proposal-2026-11-01.md); this chain
+was not used. It stays documented for the parked Production qualification campaign (DW-730): when that campaign is
+triggered and passes, this chain converts the accepted debt into a qualified closure. Until then, never describe
+A41 as closed or qualified.
+
+Historical instruction: A41 was open until remote publish verification succeeded. Build a terminal bundle
 containing the exact same-profile C0-C6 packets, terminal validation, and both independent
 approvals. Build an exact mutation manifest for the four verifier-approved A41
 paths, including expected SHA-256 bytes and required/forbidden semantic fragments.
@@ -448,8 +470,8 @@ python3 tools/verify-access-telemetry-lifecycle.py --checkpoint publish-verifica
 ```
 
 A local commit is not published. Do not repair drift with a broad rewrite, edit
-historical Epic 20/Story 20.5 completion, change `sprint-status.yaml`, or mark A41
-resolved before the publish packet reports `published-close-out-verified`.
+historical Epic 20/Story 20.5 completion, change `sprint-status.yaml`, or convert the A41
+accepted debt into a qualified closure before the publish packet reports `published-close-out-verified`.
 
 ## Verified decommissioning
 

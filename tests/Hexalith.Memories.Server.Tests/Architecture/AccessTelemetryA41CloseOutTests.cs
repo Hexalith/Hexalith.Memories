@@ -42,6 +42,7 @@ public sealed class AccessTelemetryA41CloseOutTests
         posture.ShouldContain("No target was queried", Case.Sensitive);
         posture.ShouldContain("Production lifecycle writes remain disabled", Case.Sensitive);
         posture.ShouldContain("remains carried forward/open", Case.Sensitive);
+        posture.ShouldContain("Historical as of 2026-11-01", Case.Sensitive);
         document.GetSection("Canonical C0-C6 matrix").ShouldContain(
             "Only authentic external packets in state `passed` can satisfy C2-C6",
             Case.Sensitive);

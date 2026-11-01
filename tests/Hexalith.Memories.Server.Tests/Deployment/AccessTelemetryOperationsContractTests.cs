@@ -86,7 +86,9 @@ public sealed class AccessTelemetryOperationsContractTests
         closeOut.ShouldContain("change `sprint-status.yaml`", Case.Sensitive);
 
         markdown.ShouldContain("Production lifecycle writes remain disabled", Case.Sensitive);
-        markdown.ShouldContain("A41 is open until remote publish verification succeeds", Case.Sensitive);
+        markdown.ShouldContain("`20.5-A41-ACCESS-TELEMETRY-RETENTION` is resolved by accepted debt (DW-17)", Case.Sensitive);
+        markdown.ShouldContain("Configure a retention of **7 days or less**", Case.Sensitive);
+        document.GetSection("Production access-telemetry retention").ShouldNotBeNullOrWhiteSpace();
         ContractDocumentGuard.FindLeakedToolCallMarkup(markdown).ShouldBeEmpty();
     }
 
@@ -152,8 +154,9 @@ public sealed class AccessTelemetryOperationsContractTests
 
         string rateLimiting = ReadRepoFile("docs/operations/rate-limiting.md");
         rateLimiting.ShouldContain("Story 20.5's inbound per-tenant quota behavior is complete and unchanged", Case.Sensitive);
-        rateLimiting.ShouldContain("remains open until", Case.Sensitive);
-        rateLimiting.ShouldContain("remote publish verification", Case.Sensitive);
+        rateLimiting.ShouldContain("is resolved by accepted debt (DW-17, 2026-11-01)", Case.Sensitive);
+        rateLimiting.ShouldContain("parked Production qualification campaign (DW-730)", Case.Sensitive);
+        NormalizeWhitespace(rateLimiting).ShouldContain("not closed as qualified", Case.Sensitive);
     }
 
     private static string ReadRepoFile(string relativePath)
