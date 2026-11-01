@@ -13,8 +13,8 @@ using Shouldly;
 
 /// <summary>
 /// Platform Story 1.10 -- <c>RepositoryProjectPaths</c> resolves a Memories project with the workspace source-mapping
-/// rule: the consuming repository itself when its root holds <c>Hexalith.Memories.slnx</c>, otherwise the direct
-/// submodule <c>references/Hexalith.Memories</c>. Every other layout throws, naming the dependency and the expected path.
+/// rule: the consuming repository itself, an available direct reference, or a sibling declared alongside the
+/// consumer in the immediate workspace's <c>.gitmodules</c>. Other layouts throw with the expected locations.
 /// </summary>
 public sealed class RepositoryProjectPathsTests
 {
@@ -72,6 +72,133 @@ public sealed class RepositoryProjectPathsTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ResolveReferencedModuleProjectPath_WhenWorkspaceDeclaresConsumerAndSibling_ReturnsSiblingProject(bool quotedPaths)
+    {
+        using TemporaryLayout layout = new(workspace: true);
+        DeclareWorkspace(layout, quotedPaths, "consumer", Module);
+        string project = layout.CreateFile(["..", Module, .. _serverProject]);
+
+        string path = RepositoryProjectPaths.ResolveReferencedModuleProjectPath(layout.Root, Module, _serverProject);
+
+        path.ShouldBe(project);
+    }
+
+    [Fact]
+    public void ResolveReferencedModuleProjectPath_WhenDirectReferenceAndDeclaredSiblingExist_PrefersDirectReference()
+    {
+        using TemporaryLayout layout = new(workspace: true);
+        DeclareWorkspace(layout, false, "consumer", Module);
+        string project = layout.CreateFile(["references", Module, .. _serverProject]);
+        _ = layout.CreateFile(["..", Module, .. _serverProject]);
+
+        string path = RepositoryProjectPaths.ResolveReferencedModuleProjectPath(layout.Root, Module, _serverProject);
+
+        path.ShouldBe(project);
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(false, false)]
+    public void ResolveReferencedModuleProjectPath_WhenConsumerOrSiblingIsUndeclared_Throws(bool declaresConsumer, bool declaresSibling)
+    {
+        using TemporaryLayout layout = new(workspace: true);
+        DeclareWorkspace(layout, false, declaresConsumer ? "consumer" : "other-consumer", declaresSibling ? Module : Module + ".Other");
+        _ = layout.CreateFile(["..", Module, .. _serverProject]);
+
+        InvalidOperationException exception = Should.Throw<InvalidOperationException>(
+            () => RepositoryProjectPaths.ResolveReferencedModuleProjectPath(layout.Root, Module, _serverProject));
+
+        exception.Message.ShouldContain($"'{Module}'");
+        exception.Message.ShouldContain(layout.PathOf(["references", Module, .. _serverProject]));
+        exception.Message.ShouldNotContain("git submodule");
+    }
+
+    [Fact]
+    public void ResolveReferencedModuleProjectPath_WhenDeclaredSiblingProjectIsMissing_ThrowsNamingBothExpectedLocations()
+    {
+        using TemporaryLayout layout = new(workspace: true);
+        DeclareWorkspace(layout, false, "consumer", Module);
+        _ = layout.CreateFile("..", Module, Module + ".slnx");
+
+        InvalidOperationException exception = Should.Throw<InvalidOperationException>(
+            () => RepositoryProjectPaths.ResolveReferencedModuleProjectPath(layout.Root, Module, _serverProject));
+
+        exception.Message.ShouldContain(layout.PathOf(["references", Module, .. _serverProject]));
+        exception.Message.ShouldContain(layout.PathOf(["..", Module, .. _serverProject]));
+        exception.Message.ShouldNotContain("git submodule");
+    }
+
+    [Fact]
+    public void ResolveReferencedModuleProjectPath_WhenOwnProjectIsMissingWithDeclaredSibling_ThrowsInsteadOfSelectingSibling()
+    {
+        using TemporaryLayout layout = new(workspace: true);
+        DeclareWorkspace(layout, false, "consumer", Module);
+        _ = layout.CreateFile(Module + ".slnx");
+        _ = layout.CreateFile(["references", Module, .. _serverProject]);
+        _ = layout.CreateFile(["..", Module, .. _serverProject]);
+
+        InvalidOperationException exception = Should.Throw<InvalidOperationException>(
+            () => RepositoryProjectPaths.ResolveReferencedModuleProjectPath(layout.Root, Module, _serverProject));
+
+        exception.Message.ShouldContain(layout.PathOf(_serverProject));
+    }
+
+    [Fact]
+    public void ResolveReferencedModuleProjectPath_WhenWorkspaceFileIsMissing_ThrowsInsteadOfSelectingSibling()
+    {
+        using TemporaryLayout layout = new(workspace: true);
+        _ = layout.CreateFile(["..", Module, .. _serverProject]);
+
+        InvalidOperationException exception = Should.Throw<InvalidOperationException>(
+            () => RepositoryProjectPaths.ResolveReferencedModuleProjectPath(layout.Root, Module, _serverProject));
+
+        exception.Message.ShouldContain(layout.PathOf(["references", Module, .. _serverProject]));
+    }
+
+    [Theory]
+    [InlineData("other-section")]
+    [InlineData("commented-path")]
+    [InlineData("wrong-path")]
+    [InlineData("overridden-path")]
+    [InlineData("empty-unquoted-path")]
+    [InlineData("empty-quoted-path")]
+    public void ResolveReferencedModuleProjectPath_WhenWorkspaceDoesNotDeclareExactSubmodulePaths_Throws(string declaration)
+    {
+        using TemporaryLayout layout = new(workspace: true);
+        DeclareWorkspace(layout, false, "consumer");
+        string gitmodules = layout.PathOf("..", "..", ".gitmodules");
+        string invalidDeclaration = declaration switch
+        {
+            "other-section" => $"[other \"dependency\"]\npath = references/{Module}\n",
+            "commented-path" => $"[submodule \"dependency\"]\n# path = references/{Module}\n",
+            "wrong-path" => $"[submodule \"dependency\"]\npath = other/{Module}\n",
+            "overridden-path" => $"[submodule \"dependency\"]\npath = references/{Module}\npath = other/{Module}\n",
+            "empty-unquoted-path" => $"[submodule \"dependency\"]\npath = references/{Module}\npath =\n",
+            "empty-quoted-path" => $"[submodule \"dependency\"]\npath = references/{Module}\npath = \"\"\n",
+            _ => throw new ArgumentOutOfRangeException(nameof(declaration), declaration, null),
+        };
+        File.AppendAllText(gitmodules, invalidDeclaration);
+        _ = layout.CreateFile(["..", Module, .. _serverProject]);
+
+        _ = Should.Throw<InvalidOperationException>(
+            () => RepositoryProjectPaths.ResolveReferencedModuleProjectPath(layout.Root, Module, _serverProject));
+    }
+
+    [Fact]
+    public void ResolveReferencedModuleProjectPath_WhenConsumerIsNotUnderReferences_ThrowsEvenWithDeclarations()
+    {
+        using TemporaryLayout layout = new();
+        DeclareWorkspace(layout, false, "consumer", Module);
+        _ = layout.CreateFile(["..", Module, .. _serverProject]);
+
+        _ = Should.Throw<InvalidOperationException>(
+            () => RepositoryProjectPaths.ResolveReferencedModuleProjectPath(layout.Root, Module, _serverProject));
+    }
+
+    [Theory]
     [InlineData("sibling")]
     [InlineData("parent-references")]
     [InlineData("ancestor")]
@@ -98,17 +225,26 @@ public sealed class RepositoryProjectPathsTests
         exception.Message.ShouldContain(layout.PathOf(["references", Module, .. _serverProject]));
     }
 
+    private static void DeclareWorkspace(TemporaryLayout layout, bool quotedPaths, params string[] repositories)
+    {
+        string gitmodules = layout.CreateFile("..", "..", ".gitmodules");
+        File.WriteAllText(gitmodules, string.Join(Environment.NewLine, repositories.Select(
+            repository => quotedPaths
+                ? $"[submodule \"{repository}\"] # workspace dependency\n\tpath = \"references/{repository}\" ; declared path\n"
+                : $"[submodule \"{repository}\"]\n\tpath = references/{repository}\n")));
+    }
+
     /// <summary>
-    /// A disposable <c>&lt;base&gt;/a/b/consumer</c> tree, so files can be placed in the consumer root and in each
+    /// A disposable tree with optional workspace <c>references/</c> layout, allowing files in the root and in each
     /// of its parent and grandparent directories without leaving the temporary base.
     /// </summary>
     private sealed class TemporaryLayout : IDisposable
     {
         private readonly string _base = Path.Combine(Path.GetTempPath(), "hexalith-memories-repository-paths-" + Guid.NewGuid().ToString("N"));
 
-        public TemporaryLayout()
+        public TemporaryLayout(bool workspace = false)
         {
-            Root = Path.Combine(_base, "a", "b", "consumer");
+            Root = Path.Combine(_base, "a", workspace ? "references" : "b", "consumer");
             _ = Directory.CreateDirectory(Root);
         }
 

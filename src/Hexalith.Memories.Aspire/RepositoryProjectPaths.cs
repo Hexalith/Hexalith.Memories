@@ -3,12 +3,14 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 // </copyright>
 
+using System.Text.RegularExpressions;
+
 namespace Hexalith.Memories.Aspire;
 
 /// <summary>
 /// Resolves on-disk paths to project files within a Hexalith mono-repo working tree, where the platform
 /// modules (<c>Hexalith.Memories</c>, <c>Hexalith.EventStore</c>, …) are either the current repository or checked
-/// out as direct Git submodules under the consuming repository root's <c>references/</c> directory.
+/// out as direct Git submodules or declared siblings under a workspace's <c>references/</c> directory.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -31,9 +33,10 @@ internal static class RepositoryProjectPaths
     /// Resolves the on-disk path to a project file inside a Hexalith platform module the consuming repository
     /// depends on, with the same rule as the workspace source mapping. When <c>&lt;root&gt;/&lt;module&gt;.slnx</c>
     /// exists, the dependency is the consuming repository itself and the project resolves under <c>&lt;root&gt;</c>.
-    /// Otherwise it resolves under the direct submodule <c>&lt;root&gt;/references/&lt;module&gt;</c>. No sibling,
-    /// ancestor or root-level checkout is ever used, so the launched project path matches the build-time
-    /// <c>&lt;ProjectReference&gt;</c> the AppHost uses to force a Debug build of the same project.
+    /// Otherwise it prefers the direct submodule <c>&lt;root&gt;/references/&lt;module&gt;</c>. When that project
+    /// is absent and the consumer is under a workspace's <c>references/</c> directory, it can use a sibling
+    /// only when the workspace's <c>.gitmodules</c> declares both repository paths. Unrelated siblings,
+    /// ancestors and root-level checkouts are never used.
     /// Mirrors the equivalent helper in <c>Hexalith.EventStore.Aspire</c> (duplicated on purpose to avoid a
     /// dependency on the EventStore platform package).
     /// </summary>
@@ -72,11 +75,88 @@ internal static class RepositoryProjectPaths
             ? Path.GetFullPath(Path.Combine(fullRoot, relative))
             : Path.GetFullPath(Path.Combine(fullRoot, "references", moduleDirectory, relative));
 
-        return File.Exists(expected)
-            ? expected
-            : throw new InvalidOperationException(isCurrentRepository
-                ? $"Dependency '{moduleDirectory}' is the repository at '{fullRoot}', but its project '{expected}' does not exist."
-                : $"Dependency '{moduleDirectory}' must be checked out as the direct submodule 'references/{moduleDirectory}' of '{fullRoot}', but its project '{expected}' does not exist. Sibling, ancestor and root-level checkouts are not used. Initialize the submodule with 'git submodule update --init -- references/{moduleDirectory}'.");
+        if (File.Exists(expected))
+        {
+            return expected;
+        }
+
+        if (isCurrentRepository)
+        {
+            throw new InvalidOperationException(
+                $"Dependency '{moduleDirectory}' is the repository at '{fullRoot}', but its project '{expected}' does not exist.");
+        }
+
+        string? sibling = GetDeclaredSiblingProjectPath(fullRoot, moduleDirectory, relative);
+        if (sibling is not null && File.Exists(sibling))
+        {
+            return sibling;
+        }
+
+        string siblingExpectation = sibling is null
+            ? "A sibling is eligible only when the consumer and dependency are declared under the same workspace's 'references/' directory in its '.gitmodules'."
+            : $"The declared workspace sibling project '{sibling}' also does not exist.";
+        throw new InvalidOperationException(
+            $"Dependency '{moduleDirectory}' has no project at the direct-reference location '{expected}'. {siblingExpectation}");
+    }
+
+    /// <summary>
+    /// Gets the sibling project location only when the immediate workspace declares both repository paths.
+    /// </summary>
+    /// <param name="root">The absolute consuming repository root.</param>
+    /// <param name="moduleDirectory">The dependency module's directory name.</param>
+    /// <param name="relative">The project path relative to the dependency module.</param>
+    /// <returns>The declared sibling project path, or <see langword="null"/> when the layout is not declared.</returns>
+    private static string? GetDeclaredSiblingProjectPath(string root, string moduleDirectory, string relative)
+    {
+        DirectoryInfo consumer = new(root);
+        DirectoryInfo? references = consumer.Parent;
+        if (references?.Name != "references" || references.Parent is not DirectoryInfo workspace)
+        {
+            return null;
+        }
+
+        string gitmodules = Path.Combine(workspace.FullName, ".gitmodules");
+        if (!File.Exists(gitmodules))
+        {
+            return null;
+        }
+
+        Dictionary<string, string> declaredPaths = new(StringComparer.Ordinal);
+        string? submodule = null;
+        foreach (string line in File.ReadLines(gitmodules))
+        {
+            string entry = line.Trim();
+            if (entry.StartsWith('['))
+            {
+                Match section = Regex.Match(
+                    entry,
+                    """^\[submodule\s+"(?<name>(?:[^"\\]|\\.)+)"\]\s*(?:[#;].*)?$""",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+                    TimeSpan.FromSeconds(1));
+                submodule = section.Success ? section.Groups["name"].Value : null;
+                continue;
+            }
+
+            if (submodule is null)
+            {
+                continue;
+            }
+
+            Match path = Regex.Match(
+                entry,
+                """^path\s*=\s*(?:"(?<path>[^"]*)"|(?<path>[^#;"]*?))\s*(?:[#;].*)?$""",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+                TimeSpan.FromSeconds(1));
+            if (path.Success)
+            {
+                declaredPaths[submodule] = path.Groups["path"].Value;
+            }
+        }
+
+        return declaredPaths.Values.Contains("references/" + consumer.Name, StringComparer.Ordinal)
+            && declaredPaths.Values.Contains("references/" + moduleDirectory, StringComparer.Ordinal)
+            ? Path.GetFullPath(Path.Combine(references.FullName, moduleDirectory, relative))
+            : null;
     }
 
     /// <summary>
