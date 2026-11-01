@@ -490,7 +490,7 @@ development_status:
   # Prior twenty-four-held and PG1 claims are historical; no security/Production/27.4/A41 credit.
   # 2026-11-01: the comments above are historical. The approved scope reset removed the C1/C0-C6 campaign from Story 27.4
   # (parked in DW-730) and resolved A41 by accepted debt (DW-17). Production writes remain disabled.
-  epic-27-retrospective: optional  # 2026-11-01: a short retro is recommended; Story 27.4 was the costliest story in the project.
+  epic-27-retrospective: done  # 2026-11-01: retro complete (epic-27-retro-2026-11-01.md, verdict accepted-with-open-items). Earlier note: a short retro was recommended; Story 27.4 was the costliest story in the project.
 
   # Epic 28: Owner-Approved EventStore Runtime Adoption
   # Registered on 2026-07-17 by approved direct course correction. EventStore Story 1.20's external
@@ -792,3 +792,63 @@ action_items:
     action: "Review the A41 accepted-debt disposition (DW-17) and the parked Production access-telemetry qualification entry (DW-730) by 2027-05-01, or earlier if a Production deployment path enables lifecycle writes"
     owner: "Jérôme Piquot"
     status: open  # 2026-11-01: created by the approved Story 27.4 scope reset (sprint-change-proposal-2026-11-01.md).
+  - id: "epic-27-retro-item-62-honor-hexalith-dapr-applicationtokenover"
+    epic: 27
+    action: "Honor Hexalith:Dapr:ApplicationTokenOverride only outside Production (ignore it or fail startup when present in Production), resolve it once instead of walking configuration per request, and add a DaprTokenStartupValidator Production-with-override negative test"
+    owner: "Amelia"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-27-retro-2026-11-01.md"
+  - id: "epic-27-retro-item-63-make-the-production-overlay-inert-for-th"
+    epic: 27
+    action: "Make the Production overlay inert for the disabled access-telemetry lifecycle: scale or exclude the access-telemetry-postgresql StatefulSet/PDB/PVC, unscope access-telemetry-secrets and access-telemetry-config from memories, drop the Server Role get on openbao-access-telemetry-bootstrap, re-key disabled-pending-story-27-3 markers to DW-730, and add rendered-manifest assertions"
+    owner: "Amelia, Winston"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-27-retro-2026-11-01.md"
+  - id: "epic-27-retro-item-64-add-a-composition-test-proving-a-product"
+    epic: 27
+    action: "Add a composition test proving a Production Server with lifecycle disabled (and with Enabled=true plus an unproven profile hash) registers no lifecycle provider, queue, Dapr client or hosted service; pin the lifecycle health-check tags; read Enabled before binding the full options section"
+    owner: "Murat"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-27-retro-2026-11-01.md"
+  - id: "epic-27-retro-item-65-correct-the-dw-17-accepted-debt-record-a"
+    epic: 27
+    action: "Correct the DW-17 accepted-debt record and the runbook Production access-telemetry retention section: the console/OTLP typed state carries raw search query and subject, link DW-578, and state that only the lifecycle Deployments (not the PostgreSQL StatefulSet) run at zero replicas"
+    owner: "Jérôme Piquot"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-27-retro-2026-11-01.md"
+  - id: "epic-27-retro-item-66-add-a-dated-2026-11-01-correction-to-adr"
+    epic: 27
+    action: "Add a dated 2026-11-01 correction to ADR 27.1 (retire the Spec 14 banner, record the rejected OTel-backend option as the DW-17 Production control with its sanitization precondition, record the rollback-halts-purge contradiction) and refresh stale Story 27.22, Story 27.3 AC6 and access-telemetry-store profile text"
+    owner: "Winston, Paige"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-27-retro-2026-11-01.md"
+  - id: "epic-27-retro-item-67-append-a-pre-enablement-defect-register"
+    epic: 27
+    action: "Append a pre-enablement defect register to DW-730 (purge halts on disable from 450445a6, missing provider-specific log filter, per-app OpenBao tokens, and the enabled-path defects in the Epic 27 retro section C1) and link or close-as-parked DW-578, DW-587, DW-593, DW-596, DW-599, DW-645, DW-687, DW-721 and the seven 27.21-C1.15 entries"
+    owner: "Jérôme Piquot, Winston"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-27-retro-2026-11-01.md"
+  - id: "epic-27-retro-item-68-move-the-parked-access-telemetry-tooling"
+    epic: 27
+    action: "Move the parked access-telemetry tooling CI lanes (1,508 s of the 2,102 s test-unit-contract job) to nightly or path filters while keeping the ACCESS_TELEMETRY_ENABLED=false and replicas: 0 pins in PR CI, and decide retire-versus-keep for the parked qualification tooling"
+    owner: "Murat, Amelia"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-27-retro-2026-11-01.md"
+  - id: "epic-27-retro-item-69-reject-story-number-only-commit-subjects"
+    epic: 27
+    action: "Reject story-number-only commit subjects such as fix: story 27.4 in the pinned commitlint configuration and require docs, spec or report-only changes to use a non-releasing type, after 12 releases were triggered solely by such commits"
+    owner: "Amelia, John"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-27-retro-2026-11-01.md"
+  - id: "epic-27-retro-item-70-amend-lesson-l15-to-date-the-reference-f"
+    epic: 27
+    action: "Amend lesson L15 to date the reference failure from 2026-07-18 (Production disabled while qualification continued), ask at story creation whether a Production consumer exists, park CI lanes with parked campaigns, and add a lesson that ticked task boxes and binding AC text are claims until re-derived"
+    owner: "John, Amelia"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-27-retro-2026-11-01.md"
+  - id: "epic-27-retro-item-71-triage-the-two-out-of-epic-program-cs-ob"
+    epic: 27
+    action: "Triage the two out-of-epic Program.cs observations from the Epic 27 retro (Development route-catalog bootstrap compiled into Production builds; declarative subscriptions without shipped manifests) with their owning work"
+    owner: "Amelia"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-27-retro-2026-11-01.md"
