@@ -47,7 +47,7 @@ this adoption. Preserve any additional required checks already configured, inclu
 this migration removes none.
 
 `shared-ci / build-and-test` comes from the Builds `domain-ci.yml` workflow pinned to
-`81c88b34d09d34260b92d7f0928dbbc1c7446baa`; `source-debug` retains the Debug/source build and
+`f0feeb234cbc16f88c2886a6ffae7122e05dd64b`; `source-debug` retains the Debug/source build and
 source-selected catalog evidence. These dependency identities do not replace the required `build`
 check. See [lane ownership and rollback](release-runbook.md#shared-ci-adoption-and-rollback).
 

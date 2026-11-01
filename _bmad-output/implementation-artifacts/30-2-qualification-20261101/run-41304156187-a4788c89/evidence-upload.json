@@ -1,0 +1,467 @@
+{
+  "schemaVersion": "hexalith.memories.builds-publication-qualification.v1",
+  "story": "30-2-pinned-builds-publication-and-recovery-qualification",
+  "checkpoint": "evidence-upload",
+  "result": "pass",
+  "checksResult": "pass",
+  "overallResult": "pass",
+  "synthetic": true,
+  "bindings": {
+    "builds": {
+      "repository": "Hexalith/Hexalith.Builds",
+      "sha": "f0feeb234cbc16f88c2886a6ffae7122e05dd64b",
+      "verified": true,
+      "superprojectGitlink": "f0feeb234cbc16f88c2886a6ffae7122e05dd64b",
+      "checkout": "f0feeb234cbc16f88c2886a6ffae7122e05dd64b",
+      "executedHelpers": {
+        "publish-containers.sh": "7b0b29d552fb38ab20db6c5faf650ac314a8fac17a6b9f43417035d29ef649ed",
+        "oci_registry_validator.py": "3f54edb036642551e64c180b4708a954d84bd55cac381a4459c3f75448488608",
+        "publication_preflight.py": "3da0d1ca20af78b69b8d5868b9a3311b448c53c5fca04f0d0fb8643db59fd196",
+        "smoke-container-platforms.sh": "f11865658a24ecea906da087d8446c7f631dc5a9328e294676534d590ef0e89e",
+        "smoke_container_platforms.py": "7f1161d6f477c77ddf6a1e2f381df03451168565dd8cabc28010ab23db443491"
+      },
+      "readReferences": {
+        "Github/publish-containers/action.yml": "0262e6fee149f91a046830e941e6010bb46fd1a03b7f40341d8ee12cdf70484b",
+        ".github/workflows/domain-release.yml": "c85bc802f3b0be23a7c7d40b71af683af76902e117d99e56351f78b03ad3b418",
+        "Github/prepare-domain-release/action.yml": "62f3cdf7fe45c35d6eff27960a239a402068aa894cf29c07a60f10bf467d0a9d"
+      }
+    },
+    "source": {
+      "repository": "Hexalith/Hexalith.Memories",
+      "sha": "a4788c891958c1f1b6f012ff604c0f9321094751",
+      "dirty": false
+    },
+    "harness": {
+      "path": "tools/qualify-builds-publication.py",
+      "sha256": "87f066b4d957012c5129a2ceeb146ce090c849eb97379d188bb57a2f1df36a55"
+    },
+    "profile": {
+      "path": "tools/builds-publication-qualification.json",
+      "sha256": "cd80e6f2ae43727b413643aa29d5cdd6694ba43ef58de13776ffd86a53535996"
+    }
+  },
+  "release": {
+    "repository": "Hexalith/Hexalith.Memories",
+    "registry": "registry.hexalith.com",
+    "version": "0.0.302",
+    "environment": "production",
+    "authorityGate": "disabled (ordinary protected-environment release posture)",
+    "packageCount": 10,
+    "packageIds": [
+      "Hexalith.Memories.Aspire",
+      "Hexalith.Memories.Contracts",
+      "Hexalith.Memories.Client.Rest",
+      "Hexalith.Memories.Redis",
+      "Hexalith.Memories.Cli",
+      "Hexalith.Memories.Mcp",
+      "Hexalith.Memories.ServiceDefaults",
+      "Hexalith.Memories.EventStore",
+      "Hexalith.Memories.Telemetry",
+      "Hexalith.Memories.EventStoreExtensions"
+    ],
+    "containerProjects": [
+      "src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj|memories",
+      "src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj|memories-mcp",
+      "src/Hexalith.Memories.AccessTelemetry/Hexalith.Memories.AccessTelemetry.csproj|memories-access-telemetry",
+      "src/Hexalith.Memories.AccessTelemetry.Clock/Hexalith.Memories.AccessTelemetry.Clock.csproj|memories-access-telemetry-clock",
+      "src/Hexalith.Memories.DomainService/Hexalith.Memories.DomainService.csproj|memories-domain-service"
+    ]
+  },
+  "checks": [
+    {
+      "name": "builds-upload-steps-located",
+      "result": "pass",
+      "detail": [
+        552,
+        1259
+      ]
+    },
+    {
+      "name": "builds-upload-covers-hidden-evidence-root:line-552",
+      "result": "pass",
+      "detail": {
+        "line": 552,
+        "if": "${{ always() && inputs.publish-containers }}",
+        "uses": "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9",
+        "name": "release-evidence-${{ github.run_id }}-${{ github.run_attempt }}",
+        "path": ".hexalith/release-evidence/**",
+        "if-no-files-found": "warn",
+        "include-hidden-files": "true",
+        "retention-days": "30"
+      }
+    },
+    {
+      "name": "builds-upload-covers-hidden-evidence-root:line-1259",
+      "result": "pass",
+      "detail": {
+        "line": 1259,
+        "if": "${{ always() && inputs.publish-containers }}",
+        "uses": "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9",
+        "name": "release-evidence-${{ github.run_id }}-${{ github.run_attempt }}",
+        "path": ".hexalith/release-evidence/**",
+        "if-no-files-found": "warn",
+        "include-hidden-files": "true",
+        "retention-days": "30"
+      }
+    },
+    {
+      "name": "dry-run-evidence-available",
+      "result": "pass"
+    },
+    {
+      "name": "no-stray-builds-output-outside-the-expected-evidence",
+      "result": "pass",
+      "detail": []
+    },
+    {
+      "name": "complete-set-evidence-present",
+      "result": "pass",
+      "detail": []
+    },
+    {
+      "name": "caller-manifest-verifies",
+      "result": "pass"
+    },
+    {
+      "name": "caller-upload-refuses-missing-file",
+      "result": "pass",
+      "detail": [
+        "missing:0.0.302/memories/smoke-results.json"
+      ]
+    },
+    {
+      "name": "caller-upload-refuses-tampered-file",
+      "result": "pass",
+      "detail": [
+        "hash-mismatch:0.0.302/memories/smoke-results.json"
+      ]
+    },
+    {
+      "name": "caller-upload-refuses-unlisted-file",
+      "result": "pass",
+      "detail": [
+        "unlisted:0.0.302/unlisted.txt"
+      ]
+    },
+    {
+      "name": "caller-upload-refuses-empty-evidence",
+      "result": "pass"
+    },
+    {
+      "name": "partial-evidence-available",
+      "result": "pass"
+    },
+    {
+      "name": "uploaded-partial-evidence-supports-recovery",
+      "result": "pass"
+    },
+    {
+      "name": "exception-premise:warn-upload-without-hash-manifest",
+      "result": "pass",
+      "detail": "Every upload step (.github/workflows/domain-release.yml:552, .github/workflows/domain-release.yml:1259) uses if-no-files-found: warn; Builds hash lists cover 20 of 59 evidence files."
+    }
+  ],
+  "observations": {
+    "buildsUploadSteps": [
+      {
+        "line": 552,
+        "if": "${{ always() && inputs.publish-containers }}",
+        "uses": "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9",
+        "name": "release-evidence-${{ github.run_id }}-${{ github.run_attempt }}",
+        "path": ".hexalith/release-evidence/**",
+        "if-no-files-found": "warn",
+        "include-hidden-files": "true",
+        "retention-days": "30"
+      },
+      {
+        "line": 1259,
+        "if": "${{ always() && inputs.publish-containers }}",
+        "uses": "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9",
+        "name": "release-evidence-${{ github.run_id }}-${{ github.run_attempt }}",
+        "path": ".hexalith/release-evidence/**",
+        "if-no-files-found": "warn",
+        "include-hidden-files": "true",
+        "retention-days": "30"
+      }
+    ],
+    "callerHashManifestSha256": "decf56fe22adf3b328fd584e0892228d02cbd09ce3eab7da20a04b79f863bb40",
+    "callerHashManifest": [
+      {
+        "path": "0.0.302/memories-access-telemetry-clock/child-linux-amd64.config.raw",
+        "sha256": "474039e3d5b4bace08224749b0ca920ebaa52fcd992c174e7a8ebe04159d0314"
+      },
+      {
+        "path": "0.0.302/memories-access-telemetry-clock/child-linux-amd64.manifest.raw",
+        "sha256": "25356cf9a77131236e963969d82fc3cb4a5b224bd6f98218358d4f920263fe27"
+      },
+      {
+        "path": "0.0.302/memories-access-telemetry-clock/child-linux-arm64.config.raw",
+        "sha256": "82747a84a8bfd9ee1f5dd5670964434dce1b13015e99c21fe359436ddf9bf444"
+      },
+      {
+        "path": "0.0.302/memories-access-telemetry-clock/child-linux-arm64.manifest.raw",
+        "sha256": "fa5eb372d91e39acb296f113f6f40fcc4fa75dc407e725896c2f7ce0b568c1ea"
+      },
+      {
+        "path": "0.0.302/memories-access-telemetry-clock/index.raw",
+        "sha256": "0efa1f783d6fb8d74c4d45e8ac8f18c1051dc2359892f2be9fb91446d15b38f4"
+      },
+      {
+        "path": "0.0.302/memories-access-telemetry-clock/oci-validation.json",
+        "sha256": "246b07539253e9594763191cb25322483f9749de362ff9505e633d601ff9d452"
+      },
+      {
+        "path": "0.0.302/memories-access-telemetry-clock/smoke-linux-amd64.log",
+        "sha256": "9876a1748e1e66a9b13ba39b6c2fdb1688a922e9680d402e38b3ee5b2f5b27a1"
+      },
+      {
+        "path": "0.0.302/memories-access-telemetry-clock/smoke-linux-arm64.log",
+        "sha256": "69b04352e70118cc3322a68ecf288868f33dd1f791a3d180be791d7581be2b65"
+      },
+      {
+        "path": "0.0.302/memories-access-telemetry-clock/smoke-preflight.log",
+        "sha256": "9fa7caf1f5c01f437a0bc47e3126bf69f3d76afd13d4e35d79ac3b057604ac22"
+      },
+      {
+        "path": "0.0.302/memories-access-telemetry-clock/smoke-results.json",
+        "sha256": "a139c0a4b456b0ed0b90ed53b79777b0c6b01244cb91e72291f480de47392824"
+      },
+      {
+        "path": "0.0.302/memories-access-telemetry-clock/smoke-sha256.txt",
+        "sha256": "da59de42d0a9960165d50be01c4fc0fc5bb3f3e25fdf7dd7020e9b1582ff928a"
+      },
+      {
+        "path": "0.0.302/memories-access-telemetry/child-linux-amd64.config.raw",
+        "sha256": "cdb461650d76dbd3d9996a57c1662d899a8ca74b9ec99cdcd1a5143e24fd2763"
+      },
+      {
+        "path": "0.0.302/memories-access-telemetry/child-linux-amd64.manifest.raw",
+        "sha256": "ab0b5553939cfa9c5cd819ca1d0da99100fec98ba6b3c242d444f774c6b38f9c"
+      },
+      {
+        "path": "0.0.302/memories-access-telemetry/child-linux-arm64.config.raw",
+        "sha256": "c84a6d8db359e1efe0f43702d62f14736d92505b4729aa8d04727ad26d17b001"
+      },
+      {
+        "path": "0.0.302/memories-access-telemetry/child-linux-arm64.manifest.raw",
+        "sha256": "c8646db1b3a7130601d4b88aacada659d3be73c215a22902615f1545688e1d71"
+      },
+      {
+        "path": "0.0.302/memories-access-telemetry/index.raw",
+        "sha256": "6bc35830c188b74dde06e7839c405c2f081af3867dde1535302c3743741f0253"
+      },
+      {
+        "path": "0.0.302/memories-access-telemetry/oci-validation.json",
+        "sha256": "6a0f0d11b020e6c4ba8ecb7c14711fcb024dd92eaaf887dbd19e49155b28d2b7"
+      },
+      {
+        "path": "0.0.302/memories-access-telemetry/smoke-linux-amd64.log",
+        "sha256": "6404716bfa134bac95e40e997e0e2028fd41513daf198293555c66e9a9299a2e"
+      },
+      {
+        "path": "0.0.302/memories-access-telemetry/smoke-linux-arm64.log",
+        "sha256": "2817890919abeb93803b60ba3c95b615b54e47f99318dd09e49d958be60cf052"
+      },
+      {
+        "path": "0.0.302/memories-access-telemetry/smoke-preflight.log",
+        "sha256": "23016e90e0788639b49f8a771a13f3c3453add81fbf9447c715c2577e1d134cc"
+      },
+      {
+        "path": "0.0.302/memories-access-telemetry/smoke-results.json",
+        "sha256": "76e853b0d188748e7fe40788be7c31ea4d30545a2c0a98d0ead9dbbc028221ec"
+      },
+      {
+        "path": "0.0.302/memories-access-telemetry/smoke-sha256.txt",
+        "sha256": "89663a2375d40859ba3009a875836c8d76a1c30ad62faa3ce37a170057196c3d"
+      },
+      {
+        "path": "0.0.302/memories-domain-service/child-linux-amd64.config.raw",
+        "sha256": "d5409a8c88ed9bfdc3c3d2e2a1b6f64d70b16225c894d17a1231aecd3fb05cc2"
+      },
+      {
+        "path": "0.0.302/memories-domain-service/child-linux-amd64.manifest.raw",
+        "sha256": "27192344478af9ba6b295ebd8ebc74d929ff41f418c219e46519c86c94f2a1d2"
+      },
+      {
+        "path": "0.0.302/memories-domain-service/child-linux-arm64.config.raw",
+        "sha256": "45b7e1b9db25f65fd00ab7472564e2271bd89de6c0da5361290af33bd4ad07cf"
+      },
+      {
+        "path": "0.0.302/memories-domain-service/child-linux-arm64.manifest.raw",
+        "sha256": "bc32fe1d70085f8a29c2fcb2f0eee11c5c7cf534548b6286e35871ab203bf218"
+      },
+      {
+        "path": "0.0.302/memories-domain-service/index.raw",
+        "sha256": "6de2629d6a7d2da03f12ce9d16acae5536061d3e80344869f49b93c985092872"
+      },
+      {
+        "path": "0.0.302/memories-domain-service/oci-validation.json",
+        "sha256": "5d09512136212ef783157fa05de1fceb035f4c37c8afba48d024349a97e45c4a"
+      },
+      {
+        "path": "0.0.302/memories-domain-service/smoke-linux-amd64.log",
+        "sha256": "bc2163404df8b0900fe01d519419ecd68df4916309aa6365cd82a367bce58f78"
+      },
+      {
+        "path": "0.0.302/memories-domain-service/smoke-linux-arm64.log",
+        "sha256": "3df0d985848f6dbcc4aa9bc9642f5a26abb7ca6ec284f3e890bcc36990eae130"
+      },
+      {
+        "path": "0.0.302/memories-domain-service/smoke-preflight.log",
+        "sha256": "6ebaa01a934d788586ef45895d8ebd62fb3770911e41fa2bc530361bcd2ddc37"
+      },
+      {
+        "path": "0.0.302/memories-domain-service/smoke-results.json",
+        "sha256": "75179f32f37c289e70c8bb3c426f04530857eb5649551906c2d685564ab059ae"
+      },
+      {
+        "path": "0.0.302/memories-domain-service/smoke-sha256.txt",
+        "sha256": "1e8e080e59d66a3fb8454040d8a2eac82283df37183b3b3859751d79adb4999c"
+      },
+      {
+        "path": "0.0.302/memories-mcp/child-linux-amd64.config.raw",
+        "sha256": "8ca1285a78000677e95adf1a1c6941acd9ff83f93cd92e502125adfbec913857"
+      },
+      {
+        "path": "0.0.302/memories-mcp/child-linux-amd64.manifest.raw",
+        "sha256": "461728ec5d45a9a181cbe3b72ea5ff2aed3c9bb7cba35209ee6f5b2ace583206"
+      },
+      {
+        "path": "0.0.302/memories-mcp/child-linux-arm64.config.raw",
+        "sha256": "b7c59cf1a0bef26c1e3cae67962aea6204f28dd94b05fc7d36636256d1535d31"
+      },
+      {
+        "path": "0.0.302/memories-mcp/child-linux-arm64.manifest.raw",
+        "sha256": "8fb82606b46cad325ea7fa6a3c679d791e4d844db0eefe07bb17fbdcb8f4f90e"
+      },
+      {
+        "path": "0.0.302/memories-mcp/index.raw",
+        "sha256": "eeba908bd38371d9dc958c809d7b6cfefc59784c041e0fbf0ebbaeffa2f6e2ad"
+      },
+      {
+        "path": "0.0.302/memories-mcp/oci-validation.json",
+        "sha256": "009646e754d195fcbe5b25f8590dabda169e0dfb6ddd950f4660a24fb4008b68"
+      },
+      {
+        "path": "0.0.302/memories-mcp/smoke-linux-amd64.log",
+        "sha256": "660411974a9db8be297d90acf7c019f71670fdf3aaa59fd1011b59eb8e9370fe"
+      },
+      {
+        "path": "0.0.302/memories-mcp/smoke-linux-arm64.log",
+        "sha256": "63dd891a6b995e10d4db98ebc2723e7646241eee38f143ed274b8a8b2c1cf650"
+      },
+      {
+        "path": "0.0.302/memories-mcp/smoke-preflight.log",
+        "sha256": "a34cb498431f5d5be758d9da6ddf8d86992cbe64b49dfdeaeafd4c7742e0ae97"
+      },
+      {
+        "path": "0.0.302/memories-mcp/smoke-results.json",
+        "sha256": "7ee369b3cce88fb491f9cdd29450b02e1eff16d9f3c7693114f4f4f350b27ac2"
+      },
+      {
+        "path": "0.0.302/memories-mcp/smoke-sha256.txt",
+        "sha256": "bc3515f029e3127f948fbbfb88ad54f974e4068959d9329a186f3f2eb4a9cf43"
+      },
+      {
+        "path": "0.0.302/memories/child-linux-amd64.config.raw",
+        "sha256": "631a77a82a2b0b75b46de3a16c234edf9d5796169c0f46f23c068241461b7c96"
+      },
+      {
+        "path": "0.0.302/memories/child-linux-amd64.manifest.raw",
+        "sha256": "38a694dcbf804282f58380b8a282547af7bfcc4d63a60f21ef169be903c6be59"
+      },
+      {
+        "path": "0.0.302/memories/child-linux-arm64.config.raw",
+        "sha256": "10814696ffc865fd2a16b68dbff7b3b68842a289283d0469d7b96cf016cab29f"
+      },
+      {
+        "path": "0.0.302/memories/child-linux-arm64.manifest.raw",
+        "sha256": "b6c2f9fd79d1a2f69ab5231399f58a752dad4076ff8cb29987375bd468432016"
+      },
+      {
+        "path": "0.0.302/memories/index.raw",
+        "sha256": "f3796d09f1cdb524f73433f8b38725d5821a78b7a26d115a6cf5f0b05e2b7722"
+      },
+      {
+        "path": "0.0.302/memories/oci-validation.json",
+        "sha256": "c0e1b4ce60f1c6918f94094e3a055cbfc5611c0184ae17b47ca47a8553ce33f7"
+      },
+      {
+        "path": "0.0.302/memories/smoke-linux-amd64.log",
+        "sha256": "a00038665f6d8836d459b1e828e81f3be025cb6885891afd894e61650c2a9cde"
+      },
+      {
+        "path": "0.0.302/memories/smoke-linux-arm64.log",
+        "sha256": "3d47fdf4fed394af5fcbf52ba4f2c3390d965e5c6cdfb08603430bc43b2804f7"
+      },
+      {
+        "path": "0.0.302/memories/smoke-preflight.log",
+        "sha256": "b6d1d36b0b5ecc7b31bc3892428e20d11c78a09d3c64c68de39890fe4520c66d"
+      },
+      {
+        "path": "0.0.302/memories/smoke-results.json",
+        "sha256": "6072e116a811aa00918989c7e0e28477fb01d49578ad0f831fc5b0543bd6858e"
+      },
+      {
+        "path": "0.0.302/memories/smoke-sha256.txt",
+        "sha256": "32fde332e29105f553c1084289c7d40d9aa7986a61a44ea4f389b4de171086b2"
+      },
+      {
+        "path": "0.0.302/preflight/publication-identity.json",
+        "sha256": "3c8f0c75d582a674d7842aba48f6ffeb2c375184f24d230179139f4f50b1b79a"
+      },
+      {
+        "path": "0.0.302/preflight/publication-preflight.container.json",
+        "sha256": "4a10f9ba63c4c081576a3a6767211906dc9fc1920d48bb21cfd9d8ea22750cf4"
+      },
+      {
+        "path": "0.0.302/preflight/publication-preflight.publish.json",
+        "sha256": "e651760ee5ec8752feb7ae7123cfbb742c849afd99332f551fc4674617006f26"
+      },
+      {
+        "path": "0.0.302/preflight/publication-preflight.verify.json",
+        "sha256": "1a11a8837f10ef22d130ea4bc3139090901c55854e79fb1034919f655b3e63f4"
+      }
+    ],
+    "buildsHashCoverage": {
+      "files": 20,
+      "of": 59
+    }
+  },
+  "findings": [
+    {
+      "code": "evidence-retention-limited",
+      "owner": "30-4-five-image-publication-contract; 30-5-partial-release-recovery",
+      "summary": "The reference release-evidence upload expires after 30 days, which bounds recovery from immutable evidence. The caller must retain or archive the evidence for the whole recovery window.",
+      "premiseObserved": true,
+      "evidence": {
+        "path": "references/Hexalith.Builds/.github/workflows/domain-release.yml",
+        "sha256": "c85bc802f3b0be23a7c7d40b71af683af76902e117d99e56351f78b03ad3b418",
+        "steps": [
+          {
+            "line": 552,
+            "retentionDays": "30"
+          },
+          {
+            "line": 1259,
+            "retentionDays": "30"
+          }
+        ]
+      }
+    }
+  ],
+  "exceptions": [
+    {
+      "code": "warn-upload-without-hash-manifest",
+      "gap": "The reference upload step uses if-no-files-found: warn and uploads no hash manifest of the evidence set.",
+      "callerControl": "The caller writes a SHA-256 manifest of the complete evidence set, and the caller upload must fail on missing files.",
+      "handedTo": [
+        "30-3-guarded-release-dispatch-and-shared-caller-adoption",
+        "30-4-five-image-publication-contract"
+      ],
+      "premiseObserved": true,
+      "evidence": "Every upload step (.github/workflows/domain-release.yml:552, .github/workflows/domain-release.yml:1259) uses if-no-files-found: warn; Builds hash lists cover 20 of 59 evidence files."
+    }
+  ],
+  "reasons": []
+}

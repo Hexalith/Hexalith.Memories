@@ -1,0 +1,402 @@
+{
+  "schemaVersion": "hexalith.memories.builds-publication-qualification.v1",
+  "story": "30-2-pinned-builds-publication-and-recovery-qualification",
+  "checkpoint": "partial-publication",
+  "result": "pass",
+  "checksResult": "pass",
+  "overallResult": "pass",
+  "synthetic": true,
+  "bindings": {
+    "builds": {
+      "repository": "Hexalith/Hexalith.Builds",
+      "sha": "f0feeb234cbc16f88c2886a6ffae7122e05dd64b",
+      "verified": true,
+      "superprojectGitlink": "f0feeb234cbc16f88c2886a6ffae7122e05dd64b",
+      "checkout": "f0feeb234cbc16f88c2886a6ffae7122e05dd64b",
+      "executedHelpers": {
+        "publish-containers.sh": "7b0b29d552fb38ab20db6c5faf650ac314a8fac17a6b9f43417035d29ef649ed",
+        "oci_registry_validator.py": "3f54edb036642551e64c180b4708a954d84bd55cac381a4459c3f75448488608",
+        "publication_preflight.py": "3da0d1ca20af78b69b8d5868b9a3311b448c53c5fca04f0d0fb8643db59fd196",
+        "smoke-container-platforms.sh": "f11865658a24ecea906da087d8446c7f631dc5a9328e294676534d590ef0e89e",
+        "smoke_container_platforms.py": "7f1161d6f477c77ddf6a1e2f381df03451168565dd8cabc28010ab23db443491"
+      },
+      "readReferences": {
+        "Github/publish-containers/action.yml": "0262e6fee149f91a046830e941e6010bb46fd1a03b7f40341d8ee12cdf70484b",
+        ".github/workflows/domain-release.yml": "c85bc802f3b0be23a7c7d40b71af683af76902e117d99e56351f78b03ad3b418",
+        "Github/prepare-domain-release/action.yml": "62f3cdf7fe45c35d6eff27960a239a402068aa894cf29c07a60f10bf467d0a9d"
+      }
+    },
+    "source": {
+      "repository": "Hexalith/Hexalith.Memories",
+      "sha": "a4788c891958c1f1b6f012ff604c0f9321094751",
+      "dirty": false
+    },
+    "harness": {
+      "path": "tools/qualify-builds-publication.py",
+      "sha256": "87f066b4d957012c5129a2ceeb146ce090c849eb97379d188bb57a2f1df36a55"
+    },
+    "profile": {
+      "path": "tools/builds-publication-qualification.json",
+      "sha256": "cd80e6f2ae43727b413643aa29d5cdd6694ba43ef58de13776ffd86a53535996"
+    }
+  },
+  "release": {
+    "repository": "Hexalith/Hexalith.Memories",
+    "registry": "registry.hexalith.com",
+    "version": "0.0.302",
+    "environment": "production",
+    "authorityGate": "disabled (ordinary protected-environment release posture)",
+    "packageCount": 10,
+    "packageIds": [
+      "Hexalith.Memories.Aspire",
+      "Hexalith.Memories.Contracts",
+      "Hexalith.Memories.Client.Rest",
+      "Hexalith.Memories.Redis",
+      "Hexalith.Memories.Cli",
+      "Hexalith.Memories.Mcp",
+      "Hexalith.Memories.ServiceDefaults",
+      "Hexalith.Memories.EventStore",
+      "Hexalith.Memories.Telemetry",
+      "Hexalith.Memories.EventStoreExtensions"
+    ],
+    "containerProjects": [
+      "src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj|memories",
+      "src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj|memories-mcp",
+      "src/Hexalith.Memories.AccessTelemetry/Hexalith.Memories.AccessTelemetry.csproj|memories-access-telemetry",
+      "src/Hexalith.Memories.AccessTelemetry.Clock/Hexalith.Memories.AccessTelemetry.Clock.csproj|memories-access-telemetry-clock",
+      "src/Hexalith.Memories.DomainService/Hexalith.Memories.DomainService.csproj|memories-domain-service"
+    ]
+  },
+  "checks": [
+    {
+      "name": "declared-set-has-a-third-member",
+      "result": "pass"
+    },
+    {
+      "name": "publish-failure:preflight-verify-passes",
+      "result": "pass"
+    },
+    {
+      "name": "publish-failure:preflight-publish-passes",
+      "result": "pass"
+    },
+    {
+      "name": "publish-failure:publisher-fails",
+      "result": "pass",
+      "detail": {
+        "exitCode": 1,
+        "refusal": null,
+        "refusalLine": null,
+        "stderr": "[fake-dotnet] synthetic publish failure for memories-access-telemetry",
+        "stderrTail": "[fake-dotnet] synthetic publish failure for memories-access-telemetry"
+      }
+    },
+    {
+      "name": "publish-failure:failed-for-the-injected-cause",
+      "result": "pass",
+      "detail": {
+        "exitCode": 1,
+        "refusal": null,
+        "refusalLine": null,
+        "stderr": "[fake-dotnet] synthetic publish failure for memories-access-telemetry",
+        "stderrTail": "[fake-dotnet] synthetic publish failure for memories-access-telemetry"
+      }
+    },
+    {
+      "name": "publish-failure:members-classified",
+      "result": "pass",
+      "detail": {
+        "published": [
+          "memories",
+          "memories-mcp"
+        ],
+        "ambiguous": [
+          "memories-access-telemetry"
+        ],
+        "notAttempted": [
+          "memories-access-telemetry-clock",
+          "memories-domain-service"
+        ]
+      }
+    },
+    {
+      "name": "publish-failure:ambiguous-is-never-success",
+      "result": "pass",
+      "detail": "incomplete"
+    },
+    {
+      "name": "publish-failure:stopped-at-the-failed-member",
+      "result": "pass",
+      "detail": [
+        "memories",
+        "memories-mcp",
+        "memories-access-telemetry"
+      ]
+    },
+    {
+      "name": "validation-failure:preflight-verify-passes",
+      "result": "pass"
+    },
+    {
+      "name": "validation-failure:preflight-publish-passes",
+      "result": "pass"
+    },
+    {
+      "name": "validation-failure:publisher-fails",
+      "result": "pass",
+      "detail": {
+        "exitCode": 1,
+        "refusal": "platform-set-mismatch",
+        "refusalLine": "[oci-registry-validator] platform-set-mismatch: OCI index platform set is not exactly linux/amd64 and linux/arm64.",
+        "stderr": "[oci-registry-validator] platform-set-mismatch: OCI index platform set is not exactly linux/amd64 and linux/arm64.",
+        "stderrTail": "[oci-registry-validator] platform-set-mismatch: OCI index platform set is not exactly linux/amd64 and linux/arm64."
+      }
+    },
+    {
+      "name": "validation-failure:failed-for-the-injected-cause",
+      "result": "pass",
+      "detail": {
+        "exitCode": 1,
+        "refusal": "platform-set-mismatch",
+        "refusalLine": "[oci-registry-validator] platform-set-mismatch: OCI index platform set is not exactly linux/amd64 and linux/arm64.",
+        "stderr": "[oci-registry-validator] platform-set-mismatch: OCI index platform set is not exactly linux/amd64 and linux/arm64.",
+        "stderrTail": "[oci-registry-validator] platform-set-mismatch: OCI index platform set is not exactly linux/amd64 and linux/arm64."
+      }
+    },
+    {
+      "name": "validation-failure:members-classified",
+      "result": "pass",
+      "detail": {
+        "published": [
+          "memories",
+          "memories-mcp"
+        ],
+        "ambiguous": [
+          "memories-access-telemetry"
+        ],
+        "notAttempted": [
+          "memories-access-telemetry-clock",
+          "memories-domain-service"
+        ]
+      }
+    },
+    {
+      "name": "validation-failure:ambiguous-is-never-success",
+      "result": "pass",
+      "detail": "incomplete"
+    },
+    {
+      "name": "validation-failure:stopped-at-the-failed-member",
+      "result": "pass",
+      "detail": [
+        "memories",
+        "memories-mcp",
+        "memories-access-telemetry"
+      ]
+    },
+    {
+      "name": "smoke-failure:preflight-verify-passes",
+      "result": "pass"
+    },
+    {
+      "name": "smoke-failure:preflight-publish-passes",
+      "result": "pass"
+    },
+    {
+      "name": "smoke-failure:publisher-fails",
+      "result": "pass",
+      "detail": {
+        "exitCode": 1,
+        "refusal": null,
+        "refusalLine": null,
+        "stderr": "[container-smoke] image-start-failure",
+        "stderrTail": "[container-smoke] image-start-failure"
+      }
+    },
+    {
+      "name": "smoke-failure:failed-for-the-injected-cause",
+      "result": "pass",
+      "detail": {
+        "exitCode": 1,
+        "refusal": null,
+        "refusalLine": null,
+        "stderr": "[container-smoke] image-start-failure",
+        "stderrTail": "[container-smoke] image-start-failure"
+      }
+    },
+    {
+      "name": "smoke-failure:members-classified",
+      "result": "pass",
+      "detail": {
+        "published": [
+          "memories",
+          "memories-mcp"
+        ],
+        "ambiguous": [
+          "memories-access-telemetry"
+        ],
+        "notAttempted": [
+          "memories-access-telemetry-clock",
+          "memories-domain-service"
+        ]
+      }
+    },
+    {
+      "name": "smoke-failure:ambiguous-is-never-success",
+      "result": "pass",
+      "detail": "incomplete"
+    },
+    {
+      "name": "smoke-failure:stopped-at-the-failed-member",
+      "result": "pass",
+      "detail": [
+        "memories",
+        "memories-mcp",
+        "memories-access-telemetry"
+      ]
+    },
+    {
+      "name": "exception-premise:no-partial-result-document",
+      "result": "pass",
+      "detail": "Each partial run left only the preflight records and per-member directories; no set-level result."
+    }
+  ],
+  "observations": {
+    "failedMember": "memories-access-telemetry",
+    "variants": [
+      {
+        "variant": "publish-failure",
+        "failureMode": "publish-failure",
+        "publisher": {
+          "exitCode": 1,
+          "refusal": null,
+          "refusalLine": null,
+          "stderr": "[fake-dotnet] synthetic publish failure for memories-access-telemetry",
+          "stderrTail": "[fake-dotnet] synthetic publish failure for memories-access-telemetry"
+        },
+        "derivedResult": {
+          "schema": "hexalith.memories.partial-publication-result.v1",
+          "result": "incomplete",
+          "success": false,
+          "published": [
+            "memories",
+            "memories-mcp"
+          ],
+          "ambiguous": [
+            "memories-access-telemetry"
+          ],
+          "notAttempted": [
+            "memories-access-telemetry-clock",
+            "memories-domain-service"
+          ],
+          "rule": "Only fully re-verified members count as published; an ambiguous member is never success."
+        },
+        "ambiguousProblems": [
+          "missing:index.raw",
+          "missing:child-linux-amd64.manifest.raw",
+          "missing:child-linux-amd64.config.raw",
+          "missing:child-linux-arm64.manifest.raw",
+          "missing:child-linux-arm64.config.raw",
+          "missing:oci-validation.json",
+          "missing:smoke-preflight.log",
+          "missing:smoke-linux-amd64.log",
+          "missing:smoke-linux-arm64.log",
+          "missing:smoke-results.json",
+          "missing:smoke-sha256.txt",
+          "validation-unreadable",
+          "smoke-unreadable"
+        ]
+      },
+      {
+        "variant": "validation-failure",
+        "failureMode": "invalid-image",
+        "publisher": {
+          "exitCode": 1,
+          "refusal": "platform-set-mismatch",
+          "refusalLine": "[oci-registry-validator] platform-set-mismatch: OCI index platform set is not exactly linux/amd64 and linux/arm64.",
+          "stderr": "[oci-registry-validator] platform-set-mismatch: OCI index platform set is not exactly linux/amd64 and linux/arm64.",
+          "stderrTail": "[oci-registry-validator] platform-set-mismatch: OCI index platform set is not exactly linux/amd64 and linux/arm64."
+        },
+        "derivedResult": {
+          "schema": "hexalith.memories.partial-publication-result.v1",
+          "result": "incomplete",
+          "success": false,
+          "published": [
+            "memories",
+            "memories-mcp"
+          ],
+          "ambiguous": [
+            "memories-access-telemetry"
+          ],
+          "notAttempted": [
+            "memories-access-telemetry-clock",
+            "memories-domain-service"
+          ],
+          "rule": "Only fully re-verified members count as published; an ambiguous member is never success."
+        },
+        "ambiguousProblems": [
+          "missing:index.raw",
+          "missing:child-linux-amd64.manifest.raw",
+          "missing:child-linux-amd64.config.raw",
+          "missing:child-linux-arm64.manifest.raw",
+          "missing:child-linux-arm64.config.raw",
+          "missing:oci-validation.json",
+          "missing:smoke-preflight.log",
+          "missing:smoke-linux-amd64.log",
+          "missing:smoke-linux-arm64.log",
+          "missing:smoke-results.json",
+          "missing:smoke-sha256.txt",
+          "validation-unreadable",
+          "smoke-unreadable"
+        ]
+      },
+      {
+        "variant": "smoke-failure",
+        "failureMode": "smoke-failure",
+        "publisher": {
+          "exitCode": 1,
+          "refusal": null,
+          "refusalLine": null,
+          "stderr": "[container-smoke] image-start-failure",
+          "stderrTail": "[container-smoke] image-start-failure"
+        },
+        "derivedResult": {
+          "schema": "hexalith.memories.partial-publication-result.v1",
+          "result": "incomplete",
+          "success": false,
+          "published": [
+            "memories",
+            "memories-mcp"
+          ],
+          "ambiguous": [
+            "memories-access-telemetry"
+          ],
+          "notAttempted": [
+            "memories-access-telemetry-clock",
+            "memories-domain-service"
+          ],
+          "rule": "Only fully re-verified members count as published; an ambiguous member is never success."
+        },
+        "ambiguousProblems": [
+          "smoke-not-pass:image-start-failure",
+          "smoke-platform-not-pass:linux/amd64",
+          "smoke-platform-not-pass:linux/arm64"
+        ]
+      }
+    ]
+  },
+  "findings": [],
+  "exceptions": [
+    {
+      "code": "no-partial-result-document",
+      "gap": "The publisher stops at the first failed member and writes no set-level result.",
+      "callerControl": "The caller derives published, ambiguous and not-attempted members from per-image evidence; an ambiguous member is never success.",
+      "handedTo": [
+        "30-5-partial-release-recovery"
+      ],
+      "premiseObserved": true,
+      "evidence": "Each partial run left only the preflight records and per-member directories; no set-level result."
+    }
+  ],
+  "reasons": []
+}

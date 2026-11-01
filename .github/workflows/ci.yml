@@ -272,6 +272,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
+          fetch-depth: 0
           submodules: false
 
       - name: Initialize build submodules

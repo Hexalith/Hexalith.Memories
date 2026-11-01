@@ -31,9 +31,18 @@ images (Server, MCP, DomainService, access-telemetry lifecycle and clock). Later
 will use pinned `prepare-domain-release` with caller-owned NuGet Trusted Publishing; current CI
 adoption does not establish that implementation or qualify recovery parity.
 
+Before adopting fresh publication qualification evidence, require the dedicated
+`Qualify Builds publication` workflow to succeed at the exact bound Memories source and selected
+Builds revision, with the upstream fixtures and all six checkpoints passing from clean source.
+Retain and verify that run's original archive, result bytes and provenance receipt before selecting
+it. Future captures also retain the actual workflow SHA/ref in `workflow-context.json`; adopting one
+requires an explicit new source/run/digest/member-inventory update. The existing a478 capture keeps
+its original eleven-member inventory. This adoption requirement preserves the existing `build`
+aggregate, required-check semantics and remote branch-protection settings.
+
 | Previous owner | Current owner and check | Evidence / retained behavior | Rollback |
 | --- | --- | --- | --- |
-| Local Release portion of `build` | `shared-ci / build-and-test`, Builds `domain-ci.yml@81c88b34d09d34260b92d7f0928dbbc1c7446baa` | Release restore/build with warnings as errors; explicit Contracts MTP shard; `blocking-test-results`, seven days | Restore local Release steps from the baseline below |
+| Local Release portion of `build` | `shared-ci / build-and-test`, Builds `domain-ci.yml@f0feeb234cbc16f88c2886a6ffae7122e05dd64b` | Release restore/build with warnings as errors; explicit Contracts MTP shard; `blocking-test-results`, seven days | Restore local Release steps from the baseline below |
 | Local Debug/source portion of `build` | `source-debug` | Debug source graph; at least three catalog tests, none failed/errors/skipped/not-run; `source-catalog-verification` XML uploaded even after test failure | Restore the original combined build job |
 | Required `build` status | Always-run local aggregate | Requires success from both shared and source jobs; unsuccessful/skipped/cancelled/unknown dependencies fail | Restore the original combined build job, preserving the `build` name |
 | Unit/contract and package validation | Local `test-unit-contract` | Seven Coverlet project reports, 76.5% line coverage, package topology; `test-unit-contract-results`, 14 days | Retain unchanged |

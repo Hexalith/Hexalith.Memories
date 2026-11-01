@@ -211,6 +211,8 @@ public sealed class AppHostSecurityConfigurationTests
 
     [Theory]
     [InlineData("", false, null)]
+    [InlineData("", true, null)]
+    [InlineData("newer-than-catalog", false, null)]
     [InlineData("3.128.4", false, "3.129.0")]
     [InlineData("3.129.0", false, "3.129.0")]
     [InlineData("3.129.1", false, "3.129.1")]
@@ -220,8 +222,17 @@ public sealed class AppHostSecurityConfigurationTests
     {
         if (expected is null)
         {
-            _ = ReadSelectedBuildsCatalog();
-            expected = ReadBuildMetadata("EventStoreCatalogVersion");
+            XDocument catalog = ReadSelectedBuildsCatalog();
+            expected = fromSource
+                ? catalog.Descendants("HexalithEventStoreVersion").Single().Value
+                : ReadBuildMetadata("EventStoreCatalogVersion");
+            if (selected == "newer-than-catalog")
+            {
+                Version catalogVersion = Version.Parse(expected);
+                selected = new Version(catalogVersion.Major, catalogVersion.Minor, checked(catalogVersion.Build + 1)).ToString();
+                Version.Parse(selected).ShouldBeGreaterThan(catalogVersion);
+                expected = selected;
+            }
         }
 
         string rootCatalog = ReadRepoFile("Directory.Packages.props");
@@ -261,6 +272,49 @@ public sealed class AppHostSecurityConfigurationTests
                 versions.Single(item => item.GetProperty("Identity").GetString() == ownerPackage)
                     .GetProperty("Version").GetString().ShouldBe("3.0.13");
             }
+        }
+        finally
+        {
+            Directory.Delete(fixture, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData(false, "3.129.0")]
+    [InlineData(true, "3.128.4")]
+    public async Task RootDirectoryPackages_EmptySelectionDistinguishesSourceCatalogBelowOwnerFloorAsync(bool fromSource, string expected)
+    {
+        XDocument catalog = ReadSelectedBuildsCatalog();
+        catalog.Descendants("HexalithEventStoreVersion").Single().Value = "3.128.4";
+        XDocument owningCatalog = XDocument.Parse(ReadRepoFile("Directory.Packages.props"));
+        Version.Parse(catalog.Descendants("HexalithEventStoreVersion").Single().Value)
+            .ShouldBeLessThan(Version.Parse(owningCatalog.Descendants("HexalithEventStoreVersion").Single().Value));
+        string fixture = Path.Combine(Path.GetTempPath(), "memories-source-catalog-floor-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(fixture);
+        try
+        {
+            string catalogPath = Path.Combine(fixture, "Builds.props");
+            catalog.Save(catalogPath);
+            foreach (string property in new[] { "Hexalith1BuildPackageProps", "Hexalith2BuildPackageProps", "Hexalith3BuildPackageProps" })
+            {
+                owningCatalog.Descendants(property).Single().Value = catalogPath;
+            }
+
+            string owningPath = Path.Combine(fixture, "Directory.Packages.props");
+            owningCatalog.Save(owningPath);
+            string project = Path.Combine(fixture, "Floor.proj");
+            new XDocument(new XElement("Project",
+                new XElement("PropertyGroup",
+                    new XElement("HexalithEventStoreVersion", string.Empty),
+                    new XElement("HexalithEventStoreFromSource", fromSource.ToString().ToLowerInvariant())),
+                new XElement("Import", new XAttribute("Project", owningPath))))
+                .Save(project);
+            using JsonDocument evaluation = await EvaluateProjectAsync(project);
+            evaluation.RootElement.GetProperty("Properties").GetProperty("HexalithEventStoreVersion").GetString().ShouldBe(expected);
+            JsonElement[] sdk = [.. evaluation.RootElement.GetProperty("Items").GetProperty("PackageVersion").EnumerateArray()
+                .Where(item => item.GetProperty("Identity").GetString()!.StartsWith(EventStorePackagePrefix, StringComparison.Ordinal))];
+            sdk.ShouldNotBeEmpty();
+            sdk.ShouldAllBe(item => item.GetProperty("Version").GetString() == expected);
         }
         finally
         {

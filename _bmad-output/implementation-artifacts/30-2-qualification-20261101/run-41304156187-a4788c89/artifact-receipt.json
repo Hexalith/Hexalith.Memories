@@ -1,0 +1,122 @@
+{
+  "repository": "Hexalith/Hexalith.Memories",
+  "source": "a4788c891958c1f1b6f012ff604c0f9321094751",
+  "sourceDirty": false,
+  "builds": "f0feeb234cbc16f88c2886a6ffae7122e05dd64b",
+  "workflow": ".github/workflows/qualify-builds-publication.yml",
+  "run": 41304156187,
+  "attempt": 1,
+  "job": 124841016777,
+  "runConclusion": "success",
+  "artifact": 13082461185,
+  "artifactName": "builds-publication-qualification-41304156187-1",
+  "artifactSha256": "5de2f80e37641b05efb22ba7de65f8f2088d543f31dea618af7575c67b017c3e",
+  "artifactBytes": 29886,
+  "members": {
+    "dotnet-version.txt": {
+      "sha256": "00922204861c9366b1259b84337ee228d58ec876604bb149e82c077108ce3be2",
+      "bytes": 9
+    },
+    "qualification.log": {
+      "sha256": "23e8b6c22785498adbba2c537c2c4b3928099983ea8eb2ecd4067c7264f28a69",
+      "bytes": 962
+    },
+    "results/approval.md": {
+      "sha256": "16163edb3ef1e75045739cdd62dafafe20d658f7d7f654b2675c242f29e0eac8",
+      "bytes": 6614
+    },
+    "results/complete-set-dry-run.json": {
+      "sha256": "066d64f7c976a8f62738294afc79ebce5522d60ce6ef02fc64aea02afcd7ee57",
+      "bytes": 13068
+    },
+    "results/evidence-upload.json": {
+      "sha256": "6e79b11504f1520f69b814a06c644115968e301ac1c00717050a0e9796430bf9",
+      "bytes": 19209
+    },
+    "results/partial-publication.json": {
+      "sha256": "5a34bc897f9a9cefa4064deffab828e012295f956afc925ca4a9c121a51bad8c",
+      "bytes": 14384
+    },
+    "results/phase-verification.json": {
+      "sha256": "d38c0f71e03e82ca2571ccb170f1f02acb7dab6f371c6ee12fbe7a585f72e1ef",
+      "bytes": 17698
+    },
+    "results/recovery.json": {
+      "sha256": "ada079fe77a84f645f8114099c791b1d28eaa360f4d1758192532ee2cb3dd7c5",
+      "bytes": 14823
+    },
+    "results/set-drift.json": {
+      "sha256": "bebb27d32d1e719e617861388609d38729cbf49652fdceb0ef21b26290085a1a",
+      "bytes": 22325
+    },
+    "source-status.txt": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "upstream-fixtures.log": {
+      "sha256": "6395d8efdf73b716ad9df40a2d81cd58f0aba9d5511361d5346510dd58a53abd",
+      "bytes": 35616
+    }
+  },
+  "dotnetVersion": "10.0.403",
+  "sdkPolicy": {
+    "version": "10.0.403",
+    "rollForward": "latestFeature"
+  },
+  "upstreamTests": 166,
+  "checkpoints": {
+    "evidence-upload": 14,
+    "set-drift": 30,
+    "partial-publication": 23,
+    "recovery": 16,
+    "phase-verification": 36,
+    "complete-set-dry-run": 11
+  },
+  "checkpointAssertions": 130,
+  "bindings": {
+    "builds": {
+      "repository": "Hexalith/Hexalith.Builds",
+      "sha": "f0feeb234cbc16f88c2886a6ffae7122e05dd64b",
+      "verified": true,
+      "superprojectGitlink": "f0feeb234cbc16f88c2886a6ffae7122e05dd64b",
+      "checkout": "f0feeb234cbc16f88c2886a6ffae7122e05dd64b",
+      "executedHelpers": {
+        "publish-containers.sh": "7b0b29d552fb38ab20db6c5faf650ac314a8fac17a6b9f43417035d29ef649ed",
+        "oci_registry_validator.py": "3f54edb036642551e64c180b4708a954d84bd55cac381a4459c3f75448488608",
+        "publication_preflight.py": "3da0d1ca20af78b69b8d5868b9a3311b448c53c5fca04f0d0fb8643db59fd196",
+        "smoke-container-platforms.sh": "f11865658a24ecea906da087d8446c7f631dc5a9328e294676534d590ef0e89e",
+        "smoke_container_platforms.py": "7f1161d6f477c77ddf6a1e2f381df03451168565dd8cabc28010ab23db443491"
+      },
+      "readReferences": {
+        "Github/publish-containers/action.yml": "0262e6fee149f91a046830e941e6010bb46fd1a03b7f40341d8ee12cdf70484b",
+        ".github/workflows/domain-release.yml": "c85bc802f3b0be23a7c7d40b71af683af76902e117d99e56351f78b03ad3b418",
+        "Github/prepare-domain-release/action.yml": "62f3cdf7fe45c35d6eff27960a239a402068aa894cf29c07a60f10bf467d0a9d"
+      }
+    },
+    "source": {
+      "repository": "Hexalith/Hexalith.Memories",
+      "sha": "a4788c891958c1f1b6f012ff604c0f9321094751",
+      "dirty": false
+    },
+    "harness": {
+      "path": "tools/qualify-builds-publication.py",
+      "sha256": "87f066b4d957012c5129a2ceeb146ce090c849eb97379d188bb57a2f1df36a55"
+    },
+    "profile": {
+      "path": "tools/builds-publication-qualification.json",
+      "sha256": "cd80e6f2ae43727b413643aa29d5cdd6694ba43ef58de13776ffd86a53535996"
+    }
+  },
+  "historicalFilesPreserved": {
+    "evidence-upload.json": "434707c03be45d2e703d6c4bf1c38c6b32309f839775be0c623a59f70eae8ba0",
+    "set-drift.json": "7fe90ef74f9672c278251fde25d0e17e3d5456a7e9b5b347eb20ff10d6cd730e",
+    "partial-publication.json": "353d49332fc852abf066598ca22b33c1d35a479cd4061af075c27f371c49c805",
+    "recovery.json": "921b3cad348372dba46c29a3092c8814a6c3c94b38833b41fadb1d40925cf3a3",
+    "approval.md": "2befe196aba013ed923f7a277e6605d1812937a6a4dda0947ff9ccf83aa8924c",
+    "phase-verification.json": "3226cbb95442b6d6fb0dc45fa08bf4a006b0c0e9e69116cc145c0c9cd143a561",
+    "complete-set-dry-run.json": "0dfbb0eb92da1b10a11b711c8f9016f53a1f09ec8363ee44440ad7cc34052cd2"
+  },
+  "humanValidation": "Waived by the user; generated approval remains pending, and the prior approval is unchanged.",
+  "livePublication": false,
+  "origin": "Fresh GitHub workflow artifact download; digest/length match official artifact metadata. Parent receipt is separate from every original emitted byte."
+}

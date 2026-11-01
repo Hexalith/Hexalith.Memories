@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import dataclasses
 import hashlib
 import importlib.util
@@ -15,6 +16,7 @@ import tempfile
 import unittest
 import urllib.error
 import urllib.request
+import zipfile
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
@@ -24,7 +26,21 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 TOOL = REPO_ROOT / "tools" / "qualify-builds-publication.py"
 PROFILE = REPO_ROOT / "tools" / "builds-publication-qualification.json"
 BUILDS = REPO_ROOT / "references" / "Hexalith.Builds"
-COMMITTED_EVIDENCE = REPO_ROOT / "_bmad-output" / "implementation-artifacts" / "30-2-qualification-20261101"
+EVIDENCE_ROOT = REPO_ROOT / "_bmad-output" / "implementation-artifacts"
+EARLIER_EVIDENCE = EVIDENCE_ROOT / "30-2-qualification-20261101"
+COMMITTED_EVIDENCE = EARLIER_EVIDENCE / "run-41304156187-a4788c89"
+SELECTED_SOURCE_SHA = "a4788c891958c1f1b6f012ff604c0f9321094751"
+SELECTED_ARTIFACT_SHA = "5de2f80e37641b05efb22ba7de65f8f2088d543f31dea618af7575c67b017c3e"
+SELECTED_ARTIFACT_BYTES = 29886
+HISTORICAL_HASHES = {
+    "evidence-upload.json": "434707c03be45d2e703d6c4bf1c38c6b32309f839775be0c623a59f70eae8ba0",
+    "set-drift.json": "7fe90ef74f9672c278251fde25d0e17e3d5456a7e9b5b347eb20ff10d6cd730e",
+    "partial-publication.json": "353d49332fc852abf066598ca22b33c1d35a479cd4061af075c27f371c49c805",
+    "recovery.json": "921b3cad348372dba46c29a3092c8814a6c3c94b38833b41fadb1d40925cf3a3",
+    "approval.md": "2befe196aba013ed923f7a277e6605d1812937a6a4dda0947ff9ccf83aa8924c",
+    "phase-verification.json": "3226cbb95442b6d6fb0dc45fa08bf4a006b0c0e9e69116cc145c0c9cd143a561",
+    "complete-set-dry-run.json": "0dfbb0eb92da1b10a11b711c8f9016f53a1f09ec8363ee44440ad7cc34052cd2",
+}
 PINNED_SHA = "f0feeb234cbc16f88c2886a6ffae7122e05dd64b"
 # Epic 30 Story 30.4 names exactly these five mappings under one set identity.
 EXPECTED_MAPPINGS = [
@@ -324,6 +340,198 @@ class CommittedEvidenceTests(unittest.TestCase):
     def setUpClass(cls):
         cls.results = {checkpoint: read_result(COMMITTED_EVIDENCE, checkpoint) for checkpoint in CHECKPOINTS}
         cls.approval = (COMMITTED_EVIDENCE / "approval.md").read_text(encoding="utf-8")
+
+    def assert_successful_documents(self, results):
+        self.assertEqual(set(CHECKPOINTS), set(results))
+        for checkpoint, document in results.items():
+            self.assertEqual(Q.SCHEMA_VERSION, document["schemaVersion"], checkpoint)
+            self.assertEqual(checkpoint, document["checkpoint"])
+            self.assertIs(document["synthetic"], True, "These results qualify offline contracts only.")
+            for field in ("result", "checksResult", "overallResult"):
+                self.assertEqual("pass", document[field], f"{checkpoint}: {field}")
+            self.assertEqual([], document["reasons"], checkpoint)
+            self.assertTrue(document["checks"], checkpoint)
+            for entry in document["checks"]:
+                self.assertEqual("pass", entry["result"], f"{checkpoint}: {entry['name']}")
+            self.assertIs(document["bindings"]["source"]["dirty"], False, checkpoint)
+
+    def assert_archive_members(self, archive, receipt, directory, results):
+        expected = {"dotnet-version.txt", "source-status.txt", "upstream-fixtures.log", "qualification.log",
+                    "results/approval.md", *(f"results/{name}.json" for name in CHECKPOINTS)}
+        names = archive.namelist()
+        self.assertEqual(len(names), len(set(names)), "ZIP member names must be unique.")
+        self.assertEqual(expected, set(names))
+        self.assertEqual(expected, set(receipt["members"]))
+        for name in names:
+            data = archive.read(name)
+            self.assertEqual({"bytes": len(data), "sha256": sha256(data)}, receipt["members"][name], name)
+            if name.startswith("results/"):
+                self.assertEqual(data, (directory / Path(name).name).read_bytes(), name)
+        self.assertEqual(b"", archive.read("source-status.txt"))
+        version = archive.read("dotnet-version.txt").decode("utf-8").strip()
+        self.assertRegex(version, r"^10\.0\.[0-9]+$")
+        self.assertEqual(version, receipt["dotnetVersion"])
+        sdk = json.loads(run_git(REPO_ROOT, "show", f"{SELECTED_SOURCE_SHA}:global.json"))["sdk"]
+        self.assertEqual("latestFeature", sdk["rollForward"])
+        self.assertEqual(sdk, receipt["sdkPolicy"])
+        self.assert_upstream_suite(archive.read("upstream-fixtures.log").decode("utf-8"), receipt["upstreamTests"])
+        self.assertEqual(166, receipt["upstreamTests"])
+        self.assertEqual({name: len(document["checks"]) for name, document in results.items()}, receipt["checkpoints"])
+        self.assertEqual(sum(receipt["checkpoints"].values()), receipt["checkpointAssertions"])
+
+    def assert_upstream_suite(self, log, count):
+        self.assertRegex(log, rf"(?m)^Ran {count} tests in [0-9.]+s\r?\n(?:\r?\n)*OK\r?$")
+
+    def test_retained_upstream_suite_refuses_skipped_tests(self):
+        with zipfile.ZipFile(COMMITTED_EVIDENCE / "capture.zip") as archive:
+            log = archive.read("upstream-fixtures.log").decode("utf-8")
+        self.assert_upstream_suite(log, 166)
+        for skipped in (1, 166):
+            changed = re.sub(r"(?m)^OK(?=\r?$)", f"OK (skipped={skipped})", log)
+            self.assertNotEqual(log, changed)
+            with self.subTest(skipped=skipped), self.assertRaises(AssertionError):
+                self.assert_upstream_suite(changed, 166)
+
+    def assert_capture(self, directory, results):
+        receipt = Q.load_strict_json((directory / "artifact-receipt.json").read_bytes(),
+                                     "receipt-invalid", "selected CI receipt")
+        for key, value in {
+            "repository": "Hexalith/Hexalith.Memories", "source": SELECTED_SOURCE_SHA,
+            "sourceDirty": False, "builds": PINNED_SHA, "run": 41304156187, "attempt": 1,
+            "artifact": 13082461185, "job": 124841016777, "runConclusion": "success",
+            "artifactName": "builds-publication-qualification-41304156187-1",
+            "workflow": ".github/workflows/qualify-builds-publication.yml", "livePublication": False,
+            "artifactSha256": SELECTED_ARTIFACT_SHA, "artifactBytes": SELECTED_ARTIFACT_BYTES,
+        }.items():
+            self.assertEqual(value, receipt[key], key)
+        self.assertIs(receipt["sourceDirty"], False)
+        binding = results["complete-set-dry-run"]["bindings"]
+        self.assertEqual(binding, receipt["bindings"])
+        self.assertEqual({"repository": receipt["repository"], "sha": receipt["source"], "dirty": False}, binding["source"])
+        self.assertIs(binding["builds"]["verified"], True)
+        for field in ("sha", "superprojectGitlink", "checkout"):
+            self.assertEqual(PINNED_SHA, binding["builds"][field])
+        self.assertEqual({relative: sha256((BUILDS / relative).read_bytes()) for relative in Q.REFERENCE_FILES},
+                         binding["builds"]["readReferences"])
+        self.assertEqual({"path": "tools/qualify-builds-publication.py", "sha256": sha256(TOOL.read_bytes())}, binding["harness"])
+        self.assertEqual({"path": "tools/builds-publication-qualification.json", "sha256": sha256(PROFILE.read_bytes())}, binding["profile"])
+        self.assertEqual({name: sha256((BUILDS / "Github/publish-containers" / name).read_bytes()) for name in Q.EXECUTED_HELPERS},
+                         binding["builds"]["executedHelpers"])
+        data = (directory / "capture.zip").read_bytes()
+        self.assertEqual(SELECTED_ARTIFACT_BYTES, len(data))
+        self.assertEqual(SELECTED_ARTIFACT_SHA, sha256(data))
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            self.assert_archive_members(archive, receipt, directory, results)
+
+    def test_all_adopted_checkpoints_require_successful_checks_and_clean_source(self):
+        self.assert_successful_documents(self.results)
+
+    def test_failed_incomplete_or_dirty_adopted_checkpoints_are_rejected(self):
+        for checkpoint in CHECKPOINTS:
+            mutations = [
+                *(lambda d, field=field: d.__setitem__(field, "fail") for field in ("result", "checksResult", "overallResult")),
+                lambda d: d.__setitem__("reasons", ["qualification-incomplete:recovery"]),
+                lambda d: d.__setitem__("checks", []),
+                lambda d: d["checks"][0].__setitem__("result", "fail"),
+                *(lambda d, value=value: d["bindings"]["source"].__setitem__("dirty", value) for value in (True, None, "false", 0)),
+            ]
+            for index, mutate in enumerate(mutations):
+                results = copy.deepcopy(self.results)
+                mutate(results[checkpoint])
+                with self.subTest(checkpoint=checkpoint, mutation=index), self.assertRaises(AssertionError):
+                    self.assert_successful_documents(results)
+
+    def test_selected_capture_and_receipt_bind_the_exact_retained_results(self):
+        self.assert_capture(COMMITTED_EVIDENCE, self.results)
+
+    def test_missing_corrupt_or_changed_carriers_are_rejected(self):
+        for filename in ("capture.zip", "artifact-receipt.json"):
+            for change in ("missing", "corrupt", "changed"):
+                with self.subTest(filename=filename, change=change), tempfile.TemporaryDirectory() as temporary:
+                    directory = Path(temporary) / "capture"
+                    shutil.copytree(COMMITTED_EVIDENCE, directory)
+                    target = directory / filename
+                    if change == "missing":
+                        target.unlink()
+                    elif change == "corrupt":
+                        target.write_bytes(b"{")
+                    else:
+                        if filename == "artifact-receipt.json":
+                            receipt = json.loads(target.read_bytes())
+                            receipt["source"] = "wrong"
+                            target.write_text(json.dumps(receipt))
+                        else:
+                            target.write_bytes(target.read_bytes() + b" ")
+                    with self.assertRaises((AssertionError, OSError, Q.QualificationError)):
+                        self.assert_capture(directory, self.results)
+
+    def test_receipt_source_helper_and_artifact_mismatches_are_rejected(self):
+        mutations = [
+            *(lambda r, key=key: r.__setitem__(key, "wrong") for key in
+              ("source", "builds", "run", "attempt", "job", "artifact", "artifactName", "artifactSha256", "artifactBytes", "runConclusion", "workflow", "dotnetVersion")),
+            lambda r: r.__setitem__("sourceDirty", True),
+            lambda r: r["bindings"]["source"].__setitem__("dirty", True),
+            lambda r: r["bindings"]["harness"].__setitem__("sha256", "0" * 64),
+            lambda r: r["bindings"]["profile"].__setitem__("sha256", "0" * 64),
+            lambda r: r["bindings"]["builds"]["executedHelpers"].__setitem__("publish-containers.sh", "0" * 64),
+            lambda r: r["bindings"]["builds"]["readReferences"].__setitem__("Github/publish-containers/action.yml", "0" * 64),
+            lambda r: r["members"].pop("qualification.log"),
+            lambda r: r["members"]["qualification.log"].__setitem__("sha256", "0" * 64),
+            lambda r: r["members"]["qualification.log"].__setitem__("bytes", 0),
+        ]
+        for index, mutate in enumerate(mutations):
+            with self.subTest(mutation=index), tempfile.TemporaryDirectory() as temporary:
+                directory = Path(temporary) / "capture"
+                shutil.copytree(COMMITTED_EVIDENCE, directory)
+                receipt = json.loads((directory / "artifact-receipt.json").read_bytes())
+                mutate(receipt)
+                (directory / "artifact-receipt.json").write_text(json.dumps(receipt))
+                with self.assertRaises(AssertionError):
+                    self.assert_capture(directory, self.results)
+
+    def test_archive_duplicates_inventory_and_committed_result_drift_are_rejected(self):
+        receipt = json.loads((COMMITTED_EVIDENCE / "artifact-receipt.json").read_bytes())
+        original = zipfile.ZipFile(COMMITTED_EVIDENCE / "capture.zip")
+        self.addCleanup(original.close)
+        for change in ("duplicate", "missing", "extra", "changed", "result-bytes"):
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as temporary:
+                directory = Path(temporary) / "capture"
+                shutil.copytree(COMMITTED_EVIDENCE, directory)
+                data = io.BytesIO()
+                with zipfile.ZipFile(data, "w") as changed:
+                    for name in original.namelist():
+                        if change == "missing" and name == "qualification.log":
+                            continue
+                        content = original.read(name)
+                        if change == "changed" and name == "qualification.log":
+                            content += b"tampered"
+                        changed.writestr(name, content)
+                    if change == "extra":
+                        changed.writestr("extra.txt", b"extra")
+                    if change == "duplicate":
+                        with self.assertWarns(UserWarning):
+                            changed.writestr("qualification.log", b"duplicate")
+                if change == "result-bytes":
+                    (directory / "recovery.json").write_bytes(b"{}")
+                with zipfile.ZipFile(data) as changed, self.assertRaises(AssertionError):
+                    self.assert_archive_members(changed, receipt, directory, self.results)
+
+    def test_the_seven_original_approved_files_remain_unchanged(self):
+        directory = EVIDENCE_ROOT / "30-2-qualification"
+        for name, digest in HISTORICAL_HASHES.items():
+            path = directory / name
+            with self.subTest(file=name):
+                # .gitattributes materializes these text files as CRLF on every checkout.
+                self.assertIn(": eol: crlf", run_git(REPO_ROOT, "check-attr", "eol", "--", str(path)))
+                self.assertEqual(digest, sha256(path.read_bytes()))
+        earlier_receipt = (EARLIER_EVIDENCE / "artifact-receipt.json").read_bytes()
+        self.assertEqual("5ee1003b9545dea92ce942a2887565d3f13a349dee7e5ad72567a0c4f80d3f72", sha256(earlier_receipt))
+        self.assertEqual(HISTORICAL_HASHES, json.loads(earlier_receipt)["historicalFilesPreserved"])
+        earlier_capture = (EARLIER_EVIDENCE / "capture.zip").read_bytes()
+        self.assertEqual("db2080f1cb9d3ef834210d685a984b8969808710cdea89ca10a065fd8eb7f081", sha256(earlier_capture))
+        with zipfile.ZipFile(io.BytesIO(earlier_capture)) as archive:
+            for name in HISTORICAL_HASHES:
+                self.assertEqual(archive.read(f"results/{name}"), (EARLIER_EVIDENCE / name).read_bytes(), name)
 
     def test_all_six_bindings_blocks_are_identical(self):
         bindings = [document["bindings"] for document in self.results.values()]

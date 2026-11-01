@@ -7,6 +7,7 @@ import itertools
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
@@ -157,6 +158,7 @@ class SharedCiAlignmentTests(unittest.TestCase):
     def assert_adoption(self, workflow):
         jobs = workflow["jobs"]
         self.assertEqual({"contents": "read"}, workflow["permissions"])
+        self.assertEqual(0, step(jobs["test-unit-contract"], "Checkout repository")["with"].get("fetch-depth"))
         for event in ("pull_request", "push"):
             self.assertEqual({"branches": ["main"]}, workflow["on"][event])
         shared = jobs["shared-ci"]
@@ -263,6 +265,16 @@ class SharedCiAlignmentTests(unittest.TestCase):
             workflow = copy.deepcopy(self.workflow)
             workflow["jobs"]["shared-ci"]["with"][key] = value
             with self.subTest(key=key, value=value), self.assertRaises(AssertionError):
+                self.assert_adoption(workflow)
+
+        for depth in (None, 1):
+            workflow = copy.deepcopy(self.workflow)
+            checkout = step(workflow["jobs"]["test-unit-contract"], "Checkout repository")["with"]
+            if depth is None:
+                checkout.pop("fetch-depth")
+            else:
+                checkout["fetch-depth"] = depth
+            with self.subTest(fetch_depth=depth), self.assertRaises(AssertionError):
                 self.assert_adoption(workflow)
 
     def test_missing_or_bypassed_required_jobs_and_steps_are_rejected(self):
@@ -417,6 +429,127 @@ class SharedCiAlignmentTests(unittest.TestCase):
         self.assertIn("edited", commitlint["on"]["pull_request"]["types"])
         for key in ("if", "continue-on-error"):
             self.assertNotIn(key, job)
+
+
+class QualificationWorkflowTests(unittest.TestCase):
+    """Exercise the actual qualification shell against source changes at every seam."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.workflow = read_workflow("qualify-builds-publication.yml")
+
+    def assert_triggers(self, workflow):
+        paths = [
+            ".github/workflows/qualify-builds-publication.yml", "references/Hexalith.Builds", ".gitmodules",
+            "global.json", "Directory.Build.props", "Directory.Build.targets", "Directory.Packages.props",
+            ".github/workflows/recover-partial-release.yml", "tools/builds-publication-qualification.json",
+            "tools/qualify-builds-publication.py", "tools/release-packages.json", "src/**/*.csproj",
+        ]
+        self.assertEqual({"workflow_dispatch", "pull_request", "push"}, set(workflow["on"]))
+        self.assertEqual({"paths": paths}, workflow["on"]["pull_request"])
+        self.assertEqual({"branches": ["main"], "paths": paths}, workflow["on"]["push"])
+
+    def test_qualification_triggers_cover_sdk_build_and_recovery_inputs(self):
+        self.assert_triggers(self.workflow)
+        setup = step(self.workflow["jobs"]["qualify"], "Install the pinned .NET SDK")
+        self.assertEqual("actions/setup-dotnet@v6", setup["uses"])
+        self.assertEqual({"global-json-file": "global.json"}, setup["with"])
+        upload = step(self.workflow["jobs"]["qualify"], "Upload exact qualification results")
+        self.assertEqual("always()", upload["if"])
+        self.assertEqual("error", upload["with"]["if-no-files-found"])
+        self.assertEqual("${{ runner.temp }}/builds-publication-qualification/", upload["with"]["path"])
+        for event in ("pull_request", "push"):
+            for path in self.workflow["on"][event]["paths"]:
+                changed = copy.deepcopy(self.workflow)
+                changed["on"][event]["paths"].remove(path)
+                with self.subTest(event=event, path=path), self.assertRaises(AssertionError):
+                    self.assert_triggers(changed)
+
+    def test_actual_qualification_command_rejects_source_changes_and_dirty_emitted_bindings(self):
+        execution = step(self.workflow["jobs"]["qualify"], "Qualify the exact source and publisher helpers")
+        self.assertEqual({
+            "QUALIFICATION_SOURCE_SHA": "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}",
+            "QUALIFICATION_WORKFLOW_SHA": "${{ github.workflow_sha }}",
+            "QUALIFICATION_WORKFLOW_REF": "${{ github.workflow_ref }}",
+        }, execution["env"])
+        command = execution["run"]
+        # The shims replace external processes, while the post-run binding guard uses real Python.
+        shim = '''#!/usr/bin/env python3
+import json, os, pathlib, subprocess, sys
+name = pathlib.Path(sys.argv[0]).name
+state = pathlib.Path(os.environ["FIXTURE_STATE"])
+scenario = os.environ["FIXTURE_SCENARIO"]
+def mark(value):
+    state.write_text(value)
+if name == "git":
+    if sys.argv[1:] == ["status", "--porcelain"]:
+        phase = state.read_text() if state.exists() else "initial"
+        if scenario == "dirty-" + phase:
+            print(" M tracked-source.txt")
+    elif sys.argv[1:] == ["rev-parse", "HEAD"]:
+        phase = state.read_text() if state.exists() else "initial"
+        print(("b" if scenario == "head-move-" + phase else "a") * 40)
+    else:
+        raise SystemExit("Unexpected git operation: " + repr(sys.argv))
+elif name == "dotnet":
+    assert sys.argv[1:] == ["--version"]
+    print("10.0.403")
+elif name == "pwsh":
+    mark("upstream")
+    print("upstream fixture sentinel")
+    if scenario == "upstream-failure":
+        raise SystemExit(1)
+elif sys.argv[1] == "tools/qualify-builds-publication.py":
+    output = pathlib.Path(sys.argv[sys.argv.index("--output-directory") + 1])
+    output.mkdir()
+    for checkpoint in ("complete-set-dry-run", "set-drift", "phase-verification", "partial-publication", "recovery", "evidence-upload"):
+        source = {"dirty": scenario == "dirty-binding", "sha": "b" * 40 if scenario in ("changed-binding", "head-move-qualification") else "a" * 40}
+        (output / (checkpoint + ".json")).write_text(json.dumps({"bindings": {"source": source}}))
+    mark("qualification")
+    print("qualification fixture sentinel")
+    if scenario == "qualification-failure":
+        raise SystemExit(1)
+else:
+    raise SystemExit(subprocess.call([os.environ["REAL_PYTHON"], *sys.argv[1:]]))
+'''
+        scenarios = ("clean", "dirty-initial", "dirty-upstream", "dirty-qualification", "dirty-binding", "changed-binding",
+                     "upstream-failure", "qualification-failure", "head-move-initial",
+                     "head-move-upstream", "head-move-qualification")
+        with tempfile.TemporaryDirectory(prefix="qualification workflow ") as temporary:
+            root = Path(temporary)
+            binaries = root / "bin"
+            binaries.mkdir()
+            for name in ("git", "dotnet", "pwsh", "python3"):
+                target = binaries / name
+                target.write_text(shim.replace("#!/usr/bin/env python3", f"#!{sys.executable}", 1))
+                target.chmod(0o755)
+            for scenario in scenarios:
+                with self.subTest(scenario=scenario):
+                    runner = root / scenario
+                    runner.mkdir()
+                    result = subprocess.run(
+                        ["bash", "-e", "-c", command], cwd=runner, capture_output=True, text=True, timeout=20,
+                        env={**os.environ, "PATH": f"{binaries}{os.pathsep}{os.environ['PATH']}",
+                             "RUNNER_TEMP": str(runner), "FIXTURE_STATE": str(runner / "state"),
+                             "FIXTURE_SCENARIO": scenario, "REAL_PYTHON": sys.executable,
+                             "QUALIFICATION_SOURCE_SHA": "a" * 40, "QUALIFICATION_WORKFLOW_SHA": "c" * 40,
+                             "QUALIFICATION_WORKFLOW_REF": "Hexalith/Hexalith.Memories/.github/workflows/qualify-builds-publication.yml@refs/heads/main"},
+                    )
+                    self.assertEqual(scenario == "clean", result.returncode == 0, result.stdout + result.stderr)
+                    output = runner / "builds-publication-qualification"
+                    self.assertTrue((output / "source-status.txt").exists())
+                    if scenario in ("clean", "dirty-upstream", "dirty-qualification", "dirty-binding", "changed-binding", "qualification-failure"):
+                        self.assertIn("upstream fixture sentinel", (output / "upstream-fixtures.log").read_text())
+                    if scenario in ("clean", "dirty-qualification", "dirty-binding", "changed-binding"):
+                        self.assertIn("qualification fixture sentinel", (output / "qualification.log").read_text())
+                        self.assertTrue((output / "results/recovery.json").exists(), "Keep failure evidence.")
+                    if scenario == "clean":
+                        self.assertEqual({
+                            "sourceSha": "a" * 40, "workflowSha": "c" * 40,
+                            "workflowRef": "Hexalith/Hexalith.Memories/.github/workflows/qualify-builds-publication.yml@refs/heads/main",
+                        }, json.loads((output / "workflow-context.json").read_text()))
+                        for name in ("source-status-after-upstream.txt", "source-status-after-qualification.txt"):
+                            self.assertEqual("", (output / name).read_text())
 
 
 if __name__ == "__main__":

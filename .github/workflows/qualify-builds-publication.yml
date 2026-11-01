@@ -6,6 +6,12 @@ on:
     paths:
       - .github/workflows/qualify-builds-publication.yml
       - references/Hexalith.Builds
+      - .gitmodules
+      - global.json
+      - Directory.Build.props
+      - Directory.Build.targets
+      - Directory.Packages.props
+      - .github/workflows/recover-partial-release.yml
       - tools/builds-publication-qualification.json
       - tools/qualify-builds-publication.py
       - tools/release-packages.json
@@ -15,6 +21,12 @@ on:
     paths:
       - .github/workflows/qualify-builds-publication.yml
       - references/Hexalith.Builds
+      - .gitmodules
+      - global.json
+      - Directory.Build.props
+      - Directory.Build.targets
+      - Directory.Packages.props
+      - .github/workflows/recover-partial-release.yml
       - tools/builds-publication-qualification.json
       - tools/qualify-builds-publication.py
       - tools/release-packages.json
@@ -46,15 +58,46 @@ jobs:
 
       - name: Qualify the exact source and publisher helpers
         shell: bash
+        env:
+          QUALIFICATION_SOURCE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          QUALIFICATION_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          QUALIFICATION_WORKFLOW_REF: ${{ github.workflow_ref }}
         run: |
           set -euo pipefail
           qualification_directory="$RUNNER_TEMP/builds-publication-qualification"
           mkdir -p "$qualification_directory"
+          readonly qualification_source_sha="${QUALIFICATION_SOURCE_SHA:?Missing requested qualification source}"
           git status --porcelain > "$qualification_directory/source-status.txt"
           test ! -s "$qualification_directory/source-status.txt"
+          test "$(git rev-parse HEAD)" = "$qualification_source_sha"
+          python3 - "$qualification_directory/workflow-context.json" "$qualification_source_sha" "$QUALIFICATION_WORKFLOW_SHA" "$QUALIFICATION_WORKFLOW_REF" <<'PYTHON'
+          import json
+          import pathlib
+          import sys
+          pathlib.Path(sys.argv[1]).write_text(json.dumps({
+              "sourceSha": sys.argv[2], "workflowSha": sys.argv[3], "workflowRef": sys.argv[4],
+          }, indent=2) + "\n", encoding="utf-8")
+          PYTHON
           dotnet --version | tee "$qualification_directory/dotnet-version.txt"
           pwsh -NoProfile -File references/Hexalith.Builds/Tools/test-publish-containers.ps1 2>&1 | tee "$qualification_directory/upstream-fixtures.log"
+          git status --porcelain > "$qualification_directory/source-status-after-upstream.txt"
+          test ! -s "$qualification_directory/source-status-after-upstream.txt"
+          test "$(git rev-parse HEAD)" = "$qualification_source_sha"
           python3 tools/qualify-builds-publication.py --output-directory "$qualification_directory/results" 2>&1 | tee "$qualification_directory/qualification.log"
+          git status --porcelain > "$qualification_directory/source-status-after-qualification.txt"
+          test ! -s "$qualification_directory/source-status-after-qualification.txt"
+          test "$(git rev-parse HEAD)" = "$qualification_source_sha"
+          python3 - "$qualification_directory/results" "$qualification_source_sha" <<'PYTHON'
+          import json
+          import pathlib
+          import sys
+          directory = pathlib.Path(sys.argv[1])
+          for checkpoint in ("complete-set-dry-run", "set-drift", "phase-verification",
+                             "partial-publication", "recovery", "evidence-upload"):
+              source = json.loads((directory / f"{checkpoint}.json").read_bytes())["bindings"]["source"]
+              if source.get("dirty") is not False or source.get("sha") != sys.argv[2]:
+                  raise SystemExit(f"Refusing changed or dirty emitted source binding: {checkpoint}")
+          PYTHON
 
       - name: Upload exact qualification results
         if: always()
