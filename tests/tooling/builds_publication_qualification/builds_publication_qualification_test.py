@@ -25,7 +25,7 @@ TOOL = REPO_ROOT / "tools" / "qualify-builds-publication.py"
 PROFILE = REPO_ROOT / "tools" / "builds-publication-qualification.json"
 BUILDS = REPO_ROOT / "references" / "Hexalith.Builds"
 COMMITTED_EVIDENCE = REPO_ROOT / "_bmad-output" / "implementation-artifacts" / "30-2-qualification"
-PINNED_SHA = "81c88b34d09d34260b92d7f0928dbbc1c7446baa"
+PINNED_SHA = "f0feeb234cbc16f88c2886a6ffae7122e05dd64b"
 # Epic 30 Story 30.4 names exactly these five mappings under one set identity.
 EXPECTED_MAPPINGS = [
     "src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj|memories",

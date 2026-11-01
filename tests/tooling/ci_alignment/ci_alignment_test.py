@@ -14,7 +14,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-SHA = "81c88b34d09d34260b92d7f0928dbbc1c7446baa"
+SHA = "f0feeb234cbc16f88c2886a6ffae7122e05dd64b"
 CALLER = f"Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@{SHA}"
 CONTRACTS = "tests/Hexalith.Memories.Contracts.Tests/Hexalith.Memories.Contracts.Tests.csproj"
 AUDIT = "-p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904"
@@ -245,7 +245,7 @@ class SharedCiAlignmentTests(unittest.TestCase):
         self.assert_adoption(self.workflow)
 
     def test_wrong_identity_platform_or_project_selections_are_rejected(self):
-        mutations = [("uses", CALLER.replace(SHA, "main")), ("uses", CALLER.replace(SHA, SHA[:-1] + "b"))]
+        mutations = [("uses", CALLER.replace(SHA, "main")), ("uses", CALLER.replace(SHA, SHA[:-1] + ("0" if SHA[-1] != "0" else "1")))]
         for key, value in mutations:
             workflow = copy.deepcopy(self.workflow)
             workflow["jobs"]["shared-ci"][key] = value
