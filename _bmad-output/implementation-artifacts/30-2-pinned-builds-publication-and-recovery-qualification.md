@@ -2,8 +2,8 @@
 title: 'Pinned Builds publication and recovery qualification'
 type: 'chore'
 created: '2026-10-31'
-status: 'review'
-workflow_status: 'in-review'
+status: 'done'
+workflow_status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 story_key: '30-2-pinned-builds-publication-and-recovery-qualification'
@@ -113,6 +113,7 @@ Release tooling only; tenant-negative gates are unchanged.
 - The committed evidence binds source `aa097b52` with a dirty tree because this implementation is uncommitted. Regenerate it from the committed revision before requesting owner approval.
 - Step 05 deviation (2026-11-01): the frozen Never forbids marking 30.2 done without owner approval, so the spec stays `in-review` and sprint status is `review`, which grants no credit. The evidence is regenerated from a clean commit before owner approval is requested.
 - Evidence regenerated on 2026-11-01 from clean commit `68d0a8609b057f5aafa6975e6bac5bc69bfe3455` (dirty: no). All six results pass, and `approval.md` is pending with no not-approvable warning. Exact-revision owner approval is the remaining gate.
+- Owner approval recorded 2026-11-01 in `30-2-qualification/approval.md`. The sole owner, Jérôme Piquot, holds both the Builds Maintainer and Memories Release Engineer roles. The basis is the owner's statement "i am the only owner", given in reply to the offer to record approval for both roles. Bound identities: Builds `81c88b34`, clean source `68d0a860`. The story is now `done`; approval grants no publication, predecessor or later-story credit.
 
 ## Spec Change Log
 

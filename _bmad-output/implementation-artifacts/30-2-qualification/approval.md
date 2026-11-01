@@ -1,6 +1,6 @@
 # Story 30.2 Exact-Revision Owner Approval
 
-Status: pending
+Status: approved
 
 Qualification result: pass
 
@@ -71,5 +71,5 @@ Record a decision only after reviewing the evidence at exactly these identities.
 
 | Role | Owner | Decision | Date | Notes |
 | --- | --- | --- | --- | --- |
-| Builds Maintainer | | pending | | |
-| Memories Release Engineer | | pending | | |
+| Builds Maintainer | Jérôme Piquot | approved | 2026-11-01 | Sole owner holding both roles; recorded from the owner's statement "i am the only owner" (2026-11-01), given in reply to the offer to record approval for both roles at exactly these identities. Includes the upstream candidate fixtures (158 passed at `81c88b34d09d34260b92d7f0928dbbc1c7446baa`). |
+| Memories Release Engineer | Jérôme Piquot | approved | 2026-11-01 | Sole owner holding both roles; recorded from the owner's statement "i am the only owner" (2026-11-01), given in reply to the offer to record approval for both roles at exactly these identities. |

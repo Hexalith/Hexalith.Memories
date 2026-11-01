@@ -356,7 +356,30 @@ class CommittedEvidenceTests(unittest.TestCase):
                 self.assertEqual(f"{checkpoint}.json", row.group("file"))
                 self.assertEqual(sha256((COMMITTED_EVIDENCE / row.group("file")).read_bytes()), row.group("sha"))
                 self.assertEqual(self.results[checkpoint]["result"], row.group("result"))
-        self.assertIn("\nStatus: pending\n", self.approval)
+        self.assertIn(self.approval_status(), ("pending", "approved"))
+
+    def approval_status(self) -> str:
+        statuses = re.findall(r"^Status: (\S+)$", self.approval, re.MULTILINE)
+        self.assertEqual(1, len(statuses), "approval.md must carry exactly one Status line")
+        return statuses[0]
+
+    def test_committed_approval_is_untouched_pending_or_fully_decided(self):
+        rows = {match.group("role"): match for match in re.finditer(
+            r"^\| (?P<role>Builds Maintainer|Memories Release Engineer) \| (?P<owner>[^|]*) \| (?P<decision>[^|]*) \| "
+            r"(?P<date>[^|]*) \| (?P<notes>[^|]*) \|$", self.approval, re.MULTILINE)}
+        self.assertEqual({"Builds Maintainer", "Memories Release Engineer"}, set(rows))
+        if self.approval_status() == "pending":
+            self.assertIsNone(Q.approval_guard(COMMITTED_EVIDENCE))
+            return
+        # A decided record names an owner, an approved decision and a date for every role,
+        # and the harness must refuse to overwrite it.
+        for role, row in rows.items():
+            with self.subTest(role=role):
+                self.assertTrue(row.group("owner").strip())
+                self.assertEqual("approved", row.group("decision").strip())
+                self.assertRegex(row.group("date").strip(), r"^\d{4}-\d{2}-\d{2}$")
+                self.assertTrue(row.group("notes").strip())
+        self.assertIsNotNone(Q.approval_guard(COMMITTED_EVIDENCE))
 
 
 class ProfileTests(unittest.TestCase):
