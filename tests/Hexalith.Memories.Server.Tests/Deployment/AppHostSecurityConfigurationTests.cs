@@ -210,14 +210,20 @@ public sealed class AppHostSecurityConfigurationTests
     }
 
     [Theory]
-    [InlineData("", false, "3.129.0")]
+    [InlineData("", false, null)]
     [InlineData("3.128.4", false, "3.129.0")]
     [InlineData("3.129.0", false, "3.129.0")]
     [InlineData("3.129.1", false, "3.129.1")]
     [InlineData("3.130.0", false, "3.130.0")]
     [InlineData("3.128.4", true, "3.128.4")]
-    public async Task RootDirectoryPackages_RequiresDeliveredCatalogSdkWithoutLoweringNewerSelectionsAsync(string selected, bool fromSource, string expected)
+    public async Task RootDirectoryPackages_RequiresDeliveredCatalogSdkWithoutLoweringNewerSelectionsAsync(string selected, bool fromSource, string? expected)
     {
+        if (expected is null)
+        {
+            _ = ReadSelectedBuildsCatalog();
+            expected = ReadBuildMetadata("EventStoreCatalogVersion");
+        }
+
         string rootCatalog = ReadRepoFile("Directory.Packages.props");
 
         rootCatalog.ShouldContain(
