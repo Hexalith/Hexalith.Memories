@@ -24,7 +24,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 TOOL = REPO_ROOT / "tools" / "qualify-builds-publication.py"
 PROFILE = REPO_ROOT / "tools" / "builds-publication-qualification.json"
 BUILDS = REPO_ROOT / "references" / "Hexalith.Builds"
-COMMITTED_EVIDENCE = REPO_ROOT / "_bmad-output" / "implementation-artifacts" / "30-2-qualification"
+COMMITTED_EVIDENCE = REPO_ROOT / "_bmad-output" / "implementation-artifacts" / "30-2-qualification-20261101"
 PINNED_SHA = "f0feeb234cbc16f88c2886a6ffae7122e05dd64b"
 # Epic 30 Story 30.4 names exactly these five mappings under one set identity.
 EXPECTED_MAPPINGS = [
@@ -365,8 +365,8 @@ class CommittedEvidenceTests(unittest.TestCase):
 
     def test_committed_approval_is_untouched_pending_or_fully_decided(self):
         rows = {match.group("role"): match for match in re.finditer(
-            r"^\| (?P<role>Builds Maintainer|Memories Release Engineer) \| (?P<owner>[^|]*) \| (?P<decision>[^|]*) \| "
-            r"(?P<date>[^|]*) \| (?P<notes>[^|]*) \|$", self.approval, re.MULTILINE)}
+            r"^\| (?P<role>Builds Maintainer|Memories Release Engineer) \|(?P<owner>[^|]*)\|(?P<decision>[^|]*)\|"
+            r"(?P<date>[^|]*)\|(?P<notes>[^|]*)\|$", self.approval, re.MULTILINE)}
         self.assertEqual({"Builds Maintainer", "Memories Release Engineer"}, set(rows))
         if self.approval_status() == "pending":
             self.assertIsNone(Q.approval_guard(COMMITTED_EVIDENCE))

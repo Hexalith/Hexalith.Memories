@@ -292,7 +292,7 @@ public sealed partial class CiTestInventoryTests
             ["@semantic-release/github"] = "^12.0.10",
             ["@semantic-release/release-notes-generator"] = "^14.1.1",
             ["cosmiconfig"] = "9.0.2",
-            ["semantic-release"] = "25.0.8",
+            ["semantic-release"] = "25.0.9",
         };
 
         Dictionary<string, string> manifestDependencies = ReadStringMapping(manifest.RootElement.GetProperty("devDependencies"));
@@ -313,7 +313,7 @@ public sealed partial class CiTestInventoryTests
 
         JsonElement overrides = manifest.RootElement.GetProperty("overrides");
         overrides.EnumerateObject().Select(static property => property.Name).ShouldBe(["fast-uri", "js-yaml", "semantic-release"]);
-        overrides.GetProperty("fast-uri").GetString().ShouldBe("3.1.8");
+        overrides.GetProperty("fast-uri").GetString().ShouldBe("3.1.9");
         overrides.GetProperty("js-yaml").GetString().ShouldBe("4.3.2");
         JsonElement semanticReleaseOverride = overrides.GetProperty("semantic-release");
         semanticReleaseOverride.EnumerateObject().Select(static property => property.Name).ShouldBe(["@semantic-release/npm"]);
@@ -334,10 +334,10 @@ public sealed partial class CiTestInventoryTests
             ["node_modules/@semantic-release/github"] = "12.0.10",
             ["node_modules/@semantic-release/release-notes-generator"] = "14.1.1",
             ["node_modules/cosmiconfig"] = "9.0.2",
-            ["node_modules/fast-uri"] = "3.1.8",
+            ["node_modules/fast-uri"] = "3.1.9",
             ["node_modules/js-yaml"] = "4.3.2",
-            ["node_modules/semantic-release"] = "25.0.8",
-            ["node_modules/undici"] = "7.30.0",
+            ["node_modules/semantic-release"] = "25.0.9",
+            ["node_modules/undici"] = "7.30.1",
         };
         foreach ((string packagePath, string expectedVersion) in expectedLockedVersions)
         {
@@ -346,9 +346,9 @@ public sealed partial class CiTestInventoryTests
 
         JsonElement lockedUndici = lockedPackages.GetProperty("node_modules/undici");
         lockedUndici.GetProperty("resolved").GetString()
-            .ShouldBe("https://registry.npmjs.org/undici/-/undici-7.30.0.tgz");
+            .ShouldBe("https://registry.npmjs.org/undici/-/undici-7.30.1.tgz");
         lockedUndici.GetProperty("integrity").GetString()
-            .ShouldBe("sha512-dkrQXeHSaoamnItlYbmzG0wFYrM0ZwDxCIg0A7aKjTyyhh9svRzCNFEzV+Vm05/yehjCzjDZ31KXfGEjYSztDQ==");
+            .ShouldBe("sha512-03KrMbjIFDWQR5RNPrSw3bd1r12JpyFQl9/yxjUbJtqkjmllqC5lFjZh6ujeuJCKr8EOQvRW872Oy/az+nLYxg==");
         lockedPackages.GetProperty("node_modules/@semantic-release/github")
             .GetProperty("dependencies")
             .GetProperty("undici")
@@ -778,7 +778,7 @@ public sealed partial class CiTestInventoryTests
 
         string[] sharedJob = GetWorkflowJobLines(workflowLines, "shared-ci");
         GetWorkflowJobScalar(sharedJob, "uses").ShouldBe(
-            "Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@81c88b34d09d34260b92d7f0928dbbc1c7446baa");
+            "Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@f0feeb234cbc16f88c2886a6ffae7122e05dd64b");
         sharedJob.ShouldContain("      solution: Hexalith.Memories.slnx");
         string.Join('\n', sharedJob).ShouldNotContain("dotnet restore");
         restoreInvocations.Count.ShouldBe(
@@ -1023,10 +1023,10 @@ public sealed partial class CiTestInventoryTests
     [InlineData("actions/upload-artifact@v7", true)]
     [InlineData("actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9", true)]
     [InlineData("Hexalith/Hexalith.Builds/Github/initialize-build@main", true)]
-    [InlineData("Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@81c88b34d09d34260b92d7f0928dbbc1c7446baa", true)]
-    [InlineData("Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@81c88b34d09d34260b92d7f0928dbbc1c7446bab", false)]
-    [InlineData("Hexalith/Hexalith.Builds/.github/workflows/release.yml@81c88b34d09d34260b92d7f0928dbbc1c7446baa", false)]
-    [InlineData("Hexalith/Hexalith.Builds/Github/initialize-build@81c88b34d09d34260b92d7f0928dbbc1c7446baa", false)]
+    [InlineData("Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@f0feeb234cbc16f88c2886a6ffae7122e05dd64b", true)]
+    [InlineData("Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@f0feeb234cbc16f88c2886a6ffae7122e05dd640", false)]
+    [InlineData("Hexalith/Hexalith.Builds/.github/workflows/release.yml@f0feeb234cbc16f88c2886a6ffae7122e05dd64b", false)]
+    [InlineData("Hexalith/Hexalith.Builds/Github/initialize-build@f0feeb234cbc16f88c2886a6ffae7122e05dd64b", false)]
     [InlineData("actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd8", false)]
     [InlineData("actions/upload-artifact@0000000000000000000000000000000000000000", false)]
     [InlineData("actions/download-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9", false)]
@@ -1050,7 +1050,7 @@ public sealed partial class CiTestInventoryTests
         }
 
         // Story 30.1 authorizes this workflow identity, not arbitrary Builds actions or SHAs.
-        if (reference == "Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@81c88b34d09d34260b92d7f0928dbbc1c7446baa")
+        if (reference == "Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@f0feeb234cbc16f88c2886a6ffae7122e05dd64b")
         {
             return true;
         }

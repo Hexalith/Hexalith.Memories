@@ -39,6 +39,11 @@ jobs:
       - name: Checkout only the root Builds dependency
         run: git -c submodule.recurse=false submodule update --init --checkout -- references/Hexalith.Builds
 
+      - name: Install the pinned .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
       - name: Qualify the exact source and publisher helpers
         shell: bash
         run: |
@@ -47,6 +52,7 @@ jobs:
           mkdir -p "$qualification_directory"
           git status --porcelain > "$qualification_directory/source-status.txt"
           test ! -s "$qualification_directory/source-status.txt"
+          dotnet --version | tee "$qualification_directory/dotnet-version.txt"
           pwsh -NoProfile -File references/Hexalith.Builds/Tools/test-publish-containers.ps1 2>&1 | tee "$qualification_directory/upstream-fixtures.log"
           python3 tools/qualify-builds-publication.py --output-directory "$qualification_directory/results" 2>&1 | tee "$qualification_directory/qualification.log"
 
