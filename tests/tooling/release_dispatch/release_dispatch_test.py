@@ -185,6 +185,38 @@ class ReleaseDispatchTests(unittest.TestCase):
                         result = subprocess.run(["bash", "-c", script], env=environment, capture_output=True, text=True)
                         self.assertEqual(expected_success, result.returncode == 0, result.stderr)
 
+    def test_temporary_approval_bypass_requires_owner_and_first_attempt(self):
+        workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+        self.assertIn("bypass_human_validation:", workflow)
+        self.assertIn("default: false", workflow)
+        with tempfile.TemporaryDirectory() as temporary:
+            fake_gh = Path(temporary) / "gh"
+            fake_gh.write_text("#!/usr/bin/env bash\nexit 99\n", encoding="utf-8")
+            fake_gh.chmod(0o755)
+            for step_name in ("Require production environment approval rule", "Recheck production approval rule before publication"):
+                step = workflow.split("      - name: " + step_name, 1)[1]
+                self.assertIn("BYPASS_HUMAN_VALIDATION: ${{ inputs.bypass_human_validation }}", step)
+                command = re.search(r"        run: \|\n((?:          .*\n)+)", step)
+                self.assertIsNotNone(command)
+                script = "\n".join(line[10:] for line in command.group(1).splitlines())
+                for bypass, actor, attempt, expected_success in (
+                    ("true", "jpiquot", "1", True),
+                    ("true", "other", "1", False),
+                    ("true", "jpiquot", "2", False),
+                    ("false", "jpiquot", "1", False),
+                ):
+                    with self.subTest(step=step_name, bypass=bypass, actor=actor, attempt=attempt):
+                        environment = dict(os.environ)
+                        environment.update(
+                            PATH=f"{temporary}:{os.environ['PATH']}",
+                            GITHUB_REPOSITORY="Hexalith/Hexalith.Memories",
+                            BYPASS_HUMAN_VALIDATION=bypass,
+                            GITHUB_ACTOR=actor,
+                            GITHUB_RUN_ATTEMPT=attempt,
+                        )
+                        result = subprocess.run(["bash", "-c", script], env=environment, capture_output=True, text=True)
+                        self.assertEqual(expected_success, result.returncode == 0, result.stderr)
+
     def test_prepare_hook_refuses_failed_source_proof_before_tag_phase(self):
         release_config = json.loads((ROOT / ".releaserc.json").read_text(encoding="utf-8"))
         command = release_config["plugins"][2][1]["prepareCmd"].replace("${nextRelease.version}", "1.2.3")
