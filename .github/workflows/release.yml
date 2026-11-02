@@ -2,12 +2,6 @@ name: Release
 
 on:
   workflow_dispatch:
-    inputs:
-      bypass_human_validation:
-        description: One-run owner approval bypass while production has no reviewer rule
-        type: boolean
-        required: false
-        default: false
 
 # cancel-in-progress: false is deliberate. A release run that is interrupted mid-publish
 # would leave NuGet in a partial-publish state. The trusted Recover Partial Release workflow
@@ -68,17 +62,8 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BYPASS_HUMAN_VALIDATION: ${{ inputs.bypass_human_validation }}
         run: |
           set -euo pipefail
-          if [ "${BYPASS_HUMAN_VALIDATION:-false}" = true ]; then
-            if [ "${GITHUB_ACTOR:-}" != jpiquot ] || [ "${GITHUB_RUN_ATTEMPT:-1}" != 1 ]; then
-              echo 'Temporary approval bypass requires the owner and the first run attempt.' >&2
-              exit 1
-            fi
-            echo '::notice::Owner-authorized approval bypass for this release run.'
-            exit 0
-          fi
           gh api "repos/${GITHUB_REPOSITORY}/environments/production" --jq '(.protection_rules | any(.[]; .type == "required_reviewers" and (.reviewers | length > 0))) and .can_admins_bypass == false and .deployment_branch_policy != null' | grep -qx true
 
   release:
@@ -149,17 +134,8 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BYPASS_HUMAN_VALIDATION: ${{ inputs.bypass_human_validation }}
         run: |
           set -euo pipefail
-          if [ "${BYPASS_HUMAN_VALIDATION:-false}" = true ]; then
-            if [ "${GITHUB_ACTOR:-}" != jpiquot ] || [ "${GITHUB_RUN_ATTEMPT:-1}" != 1 ]; then
-              echo 'Temporary approval bypass requires the owner and the first run attempt.' >&2
-              exit 1
-            fi
-            echo '::notice::Owner-authorized approval bypass for this release run.'
-            exit 0
-          fi
           gh api "repos/${GITHUB_REPOSITORY}/environments/production" --jq '(.protection_rules | any(.[]; .type == "required_reviewers" and (.reviewers | length > 0))) and .can_admins_bypass == false and .deployment_branch_policy != null' | grep -qx true
 
       # Mint the one-hour key only after source and destination preflight.
