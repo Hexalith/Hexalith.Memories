@@ -5994,3 +5994,13 @@ decision: 2026-11-01 keep-open — parked. Reopens only on the trigger: any Prod
 - source_spec: `/home/administrator/projects/hexalith/memories/_bmad-output/implementation-artifacts/spec-30-3-guarded-release-dispatch-and-shared-caller-adoption.md`
   summary: Require exactly the approved five image members when completing a ten-package current release.
   evidence: Round 2 Edge 1 (high). The existing recovery guard requires DomainService for ten packages but accepts a four-member summary omitting the telemetry clock, then can close the incident. Story 30.5 owns full current-set recovery.
+
+## Deferred from: code review of spec-30-3-guarded-release-dispatch-and-shared-caller-adoption.md (2026-11-02)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-30-3-guarded-release-dispatch-and-shared-caller-adoption.md`
+  summary: Regenerate `epic-30-context.md` from `epics.md`; the Story 30.3 rewrite (commit `637eaa1b`) dropped binding constraints that later stories read as loaded context.
+  evidence: Review findings HSG-F6, BH10, AA9 (medium). Removed or weakened: the Zot challenge-response 401 re-check before calling publication green, "one immutable Builds revision", never `@main`, `cancel-in-progress: false`, registry push-blocker owner/consequence/trigger, "remove duplicate work only after equivalence is proven", and the Story 30.4/30.6 runbook section ownership. `epics.md` still carries them. Deferred because the fix edits an agent-context file. Owner: Jérôme Piquot. Reopen trigger: the next Epic 30 story (30.4) is created or its context is compiled.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-30-3-guarded-release-dispatch-and-shared-caller-adoption.md`
+  summary: The pinned NuGet absence probe is eventually consistent, and `--skip-duplicate` records HTTP 409 as pushed; together they leave a window where an occupied version reads as absent and then as successfully published.
+  evidence: Review findings BH17 and AA10b (pre-existing). The pinned helper probes `api.nuget.org/v3-flatcontainer`, which returns 404 while a pushed package is still validating, and `test_post_probe_duplicate_response_does_not_create_failure_summary` formalizes the existing 409-as-pushed behaviour. This extends the Round 2 Blind 5 entry above rather than duplicating it. Owner: Jérôme Piquot. Reopen trigger: Story 30.5 implements immutable partial-release reconciliation.
