@@ -2,12 +2,12 @@
 title: 'Guarded release dispatch and shared caller adoption'
 type: 'chore'
 created: '2026-10-31'
-status: 'draft'
+status: 'ready-for-dev'
 route: 'dispatch'
 review_loop_iteration: 0
 story_key: '30-3-guarded-release-dispatch-and-shared-caller-adoption'
-baseline_commit: '00919bdd6fe97284da5f4f1657da4a5b336867cc'
-context: []
+baseline_commit: '46667b0d25c707bcdc961d59895bfe5a064bfd12'
+context: ['{project-root}/_bmad-output/implementation-artifacts/epic-30-context.md']
 ---
 
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
@@ -43,63 +43,57 @@ The user selected all recommendations: reconcile Epic 30 into six stories and im
 
 ## Code Map
 
-- `.github/workflows/ci.yml`: shared CI adoption is implemented by 30.1; local validation is recorded there and live workflow execution remains separate.
-- `.github/workflows/release.yml`: protected push publisher with OIDC and retained evidence.
-- `tools/release-packages.json`: ten entries; current schema/readers use packageId.
-- `.releaserc.json`: local pack/publish hooks; current NuGet skip-duplicate cannot prove destination absence.
-- `references/Hexalith.Builds/Github/prepare-domain-release/README.md`: supported OIDC-preserving seam at 81c88b34d09d34260b92d7f0928dbbc1c7446baa; reuse publication_preflight.py without migrating container ownership.
+- .github/workflows/release.yml:3-209 -- push publisher; preserve OIDC, hooks, evidence; move source proof before environment.
+- references/Hexalith.Builds/Github/prepare-domain-release/action.yml:52-196 -- approved SHA 81c88b34d09d34260b92d7f0928dbbc1c7446baa; checks SHA, ten id entries and live source.
+- references/Hexalith.Builds/Github/publish-containers/publication_preflight.py:581-708 -- reuse source/CI and destination proofs; do not copy shared logic.
+- tools/release-packages.json, tools/release-packages.schema.json, tools/validate-release-packages.ps1:229-362, tools/pack-release.ps1:58-61 -- packageId manifest/readers.
+- tools/qualify-builds-publication.py:408-440 and tests -- replace obsolete transient packageId conversion; preserve approved evidence.
+- tools/complete-partial-release.ps1:172-282, .github/workflows/recover-partial-release.yml:62-71 -- historical/current manifests and summary. Full current-set recovery belongs to 30.5.
 
 ## Tasks & Acceptance
 
-Contingent on resolved scope and prerequisites:
+**Execution:**
+- [ ] .github/workflows/release.yml, tools/check-release-source.py -- dispatch main only; pre-environment tip/exact push-CI proof; protected job calls pinned composite with identical builds-execution-sha and count 10; reprove before OIDC publication. Preserve hooks, evidence, concurrency; remove duplicate tests.
+- [ ] .releaserc.json, tools/release-preflight.ps1, tools/publish-nuget.ps1 -- reject occupied/ambiguous versioned destinations before publication without changing publisher mechanics.
+- [ ] tools/release-packages.json, tools/release-packages.schema.json, tools/validate-release-packages.ps1, tools/pack-release.ps1, tools/qualify-builds-publication.py -- atomic packageId-to-id migration with unchanged ten IDs.
+- [ ] tools/complete-partial-release.ps1, .github/workflows/recover-partial-release.yml -- read old tagged packageId and current id manifests; reject mixed shapes, stage current manifest, preserve summary fields.
+- [ ] tests/tooling/release_dispatch/, tests/tooling/release_packages/, tests/tooling/builds_publication_qualification/, tests/tooling/publish_containers/, tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs -- refusal, reachability, inventory and historical recovery fixtures.
+- [ ] docs/dev/release-runbook.md, CONTRIBUTING.md -- document dispatch, protection readback, pin and recovery boundary.
 
-- [ ] `.github/workflows/release.yml`, `tools/check-release-source.py` — dispatch/source gate, approved pinned preparation, protected production job, final source/identity/destination proof; retain evidence/hooks.
-- [ ] `tools/release-packages.json`, `tools/release-packages.schema.json`, `tools/validate-release-packages.ps1`, `tools/pack-release.ps1` — migrate current inventory to id without membership changes.
-- [ ] `tools/complete-partial-release.ps1`, `.github/workflows/recover-partial-release.yml` — preserve historical packageId input; stage required approved manifest beside recovery script; retain summary DTO fields.
-- [ ] `.releaserc.json`, `tools/publish-nuget.ps1` — wire shared prepublication proofs without replacing publishers.
-- [ ] `tests/tooling/release_dispatch/`, `tests/tooling/release_packages/`, `tests/tooling/publish_containers/`, `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs` — cover refusal branches, migration, recovery, and replace legacy workflow assertions deliberately.
-- [ ] `docs/dev/release-runbook.md`, `CONTRIBUTING.md` — document dispatch, protection evidence, inventory, pin and rollback.
-
-**Acceptance:** Given approved scope and prerequisites, when dispatch passes all proofs, then only protected production can publish. Given green exact-source push CI, when release prepares, then tests are not duplicated. Given manifest migration, when packing/recovery runs, then identities and historical recovery remain intact.
+**Acceptance Criteria:**
+- Given a non-tip SHA or missing exact-source push CI, when dispatched, then reject before production.
+- Given valid dispatch, when preparing and publishing, then prove approved Builds SHA, ten IDs, live source and absent destinations; failed or ambiguous proof prevents publication.
+- Given a normal push, when CI runs, then publication is unreachable and release does not repeat application tests.
+- Given a tagged packageId manifest, when recovering, then consume it unchanged; reject mixed shapes.
 
 ## Checkpoint Evidence
 
-Planned artifacts; none completed.
+On 2026-11-02, gh api repos/Hexalith/Hexalith.Memories/environments/production returned protection_rules: [] and deployment_branch_policy: null. GitHub settings changes are excluded.
 
 | Checkpoint | Owner | Evidence command or artifact | Review state | Completion state |
 | --- | --- | --- | --- | --- |
-| Non-tip dispatch rejection | Memories Release Engineer | Guarded-dispatch non-tip fixture and preflight result | pending | not complete |
-| Exact-source push CI proof | Memories Release Engineer | Candidate SHA-bound CI proof and missing-CI refusal fixture | pending | not complete |
-| Protected production approval | Memories Release Engineer | Environment protection readback and caller configuration | pending | not complete |
-| Matching pinned Builds identity | Memories Release Engineer | Full-SHA composite caller and mismatch-refusal fixture | pending | not complete |
-| No publication on push | Memories Release Engineer | Trigger and publication-reachability fixtures | pending | not complete |
-| OIDC publication retained | Memories Release Engineer | Trusted Publishing caller and hook-preservation fixtures | pending | not complete |
-| No duplicate application tests | Memories Release Engineer | Preparation/caller test-invocation fixtures | pending | not complete |
-| Atomic ten-package migration | Memories Release Engineer | Release-package validator and unchanged-membership fixtures | pending | not complete |
-| Historical manifest recovery | Memories Release Engineer | Tagged `packageId` recovery compatibility fixtures | pending | not complete |
-| Destination absence refusal | Memories Release Engineer | Occupied and ambiguous destination negative fixtures | pending | not complete |
-
-## Historical Context Classification
-
-| Source | Classification | Permitted use |
-| --- | --- | --- |
-| Story 30.1 and Story 30.2 | historical-reference-only | Shared CI and local qualification prerequisites |
-| Story 27.3 | anti-template | Deployment boundary only; no scope copying |
-
-## Slice Proof
-
-One outcome: verified intentional publication. CI alignment, container qualification, recovery redesign and cutover keep separate ownership.
+| Non-tip dispatch rejection | Memories Release Engineer | Non-tip fixture | pending | not complete |
+| Exact-source push CI proof | Memories Release Engineer | SHA-bound and missing-CI fixtures | pending | not complete |
+| Protected production approval | Memories Release Engineer | Environment API readback | pending | blocked: no rules |
+| Matching pinned Builds identity | Memories Release Engineer | SHA caller/mismatch fixture | pending | not complete |
+| No publication on push | Memories Release Engineer | Trigger/reachability fixture | pending | not complete |
+| OIDC publication retained | Memories Release Engineer | Caller/hook fixtures | pending | not complete |
+| No duplicate application tests | Memories Release Engineer | Caller invocation fixture | pending | not complete |
+| Atomic ten-package migration | Memories Release Engineer | Validator/unchanged-ID fixtures | pending | not complete |
+| Historical manifest recovery | Memories Release Engineer | Tagged packageId fixture | pending | not complete |
+| Destination absence refusal | Memories Release Engineer | Occupied/ambiguous fixtures | pending | not complete |
 
 ## Implementation Notes
 
 ## Spec Change Log
 
-- 2026-10-31: User approved the recommended numbering, inventory and authentication decisions. Moved former 30.1 planning to 30.3; implementation remains deferred behind its prerequisites.
+- 2026-10-31: Approved numbering, inventory and authentication; deferred 30.3 behind prerequisites.
+- 2026-11-02: 30.1/30.2 done; user selected 30.3. Production protection remains external.
 
 ## Review Triage Log
 
 ## Verification
 
-Python unittest discovery (`-p '*_test.py'`) individually under tests/tooling/release_dispatch, release_packages, release_preflight, publish_nuget and publish_containers; canonical inventory validator; npm run verify:semantic-release-config; actionlint on changed workflows; built CLI assembly with -class Hexalith.Memories.Cli.Tests.Ci.CiTestInventoryTests. Verify external protection separately.
-
-Baseline: 28 package and 45 preflight fixtures passed; slice-scope validator passed. No application code or workflow changes.
+- Run unittest discovery separately for release_dispatch, release_packages, builds_publication_qualification, publish_containers; all pass.
+- Run validate-release-packages.ps1, actionlint release.yml, and built Cli.Tests.dll -class Hexalith.Memories.Cli.Tests.Ci.CiTestInventoryTests; all pass.
+- Read back production protection and exact-source live CI before done.
