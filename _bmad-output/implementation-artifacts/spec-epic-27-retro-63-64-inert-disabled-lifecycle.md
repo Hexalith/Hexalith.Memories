@@ -2,7 +2,7 @@
 title: 'Make the disabled access-telemetry lifecycle inert in Production'
 type: 'bugfix'
 created: '2026-11-01'
-status: 'in-review'
+status: 'done'
 route: 'dispatch'
 baseline_commit: 'e8956eb5c1bd49297f86702f9606eb9b013bc2f1'
 review_loop_iteration: 0
@@ -183,6 +183,36 @@ The ConfigMap keeps `ACCESS_TELEMETRY_ENABLED: "false"` and `ACCESS_TELEMETRY_CO
 - Drift: the approved-profile check refuses the new overlay with `approved-profile-input-drift` and passes with the overlay restored to `e8956eb5`.
 
 **Not executable here:** the verifier's out-of-scope denial and the `can-i` check run only in the CI job `production-deployment-verification`, which needs a kind cluster.
+
+**Review patch round** (2026-11-02; this supersedes the blank-value and EventId decisions above):
+- Only a `null` `Enabled` counts as absent. A blank or whitespace value is a present non-Boolean, so it is disabled and warns, matching the binder, which throws on both.
+- The warning moved from EventId 7530 to 7600, outside the 7500-7599 audit bank.
+- The disabled health result now reports the impact "Lifecycle writes are off".
+- New tests: blank and whitespace unconvertible cases, and `Enabled=0` with a malformed `Retention`. The unconvertible test now builds the `WebApplication`.
+- `ci.yml` setup-step comments now defer to retro item 68. The item 63 status note says the verifier checks are CI-only. The parked-lanes deferred entry lists the reverts that re-enabling Production needs.
+- Four review findings were deferred to `deferred-work.md`: BH1, BH2, VG1/BH10 and EC5.
+
+**Final verification on the patched tree** (orchestrator):
+- Builds: Server.Tests, Cli.Tests and IntegrationTests, each with 0 warnings and 0 errors. Freshness was re-probed with controls.
+- .NET classes:
+  - composition 14/14, `ProductionDeploymentArtifactsTests` 14/14, A41 5/5, registration 2/2;
+  - `CiTestInventoryTests` 136/136;
+  - `AccessTelemetryLifecycleIntegrationCheckpointTests` 8/8.
+- Python suites, all OK:
+  - `production_deployment_evidence` 123, `ci_alignment` 12;
+  - `access_telemetry_owner_discovery` 31, `access_telemetry_functional_retention` 162, `access_telemetry_c1_sql_contract` 19;
+  - `integration_stub_closure` 7, `story_review_readiness` 105, `story_scope` 71, `story_slice_scope` 20, `bmad_customization` 33, `line_endings` 4.
+- The PowerShell parser finds 0 errors in the verifier.
+- Kill checks re-run on the final source:
+  - dropping the disabled return fails 11 of 14 tests;
+  - dropping the invalid-options return fails 1;
+  - binding the full section first fails 8;
+  - reverting the health text fails 9.
+
+  Each restore matched SHA-256, and the build was re-done from the restored sources (14/14).
+- Commitlint 21.2.2 accepts both proposed full messages, and `Update stuff` exits 1.
+
+**Committed outside this workflow:** a concurrent `/pushall` committed the whole change locally at 2026-11-02 09:35:19 as `dd94e3d385cc08de41c9e16e434ce855792812b4` ("build: sync local changes via /pushall"), not pushed. That commit also moved 9 `references/` submodule gitlinks, which are not part of this change. HEAD's blobs for both mutated sources equal the restored final sources, so no mutant was committed.
 
 ## Spec Change Log
 
