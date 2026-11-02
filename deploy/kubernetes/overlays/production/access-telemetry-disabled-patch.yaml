@@ -1,12 +1,13 @@
-# Both Deployments below are scaled to 0: no published container image exists yet for either
-# service (Story 27.3 pending), so leaving them at their base replica count would schedule
-# unschedulable/unpullable pods.
+# The access-telemetry lifecycle stays disabled in Production until DW-730 reopens
+# (_bmad-output/implementation-artifacts/deferred-work.md). Every lifecycle workload below is
+# scaled to zero. The PostgreSQL StatefulSet keeps its immutable volumeClaimTemplates, so an apply
+# drains its pod and keeps the Retain PVC; deleting that data is the operator's decision.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: memories-access-telemetry
   annotations:
-    memories.hexalith.io/access-telemetry-status: disabled-pending-story-27-3
+    memories.hexalith.io/access-telemetry-status: disabled-pending-dw-730
     memories.hexalith.io/required-component-profile: exact-version-and-behavioral-evidence
     memories.hexalith.io/required-dapr-configuration: access-telemetry-config/retentionSeconds
 spec:
@@ -17,9 +18,18 @@ kind: Deployment
 metadata:
   name: memories-access-telemetry-clock
   annotations:
-    memories.hexalith.io/access-telemetry-status: disabled-pending-story-27-3
+    memories.hexalith.io/access-telemetry-status: disabled-pending-dw-730
     memories.hexalith.io/required-component-profile: exact-version-and-behavioral-evidence
     memories.hexalith.io/required-dapr-configuration: access-telemetry-clock-config/timeAttestation
+spec:
+  replicas: 0
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: access-telemetry-postgresql
+  annotations:
+    memories.hexalith.io/access-telemetry-status: disabled-pending-dw-730
 spec:
   replicas: 0
 ---
@@ -28,4 +38,12 @@ kind: Deployment
 metadata:
   name: memories
   annotations:
-    memories.hexalith.io/access-telemetry-provider: disabled-pending-story-27-3
+    memories.hexalith.io/access-telemetry-provider: disabled-pending-dw-730
+---
+# A zero-replica StatefulSet needs no disruption budget. A PDB left over on a live cluster selects
+# no pods once the StatefulSet is drained, so it cannot block node drains.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: access-telemetry-postgresql
+$patch: delete

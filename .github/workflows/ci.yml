@@ -350,8 +350,10 @@ jobs:
         run: python3 -m unittest discover -s tests/tooling/production_deployment_evidence -p "*_test.py"
 
       - name: Initialize kubectl
-        # C1.16 offline printer fixtures and ProductionDeploymentArtifactsTests both require
-        # the pinned client; install it before the first fixture consumer.
+        # The owner-discovery and functional-retention fixtures and ProductionDeploymentArtifactsTests
+        # require the pinned client; install it before the first fixture consumer. The parked
+        # access-telemetry C1, C1 interchange and lifecycle suites run in no workflow while DW-730
+        # stays parked (deferred-work.md).
         uses: azure/setup-kubectl@v4
         with:
           version: ${{ env.KUBECTL_VERSION }}
@@ -369,33 +371,20 @@ jobs:
         run: PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_owner_discovery -p "test_*.py"
 
       - name: Build source Debug descriptor reader
-        # Campaign environment fixtures hash platform_test.CLI, which is the Debug
-        # Builds module CLI. The Release solution build does not produce that output.
+        # Its consumer, the access-telemetry lifecycle campaign-environment fixtures, is
+        # parked with DW-730 (deferred-work.md); retro item 68 decides whether this step stays.
         run: dotnet build references/Hexalith.Builds/src/libraries/Hexalith.Builds.Module.Cli/Hexalith.Builds.Module.Cli.csproj --configuration Debug -m:1 -p:NuGetAudit=false -p:MinVerVersionOverride=1.0.0 -p:RunAnalyzers=false -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904
-
-      - name: Run access-telemetry lifecycle C1 fixtures
-        # Story 27.3's mandatory C1 inventory. PYTHONHASHSEED=0 matches the story's exact
-        # discovery command so the recorded sorted-case identity is reproducible here. The
-        # pattern matches this directory's own "test_*.py" naming convention (unlike the
-        # sibling steps' "*_test.py"), so a future fixture file added here is also discovered.
-        run: PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_lifecycle -p "test_*.py"
 
       - name: Run access-telemetry functional-retention safety fixtures
         # Offline only; uses the initialized kubectl client, .NET SDK, OpenSSL,
         # and local PyYAML already required by deployment fixtures.
         run: PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_functional_retention -p "test_*.py"
 
-      - name: Run access-telemetry C1 producer fixtures
-        run: PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1 -p "*_test.py"
-
       - name: Initialize root Platform review-reader dependency
-        # Nonrecursive, pinned root dependency only. Platform must publish the
-        # library and Memories must advance its gitlink before a clean CI clone
-        # can discover these tests. Missing source fails import; never skip it.
+        # Nonrecursive, pinned root dependency only. Its consumer, the access-telemetry
+        # C1 interchange review fixtures, is parked with DW-730 (deferred-work.md);
+        # retro item 68 decides whether this step stays.
         run: git submodule update --init references/Hexalith.Platform
-
-      - name: Run access-telemetry C1 interchange and HTTPS review fixtures
-        run: PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p "test_*.py"
 
       - name: Run story file-scope gate fixtures
         run: python3 -m unittest discover -s tests/tooling/story_scope -p "*_test.py"

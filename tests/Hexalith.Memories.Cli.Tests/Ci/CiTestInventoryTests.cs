@@ -28,6 +28,17 @@ public sealed partial class CiTestInventoryTests
 
     private static readonly string[] AllowedDeferredStatuses = ["open", "resolved", "accepted", "carried-forward"];
 
+    // Epic 27 retro items 63/64: the inert Production overlay changes two SHA-256 inputs of the
+    // approved PG-ONPREM-2 profile, so these parked qualification suites refuse with
+    // approved-profile-input-drift. They leave every workflow while DW-730 stays parked
+    // (deferred-work.md); reopening DW-730 re-plans them and removes them from this list.
+    private static readonly string[] ParkedToolingSuites =
+    [
+        "access_telemetry_c1",
+        "access_telemetry_c1_interchange",
+        "access_telemetry_lifecycle",
+    ];
+
     private const string ReleaseLaneTargetArtifact = "tools/test-release.ps1";
 
     [Fact]
@@ -830,16 +841,34 @@ public sealed partial class CiTestInventoryTests
         // nothing, which is indistinguishable from every suite being wired.
         suites.ShouldNotBeEmpty("tests/tooling must contain at least one fixture suite for this guard to mean anything.");
 
-        foreach (string suite in suites)
+        // A parked suite must still exist, so the exemption cannot outlive a retired suite, and no
+        // workflow may run it, so the exemption cannot hide a suite that is quietly back in CI.
+        foreach (string parked in ParkedToolingSuites)
         {
-            // Bound to the path as a whole token rather than to a literal trailing space, so
-            // harmless workflow-YAML reformatting cannot fail the guard, while `story_scope` still
-            // cannot be satisfied by a hypothetical `story_scope_extra` step.
-            Regex.IsMatch(workflows, $@"-s\s+tests/tooling/{Regex.Escape(suite)}(?![0-9A-Za-z_-])")
-                .ShouldBeTrue(
-                    $"tests/tooling/{suite} is executed by no workflow step, so reverting anything it guards ships green.");
+            suites.ShouldContain(
+                parked,
+                $"Parked suite tests/tooling/{parked} no longer exists; remove it from {nameof(ParkedToolingSuites)}.");
+            IsToolingSuiteRunByWorkflow(workflows, parked).ShouldBeFalse(
+                $"tests/tooling/{parked} is parked with DW-730 and must stay out of every workflow until DW-730 reopens.");
+        }
+
+        string[] wired = [.. suites.Except(ParkedToolingSuites, StringComparer.Ordinal)];
+        wired.ShouldNotBeEmpty("Every tooling suite is parked, so this guard would assert nothing.");
+        foreach (string suite in wired)
+        {
+            IsToolingSuiteRunByWorkflow(workflows, suite).ShouldBeTrue(
+                $"tests/tooling/{suite} is executed by no workflow step, so reverting anything it guards ships green.");
         }
     }
+
+    /// <summary>
+    /// Bound to the path as a whole token rather than to a literal trailing space, so harmless
+    /// workflow-YAML reformatting cannot fail the guard, while `story_scope` still cannot be
+    /// satisfied by a hypothetical `story_scope_extra` step, nor a parked `access_telemetry_c1`
+    /// by the wired `access_telemetry_c1_sql_contract`.
+    /// </summary>
+    private static bool IsToolingSuiteRunByWorkflow(string workflows, string suite)
+        => Regex.IsMatch(workflows, $@"-s\s+tests/tooling/{Regex.Escape(suite)}(?![0-9A-Za-z_-])");
 
     [Fact]
     public void CiWorkflow_InstallsPinnedKubectlBeforeItsOfflineFixtureConsumers()
@@ -853,7 +882,14 @@ public sealed partial class CiTestInventoryTests
         installer.ContinueOnError.ShouldBeNull();
         workflow.ShouldContain("  KUBECTL_VERSION: 'v1.35.0'");
         int installIndex = Array.IndexOf(steps, installer);
-        foreach (string name in new[] { "Run access-telemetry lifecycle C1 fixtures", "Run access-telemetry C1 producer fixtures", "Run Docker-free unit and contract tests" })
+        // The parked C1 and lifecycle suites no longer run (DW-730); these are the remaining consumers.
+        foreach (string name in new[]
+                 {
+                     "Publish pinned kubectl at the owner-discovery path",
+                     "Run access-telemetry owner discovery fixtures",
+                     "Run access-telemetry functional-retention safety fixtures",
+                     "Run Docker-free unit and contract tests",
+                 })
         {
             int consumerIndex = Array.FindIndex(steps, step => step.Name == name);
             consumerIndex.ShouldBeGreaterThanOrEqualTo(0);
@@ -920,7 +956,12 @@ public sealed partial class CiTestInventoryTests
         openBao.ShouldNotContain("bao server -dev");
         verifier.ShouldContain("OpenBaoPinnedImage");
         verifier.ShouldNotContain("$script:OpenBaoImagePin = $env:OPENBAO_IMAGE");
+        // The production overlay keeps the disabled lifecycle's components out of the Server's scopes and
+        // its bootstrap secret out of the Server Role (DW-730), so the rollout proves a denial, not a read.
         verifier.ShouldContain("access-telemetry-secrets/access-telemetry-marker-key");
+        verifier.ShouldContain("although the disabled lifecycle component is outside its scopes");
+        verifier.ShouldContain("auth can-i get secret/openbao-access-telemetry-bootstrap");
+        verifier.ShouldNotContain("allow-listed marker read failed");
         verifier.ShouldContain("verification-access-telemetry-marker");
         verifier.ShouldContain("verification.hexalith.com/dapr-token-stage");
         verifier.ShouldContain("verification-invalid-dapr-api-token");

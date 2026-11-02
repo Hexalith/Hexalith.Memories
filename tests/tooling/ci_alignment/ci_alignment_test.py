@@ -61,6 +61,8 @@ CRITICAL_STEPS = {
 
 # These are the mandatory commands retained from the approved caller. The literal
 # inventory also keeps every tooling fixture blocking when new job layouts change.
+# The access-telemetry C1, C1 interchange and lifecycle suites are parked with DW-730
+# (deferred-work.md) and deliberately absent; CiTestInventoryTests keeps them unwired.
 MANDATORY_COMMANDS = {
     ('story-file-scope', 'Validate story file scope'): 'python3 tools/check-story-file-scope.py --branch-name "$BRANCH_NAME" --commit-message-file "$COMMIT_MESSAGE_FILE" --changed-files-file "$CHANGED_FILES_FILE"',
     ('story-file-scope', 'Validate cross-tenant negative evidence'): 'python3 tools/check-tenant-isolation-evidence.py --branch-name "$BRANCH_NAME" --commit-message-file "$COMMIT_MESSAGE_FILE" --changed-files-file "$CHANGED_FILES_FILE"',
@@ -88,11 +90,8 @@ MANDATORY_COMMANDS = {
     ('test-unit-contract', 'Publish pinned kubectl at the owner-discovery path'): 'installed="$(command -v kubectl)"\ntest -n "$installed"\nif [ "$installed" != "/usr/local/bin/kubectl" ]; then\n  sudo ln -sfn "$installed" /usr/local/bin/kubectl\nfi\ntest -x /usr/local/bin/kubectl\n',
     ('test-unit-contract', 'Run access-telemetry owner discovery fixtures'): 'PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_owner_discovery -p "test_*.py"',
     ('test-unit-contract', 'Build source Debug descriptor reader'): 'dotnet build references/Hexalith.Builds/src/libraries/Hexalith.Builds.Module.Cli/Hexalith.Builds.Module.Cli.csproj --configuration Debug -m:1 -p:NuGetAudit=false -p:MinVerVersionOverride=1.0.0 -p:RunAnalyzers=false -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904',
-    ('test-unit-contract', 'Run access-telemetry lifecycle C1 fixtures'): 'PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_lifecycle -p "test_*.py"',
     ('test-unit-contract', 'Run access-telemetry functional-retention safety fixtures'): 'PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_functional_retention -p "test_*.py"',
-    ('test-unit-contract', 'Run access-telemetry C1 producer fixtures'): 'PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1 -p "*_test.py"',
     ('test-unit-contract', 'Initialize root Platform review-reader dependency'): 'git submodule update --init references/Hexalith.Platform',
-    ('test-unit-contract', 'Run access-telemetry C1 interchange and HTTPS review fixtures'): 'PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p "test_*.py"',
     ('test-unit-contract', 'Run story file-scope gate fixtures'): 'python3 -m unittest discover -s tests/tooling/story_scope -p "*_test.py"',
     ('test-unit-contract', 'Run approved publication preflight fixtures'): 'python3 -m unittest discover -s tests/tooling/approved_publication -p "*_test.py"',
     ('test-unit-contract', 'Run story slice-scope gate fixtures'): 'python3 -m unittest discover -s tests/tooling/story_slice_scope -p "*_test.py"',

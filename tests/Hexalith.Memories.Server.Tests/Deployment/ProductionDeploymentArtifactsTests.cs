@@ -121,7 +121,9 @@ public sealed class ProductionDeploymentArtifactsTests
         falkordb.ShouldContain("failureThreshold: 60");
         falkordb.ShouldContain("memory: 4Gi");
 
-        accessTelemetryPostgresql.ShouldContain("replicas: 1");
+        // Retro item 63: the disabled lifecycle's PostgreSQL is scaled to zero, not excluded (see
+        // ProductionOverlay_DisabledLifecycleIsInert); its profile below still renders unchanged.
+        ReadIntegerField(accessTelemetryPostgresql, "replicas").ShouldBe(0);
         accessTelemetryPostgresql.ShouldContain("postgres:18.6-trixie@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722");
         accessTelemetryPostgresql.ShouldContain("hexalith.io/availability: single-node-non-ha");
         accessTelemetryPostgresql.ShouldContain("value: /var/lib/postgresql/18/docker");
@@ -297,6 +299,95 @@ public sealed class ProductionDeploymentArtifactsTests
     }
 
     [Fact]
+    public void ProductionOverlay_DisabledLifecycleIsInert()
+    {
+        // Epic 27 retro item 63. The Production overlay disables the lifecycle, so its render (attached to
+        // every release) must not run the lifecycle PostgreSQL, keep a disruption budget for it, load the
+        // lifecycle components into the Server sidecar, or let the Server read the lifecycle bootstrap secret.
+        string root = GetRepoRoot();
+        string rendered = Run(root, "kubectl", "kustomize", "deploy/kubernetes/overlays/production");
+
+        // The switch and the unproven profile hash stay pinned, so the lifecycle stays off.
+        string productionConfig = GetDocumentByNamePrefix(rendered, "ConfigMap", "memories-production-config-");
+        productionConfig.ShouldContain("ACCESS_TELEMETRY_ENABLED: \"false\"\n");
+        productionConfig.ShouldContain("ACCESS_TELEMETRY_COMPONENT_PROFILE_HASH: unproven\n");
+
+        // Scaled to zero, not excluded: `kubectl apply` does not prune, and volumeClaimTemplates are
+        // immutable on a live StatefulSet. Keeping them drains the pod and keeps the Retain PVC.
+        string postgresql = GetDocument(rendered, "StatefulSet", "access-telemetry-postgresql");
+        ReadIntegerField(postgresql, "replicas").ShouldBe(0);
+        postgresql.ShouldContain("volumeClaimTemplates:");
+        postgresql.ShouldContain("storageClassName: openebs-hostpath-retain");
+        postgresql.ShouldContain("storage: 400Gi");
+        postgresql.ShouldNotContain("persistentVolumeClaimRetentionPolicy");
+        postgresql.ShouldContain("memories.hexalith.io/access-telemetry-status: disabled-pending-dw-730");
+        foreach (string kind in new[] { "PodDisruptionBudget", "PersistentVolumeClaim" })
+        {
+            GetDocuments(rendered, kind).ShouldNotContain(
+                document => document.Contains("access-telemetry-postgresql", StringComparison.Ordinal),
+                $"The Production render must not carry a {kind} for the disabled lifecycle PostgreSQL.");
+        }
+
+        // Both lifecycle Deployments stay at zero replicas.
+        foreach (string lifecycle in new[] { "memories-access-telemetry", "memories-access-telemetry-clock" })
+        {
+            string deployment = GetDocument(rendered, "Deployment", lifecycle);
+            ReadIntegerField(deployment, "replicas").ShouldBe(0, lifecycle);
+            deployment.ShouldContain("memories.hexalith.io/access-telemetry-status: disabled-pending-dw-730");
+        }
+
+        GetDocument(rendered, "Deployment", "memories")
+            .ShouldContain("memories.hexalith.io/access-telemetry-provider: disabled-pending-dw-730");
+        rendered.ShouldNotContain("disabled-pending-story-27-3");
+
+        // No lifecycle component is loaded by the Server app-id; each still serves its lifecycle apps.
+        string[] lifecycleComponents = [.. GetDocuments(rendered, "Component")
+            .Select(ReadMetadataName)
+            .Where(static name => name.StartsWith("access-telemetry", StringComparison.Ordinal))
+            .Order(StringComparer.Ordinal)];
+        lifecycleComponents.ShouldBe(["access-telemetry-config", "access-telemetry-secrets", "access-telemetry-store"]);
+        foreach (string component in lifecycleComponents)
+        {
+            ReadYamlSequence(GetDocument(rendered, "Component", component), "scopes")
+                .ShouldNotContain("memories", $"Component {component} must not be scoped to the Server app-id.");
+        }
+
+        ReadYamlSequence(GetDocument(rendered, "Component", "access-telemetry-secrets"), "scopes")
+            .ShouldBe(["memories-access-telemetry", "memories-access-telemetry-clock"]);
+        ReadYamlSequence(GetDocument(rendered, "Component", "access-telemetry-config"), "scopes")
+            .ShouldBe(["memories-access-telemetry"]);
+
+        // The Server Role keeps its own secrets but not the lifecycle bootstrap secret.
+        IReadOnlyList<string> serverSecrets = ReadYamlSequence(GetDocument(rendered, "Role", "memories-dapr-secret-reader"), "resourceNames");
+        serverSecrets.ShouldNotContain("openbao-access-telemetry-bootstrap");
+        serverSecrets.ShouldContain("openbao-runtime-bootstrap");
+        serverSecrets.ShouldContain("redis-secret");
+    }
+
+    [Fact]
+    public void QualificationOverlay_KeepsLifecycleScopesStorageAndRbac()
+    {
+        // The inert Production patches live only in the Production overlay. Qualification builds on the
+        // base, where the enabled lifecycle still needs the Server scopes, the bootstrap grant and storage.
+        string root = GetRepoRoot();
+        string rendered = Run(root, "kubectl", "kustomize", "deploy/kubernetes/overlays/qualification");
+
+        ReadYamlSequence(GetDocument(rendered, "Component", "access-telemetry-secrets"), "scopes")
+            .ShouldBe(["memories", "memories-access-telemetry", "memories-access-telemetry-clock"]);
+        ReadYamlSequence(GetDocument(rendered, "Component", "access-telemetry-config"), "scopes")
+            .ShouldBe(["memories", "memories-access-telemetry"]);
+        ReadYamlSequence(GetDocument(rendered, "Role", "memories-dapr-secret-reader"), "resourceNames")
+            .ShouldContain("openbao-access-telemetry-bootstrap");
+
+        string postgresql = GetDocument(rendered, "StatefulSet", "access-telemetry-postgresql");
+        ReadIntegerField(postgresql, "replicas").ShouldBe(1);
+        postgresql.ShouldContain("storage: 400Gi");
+        string budget = GetDocument(rendered, "PodDisruptionBudget", "access-telemetry-postgresql");
+        ReadIntegerField(budget, "minAvailable").ShouldBe(1);
+        rendered.ShouldNotContain("disabled-pending-dw-730");
+    }
+
+    [Fact]
     public void ProductionOverlay_TelemetryVerifierMatchesClockSigner()
     {
         string root = GetRepoRoot();
@@ -326,7 +417,9 @@ public sealed class ProductionDeploymentArtifactsTests
         role.ShouldContain("- google-embedding-api-key");
         role.ShouldContain("- memories-embedding-client-secret");
         role.ShouldContain("- openbao-runtime-bootstrap");
-        role.ShouldContain("- openbao-access-telemetry-bootstrap");
+
+        // Retro item 63: the Server account cannot read the disabled lifecycle's bootstrap secret.
+        ReadYamlSequence(role, "resourceNames").ShouldNotContain("openbao-access-telemetry-bootstrap");
         role.ShouldContain("verbs:");
         role.ShouldContain("- get");
         role.ShouldNotContain("- list");
@@ -815,6 +908,28 @@ public sealed class ProductionDeploymentArtifactsTests
         }
 
         throw new ShouldAssertException($"Rendered manifest did not contain {kind}/{name}.");
+    }
+
+    /// <summary>Returns every rendered document of the given top-level kind, in render order.</summary>
+    private static IEnumerable<string> GetDocuments(string rendered, string kind)
+        => rendered
+            .Split("\n---", StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Where(document => document.StartsWith($"kind: {kind}\n", StringComparison.Ordinal)
+                || document.Contains($"\nkind: {kind}\n", StringComparison.Ordinal));
+
+    /// <summary>
+    /// Reads <c>metadata.name</c>: the only two-space-indented <c>name:</c> key that is not a sequence item.
+    /// </summary>
+    private static string ReadMetadataName(string document)
+    {
+        MatchCollection names = Regex.Matches(
+            document.Replace("\r\n", "\n", StringComparison.Ordinal),
+            @"^  name: (?<name>\S+)$",
+            RegexOptions.Multiline,
+            TimeSpan.FromSeconds(5));
+        names.Count.ShouldBe(1, $"Expected exactly one metadata name; found {names.Count}.");
+
+        return names[0].Groups["name"].Value;
     }
 
     private static string GetDocumentByNamePrefix(string rendered, string kind, string namePrefix)

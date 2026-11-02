@@ -82,8 +82,10 @@ public sealed class AccessTelemetryA41CloseOutTests
     public void ProductionOverlay_RemainsFailClosedWhileCanonicalMatrixIsPending()
     {
         string overlay = ReadRepoFile("deploy/kubernetes/overlays/production/access-telemetry-disabled-patch.yaml");
-        overlay.Split("replicas: 0", StringSplitOptions.None).Length.ShouldBe(3);
-        overlay.ShouldContain("disabled-pending-story-27-3", Case.Sensitive);
+        // Three zero-replica patches: both lifecycle Deployments and the lifecycle PostgreSQL StatefulSet.
+        (overlay.Split("replicas: 0", StringSplitOptions.None).Length - 1).ShouldBe(3);
+        overlay.ShouldContain("disabled-pending-dw-730", Case.Sensitive);
+        overlay.ShouldNotContain("disabled-pending-story-27-3", Case.Sensitive);
 
         string matrix = ReadRepoFile(EvidenceMatrix);
         matrix.ShouldNotContain("Production lifecycle writes | `enabled`", Case.Sensitive);

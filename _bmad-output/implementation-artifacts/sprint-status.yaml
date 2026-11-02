@@ -802,13 +802,13 @@ action_items:
     epic: 27
     action: "Make the Production overlay inert for the disabled access-telemetry lifecycle: scale or exclude the access-telemetry-postgresql StatefulSet/PDB/PVC, unscope access-telemetry-secrets and access-telemetry-config from memories, drop the Server Role get on openbao-access-telemetry-bootstrap, re-key disabled-pending-story-27-3 markers to DW-730, and add rendered-manifest assertions"
     owner: "Amelia, Winston"
-    status: open
+    status: done  # 2026-11-02: spec-epic-27-retro-63-64-inert-disabled-lifecycle.md. The Production overlay scales access-telemetry-postgresql to 0 (volumeClaimTemplates kept), deletes its PDB, unscopes memories from access-telemetry-secrets and access-telemetry-config, drops openbao-access-telemetry-bootstrap from the Server Role (each removal a JSON6902 test+remove pair) and re-keys the markers to disabled-pending-dw-730; Qualification renders unchanged. The overlay drifts the approved PG-ONPREM-2 profile inputs, so the parked C1, C1 interchange and lifecycle tooling lanes left PR CI (deferred-work.md, reopen with DW-730); applying the overlay to jpiquot@local is deferred to the operator. Focused runs passed: ProductionDeploymentArtifactsTests 14/14, AccessTelemetryA41CloseOutTests 5/5, CiTestInventoryTests 136/136, AccessTelemetryLifecycleIntegrationCheckpointTests 8/8; the verifier's out-of-scope denial and can-i checks run only in the CI production-deployment-verification job.
     ref: "_bmad-output/implementation-artifacts/epic-27-retro-2026-11-01.md"
   - id: "epic-27-retro-item-64-add-a-composition-test-proving-a-product"
     epic: 27
     action: "Add a composition test proving a Production Server with lifecycle disabled (and with Enabled=true plus an unproven profile hash) registers no lifecycle provider, queue, Dapr client or hosted service; pin the lifecycle health-check tags; read Enabled before binding the full options section"
     owner: "Murat"
-    status: open
+    status: done  # 2026-11-02: spec-epic-27-retro-63-64-inert-disabled-lifecycle.md. The Server reads AccessTelemetryLifecycle:Enabled first and binds the rest only when enabled; an unconvertible value is disabled with one startup warning naming the key, never the value; the disabled health check reports its own Healthy text with tags exactly [lifecycle]. AccessTelemetryLifecycleProductionCompositionTests 11/11 cover disabled, unproven, positive control, unconvertible and malformed cases, and kill the four spec mutations.
     ref: "_bmad-output/implementation-artifacts/epic-27-retro-2026-11-01.md"
   - id: "epic-27-retro-item-65-correct-the-dw-17-accepted-debt-record-a"
     epic: 27

@@ -534,11 +534,12 @@ internal static class MemoriesServerServiceCollectionExtensions
 
     private static void AddAccessTelemetryLifecycle(this WebApplicationBuilder builder)
     {
-        AccessTelemetryOptions options = builder.Configuration
-            .GetSection(AccessTelemetryOptions.SectionName)
-            .Get<AccessTelemetryOptions>() ?? new AccessTelemetryOptions();
-        var status = new AccessTelemetryLifecycleStatus(options.Enabled);
-        builder.Services.AddSingleton(options);
+        IConfigurationSection section = builder.Configuration.GetSection(AccessTelemetryOptions.SectionName);
+
+        // Only the switch is read up front. Binding the whole section first would let any malformed
+        // value, including an unconvertible switch, crash a pod whose lifecycle is turned off.
+        bool enabledValueConvertible = TryReadAccessTelemetryLifecycleEnabled(section, out bool enabled);
+        var status = new AccessTelemetryLifecycleStatus(enabled);
         builder.Services.AddSingleton(status);
 
         // Diagnostic-only bootstrap progress is always registered so the qualification runner can report it.
@@ -546,14 +547,6 @@ internal static class MemoriesServerServiceCollectionExtensions
         builder.Services.AddSingleton<AccessTelemetryQualificationAccounting>();
         builder.Services.AddSingleton<AccessTelemetryQualificationGate>();
         builder.Services.AddSingleton<AccessTelemetryQualificationWorkloadRunner>();
-        AccessTelemetryOptions registrationOptions = options.Enabled &&
-            options.RetentionSource == RetentionConfigurationSource.DaprConfiguration &&
-            options.Retention is null
-                ? options with { Retention = AccessTelemetryOptions.DefaultRetention }
-                : options;
-        AccessTelemetryOptionsValidationResult registrationValidation = AccessTelemetryOptionsValidator.Validate(
-            registrationOptions,
-            builder.Environment.EnvironmentName);
         _ = builder.Services.AddOpenTelemetry().WithMetrics(metrics =>
             metrics.AddMeter(ServerAccessTelemetryLifecycleMetrics.MeterName));
         _ = builder.Services.AddHealthChecks().AddCheck<AccessTelemetryLifecycleHealthCheck>(
@@ -562,13 +555,32 @@ internal static class MemoriesServerServiceCollectionExtensions
             tags: ["lifecycle"],
             timeout: TimeSpan.FromSeconds(3));
 
-        if (!options.Enabled || !registrationValidation.IsValid)
+        if (!enabled)
         {
-            if (options.Enabled)
+            // A disabled lifecycle registers none of its services and never binds the rest of its
+            // section, so no other lifecycle value can stop the pod from starting.
+            builder.Services.AddSingleton(new AccessTelemetryOptions());
+            if (!enabledValueConvertible)
             {
-                status.PublishTerminal(AccessTelemetryReason.ConfigurationInvalid);
+                builder.Services.AddHostedService<AccessTelemetryLifecycleEnabledValueWarning>();
             }
 
+            return;
+        }
+
+        // Enabled: bind the full section. A malformed value still fails composition fast.
+        AccessTelemetryOptions options = section.Get<AccessTelemetryOptions>() ?? new AccessTelemetryOptions();
+        builder.Services.AddSingleton(options);
+        AccessTelemetryOptions registrationOptions =
+            options.RetentionSource == RetentionConfigurationSource.DaprConfiguration && options.Retention is null
+                ? options with { Retention = AccessTelemetryOptions.DefaultRetention }
+                : options;
+        AccessTelemetryOptionsValidationResult registrationValidation = AccessTelemetryOptionsValidator.Validate(
+            registrationOptions,
+            builder.Environment.EnvironmentName);
+        if (!registrationValidation.IsValid)
+        {
+            status.PublishTerminal(AccessTelemetryReason.ConfigurationInvalid);
             return;
         }
 
@@ -602,6 +614,29 @@ internal static class MemoriesServerServiceCollectionExtensions
         builder.Services.AddHostedService<AccessTelemetryDeliveryWorker>();
         builder.Services.AddHostedService<AccessTelemetryHeartbeatWorker>();
     }
+
+    /// <summary>Reads only the lifecycle switch.</summary>
+    /// <param name="section">The lifecycle configuration section.</param>
+    /// <param name="enabled">
+    /// <see langword="true"/> only for a value <see cref="bool.TryParse(string?, out bool)"/> reads as true; an absent
+    /// or unconvertible value is disabled.
+    /// </param>
+    /// <returns>
+    /// <see langword="false"/> when a value is present but is not a Boolean, including an empty or whitespace value;
+    /// only a <see langword="null"/> value counts as absent.
+    /// </returns>
+    private static bool TryReadAccessTelemetryLifecycleEnabled(IConfigurationSection section, out bool enabled)
+    {
+        string? configured = section[nameof(AccessTelemetryOptions.Enabled)];
+        if (configured is null)
+        {
+            enabled = false;
+            return true;
+        }
+
+        return bool.TryParse(configured, out enabled);
+    }
+
     /// <summary>Composes the supported SDK gateway and workload authority without forwarding user credentials.</summary>
     internal static void AddMemoriesEventStoreGateway(this WebApplicationBuilder builder)
     {

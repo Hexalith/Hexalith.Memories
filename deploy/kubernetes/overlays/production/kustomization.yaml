@@ -6,6 +6,42 @@ resources:
   - ../../base
 patches:
   - path: access-telemetry-disabled-patch.yaml
+  # While the lifecycle is disabled (DW-730), the Server app-id `memories` loads neither lifecycle
+  # component and cannot read the lifecycle OpenBao bootstrap secret. Each removal first tests the
+  # exact base entry, so a reordered base fails the render instead of removing the wrong entry.
+  - target:
+      group: dapr.io
+      version: v1alpha1
+      kind: Component
+      name: access-telemetry-secrets
+    patch: |-
+      - op: test
+        path: /scopes/0
+        value: memories
+      - op: remove
+        path: /scopes/0
+  - target:
+      group: dapr.io
+      version: v1alpha1
+      kind: Component
+      name: access-telemetry-config
+    patch: |-
+      - op: test
+        path: /scopes/0
+        value: memories
+      - op: remove
+        path: /scopes/0
+  - target:
+      group: rbac.authorization.k8s.io
+      version: v1
+      kind: Role
+      name: memories-dapr-secret-reader
+    patch: |-
+      - op: test
+        path: /rules/0/resourceNames/8
+        value: openbao-access-telemetry-bootstrap
+      - op: remove
+        path: /rules/0/resourceNames/8
 configMapGenerator:
   - name: memories-production-config
     behavior: merge

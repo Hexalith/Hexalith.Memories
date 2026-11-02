@@ -947,8 +947,16 @@ printf 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{"schemaVersion
         self.assertIn("Assert-OpenBaoAclDenial", openbao)
         self.assertIn("permission denied|not authorized", openbao)
         self.assertIn("--request-timeout=12s", openbao)
+        # The production overlay unscopes the disabled lifecycle's components from the Server
+        # (DW-730): the Server must be refused even the marker secret, and its account must not
+        # be able to read the lifecycle bootstrap secret.
         self.assertIn("access-telemetry-secrets/access-telemetry-marker-key", verifier)
-        self.assertIn("access-telemetry-secrets/llm-secret", verifier)
+        self.assertIn("although the disabled lifecycle component is outside its scopes", verifier)
+        self.assertIn("out-of-scope denial transcript leaked a secret value", verifier)
+        self.assertIn("auth can-i get secret/openbao-access-telemetry-bootstrap", verifier)
+        self.assertIn("$canReadAccessTelemetryBootstrap -ne 'no'", verifier)
+        self.assertNotIn("allow-listed marker read failed", verifier)
+        self.assertNotIn("access-telemetry-secrets/llm-secret", verifier)
         self.assertIn("dapr-secret-store-access", verifier)
         self.assertIn("verification-access-telemetry-marker", verifier)
         self.assertIn("Get-OpenBaoRedactionSecrets", verifier)

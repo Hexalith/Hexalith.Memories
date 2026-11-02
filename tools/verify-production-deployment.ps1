@@ -1112,6 +1112,16 @@ try {
         throw "Secret RBAC contract failed: memories=$canReadLlm memories-mcp=$mcpCanReadLlm"
     }
 
+    # The production overlay disables the access-telemetry lifecycle (DW-730), so the Server account
+    # must not be able to read the lifecycle's OpenBao bootstrap secret.
+    $canReadAccessTelemetryBootstrap = (@(& kubectl auth can-i get secret/openbao-access-telemetry-bootstrap -n $namespace --as "system:serviceaccount:${namespace}:memories" 2>$null) -join '').Trim()
+    if ($LASTEXITCODE -notin @(0, 1)) {
+        throw "Unable to evaluate memories access-telemetry bootstrap Secret RBAC (kubectl exit $LASTEXITCODE)."
+    }
+    if ($canReadAccessTelemetryBootstrap -ne 'no') {
+        throw "Secret RBAC contract failed: memories can read openbao-access-telemetry-bootstrap=$canReadAccessTelemetryBootstrap while the lifecycle is disabled."
+    }
+
     Wait-AggregateStatus 'memories' 'memories' 'Healthy' -Stage 'initial-server-health' -TimeoutSeconds 60 -MeasureFromContainerRunning | Out-Null
     Wait-AggregateStatus 'memories-mcp' 'memories-mcp' 'Healthy' -Stage 'initial-mcp-health' -TimeoutSeconds 60 -MeasureFromContainerRunning | Out-Null
 
@@ -1153,41 +1163,15 @@ try {
         throw 'Dapr secretstore unexpectedly allowed a non-allow-listed secret name.'
     }
 
-    # Matching allow/deny probes through the production access-telemetry-secrets component.
-    $accessAllowedSecret = @(& kubectl --request-timeout=12s exec -n $namespace $serverPod -c memories -- /bin/sh -ec 'wget -qO- --header="dapr-api-token: $DAPR_API_TOKEN" "http://127.0.0.1:3500/v1.0/secrets/access-telemetry-secrets/access-telemetry-marker-key"' 2>&1) -join [Environment]::NewLine
-    if ($LASTEXITCODE -ne 0) {
-        throw "Dapr access-telemetry-secrets allow-listed marker read failed: $(Protect-EvidenceText $accessAllowedSecret)"
-    }
-    try {
-        $accessAllowedObject = $accessAllowedSecret | ConvertFrom-Json
-    }
-    catch {
-        throw 'Dapr access-telemetry-secrets allow-listed marker read returned non-JSON output.'
-    }
-    finally {
-        $accessAllowedSecret = $null
-    }
-    $markerProperty = $accessAllowedObject.PSObject.Properties['access-telemetry-marker-key']
-    if ($null -eq $markerProperty -or [string]::IsNullOrWhiteSpace([string]$markerProperty.Value)) {
-        throw 'Dapr access-telemetry-secrets allow-listed read did not return the access-telemetry-marker-key field.'
-    }
-    Register-OpenBaoRedactionSecret ([string]$markerProperty.Value)
-    $accessAllowedObject = $null
-
-    $accessDeniedCross = @(& kubectl --request-timeout=12s exec -n $namespace $serverPod -c memories -- /bin/sh -ec 'wget -qO- --header="dapr-api-token: $DAPR_API_TOKEN" "http://127.0.0.1:3500/v1.0/secrets/access-telemetry-secrets/llm-secret"' 2>&1) -join [Environment]::NewLine
+    # The production overlay keeps the disabled lifecycle's access-telemetry-secrets component out of
+    # the Server's scopes (DW-730). Even the lifecycle's own marker secret must be refused, and the
+    # refusal must not leak any seeded value.
+    $accessOutOfScope = @(& kubectl --request-timeout=12s exec -n $namespace $serverPod -c memories -- /bin/sh -ec 'wget -qO- --header="dapr-api-token: $DAPR_API_TOKEN" "http://127.0.0.1:3500/v1.0/secrets/access-telemetry-secrets/access-telemetry-marker-key"' 2>&1) -join [Environment]::NewLine
     if ($LASTEXITCODE -eq 0) {
-        throw 'Dapr access-telemetry-secrets unexpectedly allowed a cross-prefix runtime secret name.'
+        throw 'The Server unexpectedly resolved access-telemetry-secrets/access-telemetry-marker-key although the disabled lifecycle component is outside its scopes.'
     }
-    if ($accessDeniedCross -match 'verification-openai-key|verification-access-telemetry-marker') {
-        throw "Dapr access-telemetry-secrets cross-prefix denial transcript leaked a secret value: $(Protect-EvidenceText $accessDeniedCross)"
-    }
-
-    $accessDeniedUnknown = @(& kubectl --request-timeout=12s exec -n $namespace $serverPod -c memories -- /bin/sh -ec 'wget -qO- --header="dapr-api-token: $DAPR_API_TOKEN" "http://127.0.0.1:3500/v1.0/secrets/access-telemetry-secrets/not-allow-listed"' 2>&1) -join [Environment]::NewLine
-    if ($LASTEXITCODE -eq 0) {
-        throw 'Dapr access-telemetry-secrets unexpectedly allowed a non-allow-listed secret name.'
-    }
-    if ($accessDeniedUnknown -match 'verification-') {
-        throw "Dapr access-telemetry-secrets unknown-name denial transcript leaked a secret value: $(Protect-EvidenceText $accessDeniedUnknown)"
+    if ($accessOutOfScope -match 'verification-') {
+        throw "Dapr access-telemetry-secrets out-of-scope denial transcript leaked a secret value: $(Protect-EvidenceText $accessOutOfScope)"
     }
 
     $mcpPodForSecrets = Get-RunningPodName 'memories-mcp' 'memories-mcp'

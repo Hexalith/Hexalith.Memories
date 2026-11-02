@@ -22,21 +22,29 @@ internal sealed class AccessTelemetryLifecycleHealthCheck(
     {
         ArgumentNullException.ThrowIfNull(context);
         cancellationToken.ThrowIfCancellationRequested();
+        if (!options.Enabled)
+        {
+            // Disabled is a deliberate configuration, not an idle enabled lifecycle, so it reads differently.
+            return Task.FromResult(HealthCheckResult.Healthy(
+                "Access telemetry lifecycle is disabled by configuration.",
+                data: Details(
+                    "AccessTelemetryLifecycle:Enabled is false, absent or not a Boolean, so no lifecycle service runs.",
+                    "Lifecycle writes are off; business readiness is unaffected.",
+                    "None while the lifecycle is intentionally disabled; enable it only with a qualified component profile.")));
+        }
+
         AccessTelemetryLifecycleStatusSnapshot current = status.Current;
         AccessTelemetryHealthState effectiveHealth = current.Health;
-        if (options.Enabled && effectiveHealth == AccessTelemetryHealthState.Healthy &&
+        if (effectiveHealth == AccessTelemetryHealthState.Healthy &&
             (current.LastAcceptedOrRejectedUtc is null || timeProvider.GetUtcNow() - current.LastAcceptedOrRejectedUtc >= TimeSpan.FromMinutes(15)))
         {
             effectiveHealth = AccessTelemetryHealthState.NoData;
         }
 
-        IReadOnlyDictionary<string, object> details = new Dictionary<string, object>(StringComparer.Ordinal)
-        {
-            ["cause"] = Cause(current.Reason),
-            ["impact"] = "Lifecycle writes may be unavailable; business readiness is unaffected.",
-            ["owner"] = "Hexalith Platform Operations",
-            ["nextAction"] = NextAction(current.Reason),
-        };
+        IReadOnlyDictionary<string, object> details = Details(
+            Cause(current.Reason),
+            "Lifecycle writes may be unavailable; business readiness is unaffected.",
+            NextAction(current.Reason));
         HealthCheckResult result = effectiveHealth switch
         {
             AccessTelemetryHealthState.Unhealthy => HealthCheckResult.Unhealthy("Access telemetry lifecycle is fail-closed.", data: details),
@@ -46,6 +54,15 @@ internal sealed class AccessTelemetryLifecycleHealthCheck(
         };
         return Task.FromResult(result);
     }
+
+    private static Dictionary<string, object> Details(string cause, string impact, string nextAction)
+        => new(StringComparer.Ordinal)
+        {
+            ["cause"] = cause,
+            ["impact"] = impact,
+            ["owner"] = "Hexalith Platform Operations",
+            ["nextAction"] = nextAction,
+        };
 
     private static string Cause(AccessTelemetryReason reason)
         => reason switch

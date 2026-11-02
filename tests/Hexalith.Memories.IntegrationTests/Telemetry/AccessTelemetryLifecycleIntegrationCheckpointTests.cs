@@ -594,7 +594,8 @@ public sealed class AccessTelemetryLifecycleIntegrationCheckpointTests
         overlay.ShouldContain("ACCESS_TELEMETRY_ENABLED=false");
         overlay.ShouldContain("ACCESS_TELEMETRY_COMPONENT_PROFILE_HASH=unproven");
         patch.ShouldContain("required-dapr-configuration: access-telemetry-config/retentionSeconds");
-        patch.ShouldContain("disabled-pending-story-27-3");
+        patch.ShouldContain("disabled-pending-dw-730");
+        patch.ShouldNotContain("disabled-pending-story-27-3");
         actorState.ShouldContain("pending-story-27-3");
     }
 
