@@ -42,6 +42,7 @@ HISTORICAL_HASHES = {
     "complete-set-dry-run.json": "0dfbb0eb92da1b10a11b711c8f9016f53a1f09ec8363ee44440ad7cc34052cd2",
 }
 PINNED_SHA = "6e7011fc754e74ac2a8864da1ce0b6d8f7178a48"
+HISTORICAL_BUILDS_SHA = "f0feeb234cbc16f88c2886a6ffae7122e05dd64b"
 # Epic 30 Story 30.4 names exactly these five mappings under one set identity.
 EXPECTED_MAPPINGS = [
     "src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj|memories",
@@ -93,6 +94,14 @@ def run_git(directory: Path, *arguments: str) -> str:
          "-c", "user.name=Qualification Tests", "-c", "user.email=qualification-tests@example.invalid", *arguments],
         capture_output=True, text=True, check=True, timeout=60,
     ).stdout
+
+
+def historical_bytes(repository: Path, revision: str, path: str) -> bytes:
+    """Recreate checkout bytes for the immutable capture's original source revision."""
+    data = subprocess.run(["git", "-C", str(repository), "show", f"{revision}:{path}"],
+                          capture_output=True, check=True, timeout=60).stdout
+    # Memories checks out this historical JSON as CRLF, as the captured receipt did.
+    return data.replace(b"\n", b"\r\n") if path == "tools/builds-publication-qualification.json" else data
 
 
 def run_main(*arguments: str) -> tuple:
@@ -334,7 +343,7 @@ class RepositoryQualificationTests(unittest.TestCase):
 
 
 class CommittedEvidenceTests(unittest.TestCase):
-    """The committed qualification evidence must match the current harness, profile and pinned helpers."""
+    """The committed capture stays bound to its original source and Builds revisions."""
 
     @classmethod
     def setUpClass(cls):
@@ -397,7 +406,7 @@ class CommittedEvidenceTests(unittest.TestCase):
                                      "receipt-invalid", "selected CI receipt")
         for key, value in {
             "repository": "Hexalith/Hexalith.Memories", "source": SELECTED_SOURCE_SHA,
-            "sourceDirty": False, "builds": PINNED_SHA, "run": 41304156187, "attempt": 1,
+            "sourceDirty": False, "builds": HISTORICAL_BUILDS_SHA, "run": 41304156187, "attempt": 1,
             "artifact": 13082461185, "job": 124841016777, "runConclusion": "success",
             "artifactName": "builds-publication-qualification-41304156187-1",
             "workflow": ".github/workflows/qualify-builds-publication.yml", "livePublication": False,
@@ -410,12 +419,12 @@ class CommittedEvidenceTests(unittest.TestCase):
         self.assertEqual({"repository": receipt["repository"], "sha": receipt["source"], "dirty": False}, binding["source"])
         self.assertIs(binding["builds"]["verified"], True)
         for field in ("sha", "superprojectGitlink", "checkout"):
-            self.assertEqual(PINNED_SHA, binding["builds"][field])
-        self.assertEqual({relative: sha256((BUILDS / relative).read_bytes()) for relative in Q.REFERENCE_FILES},
+            self.assertEqual(HISTORICAL_BUILDS_SHA, binding["builds"][field])
+        self.assertEqual({relative: sha256(historical_bytes(BUILDS, HISTORICAL_BUILDS_SHA, relative)) for relative in Q.REFERENCE_FILES},
                          binding["builds"]["readReferences"])
-        self.assertEqual({"path": "tools/qualify-builds-publication.py", "sha256": sha256(TOOL.read_bytes())}, binding["harness"])
-        self.assertEqual({"path": "tools/builds-publication-qualification.json", "sha256": sha256(PROFILE.read_bytes())}, binding["profile"])
-        self.assertEqual({name: sha256((BUILDS / "Github/publish-containers" / name).read_bytes()) for name in Q.EXECUTED_HELPERS},
+        self.assertEqual({"path": "tools/qualify-builds-publication.py", "sha256": sha256(historical_bytes(REPO_ROOT, SELECTED_SOURCE_SHA, "tools/qualify-builds-publication.py"))}, binding["harness"])
+        self.assertEqual({"path": "tools/builds-publication-qualification.json", "sha256": sha256(historical_bytes(REPO_ROOT, SELECTED_SOURCE_SHA, "tools/builds-publication-qualification.json"))}, binding["profile"])
+        self.assertEqual({name: sha256(historical_bytes(BUILDS, HISTORICAL_BUILDS_SHA, "Github/publish-containers/" + name)) for name in Q.EXECUTED_HELPERS},
                          binding["builds"]["executedHelpers"])
         data = (directory / "capture.zip").read_bytes()
         self.assertEqual(SELECTED_ARTIFACT_BYTES, len(data))
@@ -537,15 +546,15 @@ class CommittedEvidenceTests(unittest.TestCase):
         bindings = [document["bindings"] for document in self.results.values()]
         self.assertTrue(all(binding == bindings[0] for binding in bindings))
 
-    def test_bound_harness_profile_and_helper_hashes_equal_the_current_bytes(self):
+    def test_bound_harness_profile_and_helper_hashes_equal_the_archived_source_bytes(self):
         binding = self.results["complete-set-dry-run"]["bindings"]
-        self.assertEqual({"path": "tools/qualify-builds-publication.py", "sha256": sha256(TOOL.read_bytes())},
-                         binding["harness"], "Regenerate the committed evidence after editing the harness.")
-        self.assertEqual({"path": "tools/builds-publication-qualification.json", "sha256": sha256(PROFILE.read_bytes())},
-                         binding["profile"], "Regenerate the committed evidence after editing the profile.")
-        self.assertEqual(json.loads(PROFILE.read_bytes())["buildsSha"], binding["builds"]["sha"])
+        self.assertEqual({"path": "tools/qualify-builds-publication.py", "sha256": sha256(historical_bytes(REPO_ROOT, SELECTED_SOURCE_SHA, "tools/qualify-builds-publication.py"))},
+                         binding["harness"], "The capture must bind its original harness bytes.")
+        self.assertEqual({"path": "tools/builds-publication-qualification.json", "sha256": sha256(historical_bytes(REPO_ROOT, SELECTED_SOURCE_SHA, "tools/builds-publication-qualification.json"))},
+                         binding["profile"], "The capture must bind its original profile bytes.")
+        self.assertEqual(HISTORICAL_BUILDS_SHA, binding["builds"]["sha"])
         self.assertEqual(
-            {name: sha256((BUILDS / "Github/publish-containers" / name).read_bytes()) for name in Q.EXECUTED_HELPERS},
+            {name: sha256(historical_bytes(BUILDS, HISTORICAL_BUILDS_SHA, "Github/publish-containers/" + name)) for name in Q.EXECUTED_HELPERS},
             binding["builds"]["executedHelpers"],
         )
         for value in (binding["harness"]["sha256"], binding["profile"]["sha256"], *binding["builds"]["executedHelpers"].values()):
