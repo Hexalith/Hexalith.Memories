@@ -168,11 +168,11 @@ jobs:
         run: python3 tools/check-story-review-readiness.py --branch-name "$BRANCH_NAME" --commit-message-file "$COMMIT_MESSAGE_FILE" --changed-files-file "$CHANGED_FILES_FILE"
 
   shared-ci:
-    uses: Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@f0feeb234cbc16f88c2886a6ffae7122e05dd64b
+    uses: Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@6e7011fc754e74ac2a8864da1ce0b6d8f7178a48
     with:
       solution: Hexalith.Memories.slnx
       dotnet-global-json: global.json
-      builds-execution-sha: f0feeb234cbc16f88c2886a6ffae7122e05dd64b
+      builds-execution-sha: 6e7011fc754e74ac2a8864da1ce0b6d8f7178a48
       test-platform: microsoft-testing-platform
       # The shared shard has no integration-exclusion input. Keep the full
       # Docker-free inventory and its canonical Coverlet reports in the local lane.

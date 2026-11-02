@@ -15,7 +15,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-SHA = "f0feeb234cbc16f88c2886a6ffae7122e05dd64b"
+SHA = "6e7011fc754e74ac2a8864da1ce0b6d8f7178a48"
 CALLER = f"Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@{SHA}"
 CONTRACTS = "tests/Hexalith.Memories.Contracts.Tests/Hexalith.Memories.Contracts.Tests.csproj"
 AUDIT = "-p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904"

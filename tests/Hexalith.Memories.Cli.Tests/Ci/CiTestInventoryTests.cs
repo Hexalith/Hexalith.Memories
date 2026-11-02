@@ -789,7 +789,7 @@ public sealed partial class CiTestInventoryTests
 
         string[] sharedJob = GetWorkflowJobLines(workflowLines, "shared-ci");
         GetWorkflowJobScalar(sharedJob, "uses").ShouldBe(
-            "Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@f0feeb234cbc16f88c2886a6ffae7122e05dd64b");
+            "Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@6e7011fc754e74ac2a8864da1ce0b6d8f7178a48");
         sharedJob.ShouldContain("      solution: Hexalith.Memories.slnx");
         string.Join('\n', sharedJob).ShouldNotContain("dotnet restore");
         restoreInvocations.Count.ShouldBe(
@@ -1064,10 +1064,10 @@ public sealed partial class CiTestInventoryTests
     [InlineData("actions/upload-artifact@v7", true)]
     [InlineData("actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9", true)]
     [InlineData("Hexalith/Hexalith.Builds/Github/initialize-build@main", true)]
-    [InlineData("Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@f0feeb234cbc16f88c2886a6ffae7122e05dd64b", true)]
+    [InlineData("Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@6e7011fc754e74ac2a8864da1ce0b6d8f7178a48", true)]
     [InlineData("Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@f0feeb234cbc16f88c2886a6ffae7122e05dd640", false)]
-    [InlineData("Hexalith/Hexalith.Builds/.github/workflows/release.yml@f0feeb234cbc16f88c2886a6ffae7122e05dd64b", false)]
-    [InlineData("Hexalith/Hexalith.Builds/Github/initialize-build@f0feeb234cbc16f88c2886a6ffae7122e05dd64b", false)]
+    [InlineData("Hexalith/Hexalith.Builds/.github/workflows/release.yml@6e7011fc754e74ac2a8864da1ce0b6d8f7178a48", false)]
+    [InlineData("Hexalith/Hexalith.Builds/Github/initialize-build@6e7011fc754e74ac2a8864da1ce0b6d8f7178a48", false)]
     [InlineData("actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd8", false)]
     [InlineData("actions/upload-artifact@0000000000000000000000000000000000000000", false)]
     [InlineData("actions/download-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9", false)]
@@ -1091,7 +1091,7 @@ public sealed partial class CiTestInventoryTests
         }
 
         // Story 30.1 authorizes this workflow identity, not arbitrary Builds actions or SHAs.
-        if (reference == "Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@f0feeb234cbc16f88c2886a6ffae7122e05dd64b")
+        if (reference == "Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@6e7011fc754e74ac2a8864da1ce0b6d8f7178a48")
         {
             return true;
         }

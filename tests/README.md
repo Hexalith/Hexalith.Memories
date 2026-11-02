@@ -191,7 +191,7 @@ combinations, and execute the source-catalog command against missing, empty, fai
 reports. `test-unit-contract` runs this suite as a blocking step.
 
 `shared-ci / build-and-test` delegates the Release build and only `Contracts.Tests` to Builds
-`domain-ci.yml@f0feeb234cbc16f88c2886a6ffae7122e05dd64b`, explicitly using
+`domain-ci.yml@6e7011fc754e74ac2a8864da1ce0b6d8f7178a48`, explicitly using
 `microsoft-testing-platform`. Shared results use `blocking-test-results` (seven days).
 The local `source-debug` job builds with `UseHexalithProjectReferences=true` and requires at least
 three source-selected owner catalog tests with no failures, errors, skips or not-run tests; its
