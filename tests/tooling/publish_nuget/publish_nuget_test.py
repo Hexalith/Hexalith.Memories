@@ -355,7 +355,7 @@ def run_issue_helper(
 
 
 class PublishNuGetTests(unittest.TestCase):
-    def test_occupied_or_ambiguous_destination_refuses_before_any_push(self) -> None:
+    def test_publish_does_not_reprobe_destinations_after_prepare(self) -> None:
         for status in ("version-collision", "destination-probe-failure"):
             with self.subTest(status=status), tempfile.TemporaryDirectory() as temp:
                 root = Path(temp)
@@ -368,9 +368,8 @@ class PublishNuGetTests(unittest.TestCase):
                 result, log_path, _ = run_publish(
                     package_directory, fake_bin, {}, destination_status=status
                 )
-                self.assertNotEqual(0, result.returncode)
-                self.assertIn(status, result.stdout + result.stderr)
-                self.assertFalse(log_path.exists(), "destination refusal must precede every dotnet push")
+                self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+                self.assertEqual(10, len(log_path.read_text(encoding="utf-8").splitlines()))
 
     def test_all_packages_publish_successfully_without_failure_summary(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -538,7 +537,9 @@ class PublishNuGetTests(unittest.TestCase):
             body = calls[1]["body"]
             self.assertIn("https://github.com/Hexalith/Hexalith.Memories/actions/runs/123456", body)
             self.assertIn("docs/dev/release-runbook.md", body)
-            self.assertIn("Recover Partial Release", body)
+            self.assertIn("current ten-package releases, manually reconcile NuGet publication", body)
+            self.assertIn("Recover Partial Release** refuses the current release set", body)
+            self.assertIn("Automated recovery is reserved for historical nine-package tagged releases", body)
             self.assertNotIn("Rerun the Release workflow", body)
 
     def test_issue_helper_comments_on_existing_partial_publish_issue(self) -> None:

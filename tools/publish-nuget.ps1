@@ -43,7 +43,7 @@ function Get-PackageFiles {
 }
 
 function New-RecoveryText {
-    return "See docs/dev/release-runbook.md. If the exact tag or any package exists, do not republish or delete NuGet packages; dispatch Recover Partial Release from main after repairing the failed dependency."
+    return "See docs/dev/release-runbook.md. If the exact tag or any package exists, do not republish or delete NuGet packages; manually reconcile NuGet publication before container recovery."
 }
 
 function Write-PublishSummary {
@@ -88,7 +88,7 @@ function Write-PublishSummary {
     Write-Host (New-RecoveryText)
 
     if ($env:GITHUB_ACTIONS -eq "true" -and $Status -eq "partial-publish") {
-        $message = "Version $Version partially published. See publish-summary.json and docs/dev/release-runbook.md, then dispatch Recover Partial Release."
+        $message = "Version $Version partially published. See publish-summary.json and docs/dev/release-runbook.md for manual NuGet reconciliation."
         $escapedMessage = $message.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
         Write-Host "::error title=PARTIAL PUBLISH - manual reconciliation required::$escapedMessage"
     }
@@ -103,7 +103,7 @@ function Write-PublishSummary {
             "- Pushed: $(@($Pushed).Count)",
             "- Failed: $(@($Failed).Count)",
             "- Not attempted: $(@($NotAttempted).Count)",
-            "- Recovery: see docs/dev/release-runbook.md; dispatch Recover Partial Release from main for the existing tagged version.",
+            "- Recovery: see docs/dev/release-runbook.md for manual NuGet reconciliation of the existing tagged version.",
             ""
         )
         Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ($markdown -join [Environment]::NewLine)
@@ -156,11 +156,6 @@ try {
     }
 
     $packages = Get-PackageFiles
-    $destinationOutput = @(& python3 ./tools/check-release-destinations.py --version $Version 2>&1)
-    if ($LASTEXITCODE -ne 0) {
-        $reason = "Versioned release destination absence was not proved; refusing to publish. $(Protect-LogText ($destinationOutput -join [Environment]::NewLine))"
-        Complete-PrePushFailure -StartedAt $startedAt -Reason $reason
-    }
     $pushed = @()
     $failed = @()
     $notAttempted = @()

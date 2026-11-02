@@ -207,6 +207,9 @@ class ReleaseOrchestrationTests(unittest.TestCase):
             self.assertEqual("partial-publish", summary["status"])
             self.assertEqual(["NuGet packages", "container images"], [family["name"] for family in summary["families"]])
             self.assertTrue(any("NuGet packages" in failure["package"] for failure in summary["failed"]))
+            self.assertIn("current ten-package releases, manually reconcile NuGet publication", summary["recovery"])
+            self.assertIn("reserved for historical nine-package tagged releases", summary["recovery"])
+            self.assertNotIn("dispatch Recover Partial Release from main", summary["recovery"])
 
     def test_publish_release_requires_both_families_for_success(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

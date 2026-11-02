@@ -645,12 +645,18 @@ every approved package with the same version, and publishes packages to nuget.or
 not commit back to `main`; `main` remains protected and all repository changes still go through pull
 requests.
 
-Required release variables and secrets:
+Required release variables:
 
 | Name | Purpose |
 | --- | --- |
 | `HEXALITH_RELEASE_PUBLISH_ENABLED` | Exact lowercase `true` authorizes publication after dispatch and approval |
 | `NUGET_USER` | Individual account that created the NuGet Trusted Publishing policy |
+| `HEXALITH_ZOT_REGISTRY` | Optional registry host override; defaults to `registry.hexalith.com` |
+
+Required release secrets:
+
+| Name | Purpose |
+| --- | --- |
 | `HEXALITH_ZOT_USERNAME`, `HEXALITH_ZOT_API_KEY` | Registry credentials for the five image repositories |
 
 GitHub provides `GITHUB_TOKEN` automatically. Do not store NuGet API keys in `NuGet.config`, `.npmrc`,
@@ -662,8 +668,13 @@ Before changing release automation, run:
 ./tools/validate-release-packages.ps1
 ./tools/test-release.ps1
 ./tools/pack-release.ps1 -Version 0.0.1-ci -OutputDirectory artifacts/packages/test -PackageOnly
+python3 -m unittest discover -s tests/tooling/release_dispatch -p '*_test.py'
+python3 -m unittest discover -s tests/tooling/release_preflight -p '*_test.py'
 npm ci
-npx semantic-release --dry-run --no-ci
+$env:HEXALITH_RELEASE_CLASSIFICATION_ONLY = 'true'
+try { npm run release:dry-run } finally { Remove-Item Env:HEXALITH_RELEASE_CLASSIFICATION_ONLY }
 ```
+
+The dry run needs an authorized `GH_TOKEN` or `GITHUB_TOKEN`, but its classification mode does not need the pinned Builds checkout and does not run prepare or publish hooks.
 
 Do not run a real `dotnet nuget push` locally. Publishing is CI-only.

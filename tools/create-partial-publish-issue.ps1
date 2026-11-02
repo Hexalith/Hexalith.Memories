@@ -279,7 +279,7 @@ $bodyParts = @(
     "",
     "### Recovery",
     "",
-    "See `docs/dev/release-runbook.md`. Do not delete or republish NuGet packages. If the exact release tag exists and is reachable from `main`, repair Zot push authorization for both repositories, then dispatch **Recover Partial Release** from `main` with this bare version. The trusted workflow reconciles both immutable images, verifies all nine NuGet packages, creates or completes the GitHub Release with ten assets, and closes this incident only after the full release unit is verified."
+    "See `docs/dev/release-runbook.md`. Do not delete or republish NuGet packages. For current ten-package releases, manually reconcile NuGet publication and remaining artifacts with the release owner; **Recover Partial Release** refuses the current release set. Automated recovery is reserved for historical nine-package tagged releases. For those tags, repair the failed dependency and dispatch **Recover Partial Release** from `main` with the bare version only after confirming the exact tag is reachable from `main`."
 )
 $body = $bodyParts -join [Environment]::NewLine
 $comment = "Rerun detected for the same partial publish version." + [Environment]::NewLine + [Environment]::NewLine + $body

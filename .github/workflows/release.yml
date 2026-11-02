@@ -6,7 +6,7 @@ on:
 # cancel-in-progress: false is deliberate. A release run that is interrupted mid-publish
 # would leave NuGet in a partial-publish state. The trusted Recover Partial Release workflow
 # can reconcile a tagged partial release, but an in-flight release must still run to completion
-# rather than being cancelled by the next push to main.
+# rather than being cancelled by a later dispatch.
 concurrency:
   group: release
   cancel-in-progress: false
@@ -32,7 +32,6 @@ permissions:
 
 jobs:
   release-source:
-    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -65,7 +64,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          gh api "repos/${GITHUB_REPOSITORY}/environments/production" --jq '.protection_rules | any(.[]; .type == "required_reviewers" and (.reviewers | length > 0))' | grep -qx true
+          gh api "repos/${GITHUB_REPOSITORY}/environments/production" --jq '(.protection_rules | any(.[]; .type == "required_reviewers" and (.reviewers | length > 0))) and .can_admins_bypass == false and .deployment_branch_policy != null' | grep -qx true
 
   release:
     needs: release-source
@@ -137,7 +136,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          gh api "repos/${GITHUB_REPOSITORY}/environments/production" --jq '.protection_rules | any(.[]; .type == "required_reviewers" and (.reviewers | length > 0))' | grep -qx true
+          gh api "repos/${GITHUB_REPOSITORY}/environments/production" --jq '(.protection_rules | any(.[]; .type == "required_reviewers" and (.reviewers | length > 0))) and .can_admins_bypass == false and .deployment_branch_policy != null' | grep -qx true
 
       # Mint the one-hour key only after source and destination preflight.
       - name: Exchange GitHub OIDC token for a temporary NuGet key
@@ -166,8 +165,8 @@ jobs:
         run: |
           after_fingerprint="$(git tag --points-at HEAD --list 'v*' | sort | sha256sum | sed 's/ .*//')"
           if [[ "$after_fingerprint" == "$BEFORE_FINGERPRINT" ]]; then
-            echo 'published=false' >> "$GITHUB_OUTPUT"
-            exit 0
+            echo '::error::Release version was computed but semantic-release created no tag.' >&2
+            exit 1
           fi
 
           test -f artifacts/deployment/hexalith-memories-production.yaml

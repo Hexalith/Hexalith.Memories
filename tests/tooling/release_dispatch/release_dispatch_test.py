@@ -36,6 +36,7 @@ class ReleaseDispatchTests(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
         self.assertIn("workflow_dispatch:", workflow)
         self.assertNotIn("  push:\n", workflow)
+        self.assertNotIn("    if: github.ref == 'refs/heads/main'", workflow)
         self.assertLess(workflow.index("  release-source:"), workflow.index("  release:\n"))
         self.assertLess(workflow.index("Require production environment approval rule"), workflow.index("  release:\n"))
         self.assertIn("needs: release-source", workflow)
@@ -50,6 +51,20 @@ class ReleaseDispatchTests(unittest.TestCase):
         self.assertIn("publication-flag: ${{ vars.HEXALITH_RELEASE_PUBLISH_ENABLED }}", workflow)
         self.assertIn("NuGet/login@v1", workflow)
         self.assertNotIn("./tools/test-release.ps1", workflow)
+        self.assertIn("Release version was computed but semantic-release created no tag.", workflow)
+
+    def test_release_pin_is_approved_and_profile_tracks_the_gitlink(self):
+        workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+        approved = "81c88b34d09d34260b92d7f0928dbbc1c7446baa"
+        self.assertEqual(approved, self.source.APPROVED_BUILDS_SHA)
+        self.assertEqual(approved, self.destination.APPROVED_BUILDS_SHA)
+        self.assertEqual(3, workflow.count(approved))
+        profile = json.loads((ROOT / "tools/builds-publication-qualification.json").read_text(encoding="utf-8"))
+        gitlink = subprocess.run(
+            ["git", "rev-parse", "HEAD:references/Hexalith.Builds"], cwd=ROOT,
+            check=True, capture_output=True, text=True,
+        ).stdout.strip()
+        self.assertEqual(gitlink, profile["buildsSha"])
 
     def test_non_main_ref_is_rejected_without_loading_shared_helper(self):
         sha = "a" * 40
@@ -119,17 +134,14 @@ class ReleaseDispatchTests(unittest.TestCase):
         release_config = json.loads((ROOT / ".releaserc.json").read_text(encoding="utf-8"))
         prepare_command = release_config["plugins"][2][1]["prepareCmd"]
         self.assertIn("check-release-destinations.py", preflight)
-        self.assertIn("check-release-destinations.py", publisher)
-        self.assertLess(publisher.index("check-release-destinations.py"), publisher.index("dotnet nuget push"))
+        self.assertNotIn("check-release-destinations.py", publisher)
         self.assertLess(prepare_command.index("pack-release.ps1"), prepare_command.index("check-release-source.py"))
+        self.assertLess(prepare_command.index("check-release-source.py"), prepare_command.index("check-release-destinations.py"))
+        self.assertIn("--version ${nextRelease.version}", prepare_command)
         self.assertNotIn("check-release-source.py", release_config["plugins"][2][1]["publishCmd"])
 
-    def test_late_production_reviewer_check_fails_when_rule_is_absent(self):
+    def test_both_production_protection_checks_require_reviewers_no_admin_bypass_and_branch_policy(self):
         workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
-        step = workflow.split("      - name: Recheck production approval rule before publication", 1)[1]
-        command = re.search(r"        run: \|\n((?:          .*\n)+)", step)
-        self.assertIsNotNone(command)
-        script = "\n".join(line[10:] for line in command.group(1).splitlines())
         with tempfile.TemporaryDirectory() as temporary:
             fake_gh = Path(temporary) / "gh"
             fake_gh.write_text(
@@ -144,18 +156,34 @@ class ReleaseDispatchTests(unittest.TestCase):
                 encoding="utf-8",
             )
             fake_gh.chmod(0o755)
-            for reviewers, expected_success in (([], False), ([{"type": "User", "id": 1}], True)):
-                with self.subTest(reviewers=reviewers):
-                    response = {"protection_rules": [{"type": "required_reviewers", "reviewers": reviewers}]}
-                    environment = dict(os.environ)
-                    environment.update(
-                        PATH=f"{temporary}:{os.environ['PATH']}",
-                        GITHUB_REPOSITORY="Hexalith/Hexalith.Memories",
-                        GH_TOKEN="fixture",
-                        GH_RESPONSE=json.dumps(response),
-                    )
-                    result = subprocess.run(["bash", "-c", script], env=environment, capture_output=True, text=True)
-                    self.assertEqual(expected_success, result.returncode == 0, result.stderr)
+            reviewer = {"type": "User", "id": 1}
+            scenarios = (
+                ({"protection_rules": []}, False),
+                ({"protection_rules": [{"type": "wait_timer", "wait_timer": 5}]}, False),
+                ({"protection_rules": [{"type": "required_reviewers", "reviewers": []}]}, False),
+                ({"protection_rules": [{"type": "required_reviewers", "reviewers": [reviewer]}],
+                  "can_admins_bypass": True, "deployment_branch_policy": {"protected_branches": True}}, False),
+                ({"protection_rules": [{"type": "required_reviewers", "reviewers": [reviewer]}],
+                  "can_admins_bypass": False, "deployment_branch_policy": None}, False),
+                ({"protection_rules": [{"type": "required_reviewers", "reviewers": [reviewer]}],
+                  "can_admins_bypass": False, "deployment_branch_policy": {"protected_branches": True}}, True),
+            )
+            for step_name in ("Require production environment approval rule", "Recheck production approval rule before publication"):
+                step = workflow.split("      - name: " + step_name, 1)[1]
+                command = re.search(r"        run: \|\n((?:          .*\n)+)", step)
+                self.assertIsNotNone(command)
+                script = "\n".join(line[10:] for line in command.group(1).splitlines())
+                for response, expected_success in scenarios:
+                    with self.subTest(step=step_name, response=response):
+                        environment = dict(os.environ)
+                        environment.update(
+                            PATH=f"{temporary}:{os.environ['PATH']}",
+                            GITHUB_REPOSITORY="Hexalith/Hexalith.Memories",
+                            GH_TOKEN="fixture",
+                            GH_RESPONSE=json.dumps(response),
+                        )
+                        result = subprocess.run(["bash", "-c", script], env=environment, capture_output=True, text=True)
+                        self.assertEqual(expected_success, result.returncode == 0, result.stderr)
 
     def test_prepare_hook_refuses_failed_source_proof_before_tag_phase(self):
         release_config = json.loads((ROOT / ".releaserc.json").read_text(encoding="utf-8"))
@@ -174,6 +202,41 @@ class ReleaseDispatchTests(unittest.TestCase):
             result = subprocess.run(["bash", "-c", command], env=environment, capture_output=True, text=True)
 
             self.assertEqual(42, result.returncode)
+
+    def test_prepare_hook_refuses_failed_destination_proof_before_tag_phase(self):
+        release_config = json.loads((ROOT / ".releaserc.json").read_text(encoding="utf-8"))
+        command = release_config["plugins"][2][1]["prepareCmd"].replace("${nextRelease.version}", "1.2.3")
+        with tempfile.TemporaryDirectory() as temporary:
+            fake_bin = Path(temporary)
+            for name, content in (
+                ("pwsh", "#!/usr/bin/env bash\nexit 0\n"),
+                ("python3", "#!/usr/bin/env bash\n[[ \"$1\" == *check-release-destinations.py ]] && exit 43\nexit 0\n"),
+            ):
+                path = fake_bin / name
+                path.write_text(content, encoding="utf-8")
+                path.chmod(0o755)
+            environment = dict(os.environ)
+            environment["PATH"] = f"{temporary}:{os.environ['PATH']}"
+            result = subprocess.run(["bash", "-c", command], env=environment, capture_output=True, text=True)
+            self.assertEqual(43, result.returncode)
+
+    def test_destination_wrapper_refuses_wrong_checkout_missing_helper_and_version(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            shared = Path(temporary) / "builds-execution/Github/publish-containers"
+            shared.mkdir(parents=True)
+            wrong_sha = SimpleNamespace(stdout="a" * 40 + "\n")
+            with mock.patch.object(self.destination.subprocess, "run", return_value=wrong_sha):
+                with self.assertRaisesRegex(ValueError, "approved Builds revision"):
+                    self.destination.load_pinned_helper(shared)
+            approved_sha = SimpleNamespace(stdout=self.destination.APPROVED_BUILDS_SHA + "\n")
+            with mock.patch.object(self.destination.subprocess, "run", return_value=approved_sha):
+                with self.assertRaisesRegex(ValueError, "helper is unavailable"):
+                    self.destination.load_pinned_helper(shared)
+            with mock.patch.object(self.destination, "load_pinned_helper") as loader, mock.patch.object(
+                sys, "argv", ["check-release-destinations.py", "--version", "invalid"]
+            ), redirect_stderr(io.StringIO()):
+                self.assertEqual(1, self.destination.main())
+                loader.assert_not_called()
 
     def test_destination_wrapper_probes_exact_publisher_set_and_refuses_uncertain_results(self):
         package_ids = [f"Package.{index}" for index in range(10)]

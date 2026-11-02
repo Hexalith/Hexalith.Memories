@@ -39,7 +39,7 @@ aggregate, required-check semantics and remote branch-protection settings.
 
 | Previous owner | Current owner and check | Evidence / retained behavior | Rollback |
 | --- | --- | --- | --- |
-| Local Release portion of `build` | `shared-ci / build-and-test`, Builds `domain-ci.yml@f0feeb234cbc16f88c2886a6ffae7122e05dd64b` | Release restore/build with warnings as errors; explicit Contracts MTP shard; `blocking-test-results`, seven days | Restore local Release steps from the baseline below |
+| Local Release portion of `build` | `shared-ci / build-and-test`, Builds `domain-ci.yml@6e7011fc754e74ac2a8864da1ce0b6d8f7178a48` | Release restore/build with warnings as errors; explicit Contracts MTP shard; `blocking-test-results`, seven days | Restore local Release steps from the baseline below |
 | Local Debug/source portion of `build` | `source-debug` | Debug source graph; at least three catalog tests, none failed/errors/skipped/not-run; `source-catalog-verification` XML uploaded even after test failure | Restore the original combined build job |
 | Required `build` status | Always-run local aggregate | Requires success from both shared and source jobs; unsuccessful/skipped/cancelled/unknown dependencies fail | Restore the original combined build job, preserving the `build` name |
 | Unit/contract and package validation | Local `test-unit-contract` | Seven Coverlet project reports, 76.5% line coverage, package topology; `test-unit-contract-results`, 14 days | Retain unchanged |
@@ -67,7 +67,7 @@ protection evidence below stays historical evidence; this story performs no remo
 
 ## Current Release Contract
 
-- An operator dispatches `.github/workflows/release.yml` from the current `main` tip. Normal pushes run CI and never publish. The unprotected source job proves the selected SHA is the live main tip with a successful completed `ci.yml` push run for that exact SHA, and checks that the production environment has a required reviewer rule. The protected `production` job runs only after that proof succeeds.
+- An operator dispatches `.github/workflows/release.yml` from the current `main` tip. Normal pushes run CI and never publish. The source job proves the selected SHA is the live main tip with a successful completed `ci.yml` push run for that exact SHA, and checks that the production environment has required reviewers, disabled admin bypass and a branch deployment policy. The protected `production` job runs only after that proof succeeds; it reads back protection again before publication.
 - The production job calls pinned `prepare-domain-release@81c88b34d09d34260b92d7f0928dbbc1c7446baa` with the identical `builds-execution-sha` and `expected-package-count: 10`. It restores and builds, then repeats the exact-source CI proof. The caller validates the package manifest, checks local/remote tag and every versioned package/image destination, then reproves source immediately before OIDC login and `npx semantic-release`. Application tests are owned by exact-source CI and are not repeated in release. Semantic-release then drives the prepare, publish, and post-publish
   phases through its plugin chain —
   `pack-release.ps1` and
@@ -89,7 +89,7 @@ protection evidence below stays historical evidence; this story performs no remo
   records fail preflight. A peeled-only exact remote ref also counts as a collision.
   Invalid `RepositoryPath` values name the required checkout directory. A failed local
   ref probe blocks publication and identifies the ref to inspect; failures retain the
-  original exception, inner causes and PowerShell script stack for diagnosis. With `-CheckDestinations`, it uses the pinned Builds destination probe to reject any occupied or ambiguous NuGet package or image tag before OIDC login. The semantic-release verify hook repeats that probe before prepare; `publish-nuget.ps1` repeats it before the first package push.
+  original exception, inner causes and PowerShell script stack for diagnosis. With `-CheckDestinations`, it uses the pinned Builds destination probe to reject any occupied or ambiguous NuGet package or image tag before OIDC login. The semantic-release verify hook repeats that probe; the prepare hook probes again after packing and before tag creation.
 - Semantic-release runs the destination preflight and `tools/verify-container-registry.ps1` as its `verifyReleaseCmd`, before
   prepare creates release artifacts or a tag can be published. The verifier first requires the
   unauthenticated `/v2/` response to advertise a Basic `WWW-Authenticate` realm, then opens and
@@ -98,7 +98,7 @@ protection evidence below stays historical evidence; this story performs no remo
   The challenge check proves challenge-driven clients can select the authfile credential; the
   upload probes separately prove write authorization. Every opened probe session must return HTTP
   204 when cancelled or the release fails closed.
-- `tools/pack-release.ps1` is the `prepareCmd` for `@semantic-release/exec`; its final source proof runs before semantic-release creates the tag.
+- `tools/pack-release.ps1` starts the `prepareCmd` for `@semantic-release/exec`; the source and destination proofs at the end of that hook run before semantic-release creates the tag.
 - `tools/publish-release.ps1` is the `publishCmd` for `@semantic-release/exec`. It always attempts
   both NuGet and container publication and writes one aggregate release summary.
 - `tools/pack-release.ps1` prebuilds the Server, MCP, access-telemetry lifecycle, clock, and DomainService OCI archives and the versioned production
@@ -141,7 +141,7 @@ semantic-release installed its unused default `@semantic-release/npm` plugin and
 bundled npm CLI. The web E2E workspace and production .NET artifacts use separate dependency graphs
 and were not affected.
 
-`semantic-release` is intentionally pinned to `25.0.8`. The offline configuration verifier loads
+`semantic-release` is intentionally pinned to `25.0.9`. The offline configuration verifier loads
 that installed version's configuration and constructs its plugin lifecycle without invoking any
 lifecycle hook, so the pin is a reviewed compatibility boundary rather than a general update
 policy. The normal verifier command also runs fail-closed mutation self-tests. The explicit
@@ -169,9 +169,9 @@ contract tests green in the same pull request.
 
 ### Dispatch and Approval
 
-Wait for successful push CI on the exact current `main` SHA, then dispatch **Release** from `main`. Read back `gh api repos/Hexalith/Hexalith.Memories/environments/production` and require a nonempty `required_reviewers` protection rule. A workflow `environment: production` declaration alone is insufficient. Set `HEXALITH_RELEASE_PUBLISH_ENABLED` to the exact lowercase value `true` at repository scope, and set `NUGET_USER` to the individual account that created the NuGet Trusted Publishing policy. Any other publication-flag value leaves the release frozen before OIDC and semantic-release.
+Wait for successful push CI on the exact current `main` SHA, then dispatch **Release** from `main`. Read back `gh api repos/Hexalith/Hexalith.Memories/environments/production` and require a nonempty `required_reviewers` rule, `can_admins_bypass: false` and a non-null `deployment_branch_policy` restricting deployments to `main` or protected branches. A workflow `environment: production` declaration alone is insufficient. The sole owner's self-review is an accepted exception until a second eligible reviewer is available. Set `HEXALITH_RELEASE_PUBLISH_ENABLED` to the exact lowercase value `true` at repository scope only for an authorized publication, and set `NUGET_USER` to the individual account that created the NuGet Trusted Publishing policy. Any other publication-flag value leaves the release frozen before OIDC and semantic-release.
 
-The 2026-11-02 API readback returned `protection_rules: []` and `deployment_branch_policy: null`. The source job therefore refuses to enter the protected release job until a repository administrator installs the production reviewer rule and a subsequent API readback confirms it. This code change does not alter GitHub environment settings.
+The 2026-11-02 API readback returned `protection_rules: []`, `can_admins_bypass: true` and `deployment_branch_policy: null`. The source job therefore refuses to enter the protected release job until a repository administrator installs the required production controls and a subsequent API readback confirms them. This code change does not alter GitHub environment settings.
 
 The source job checks main tip and exact-source push CI before entering production. Preparation repeats that check after the build; the caller checks once more immediately before login. If main advances or CI cannot be proved at any checkpoint, stop and dispatch again from the new tip after its push CI succeeds. A missing reviewer rule blocks the workflow before the protected job. Never treat a passing workflow declaration or local fixture as proof that the remote approval setting is active.
 
@@ -183,22 +183,23 @@ Before relying on the release path:
 2. Pull requests are required before merge.
 3. At least one approving review is required.
 4. Required checks are exactly `build`, `test-unit-contract`, and `integration-fast`.
-5. Direct pushes are blocked by the protected-branch policy; the only path to producing a `push`
+5. The production environment has required reviewers, disabled admin bypass and a deployment branch policy for `main` or protected branches. Read it back with the GitHub environments API. Keep `HEXALITH_RELEASE_PUBLISH_ENABLED` unset for a frozen guard test; set it to exact lowercase `true` only for authorized publication.
+6. Direct pushes are blocked by the protected-branch policy; the only path to producing a `push`
    event on `main` is merging a PR.
-6. `NUGET_USER` names the individual Trusted Publishing policy creator; `HEXALITH_ZOT_USERNAME` and
+7. `NUGET_USER` names the individual Trusted Publishing policy creator; `HEXALITH_ZOT_USERNAME` and
    `HEXALITH_ZOT_API_KEY` secrets exist. The Zot principal has repository write authorization for
    five flat repositories: `memories`, `memories-mcp`, `memories-access-telemetry`,
    `memories-access-telemetry-clock`, and `memories-domain-service`. `HEXALITH_ZOT_REGISTRY` may override the
    default `registry.hexalith.com` host.
-7. The `skopeo` CLI is on the release runner's PATH (preinstalled on the GitHub-hosted
+8. The `skopeo` CLI is on the release runner's PATH (preinstalled on the GitHub-hosted
    `ubuntu-24.04` image). Container publication fails closed with disposition `tooling-missing`
    when it is absent.
-8. The merge to `main` uses a conventional commit that semantic-release can classify.
-9. The local working tree is clean before opening the release PR — no uncommitted edits, no
+9. The merge to `main` uses a conventional commit that semantic-release can classify.
+10. The local working tree is clean before opening the release PR — no uncommitted edits, no
    in-flight tag drift, no orphan packages in `artifacts/`. The release job builds from the merged
    commit; clean local state is what makes the merged commit predictable.
-10. `./tools/validate-release-packages.ps1` passes before release.
-11. `tools/release-packages.json` still lists the intended package set.
+11. `./tools/validate-release-packages.ps1` passes before release.
+12. `tools/release-packages.json` still lists the intended package set.
 
 ## Branch Protection Evidence
 
@@ -459,7 +460,7 @@ those actions can move the published state away from the CI-recorded audit ancho
   commit.
 - If NuGet publishing partially succeeds, do not delete published packages from nuget.org. There
   are two failure shapes to keep separate:
-  - **HTTP 409 (already published).** The destination preflight refuses a version that is already occupied before any push. `dotnet nuget push --skip-duplicate` remains in the publisher for a race after the probe; it does not authorize rerunning a partially published release. Use **Recover Partial Release** for the existing tagged version.
+  - **HTTP 409 (already published).** The destination preflight refuses an occupied version before tag creation. `dotnet nuget push --skip-duplicate` remains in the publisher for a race after the probe; it does not authorize rerunning a partially published release. Record the exact package state for manual NuGet reconciliation.
   - **Non-409 failures (auth, network, server error).** `dotnet nuget push` exits non-zero.
     `publish-nuget.ps1` records the failed package, exit code, and sanitized output, then continues
     to later packages where it can still safely invoke `dotnet nuget push`. If a preflight or
@@ -495,14 +496,15 @@ those actions can move the published state away from the CI-recorded audit ancho
   regenerate the summary, then rerun the alert step. A failed alert does not reconcile a release
   or justify closing its incident.
 - Once a failed publish has created the exact version tag or published any NuGet package, do not
-  rerun normal semantic-release for that version and do not delete or republish packages. Dispatch
-  **Recover Partial Release** from `main` with the existing bare version (for example, `2.6.6`).
+  rerun normal semantic-release for that version and do not delete or republish packages. Reconcile
+  any missing NuGet package manually with the release owner; the current recovery workflow cannot push NuGet.
+  **Recover Partial Release** from `main` accepts a historical nine-package tag with the existing bare version (for example, `2.6.6`).
   The workflow accepts only a semantic-version tag reachable from `origin/main` and never creates
   or moves a tag. It stages the recovery scripts and their passing fixtures from current trusted
   `main`, then checks out and builds the exact tagged source.
-- Recovery first proves Zot write scope for the tagged image repositories. It then rebuilds and reconciles the tagged Server, MCP, access-telemetry lifecycle, clock, and, for current releases, DomainService immutable tags using the remote image **config digest**. A matching tag is recorded
+- Recovery first proves Zot write scope against the fixed current five repositories, even for historical tags. It then rebuilds and reconciles the tagged Server, MCP, access-telemetry lifecycle and clock immutable tags using the remote image **config digest**. Current ten-package, five-image recovery remains fail-closed until Story 30.5. A matching tag is recorded
   as already present, a missing tag is pushed, and any conflicting digest fails closed.
-- Recovery never invokes a NuGet push. It reads the tagged manifest unchanged: uniform historical `packageId` or current `id` entries are accepted; mixed shapes fail before package downloads. Historical tags retain their nine-package unit; current tags use ten packages. It validates nuspec id/version, hashes downloaded bytes, and creates or completes the GitHub Release with exactly those package assets plus `hexalith-memories-production.yaml`. Existing matching assets are retained; unexpected names or mismatched bytes fail closed.
+- Recovery never invokes a NuGet push. Its completion script reads the tagged manifest unchanged: uniform historical `packageId` or current `id` entries are recognized; mixed shapes fail before package downloads. The workflow currently accepts only the historical nine-package, two-or-four-image unit. It validates nuspec id/version, hashes downloaded bytes, and creates or completes the GitHub Release with exactly those package assets plus `hexalith-memories-production.yaml`. Existing matching assets are retained; unexpected names or mismatched bytes fail closed.
 - Only after the tagged image unit, package unit, versioned deployment, and all corresponding GitHub Release assets verify does recovery attach the evidence artifact to the matching partial-publish incident and close it. A failed or interrupted run remains safely rerunnable and leaves the incident open.
 - Container release members are prebuilt during prepare. On a rerun, an existing immutable image
   tag is accepted only when its remote config digest matches the prebuilt archive; a conflicting
@@ -511,9 +513,5 @@ those actions can move the published state away from the CI-recorded audit ancho
   `artifacts/release/publish-summary.json`. The release workflow uploads that aggregate summary and
   its child summaries even on failure, and creates one reconciliation issue for an aggregate
   `partial-publish` state.
-- If exact-source push CI reports an unexpected test failure, check whether the failure name
-  is on the project's tracked-baseline list before treating it as a release blocker. The script
-  filters `EmbeddingInputContentKindTests.ContentKind_PropagatesToEmbeddingApiCallsMetricTag`
-  (in `tests/Hexalith.Memories.Server.Tests/NaturalLanguage/`) per S11-FA; the resolution of S11-FA
-  is owned by Story 12.6, not by this runbook.
+- If exact-source push CI reports a test failure, investigate the failing CI lane and rerun that lane after a fix. A failed or missing exact-source `ci.yml` run blocks dispatch.
 - Never print, copy, or store the `NUGET_API_KEY` value in logs, docs, screenshots, or repo files.

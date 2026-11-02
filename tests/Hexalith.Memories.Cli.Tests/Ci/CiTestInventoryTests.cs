@@ -429,7 +429,7 @@ public sealed partial class CiTestInventoryTests
         execOptions.EnumerateObject().Select(static property => property.Name).ShouldBe(["verifyReleaseCmd", "prepareCmd", "publishCmd"]);
         execOptions.GetProperty("verifyReleaseCmd").GetString().ShouldBe("pwsh -NoLogo -NoProfile -File ./tools/release-preflight.ps1 -NextVersion ${nextRelease.version} -CheckDestinations && pwsh -NoLogo -NoProfile -File ./tools/verify-container-registry.ps1");
         execOptions.GetProperty("prepareCmd").GetString()
-            .ShouldBe("pwsh -NoLogo -NoProfile -File ./tools/pack-release.ps1 -Version ${nextRelease.version} -OutputDirectory ./artifacts/packages/release && python3 ./tools/check-release-source.py");
+            .ShouldBe("pwsh -NoLogo -NoProfile -File ./tools/pack-release.ps1 -Version ${nextRelease.version} -OutputDirectory ./artifacts/packages/release && python3 ./tools/check-release-source.py && python3 ./tools/check-release-destinations.py --version ${nextRelease.version}");
         execOptions.GetProperty("publishCmd").GetString()
             .ShouldBe("pwsh -NoLogo -NoProfile -File ./tools/publish-release.ps1 -Version ${nextRelease.version}");
 
@@ -494,7 +494,7 @@ public sealed partial class CiTestInventoryTests
     public void ReleaseWorkflow_ReleaseToolingGatesAndPreflight_RunBeforeSemanticRelease()
     {
         string repoRoot = GetRepoRoot();
-        ReleaseWorkflowStep[] steps = ParseReleaseWorkflowSteps(File.ReadAllLines(Path.Combine(repoRoot, ".github", "workflows", "release.yml")));
+        ReleaseWorkflowStep[] steps = ParseReleaseWorkflowSteps(GetWorkflowJobLines(File.ReadAllLines(Path.Combine(repoRoot, ".github", "workflows", "release.yml")), "release"));
         int prepareIndex = Array.IndexOf(steps, GetReleaseWorkflowStep(steps, "Prepare guarded release from pinned Builds"));
         int verifierIndex = Array.IndexOf(steps, GetReleaseWorkflowStep(steps, "Verify semantic-release configuration offline"));
         int preflightIndex = Array.IndexOf(steps, GetReleaseWorkflowStep(steps, "Run release preflight"));
@@ -560,7 +560,8 @@ public sealed partial class CiTestInventoryTests
         ReleaseWorkflowStep detection = GetReleaseWorkflowStep("Detect release publication");
         detection.If!.ShouldContain("success()");
         detection.Shell.ShouldBe("bash");
-        detection.RunBlock.ShouldContain("published=false");
+        detection.RunBlock.ShouldContain("Release version was computed but semantic-release created no tag.");
+        detection.RunBlock.ShouldNotContain("published=false");
         detection.RunBlock.ShouldContain("artifacts/deployment/hexalith-memories-production.yaml");
         detection.RunBlock.ShouldContain("artifacts/packages/release/*.nupkg");
         detection.RunBlock.ShouldContain("published=true");
@@ -590,10 +591,10 @@ public sealed partial class CiTestInventoryTests
         workflow.ShouldContain("-RepositoryRoot $env:GITHUB_WORKSPACE");
         workflow.ShouldContain("complete-partial-release.ps1");
         workflow.ShouldContain("GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}");
-        workflow.ShouldContain("$packageCount -notin @(9, 10)");
-        workflow.ShouldContain("@($summary.images).Count -notin @(2, 4, 5)");
-        workflow.ShouldContain("@($summary.releaseAssets).Count -ne ($packageCount + 1)");
-        workflow.ShouldContain("tagged immutable image unit (2, 4 or 5 members)");
+        workflow.ShouldContain("@($summary.packages).Count -ne 9");
+        workflow.ShouldContain("@($summary.images).Count -notin @(2, 4)");
+        workflow.ShouldContain("@($summary.releaseAssets).Count -ne 10");
+        workflow.ShouldContain("tagged immutable image unit (2 or 4 members)");
         workflow.ShouldContain("Copy-Item ./tools/release-packages.json $toolingPath");
         workflow.ShouldContain("/memories-mcp:");
         workflow.ShouldContain("unexpected image repositories");
@@ -981,10 +982,62 @@ public sealed partial class CiTestInventoryTests
     [Fact]
     public void ReleaseWorkflow_DoesNotRepeatApplicationTests()
     {
-        string workflow = File.ReadAllText(Path.Combine(GetRepoRoot(), ".github", "workflows", "release.yml"));
-        workflow.ShouldNotContain("./tools/test-release.ps1");
-        workflow.ShouldContain("Prove current main and exact push CI before approval");
-        workflow.ShouldContain("Reprove current main and exact push CI before publication");
+        string[] workflow = File.ReadAllLines(Path.Combine(GetRepoRoot(), ".github", "workflows", "release.yml"));
+        string releaseJob = string.Join('\n', GetWorkflowJobLines(workflow, "release"));
+        releaseJob.ShouldNotContain("./tools/test-release.ps1");
+        releaseJob.ShouldNotContain("dotnet test");
+        string workflowText = string.Join('\n', workflow);
+        workflowText.ShouldContain("Prove current main and exact push CI before approval");
+        workflowText.ShouldContain("Reprove current main and exact push CI before publication");
+    }
+
+    [Fact]
+    public void ReleaseWorkflow_GatedPublicationSteps_KeepExactConditionAndBlockingIds()
+    {
+        string[] lines = File.ReadAllLines(Path.Combine(GetRepoRoot(), ".github", "workflows", "release.yml"));
+        string[] triggerKeys = [.. GetImmediateMappingLines(GetBlockMappingBody(lines, "on")).Select(line => ReadMappingProperty(line).Key)];
+        triggerKeys.ShouldBe(["workflow_dispatch"]);
+        string[] sourceJob = GetWorkflowJobLines(lines, "release-source");
+        GetWorkflowJobScalar(sourceJob, "if").ShouldBeNull("a non-main dispatch must fail in source proof rather than skip green.");
+        foreach (ReleaseWorkflowStep sourceGate in ParseReleaseWorkflowSteps(sourceJob))
+        {
+            sourceGate.ContinueOnError.ShouldBeNull();
+        }
+        GetReleaseWorkflowJobScalar("needs").ShouldBe("release-source");
+        GetReleaseWorkflowJobScalar("environment").ShouldBe("production");
+
+        ReleaseWorkflowStep[] steps = ParseReleaseWorkflowSteps(GetWorkflowJobLines(lines, "release"));
+        GetReleaseWorkflowStep(steps, "Prepare guarded release from pinned Builds").Id.ShouldBe("prepare");
+        GetReleaseWorkflowStep(steps, "Run release preflight").Id.ShouldBe("release-preflight");
+        const string Gate = "steps.prepare.outputs.publish-enabled == 'true' && steps.release-preflight.outputs.next-version != ''";
+        foreach (string name in new[]
+        {
+            "Reprove current main and exact push CI before publication",
+            "Recheck production approval rule before publication",
+            "Exchange GitHub OIDC token for a temporary NuGet key",
+            "Run semantic-release",
+        })
+        {
+            ReleaseWorkflowStep step = GetReleaseWorkflowStep(steps, name);
+            step.If.ShouldBe(Gate);
+            step.ContinueOnError.ShouldBeNull();
+        }
+
+        ReleaseWorkflowStep detect = GetReleaseWorkflowStep(steps, "Detect release publication");
+        detect.Id.ShouldBe("release-publication");
+        detect.If.ShouldBe("success() && " + Gate);
+        detect.ContinueOnError.ShouldBeNull();
+        foreach (string name in new[]
+        {
+            "Prepare guarded release from pinned Builds",
+            "Verify semantic-release configuration offline",
+            "Validate package inventory before release",
+            "Run release preflight",
+            "Snapshot release tags",
+        })
+        {
+            GetReleaseWorkflowStep(steps, name).ContinueOnError.ShouldBeNull();
+        }
     }
 
     [Fact]
@@ -1812,7 +1865,7 @@ public sealed partial class CiTestInventoryTests
         string repoRoot = GetRepoRoot();
         string[] lines = File.ReadAllLines(Path.Combine(repoRoot, ".github", "workflows", "release.yml"));
 
-        ReleaseWorkflowStep[] steps = ParseReleaseWorkflowSteps(lines);
+        ReleaseWorkflowStep[] steps = ParseReleaseWorkflowSteps(GetWorkflowJobLines(lines, "release"));
         return GetReleaseWorkflowStep(steps, stepName);
     }
 
@@ -1822,11 +1875,8 @@ public sealed partial class CiTestInventoryTests
         {
             "Validate package inventory before release" => "./tools/validate-release-packages.ps1",
             "Install release tooling" => "npm ci",
-            "Audit root release tooling" => "npm audit signatures",
             "Verify semantic-release configuration offline" => "npm run verify:semantic-release-config",
             "Run semantic-release" => "npx semantic-release",
-            "Test unit and non-Docker suite" => "./tools/test-release.ps1",
-            "Run release package validator fixtures" => "python3 -m unittest discover -s tests/tooling/release_packages -p \"*_test.py\"",
             _ => null,
         };
         ReleaseWorkflowStep[] matches =
@@ -2041,6 +2091,7 @@ public sealed partial class CiTestInventoryTests
             }
 
             string name = line[StepHeaderPrefix.Length..].Trim();
+            string? id = null;
             string? shell = null;
             string? @if = null;
             string? continueOnError = null;
@@ -2135,7 +2186,11 @@ public sealed partial class CiTestInventoryTests
                 }
 
                 string trimmed = body.TrimStart();
-                if (trimmed.StartsWith("shell:", StringComparison.Ordinal))
+                if (trimmed.StartsWith("id:", StringComparison.Ordinal))
+                {
+                    id = StripQuotes(trimmed["id:".Length..].Trim());
+                }
+                else if (trimmed.StartsWith("shell:", StringComparison.Ordinal))
                 {
                     shell = trimmed["shell:".Length..].Trim();
                 }
@@ -2181,6 +2236,7 @@ public sealed partial class CiTestInventoryTests
 
             steps.Add(new ReleaseWorkflowStep(
                 Name: name,
+                Id: id,
                 Shell: shell,
                 If: @if,
                 ContinueOnError: continueOnError,
@@ -2372,6 +2428,7 @@ public sealed partial class CiTestInventoryTests
 
     private sealed record ReleaseWorkflowStep(
         string Name,
+        string? Id,
         string? Shell,
         string? If,
         string? ContinueOnError,

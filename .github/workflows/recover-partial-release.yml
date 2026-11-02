@@ -137,8 +137,8 @@ jobs:
 
           $images = @($summary.images)
           $imageCount = $images.Count
-          if ($imageCount -notin @(2, 4, 5)) {
-            throw "Container recovery must reconcile the tagged immutable image unit (2, 4 or 5 members); found $imageCount."
+          if ($imageCount -notin @(2, 4)) {
+            throw "Container recovery must reconcile the tagged immutable image unit (2 or 4 members); found $imageCount."
           }
           $summaryImages = @($images.image)
           $hasServer = @($summaryImages | Where-Object { $_ -match '/memories:' }).Count -eq 1
@@ -146,7 +146,7 @@ jobs:
           if (-not $hasServer -or -not $hasMcp) {
             throw "Container recovery evidence is missing the required Server/MCP image unit."
           }
-          $allowedPattern = '/memories(-mcp|-access-telemetry|-access-telemetry-clock|-domain-service)?:'
+          $allowedPattern = '/memories(-mcp|-access-telemetry|-access-telemetry-clock)?:'
           if (@($summaryImages | Where-Object { $_ -notmatch $allowedPattern }).Count -gt 0) {
             throw "Container recovery evidence contains unexpected image repositories."
           }
@@ -181,10 +181,9 @@ jobs:
           if ($summary.status -ne 'succeeded' -or $summary.version -ne $env:RECOVERY_VERSION) {
             throw "Partial-release completion evidence did not report success."
           }
-          $packageCount = @($summary.packages).Count
-          if ($packageCount -notin @(9, 10) -or
-              @($summary.images).Count -notin @(2, 4, 5) -or
-              @($summary.releaseAssets).Count -ne ($packageCount + 1)) {
+          if (@($summary.packages).Count -ne 9 -or
+              @($summary.images).Count -notin @(2, 4) -or
+              @($summary.releaseAssets).Count -ne 10) {
             throw "Partial-release completion evidence does not contain the complete release unit for this tagged source."
           }
           $completionImages = @($summary.images.image)

@@ -155,7 +155,7 @@ $summary = [ordered]@{
     pushed = $pushed
     failed = $failed
     notAttempted = $notAttempted
-    recovery = 'If the exact tag or any package exists, do not republish or delete NuGet packages. Repair the failed dependency and dispatch Recover Partial Release from main.'
+    recovery = 'If the exact tag or any package exists, do not republish or delete NuGet packages. For current ten-package releases, manually reconcile NuGet publication and remaining artifacts with the release owner. Recover Partial Release is reserved for historical nine-package tagged releases.'
 }
 $summary | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $summaryPath -Encoding utf8
 Write-Host "Aggregate release publication summary: $summaryPath ($status)"

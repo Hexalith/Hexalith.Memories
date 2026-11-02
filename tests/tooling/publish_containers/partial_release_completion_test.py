@@ -232,6 +232,7 @@ def run_completion(
     deployment: Path,
     nuget_origin: str,
     env: dict[str, str],
+    script: Path = SCRIPT,
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [
@@ -239,7 +240,7 @@ def run_completion(
             "-NoLogo",
             "-NoProfile",
             "-File",
-            str(SCRIPT),
+            str(script),
             "-Version",
             VERSION,
             "-SourceRoot",
@@ -290,6 +291,33 @@ class PartialReleaseCompletionTests(unittest.TestCase):
         env["FAKE_GH_LOG"] = str(root / "gh-log.jsonl")
         env["GH_TOKEN"] = "SECRET_GITHUB_TOKEN_SHOULD_NOT_LEAK"
         return source, summary, deployment, env
+
+    def test_workflow_staged_tooling_requires_current_manifest_and_reads_historical_tag(self) -> None:
+        workflow = (REPO_ROOT / ".github/workflows/recover-partial-release.yml").read_text(encoding="utf-8")
+        staged_names = (
+            "verify-container-registry.ps1",
+            "publish-containers.ps1",
+            "complete-partial-release.ps1",
+            "release-packages.json",
+        )
+        for name in staged_names:
+            self.assertIn(f"Copy-Item ./tools/{name} $toolingPath", workflow)
+        self.assertIn("@($summary.packages).Count -ne 9", workflow)
+        self.assertIn("@($summary.images).Count -notin @(2, 4)", workflow)
+        with tempfile.TemporaryDirectory() as temp, PackageServer() as nuget:
+            root = Path(temp)
+            source, summary, deployment, env = self.prepare(root)
+            staged = root / "staged-tooling"
+            staged.mkdir()
+            for name in staged_names[:-1]:
+                shutil.copy2(REPO_ROOT / "tools" / name, staged / name)
+            missing = run_completion(source, summary, deployment, nuget.origin, env, staged / "complete-partial-release.ps1")
+            self.assertNotEqual(0, missing.returncode)
+            self.assertIn("Approved current release inventory not found", missing.stdout + missing.stderr)
+            self.assertFalse(Path(env["FAKE_GH_LOG"]).exists())
+            shutil.copy2(REPO_ROOT / "tools" / staged_names[-1], staged / staged_names[-1])
+            present = run_completion(source, summary, deployment, nuget.origin, env, staged / "complete-partial-release.ps1")
+            self.assertEqual(0, present.returncode, present.stdout + present.stderr)
 
     def test_completion_creates_verified_release_closes_issue_and_is_idempotent(self) -> None:
         with tempfile.TemporaryDirectory() as temp, PackageServer() as nuget:

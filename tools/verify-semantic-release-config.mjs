@@ -26,7 +26,7 @@ const expectedConfiguration = {
       {
         verifyReleaseCmd: "pwsh -NoLogo -NoProfile -File ./tools/release-preflight.ps1 -NextVersion ${nextRelease.version} -CheckDestinations && pwsh -NoLogo -NoProfile -File ./tools/verify-container-registry.ps1",
         prepareCmd:
-          "pwsh -NoLogo -NoProfile -File ./tools/pack-release.ps1 -Version ${nextRelease.version} -OutputDirectory ./artifacts/packages/release && python3 ./tools/check-release-source.py",
+          "pwsh -NoLogo -NoProfile -File ./tools/pack-release.ps1 -Version ${nextRelease.version} -OutputDirectory ./artifacts/packages/release && python3 ./tools/check-release-source.py && python3 ./tools/check-release-destinations.py --version ${nextRelease.version}",
         publishCmd: "pwsh -NoLogo -NoProfile -File ./tools/publish-release.ps1 -Version ${nextRelease.version}",
       },
     ],
