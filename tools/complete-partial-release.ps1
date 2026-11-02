@@ -228,9 +228,33 @@ try {
 
     $inventory = Get-Content -LiteralPath $inventoryPath -Raw | ConvertFrom-Json
     $packages = @($inventory.packages)
-    $approvedInventory = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'release-packages.json') -Raw | ConvertFrom-Json
-    $expectedPackageIds = @($approvedInventory.packages.packageId)
-    $packageIds = @($packages.packageId)
+    $approvedInventoryPath = Join-Path $PSScriptRoot 'release-packages.json'
+    if (-not (Test-Path -LiteralPath $approvedInventoryPath)) {
+        throw "Approved current release inventory not found: $approvedInventoryPath"
+    }
+    $approvedInventory = Get-Content -LiteralPath $approvedInventoryPath -Raw | ConvertFrom-Json
+    $expectedPackageIds = @($approvedInventory.packages.id)
+    if ($expectedPackageIds.Count -ne 10 -or @($expectedPackageIds | Select-Object -Unique).Count -ne 10) {
+        throw 'Approved current inventory must declare ten unique id values.'
+    }
+    $manifestShapes = @($packages | ForEach-Object {
+        $hasId = $null -ne $_.PSObject.Properties['id']
+        $hasPackageId = $null -ne $_.PSObject.Properties['packageId']
+        if ($hasId -eq $hasPackageId) {
+            throw 'Tagged inventory entries must declare exactly one of id or packageId.'
+        }
+        if ($hasId) { 'id' } else { 'packageId' }
+    } | Select-Object -Unique)
+    if ($manifestShapes.Count -ne 1) {
+        throw 'Tagged release inventory mixes id and packageId entries.'
+    }
+    $packageIds = @($packages | ForEach-Object { [string]$_.$($manifestShapes[0]) })
+    if (@($packageIds | Where-Object { [string]::IsNullOrWhiteSpace($_) -or $_ -cne $_.Trim() }).Count -gt 0) {
+        throw 'Tagged release inventory contains a blank or noncanonical package ID.'
+    }
+    if ($manifestShapes[0] -ceq 'id' -and $packageIds.Count -ne $expectedPackageIds.Count) {
+        throw 'Tagged id inventory must contain the complete current ten-package unit.'
+    }
     $catalogAdapter = 'Hexalith.Memories.EventStoreExtensions'
     if ($catalogAdapter -cnotin $packageIds) {
         # Historical releases predate the catalog adapter and retain their nine-package unit.
@@ -253,7 +277,7 @@ try {
     }
 
     foreach ($package in $packages) {
-        $packageId = [string]$package.packageId
+        $packageId = [string]$package.$($manifestShapes[0])
         $packageFileName = "$packageId.$Version.nupkg"
         $packageFile = Join-Path $packagePath $packageFileName
         $lowerId = $packageId.ToLowerInvariant()

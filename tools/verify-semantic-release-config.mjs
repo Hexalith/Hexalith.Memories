@@ -24,7 +24,7 @@ const expectedConfiguration = {
     [
       "@semantic-release/exec",
       {
-        verifyReleaseCmd: "pwsh -NoLogo -NoProfile -File ./tools/verify-container-registry.ps1",
+        verifyReleaseCmd: "pwsh -NoLogo -NoProfile -File ./tools/release-preflight.ps1 -NextVersion ${nextRelease.version} -CheckDestinations && pwsh -NoLogo -NoProfile -File ./tools/verify-container-registry.ps1",
         prepareCmd:
           "pwsh -NoLogo -NoProfile -File ./tools/pack-release.ps1 -Version ${nextRelease.version} -OutputDirectory ./artifacts/packages/release",
         publishCmd: "pwsh -NoLogo -NoProfile -File ./tools/publish-release.ps1 -Version ${nextRelease.version}",

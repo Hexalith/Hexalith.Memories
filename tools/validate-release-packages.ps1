@@ -120,7 +120,7 @@ function Test-InventoryAgainstSchema {
     $isValid = $false
     try {
         # ErrorAction Continue + ErrorVariable lets Test-Json report per-property mismatches
-        # (misspelled fields like "packageID", "projectPath", "nonPackableProject") instead of
+        # (misspelled fields like "ID", "projectPath", "nonPackableProject") instead of
         # bubbling up only the first NJsonSchema exception.
         $isValid = Test-Json -Json $rawJson -SchemaFile $SchemaFile -ErrorAction SilentlyContinue -ErrorVariable schemaErrors
     }
@@ -220,13 +220,13 @@ if (-not (Test-Path -LiteralPath $resolvedInventoryPath)) {
 }
 
 # Schema validation runs before any structural use so misspelled fields
-# ("packageID", "projectPath", "nonPackableProject") are rejected before any
+# ("ID", "projectPath", "nonPackableProject") are rejected before any
 # downstream pack/publish script consumes the inventory (W12).
 Test-InventoryAgainstSchema -InventoryFile $resolvedInventoryPath -SchemaFile $resolvedSchemaPath
 
 $inventory = Get-Content -LiteralPath $resolvedInventoryPath -Raw | ConvertFrom-Json
 $expectedPackages = @($inventory.packages)
-$expectedIds = @($expectedPackages | ForEach-Object { $_.packageId })
+$expectedIds = @($expectedPackages | ForEach-Object { $_.id })
 
 if ($expectedIds.Count -eq 0) {
     throw "Release package inventory contains no packages."
@@ -236,7 +236,7 @@ if ($expectedIds.Count -eq 0) {
 # rather than silently collapsing them to a single inventory entry.
 $duplicateIds = @($expectedIds | Group-Object | Where-Object { $_.Count -gt 1 } | ForEach-Object { $_.Name })
 if ($duplicateIds.Count -gt 0) {
-    throw "Inventory packages contain duplicate packageId values: $($duplicateIds -join ', ')"
+    throw "Inventory packages contain duplicate id values: $($duplicateIds -join ', ')"
 }
 
 $expectedPackageProjects = @($expectedPackages | ForEach-Object { $_.project })
@@ -295,12 +295,12 @@ foreach ($projectFile in $rootSourceProjects) {
     }
 
     if ($isPackable -eq 'true') {
-        $packageId = Get-XmlProperty -Project $project -Name "PackageId"
-        if ([string]::IsNullOrWhiteSpace($packageId)) {
+        $id = Get-XmlProperty -Project $project -Name "PackageId"
+        if ([string]::IsNullOrWhiteSpace($id)) {
             throw "Packable project '$relativeProject' must declare PackageId."
         }
 
-        $discoveredPackableIds += $packageId
+        $discoveredPackableIds += $id
         $discoveredPackablePaths += $relativeProject
 
         foreach ($propertyName in $requiredProperties) {
@@ -353,13 +353,13 @@ foreach ($package in $expectedPackages) {
     }
 
     [xml]$project = Get-Content -LiteralPath $projectPath -Raw
-    $packageId = Get-XmlProperty -Project $project -Name "PackageId"
+    $id = Get-XmlProperty -Project $project -Name "PackageId"
 
     # Case-sensitive comparison: NuGet locks the first-pushed casing of a PackageId forever,
     # so a lowercase typo in csproj that differs from the canonical inventory casing must
     # fail validation rather than silently slip through PowerShell's default `-ne` (case-insensitive).
-    if ($packageId -cne $package.packageId) {
-        throw "Inventory package '$($package.packageId)' does not match project PackageId '$packageId' (case-sensitive)."
+    if ($id -cne $package.id) {
+        throw "Inventory package '$($package.id)' does not match project PackageId '$id' (case-sensitive)."
     }
 }
 

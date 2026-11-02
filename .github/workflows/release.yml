@@ -1,8 +1,7 @@
 name: Release
 
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 # cancel-in-progress: false is deliberate. A release run that is interrupted mid-publish
 # would leave NuGet in a partial-publish state. The trusted Recover Partial Release workflow
@@ -16,6 +15,7 @@ env:
   KUBECTL_VERSION: 'v1.35.0'
 
 # Least-privilege scopes for the release job:
+# - actions: read - prove successful push CI for the exact current source.
 # - contents: write - semantic-release creates the release tag and GitHub Release.
 # - issues: write - Alert partial release publish step opens / comments on the
 #   PARTIAL PUBLISH reconciliation issue.
@@ -24,119 +24,131 @@ env:
 # - id-token: write - NuGet Trusted Publishing exchanges this job's OIDC token for a
 #   one-hour publication key. No stored NuGet API key is used.
 permissions:
+  actions: read
   contents: write
   id-token: write
   issues: write
   pull-requests: write
 
 jobs:
+  release-source:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Checkout dispatched source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          submodules: false
+
+      - name: Checkout approved Builds source proof
+        uses: actions/checkout@v7
+        with:
+          repository: Hexalith/Hexalith.Builds
+          ref: 81c88b34d09d34260b92d7f0928dbbc1c7446baa
+          path: .hexalith/builds-execution
+          persist-credentials: false
+          submodules: false
+
+      - name: Prove current main and exact push CI before approval
+        run: python3 tools/check-release-source.py
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Require production environment approval rule
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/environments/production" --jq '.protection_rules | any(.[]; .type == "required_reviewers" and (.reviewers | length > 0))' | grep -qx true
+
   release:
+    needs: release-source
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: production
 
     steps:
-      - name: Require the Trusted Publishing account
-        shell: bash
-        env:
-          NUGET_USER: ${{ vars.NUGET_USER }}
-        run: |
-          set -euo pipefail
-          if [ -z "${NUGET_USER//[[:space:]]/}" ]; then
-            echo "The repository variable NUGET_USER must name the individual nuget.org account that created the Trusted Publishing policy." >&2
-            exit 1
-          fi
-
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
           submodules: false
 
-      - name: Initialize build submodules
-        uses: Hexalith/Hexalith.Builds/Github/initialize-build@main
-
-      - name: Initialize .NET
-        uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@main
-        with:
-          global-json-file: global.json
-
-
       - name: Initialize kubectl
         uses: azure/setup-kubectl@v4
         with:
           version: ${{ env.KUBECTL_VERSION }}
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - name: Prepare guarded release from pinned Builds
+        id: prepare
+        uses: Hexalith/Hexalith.Builds/Github/prepare-domain-release@81c88b34d09d34260b92d7f0928dbbc1c7446baa
         with:
-          node-version: lts/*
-          cache: npm
-
-      - name: Cache NuGet packages
-        uses: actions/cache@v6
-        with:
-          path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props') }}
-          restore-keys: |
-            nuget-${{ runner.os }}-
-
-      - name: Restore
-        # Directory.Build.props keeps NU1901-1904 non-fatal (Hexalith ci-cd-standards.md,
-        # "Dependency Auditing"), but that only reaches this repo's own projects. Repeat it here
-        # via -p: so the same restore graph's Hexalith.FrontComposer submodule project (a separate
-        # Directory.Build.props chain) isn't fatally blocked by the AngleSharp/bunit NU1902 chain.
-        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904
-
-      - name: Build
-        run: dotnet build Hexalith.Memories.slnx --configuration Release --no-restore
-
-      - name: Test unit and non-Docker suite
-        shell: pwsh
-        run: ./tools/test-release.ps1
-
-      - name: Install release tooling
-        run: npm ci
-
-      - name: Audit root release tooling
-        run: npm audit signatures
+          solution: Hexalith.Memories.slnx
+          builds-execution-sha: 81c88b34d09d34260b92d7f0928dbbc1c7446baa
+          expected-package-count: '10'
+          package-manifest: tools/release-packages.json
+          source-ci-workflow: ci.yml
+          publication-flag: ${{ vars.HEXALITH_RELEASE_PUBLISH_ENABLED }}
+          nuget-user: ${{ vars.NUGET_USER }}
 
       - name: Verify semantic-release configuration offline
+        if: steps.prepare.outputs.publish-enabled == 'true'
         run: npm run verify:semantic-release-config
 
       - name: Validate package inventory before release
+        if: steps.prepare.outputs.publish-enabled == 'true'
         shell: pwsh
         run: ./tools/validate-release-packages.ps1
 
-      - name: Run release package validator fixtures
-        run: python3 -m unittest discover -s tests/tooling/release_packages -p "*_test.py"
-
-      - name: Run container publish fixtures
-        run: python3 -m unittest discover -s tests/tooling/publish_containers -p "*_test.py"
-
-      - name: Run release preflight fixtures
-        run: python3 -m unittest discover -s tests/tooling/release_preflight -p "*_test.py"
-
       - name: Run release preflight
+        id: release-preflight
+        if: steps.prepare.outputs.publish-enabled == 'true'
         shell: pwsh
-        run: ./tools/release-preflight.ps1
+        run: ./tools/release-preflight.ps1 -CheckDestinations
         timeout-minutes: 10
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEXALITH_ZOT_REGISTRY: ${{ vars.HEXALITH_ZOT_REGISTRY || 'registry.hexalith.com' }}
+          HEXALITH_ZOT_USERNAME: ${{ secrets.HEXALITH_ZOT_USERNAME }}
+          HEXALITH_ZOT_API_KEY: ${{ secrets.HEXALITH_ZOT_API_KEY }}
 
       - name: Snapshot release tags
         id: release-tags-before
+        if: steps.prepare.outputs.publish-enabled == 'true'
         shell: bash
         run: git tag --points-at HEAD --list 'v*' | sort | sha256sum | sed 's/ .*//' | xargs -I{} echo 'fingerprint={}' >> "$GITHUB_OUTPUT"
 
-      # Mint the one-hour key only after tests and preflight, immediately before publication.
+      - name: Reprove current main and exact push CI before publication
+        if: steps.prepare.outputs.publish-enabled == 'true' && steps.release-preflight.outputs.next-version != ''
+        run: python3 tools/check-release-source.py
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Recheck production approval rule before publication
+        if: steps.prepare.outputs.publish-enabled == 'true' && steps.release-preflight.outputs.next-version != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/environments/production" --jq '.protection_rules | any(.[]; .type == "required_reviewers" and (.reviewers | length > 0))' | grep -qx true
+
+      # Mint the one-hour key only after source and destination preflight.
       - name: Exchange GitHub OIDC token for a temporary NuGet key
         id: nuget-login
+        if: steps.prepare.outputs.publish-enabled == 'true' && steps.release-preflight.outputs.next-version != ''
         uses: NuGet/login@v1
         with:
           user: ${{ vars.NUGET_USER }}
 
       - name: Run semantic-release
+        if: steps.prepare.outputs.publish-enabled == 'true' && steps.release-preflight.outputs.next-version != ''
         run: npx semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -147,7 +159,7 @@ jobs:
 
       - name: Detect release publication
         id: release-publication
-        if: success()
+        if: success() && steps.prepare.outputs.publish-enabled == 'true' && steps.release-preflight.outputs.next-version != ''
         shell: bash
         env:
           BEFORE_FINGERPRINT: ${{ steps.release-tags-before.outputs.fingerprint }}

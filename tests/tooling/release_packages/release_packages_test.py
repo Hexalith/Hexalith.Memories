@@ -94,7 +94,7 @@ def create_package_set(
     service_defaults_prerelease_dependency_id: Optional[str] = None,
 ) -> None:
     inventory = load_canonical_inventory()
-    package_ids = [item["packageId"] for item in inventory["packages"]]
+    package_ids = [item["id"] for item in inventory["packages"]]
 
     for package_id in package_ids:
         dependency_rows: list[str] = []
@@ -380,8 +380,8 @@ public static class CompatibilityConsumer
     def test_misspelled_package_field_is_rejected_by_schema(self) -> None:
         canonical = load_canonical_inventory()
         first = canonical["packages"][0]
-        # Replace the canonical key with the common misspelling 'packageID'.
-        first["packageID"] = first.pop("packageId")
+        # Replace the canonical key with the common misspelling 'ID'.
+        first["ID"] = first.pop("id")
         with tempfile.TemporaryDirectory() as temp:
             inventory_path = write_inventory(Path(temp), canonical)
             result = run_validator(inventory_path=inventory_path)
@@ -416,14 +416,14 @@ public static class CompatibilityConsumer
             result = run_validator(inventory_path=inventory_path)
             self.assertValidatorFailsWith(
                 result,
-                "duplicate packageId",
-                duplicate["packageId"],
+                "duplicate id",
+                duplicate["id"],
             )
 
     def test_duplicate_project_path_with_different_ids_fails_loudly(self) -> None:
         canonical = load_canonical_inventory()
         duplicate = dict(canonical["packages"][0])
-        duplicate["packageId"] = "Hexalith.Memories.DuplicatePathSentinel"
+        duplicate["id"] = "Hexalith.Memories.DuplicatePathSentinel"
         canonical["packages"].append(duplicate)
         with tempfile.TemporaryDirectory() as temp:
             inventory_path = write_inventory(Path(temp), canonical)
@@ -474,7 +474,7 @@ public static class CompatibilityConsumer
         canonical = load_canonical_inventory()
         canonical["packages"].append(
             {
-                "packageId": "Hexalith.Memories.Phantom",
+                "id": "Hexalith.Memories.Phantom",
                 "project": "src/Hexalith.Memories.Phantom/Hexalith.Memories.Phantom.csproj",
             }
         )

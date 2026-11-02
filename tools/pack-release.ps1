@@ -55,10 +55,10 @@ try {
     }
 
     foreach ($package in @($inventory.packages)) {
-        Write-Host "Packing $($package.packageId)"
+        Write-Host "Packing $($package.id)"
         & dotnet pack $package.project --configuration $Configuration --no-build --output $outputPath -p:Version=$Version -p:PackageVersion=$Version -p:ContinuousIntegrationBuild=true
         if ($LASTEXITCODE -ne 0) {
-            throw "dotnet pack failed for $($package.packageId)."
+            throw "dotnet pack failed for $($package.id)."
         }
     }
 

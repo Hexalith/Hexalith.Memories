@@ -638,20 +638,20 @@ repository URL, tags, and `PackageReadmeFile`. Package dependency versions stay 
 
 ## Release Process
 
-Releases are automated from pushes to `main` by `.github/workflows/release.yml`. The observed
-release path and operator checklist are maintained in `docs/dev/release-runbook.md`.
+Releases are intentionally dispatched from the current `main` tip through `.github/workflows/release.yml` after successful exact-source push CI. Ordinary pushes never publish. The production job requires a reviewer-protected environment and uses pinned Builds preparation with ten declared packages. The operator checklist and approval readback are in `docs/dev/release-runbook.md`.
 
-The workflow restores, builds, runs Docker-free tests, validates the package inventory, and then runs
-semantic-release. semantic-release creates the `v${version}` tag, creates the GitHub Release, packs
+The workflow verifies source and destinations, then runs semantic-release. Application tests run in push CI and are not repeated by the release job. semantic-release creates the `v${version}` tag, creates the GitHub Release, packs
 every approved package with the same version, and publishes packages to nuget.org. Release jobs do
 not commit back to `main`; `main` remains protected and all repository changes still go through pull
 requests.
 
-Required repository secret:
+Required release variables and secrets:
 
-| Secret | Purpose |
+| Name | Purpose |
 | --- | --- |
-| `NUGET_API_KEY` | Scoped nuget.org API key used only by the release job |
+| `HEXALITH_RELEASE_PUBLISH_ENABLED` | Exact lowercase `true` authorizes publication after dispatch and approval |
+| `NUGET_USER` | Individual account that created the NuGet Trusted Publishing policy |
+| `HEXALITH_ZOT_USERNAME`, `HEXALITH_ZOT_API_KEY` | Registry credentials for the five image repositories |
 
 GitHub provides `GITHUB_TOKEN` automatically. Do not store NuGet API keys in `NuGet.config`, `.npmrc`,
 workflow literals, logs, or local documentation.

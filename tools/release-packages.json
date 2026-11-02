@@ -2,43 +2,43 @@
   "$schema": "./release-packages.schema.json",
   "packages": [
     {
-      "packageId": "Hexalith.Memories.Aspire",
+      "id": "Hexalith.Memories.Aspire",
       "project": "src/Hexalith.Memories.Aspire/Hexalith.Memories.Aspire.csproj"
     },
     {
-      "packageId": "Hexalith.Memories.Contracts",
+      "id": "Hexalith.Memories.Contracts",
       "project": "src/Hexalith.Memories.Contracts/Hexalith.Memories.Contracts.csproj"
     },
     {
-      "packageId": "Hexalith.Memories.Client.Rest",
+      "id": "Hexalith.Memories.Client.Rest",
       "project": "src/Hexalith.Memories.Client.Rest/Hexalith.Memories.Client.Rest.csproj"
     },
     {
-      "packageId": "Hexalith.Memories.Redis",
+      "id": "Hexalith.Memories.Redis",
       "project": "src/Hexalith.Memories.Redis/Hexalith.Memories.Redis.csproj"
     },
     {
-      "packageId": "Hexalith.Memories.Cli",
+      "id": "Hexalith.Memories.Cli",
       "project": "src/Hexalith.Memories.Cli/Hexalith.Memories.Cli.csproj"
     },
     {
-      "packageId": "Hexalith.Memories.Mcp",
+      "id": "Hexalith.Memories.Mcp",
       "project": "src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj"
     },
     {
-      "packageId": "Hexalith.Memories.ServiceDefaults",
+      "id": "Hexalith.Memories.ServiceDefaults",
       "project": "src/Hexalith.Memories.ServiceDefaults/Hexalith.Memories.ServiceDefaults.csproj"
     },
     {
-      "packageId": "Hexalith.Memories.EventStore",
+      "id": "Hexalith.Memories.EventStore",
       "project": "src/Hexalith.Memories.EventStore/Hexalith.Memories.EventStore.csproj"
     },
     {
-      "packageId": "Hexalith.Memories.Telemetry",
+      "id": "Hexalith.Memories.Telemetry",
       "project": "src/Hexalith.Memories.Telemetry/Hexalith.Memories.Telemetry.csproj"
     },
     {
-      "packageId": "Hexalith.Memories.EventStoreExtensions",
+      "id": "Hexalith.Memories.EventStoreExtensions",
       "project": "src/Hexalith.Memories.EventStoreExtensions/Hexalith.Memories.EventStoreExtensions.csproj"
     }
   ],

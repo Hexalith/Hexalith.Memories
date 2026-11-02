@@ -279,12 +279,12 @@ public sealed partial class CiTestInventoryTests
     }
 
     [Fact]
-    public void ReleaseWorkflow_InstallReleaseTooling_UsesNpmCi()
+    public void ReleaseWorkflow_PinnedPreparationOwnsReleaseTooling()
     {
-        ReleaseWorkflowStep step = GetReleaseWorkflowStep("Install release tooling");
-
-        IsReleaseCommand(step, "npm ci").ShouldBeTrue();
-        step.Uses.ShouldBeNull();
+        ReleaseWorkflowStep step = GetReleaseWorkflowStep("Prepare guarded release from pinned Builds");
+        step.Uses.ShouldBe("Hexalith/Hexalith.Builds/Github/prepare-domain-release@81c88b34d09d34260b92d7f0928dbbc1c7446baa");
+        step.With["builds-execution-sha"].ShouldBe("81c88b34d09d34260b92d7f0928dbbc1c7446baa");
+        step.With["expected-package-count"].ShouldBe("10");
     }
 
     [Fact]
@@ -427,7 +427,7 @@ public sealed partial class CiTestInventoryTests
         execPlugin.GetArrayLength().ShouldBe(2);
         JsonElement execOptions = execPlugin[1];
         execOptions.EnumerateObject().Select(static property => property.Name).ShouldBe(["verifyReleaseCmd", "prepareCmd", "publishCmd"]);
-        execOptions.GetProperty("verifyReleaseCmd").GetString().ShouldBe("pwsh -NoLogo -NoProfile -File ./tools/verify-container-registry.ps1");
+        execOptions.GetProperty("verifyReleaseCmd").GetString().ShouldBe("pwsh -NoLogo -NoProfile -File ./tools/release-preflight.ps1 -NextVersion ${nextRelease.version} -CheckDestinations && pwsh -NoLogo -NoProfile -File ./tools/verify-container-registry.ps1");
         execOptions.GetProperty("prepareCmd").GetString()
             .ShouldBe("pwsh -NoLogo -NoProfile -File ./tools/pack-release.ps1 -Version ${nextRelease.version} -OutputDirectory ./artifacts/packages/release");
         execOptions.GetProperty("publishCmd").GetString()
@@ -495,60 +495,34 @@ public sealed partial class CiTestInventoryTests
     {
         string repoRoot = GetRepoRoot();
         ReleaseWorkflowStep[] steps = ParseReleaseWorkflowSteps(File.ReadAllLines(Path.Combine(repoRoot, ".github", "workflows", "release.yml")));
-
-        int installIndex = Array.IndexOf(steps, GetReleaseWorkflowStep(steps, "Install release tooling"));
-        int auditIndex = Array.IndexOf(steps, GetReleaseWorkflowStep(steps, "Audit root release tooling"));
+        int prepareIndex = Array.IndexOf(steps, GetReleaseWorkflowStep(steps, "Prepare guarded release from pinned Builds"));
         int verifierIndex = Array.IndexOf(steps, GetReleaseWorkflowStep(steps, "Verify semantic-release configuration offline"));
         int preflightIndex = Array.IndexOf(steps, GetReleaseWorkflowStep(steps, "Run release preflight"));
+        int sourceIndex = Array.IndexOf(steps, GetReleaseWorkflowStep(steps, "Reprove current main and exact push CI before publication"));
+        int loginIndex = Array.IndexOf(steps, GetReleaseWorkflowStep(steps, "Exchange GitHub OIDC token for a temporary NuGet key"));
         int semanticReleaseIndex = Array.IndexOf(steps, GetReleaseWorkflowStep(steps, "Run semantic-release"));
-
-        installIndex.ShouldBeGreaterThanOrEqualTo(0, "release.yml must install the reviewed root lockfile before release preflight.");
-        auditIndex.ShouldBeGreaterThanOrEqualTo(0, "release.yml must audit the complete root release-tooling graph.");
-        verifierIndex.ShouldBeGreaterThanOrEqualTo(0, "release.yml must run the combined configuration verifier and negative self-tests.");
-        preflightIndex.ShouldBeGreaterThanOrEqualTo(0, "release.yml must run the repository-owned release preflight before semantic-release can prepare or publish packages.");
-        semanticReleaseIndex.ShouldBeGreaterThanOrEqualTo(0, "release.yml must retain the semantic-release step.");
-        installIndex.ShouldBeLessThan(auditIndex, "release tooling installation must complete before its audit.");
-        auditIndex.ShouldBeLessThan(verifierIndex, "the full low-level audit must pass before configuration verification.");
-        verifierIndex.ShouldBeLessThan(preflightIndex, "the combined configuration verifier must pass before release preflight.");
-        preflightIndex.ShouldBeLessThan(semanticReleaseIndex, "release preflight must run before semantic-release starts publish-capable work.");
-
-        IsReleaseCommand(steps[auditIndex], "npm audit signatures").ShouldBeTrue();
+        prepareIndex.ShouldBeLessThan(verifierIndex);
+        verifierIndex.ShouldBeLessThan(preflightIndex);
+        preflightIndex.ShouldBeLessThan(sourceIndex);
+        sourceIndex.ShouldBeLessThan(loginIndex);
+        loginIndex.ShouldBeLessThan(semanticReleaseIndex);
         IsReleaseCommand(steps[verifierIndex], "npm run verify:semantic-release-config").ShouldBeTrue();
-        foreach (ReleaseWorkflowStep gate in new[] { steps[installIndex], steps[auditIndex], steps[verifierIndex] })
-        {
-            gate.If.ShouldBeNull("release-tooling gates must run unconditionally in the production release job.");
-            gate.ContinueOnError.ShouldBeNull("release-tooling gate failures must block production release.");
-            gate.WorkingDirectory.ShouldBeNull("production release-tooling gates must operate on the root lockfile.");
-        }
-
         ReleaseWorkflowStep step = steps[preflightIndex];
-        IsReleaseCommand(step, "./tools/release-preflight.ps1").ShouldBeTrue();
+        step.Run.ShouldBe("./tools/release-preflight.ps1 -CheckDestinations");
+        step.Shell.ShouldBe("pwsh");
         step.Uses.ShouldBeNull();
     }
 
     [Fact]
-    public void ReleaseWorkflow_ReleasePreflightFixtures_RunExactlyOnceBeforeLivePreflightAndSemanticRelease()
+    public void CiWorkflow_OwnsReleasePreflightFixturesWithoutRerunningThemAtRelease()
     {
         string repoRoot = GetRepoRoot();
-        ReleaseWorkflowStep[] steps = ParseReleaseWorkflowSteps(File.ReadAllLines(Path.Combine(repoRoot, ".github", "workflows", "release.yml")));
+        string release = File.ReadAllText(Path.Combine(repoRoot, ".github", "workflows", "release.yml"));
+        string ci = File.ReadAllText(Path.Combine(repoRoot, ".github", "workflows", "ci.yml"));
         const string FixtureCommand = "python3 -m unittest discover -s tests/tooling/release_preflight -p \"*_test.py\"";
-
-        ReleaseWorkflowStep[] fixtureSteps = [.. steps.Where(step => IsReleaseCommand(step, FixtureCommand))];
-        fixtureSteps.Length.ShouldBe(1, "release.yml must invoke the canonical release-preflight fixture command exactly once.");
-
-        int fixturesIndex = Array.IndexOf(steps, fixtureSteps[0]);
-        int preflightIndex = Array.IndexOf(steps, GetReleaseWorkflowStep(steps, "Run release preflight"));
-        int semanticReleaseIndex = Array.IndexOf(steps, GetReleaseWorkflowStep(steps, "Run semantic-release"));
-
-        preflightIndex.ShouldBeGreaterThanOrEqualTo(0, "release.yml must retain the live release preflight.");
-        semanticReleaseIndex.ShouldBeGreaterThanOrEqualTo(0, "release.yml must retain the semantic-release step.");
-        fixturesIndex.ShouldBeLessThan(preflightIndex, "release-preflight fixtures must run before the live release preflight.");
-        fixturesIndex.ShouldBeLessThan(semanticReleaseIndex, "release-preflight fixtures must run before semantic-release starts publish-capable work.");
-
-        ReleaseWorkflowStep step = fixtureSteps[0];
-        step.If.ShouldBeNull("release-preflight fixtures must run unconditionally.");
-        step.ContinueOnError.ShouldBeNull("release-preflight fixture failures must fail the release job.");
-        step.Uses.ShouldBeNull();
+        ci.ShouldContain(FixtureCommand);
+        release.ShouldNotContain(FixtureCommand);
+        ci.ShouldContain("tests/tooling/release_dispatch");
     }
 
     [Fact]
@@ -569,7 +543,7 @@ public sealed partial class CiTestInventoryTests
         ReleaseWorkflowStep[] steps = ParseReleaseWorkflowSteps(workflow.Split('\n'));
         ReleaseWorkflowStep login = GetReleaseWorkflowStep(steps, "Exchange GitHub OIDC token for a temporary NuGet key");
         login.With["user"].ShouldBe("${{ vars.NUGET_USER }}");
-        login.If.ShouldBeNull("the trusted publishing exchange must run before release.");
+        login.If!.ShouldContain("steps.prepare.outputs.publish-enabled");
         login.ContinueOnError.ShouldBeNull("a failed trusted publishing exchange must block release.");
         Array.IndexOf(steps, login).ShouldBeLessThan(Array.IndexOf(steps, GetReleaseWorkflowStep(steps, "Run semantic-release")));
     }
@@ -584,7 +558,7 @@ public sealed partial class CiTestInventoryTests
         snapshot.Run.ShouldContain("fingerprint={}");
 
         ReleaseWorkflowStep detection = GetReleaseWorkflowStep("Detect release publication");
-        detection.If.ShouldBe("success()");
+        detection.If!.ShouldContain("success()");
         detection.Shell.ShouldBe("bash");
         detection.RunBlock.ShouldContain("published=false");
         detection.RunBlock.ShouldContain("artifacts/deployment/hexalith-memories-production.yaml");
@@ -616,10 +590,11 @@ public sealed partial class CiTestInventoryTests
         workflow.ShouldContain("-RepositoryRoot $env:GITHUB_WORKSPACE");
         workflow.ShouldContain("complete-partial-release.ps1");
         workflow.ShouldContain("GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}");
-        workflow.ShouldContain("@($summary.packages).Count -ne 9");
-        workflow.ShouldContain("@($summary.images).Count -notin @(2, 4)");
-        workflow.ShouldContain("@($summary.releaseAssets).Count -ne 10");
-        workflow.ShouldContain("tagged immutable image unit (2 or 4 members)");
+        workflow.ShouldContain("$packageCount -notin @(9, 10)");
+        workflow.ShouldContain("@($summary.images).Count -notin @(2, 4, 5)");
+        workflow.ShouldContain("@($summary.releaseAssets).Count -ne ($packageCount + 1)");
+        workflow.ShouldContain("tagged immutable image unit (2, 4 or 5 members)");
+        workflow.ShouldContain("Copy-Item ./tools/release-packages.json $toolingPath");
         workflow.ShouldContain("/memories-mcp:");
         workflow.ShouldContain("unexpected image repositories");
         workflow.ShouldContain("Partial-release completion evidence is missing the required Server/MCP image unit.");
@@ -655,37 +630,25 @@ public sealed partial class CiTestInventoryTests
     }
 
     [Fact]
-    public void ReleaseWorkflow_ReleasePackageValidatorFixtures_RunBeforePublish()
+    public void CiWorkflow_OwnsReleasePackageValidatorFixtures()
     {
-        ReleaseWorkflowStep step = GetReleaseWorkflowStep("Run release package validator fixtures");
-
-        IsReleaseCommand(step, "python3 -m unittest discover -s tests/tooling/release_packages -p \"*_test.py\"").ShouldBeTrue();
-        step.Uses.ShouldBeNull();
+        string repoRoot = GetRepoRoot();
+        File.ReadAllText(Path.Combine(repoRoot, ".github", "workflows", "ci.yml"))
+            .ShouldContain("python3 -m unittest discover -s tests/tooling/release_packages -p \"*_test.py\"");
+        File.ReadAllText(Path.Combine(repoRoot, ".github", "workflows", "release.yml"))
+            .ShouldNotContain("tests/tooling/release_packages");
     }
 
     [Fact]
-    public void Workflows_ContainerPublishFixtures_RunBeforeReleasePublish()
+    public void CiWorkflow_OwnsContainerPublishFixtures()
     {
         const string FixtureCommand = "python3 -m unittest discover -s tests/tooling/publish_containers -p \"*_test.py\"";
         string repoRoot = GetRepoRoot();
-        ReleaseWorkflowStep[] releaseSteps = ParseReleaseWorkflowSteps(File.ReadAllLines(Path.Combine(repoRoot, ".github", "workflows", "release.yml")));
+        string releaseWorkflow = File.ReadAllText(Path.Combine(repoRoot, ".github", "workflows", "release.yml"));
         string ciWorkflow = File.ReadAllText(Path.Combine(repoRoot, ".github", "workflows", "ci.yml"));
-
-        ReleaseWorkflowStep[] fixtureSteps = [.. releaseSteps.Where(step => IsReleaseCommand(step, FixtureCommand))];
-        fixtureSteps.Length.ShouldBe(1, "release.yml must execute the container partial-publish and retry fixture exactly once.");
-
-        int fixturesIndex = Array.IndexOf(releaseSteps, fixtureSteps[0]);
-        int semanticReleaseIndex = Array.IndexOf(releaseSteps, GetReleaseWorkflowStep(releaseSteps, "Run semantic-release"));
-        semanticReleaseIndex.ShouldBeGreaterThanOrEqualTo(0, "release.yml must retain semantic-release.");
-        fixturesIndex.ShouldBeLessThan(semanticReleaseIndex, "container publication fixtures must pass before semantic-release starts publish-capable work.");
-
-        ReleaseWorkflowStep step = fixtureSteps[0];
-        step.If.ShouldBeNull("container publication fixtures must run unconditionally in the release lane.");
-        step.ContinueOnError.ShouldBeNull("container publication fixture failures must fail the release job.");
-        step.Uses.ShouldBeNull();
-
         ciWorkflow.ShouldContain("name: Run container publish fixtures");
         ciWorkflow.ShouldContain($"run: {FixtureCommand}");
+        releaseWorkflow.ShouldNotContain(FixtureCommand);
     }
 
     [Fact]
@@ -1016,12 +979,12 @@ public sealed partial class CiTestInventoryTests
     }
 
     [Fact]
-    public void ReleaseWorkflow_TestReleaseStep_DelegatesToSharedScript()
+    public void ReleaseWorkflow_DoesNotRepeatApplicationTests()
     {
-        ReleaseWorkflowStep step = GetReleaseWorkflowStep("Test unit and non-Docker suite");
-
-        IsReleaseCommand(step, "./tools/test-release.ps1").ShouldBeTrue();
-        step.Uses.ShouldBeNull();
+        string workflow = File.ReadAllText(Path.Combine(GetRepoRoot(), ".github", "workflows", "release.yml"));
+        workflow.ShouldNotContain("./tools/test-release.ps1");
+        workflow.ShouldContain("Prove current main and exact push CI before approval");
+        workflow.ShouldContain("Reprove current main and exact push CI before publication");
     }
 
     [Fact]
@@ -1064,6 +1027,7 @@ public sealed partial class CiTestInventoryTests
     [InlineData("actions/upload-artifact@v7", true)]
     [InlineData("actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9", true)]
     [InlineData("Hexalith/Hexalith.Builds/Github/initialize-build@main", true)]
+    [InlineData("Hexalith/Hexalith.Builds/Github/prepare-domain-release@81c88b34d09d34260b92d7f0928dbbc1c7446baa", true)]
     [InlineData("Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@6e7011fc754e74ac2a8864da1ce0b6d8f7178a48", true)]
     [InlineData("Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@f0feeb234cbc16f88c2886a6ffae7122e05dd640", false)]
     [InlineData("Hexalith/Hexalith.Builds/.github/workflows/release.yml@6e7011fc754e74ac2a8864da1ce0b6d8f7178a48", false)]
@@ -1092,6 +1056,11 @@ public sealed partial class CiTestInventoryTests
 
         // Story 30.1 authorizes this workflow identity, not arbitrary Builds actions or SHAs.
         if (reference == "Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@6e7011fc754e74ac2a8864da1ce0b6d8f7178a48")
+        {
+            return true;
+        }
+
+        if (reference == "Hexalith/Hexalith.Builds/Github/prepare-domain-release@81c88b34d09d34260b92d7f0928dbbc1c7446baa")
         {
             return true;
         }
@@ -1139,10 +1108,11 @@ public sealed partial class CiTestInventoryTests
     {
         IDictionary<string, string> permissions = GetReleaseWorkflowTopLevelMapping("permissions");
 
-        // Locked to the permissions audited by Story 14.2, plus id-token: write so NuGet Trusted
-        // Publishing can exchange the job OIDC token for a one-hour key. Adding another write
+        // Locked to the permissions audited by Story 14.2, plus actions: read for exact-source
+        // CI proof and id-token: write for caller-owned NuGet Trusted Publishing. Adding another write
         // scope must come with a documented reason and an updated test, not a silent workflow edit.
-        permissions.Count.ShouldBe(4, $"unexpected permissions block contents: {string.Join(", ", permissions.Select(kvp => $"{kvp.Key}={kvp.Value}"))}");
+        permissions.Count.ShouldBe(5, $"unexpected permissions block contents: {string.Join(", ", permissions.Select(kvp => $"{kvp.Key}={kvp.Value}"))}");
+        permissions.ShouldContainKeyAndValue("actions", "read");
         permissions.ShouldContainKeyAndValue("contents", "write");
         permissions.ShouldContainKeyAndValue("id-token", "write");
         permissions.ShouldContainKeyAndValue("issues", "write");
@@ -1854,7 +1824,6 @@ public sealed partial class CiTestInventoryTests
             "Install release tooling" => "npm ci",
             "Audit root release tooling" => "npm audit signatures",
             "Verify semantic-release configuration offline" => "npm run verify:semantic-release-config",
-            "Run release preflight" => "./tools/release-preflight.ps1",
             "Run semantic-release" => "npx semantic-release",
             "Test unit and non-Docker suite" => "./tools/test-release.ps1",
             "Run release package validator fixtures" => "python3 -m unittest discover -s tests/tooling/release_packages -p \"*_test.py\"",
@@ -2050,8 +2019,8 @@ public sealed partial class CiTestInventoryTests
         }
     }
 
-    // Hand-rolled step parser: release.yml has a single 'release' job whose steps are at the
-    // 6-space indent level. Each step starts with `      - name: <NAME>` and continues at 8-space
+    // Hand-rolled step parser: release.yml has source-proof and protected release jobs whose
+    // steps are at the 6-space indent level. Each step starts with `      - name: <NAME>` and continues at 8-space
     // body indent until the next sibling step or the end of the steps array. The release.yml
     // shape is stable; if a future restructure breaks this assumption these tests will fail
     // loudly with a "no step found" diagnostic rather than silently passing.

@@ -110,6 +110,19 @@ def write_fake_dotnet(directory: Path) -> None:
         encoding="utf-8",
     )
     os.chmod(directory / "dotnet", 0o755)
+    destination_probe = directory / "python3"
+    destination_probe.write_text(
+        '#!/usr/bin/env sh\n'
+        'if [ "$1" = "./tools/check-release-destinations.py" ]; then\n'
+        '  if [ "${FAKE_DESTINATION_STATUS:-absent}" != absent ]; then\n'
+        '    echo "[release-destinations] ${FAKE_DESTINATION_STATUS}" >&2\n'
+        '    exit 1\n'
+        '  fi\n'
+        '  exit 0\n'
+        'fi\n'
+        f'exec "{sys.executable}" "$@"\n', encoding="utf-8",
+    )
+    destination_probe.chmod(0o755)
 
 
 def write_fake_gh(directory: Path) -> None:
@@ -197,6 +210,7 @@ def run_publish(
     *,
     github_actions: bool = True,
     api_key: str = "SECRET_NUGET_API_KEY_SHOULD_NOT_LEAK",
+    destination_status: str = "absent",
 ) -> tuple[subprocess.CompletedProcess[str], Path, Path]:
     plan_path = package_directory.parent / "dotnet-plan.json"
     log_path = package_directory.parent / "dotnet-calls.jsonl"
@@ -209,6 +223,7 @@ def run_publish(
     env["FAKE_DOTNET_PLAN"] = str(plan_path)
     env["FAKE_DOTNET_LOG"] = str(log_path)
     env["NUGET_API_KEY"] = api_key
+    env["FAKE_DESTINATION_STATUS"] = destination_status
     if github_actions:
         env["GITHUB_ACTIONS"] = "true"
         env["GITHUB_STEP_SUMMARY"] = str(summary_path)
@@ -340,6 +355,23 @@ def run_issue_helper(
 
 
 class PublishNuGetTests(unittest.TestCase):
+    def test_occupied_or_ambiguous_destination_refuses_before_any_push(self) -> None:
+        for status in ("version-collision", "destination-probe-failure"):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                package_directory = root / "packages"
+                fake_bin = root / "bin"
+                package_directory.mkdir()
+                fake_bin.mkdir()
+                create_packages(package_directory)
+                write_fake_dotnet(fake_bin)
+                result, log_path, _ = run_publish(
+                    package_directory, fake_bin, {}, destination_status=status
+                )
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn(status, result.stdout + result.stderr)
+                self.assertFalse(log_path.exists(), "destination refusal must precede every dotnet push")
+
     def test_all_packages_publish_successfully_without_failure_summary(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -363,7 +395,7 @@ class PublishNuGetTests(unittest.TestCase):
             first_call = json.loads(log_path.read_text(encoding="utf-8").splitlines()[0])
             self.assertIn("--skip-duplicate", first_call["args"])
 
-    def test_duplicate_compatible_success_does_not_create_failure_summary(self) -> None:
+    def test_post_probe_duplicate_response_does_not_create_failure_summary(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             package_directory = root / "packages"

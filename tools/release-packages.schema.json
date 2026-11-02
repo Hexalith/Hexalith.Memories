@@ -19,9 +19,9 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["packageId", "project"],
+        "required": ["id", "project"],
         "properties": {
-          "packageId": {
+          "id": {
             "type": "string",
             "description": "NuGet package id; must match <PackageId> in the project file with case-sensitive equality (NuGet locks first-published casing).",
             "minLength": 1,

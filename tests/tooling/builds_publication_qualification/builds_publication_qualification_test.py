@@ -172,7 +172,7 @@ class RepositoryQualificationTests(unittest.TestCase):
         self.assertEqual({"path": "tools/builds-publication-qualification.json", "sha256": sha256(PROFILE.read_bytes())},
                          binding["profile"])
 
-    def test_frozen_identity_binds_the_executed_helpers_and_the_transient_id_manifest(self):
+    def test_frozen_identity_binds_the_executed_helpers_and_the_authoritative_id_manifest(self):
         document = self.results["phase-verification"]
         for name in ("builds-workflow-and-action-sha", "builds-executed-helper-hashes", "memories-source",
                      "container-repository-set", "package-inventory", "release-identity"):
@@ -316,13 +316,8 @@ class RepositoryQualificationTests(unittest.TestCase):
         findings = {item["code"]: item for document in self.results.values() for item in document["findings"]}
         self.assertIn("30-3", findings["prepare-domain-release-cannot-publish-containers"]["owner"])
         self.assertIn("30-4", findings["prepare-domain-release-cannot-publish-containers"]["owner"])
-        recovery = findings["recovery-workflow-superseded-set"]
-        self.assertEqual("30-5-partial-release-recovery", recovery["owner"])
-        self.assertTrue(recovery["evidence"]["imageCountLines"])
-        self.assertTrue(recovery["evidence"]["packageCountLines"])
-        manifest = findings["package-manifest-id-shape"]
-        self.assertEqual("30-3-guarded-release-dispatch-and-shared-caller-adoption", manifest["owner"])
-        self.assertIn("tools/qualify-builds-publication.py", manifest["summary"])
+        self.assertNotIn("recovery-workflow-superseded-set", findings)
+        self.assertNotIn("package-manifest-id-shape", findings)
         self.assertEqual("30-4-five-image-publication-contract", findings["builds-identity-omits-project-mapping"]["owner"])
         provenance = findings["provenance-labels-not-emitted"]
         self.assertEqual("30-4-five-image-publication-contract", provenance["owner"])
@@ -713,27 +708,26 @@ class ReleaseSetTests(unittest.TestCase):
             "not-json": b"[",
             "duplicate-key": b'{"packages": [], "packages": []}',
             "no-packages": manifest([]),
-            "already-id": manifest([{"packageId": "A", "id": "A"}]),
+            "mixed-shape": manifest([{"packageId": "A", "id": "A"}]),
             "missing-package-id": manifest([{"project": "src/A.csproj"}]),
-            "padded": manifest([{"packageId": " A"}]),
-            "case-duplicate": manifest([{"packageId": "A"}, {"packageId": "a"}]),
+            "padded": manifest([{"id": " A"}]),
+            "case-duplicate": manifest([{"id": "A"}, {"id": "a"}]),
         }
         for name, data in cases.items():
             with self.subTest(case=name), self.assertRaises(Q.QualificationError) as context:
                 Q.load_release_manifest(data)
             self.assertEqual("release-manifest-invalid", context.exception.code)
 
-    def test_transient_copy_renames_package_id_in_order_without_editing_the_manifest(self):
+    def test_authoritative_manifest_has_ten_ids_without_legacy_fields(self):
         source = REPO_ROOT / "tools" / "release-packages.json"
         before = source.read_bytes()
         document, ids = Q.load_release_manifest(before)
-        transient = Q.transient_id_document(document)
+        context = Q.prepare_context(REPO_ROOT, PROFILE, TOOL)
         self.assertEqual(10, len(ids))
-        self.assertEqual(list(ids), [entry["id"] for entry in transient["packages"]])
-        self.assertTrue(all("packageId" not in entry for entry in transient["packages"]))
-        self.assertNotIn("$schema", transient)
-        self.assertEqual(document["nonPackableProjects"], transient["nonPackableProjects"])
-        self.assertIn("packageId", document["packages"][0])
+        self.assertEqual(list(ids), [entry["id"] for entry in document["packages"]])
+        self.assertTrue(all("packageId" not in entry for entry in document["packages"]))
+        self.assertEqual(before, context.release_manifest)
+        self.assertEqual(sha256(before), sha256(context.release_manifest))
         self.assertEqual(before, source.read_bytes())
 
 

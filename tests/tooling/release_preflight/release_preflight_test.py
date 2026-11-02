@@ -34,6 +34,62 @@ def temporary_directory():
 
 @unittest.skipUnless(PWSH, "PowerShell 7 (pwsh) is required for release preflight execution tests")
 class ReleasePreflightTests(unittest.TestCase):
+    def test_release_writes_next_version_only_after_destination_proof(self):
+        with temporary_directory() as temp:
+            repo = Path(temp) / "work"
+            output = Path(temp) / "github-output.txt"
+            self._init_repo(repo)
+            self._write_destination_probe(repo, 0)
+            env = self._environment()
+            env["GITHUB_OUTPUT"] = str(output)
+
+            result = self._run_preflight(repo, "-NextVersion", "1.2.3", "-CheckDestinations", env=env)
+
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertEqual("next-version=1.2.3\n", output.read_text(encoding="utf-8"))
+
+    def test_no_release_writes_no_next_version_or_destination_probe(self):
+        with temporary_directory() as temp:
+            repo = Path(temp) / "work"
+            dry_run = Path(temp) / "dry-run.txt"
+            output = Path(temp) / "github-output.txt"
+            self._init_repo(repo)
+            self._write_destination_probe(repo, 77)
+            dry_run.write_text("There are no relevant changes, so no new version is released.\n", encoding="utf-8")
+            env = self._environment()
+            env["GITHUB_OUTPUT"] = str(output)
+
+            result = self._run_preflight(
+                repo, "-SemanticReleaseDryRunOutputPath", str(dry_run), "-CheckDestinations", env=env
+            )
+
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertFalse(output.exists())
+
+    def test_occupied_destination_writes_no_next_version(self):
+        with temporary_directory() as temp:
+            repo = Path(temp) / "work"
+            output = Path(temp) / "github-output.txt"
+            self._init_repo(repo)
+            self._write_destination_probe(repo, 1)
+            env = self._environment()
+            env["GITHUB_OUTPUT"] = str(output)
+
+            result = self._run_preflight(repo, "-NextVersion", "1.2.3", "-CheckDestinations", env=env)
+
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("Versioned NuGet and image destination absence was not proved", result.stdout + result.stderr)
+            self.assertFalse(output.exists())
+
+    @staticmethod
+    def _write_destination_probe(repo: Path, exit_code: int) -> None:
+        probe = repo / "tools/check-release-destinations.py"
+        probe.parent.mkdir(parents=True)
+        probe.write_text(
+            f"import sys\nprint('destination probe fixture')\nsys.exit({exit_code})\n",
+            encoding="utf-8",
+        )
+
     def test_no_existing_tag_passes(self):
         with temporary_directory() as temp:
             repo = Path(temp) / "work"

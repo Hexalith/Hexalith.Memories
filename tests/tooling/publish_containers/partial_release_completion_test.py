@@ -43,12 +43,17 @@ def prepare_tagged_source(
     root: Path,
     image_repositories: list[str] | None = None,
     package_ids: list[str] | None = None,
+    manifest_shape: str = "packageId",
 ) -> tuple[Path, Path]:
     repositories = list(image_repositories or IMAGE_REPOSITORIES)
     tools = root / "tools"
     tools.mkdir(parents=True)
+    entries = [
+        {("packageId" if manifest_shape == "mixed" and index == 0 else "id" if manifest_shape == "mixed" else manifest_shape): package_id}
+        for index, package_id in enumerate(package_ids or PACKAGE_IDS)
+    ]
     (tools / "release-packages.json").write_text(
-        json.dumps({"packages": [{"packageId": package_id} for package_id in (package_ids or PACKAGE_IDS)]}),
+        json.dumps({"packages": entries}),
         encoding="utf-8",
     )
     marker = root / "release-source.txt"
@@ -267,10 +272,12 @@ class PartialReleaseCompletionTests(unittest.TestCase):
         root: Path,
         image_repositories: list[str] | None = None,
         package_ids: list[str] | None = None,
+        manifest_shape: str = "packageId",
     ) -> tuple[Path, Path, Path, dict[str, str]]:
         source = root / "source"
         source.mkdir()
-        summary, deployment = prepare_tagged_source(source, image_repositories=image_repositories, package_ids=package_ids)
+        summary, deployment = prepare_tagged_source(source, image_repositories=image_repositories, package_ids=package_ids,
+                                                     manifest_shape=manifest_shape)
         fake_bin = root / "bin"
         fake_bin.mkdir()
         write_fake_gh(fake_bin)
@@ -316,7 +323,7 @@ class PartialReleaseCompletionTests(unittest.TestCase):
         images = IMAGE_REPOSITORIES + ["memories-domain-service"]
         with tempfile.TemporaryDirectory() as temp, PackageServer(packages) as nuget:
             source, summary, deployment, env = self.prepare(
-                Path(temp), image_repositories=images, package_ids=packages)
+                Path(temp), image_repositories=images, package_ids=packages, manifest_shape="id")
             result = run_completion(source, summary, deployment, nuget.origin, env)
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
             evidence = json.loads((source / "recovery-output/completion-summary.json").read_text(encoding="utf-8-sig"))
@@ -327,10 +334,26 @@ class PartialReleaseCompletionTests(unittest.TestCase):
     def test_new_catalog_unit_refuses_missing_domain_service_before_package_reads(self) -> None:
         packages = PACKAGE_IDS + ["Hexalith.Memories.EventStoreExtensions"]
         with tempfile.TemporaryDirectory() as temp, PackageServer(packages) as nuget:
-            source, summary, deployment, env = self.prepare(Path(temp), package_ids=packages)
+            source, summary, deployment, env = self.prepare(Path(temp), package_ids=packages, manifest_shape="id")
             result = run_completion(source, summary, deployment, nuget.origin, env)
             self.assertNotEqual(0, result.returncode)
             self.assertIn("DomainService", result.stdout + result.stderr)
+
+    def test_mixed_tagged_manifest_refuses_before_package_reads(self) -> None:
+        with tempfile.TemporaryDirectory() as temp, PackageServer() as nuget:
+            source, summary, deployment, env = self.prepare(Path(temp), manifest_shape="mixed")
+            result = run_completion(source, summary, deployment, nuget.origin, env)
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("mixes id and packageId", result.stdout + result.stderr)
+            self.assertFalse(Path(env["FAKE_GH_LOG"]).exists())
+
+    def test_nine_package_id_manifest_cannot_use_historical_recovery(self) -> None:
+        with tempfile.TemporaryDirectory() as temp, PackageServer() as nuget:
+            source, summary, deployment, env = self.prepare(Path(temp), manifest_shape="id")
+            result = run_completion(source, summary, deployment, nuget.origin, env)
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("complete current ten-package unit", result.stdout + result.stderr)
+            self.assertFalse(Path(env["FAKE_GH_LOG"]).exists())
 
     def test_historical_two_image_unit_completes_without_access_telemetry(self) -> None:
         with tempfile.TemporaryDirectory() as temp, PackageServer() as nuget:

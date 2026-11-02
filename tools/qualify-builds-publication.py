@@ -406,42 +406,29 @@ def discover_container_projects(root: Path) -> tuple[Mapping, ...]:
 
 
 def load_release_manifest(data: bytes) -> tuple[dict, tuple[str, ...]]:
-    """Load the authoritative ``packageId`` manifest and return it with its IDs."""
+    """Load the authoritative ``id`` manifest and return it with its IDs."""
     document = load_strict_json(data, "release-manifest-invalid", "Release package manifest")
     packages = document.get("packages") if isinstance(document, dict) else None
     if not isinstance(packages, list) or not packages:
         raise QualificationError("release-manifest-invalid", "Release package manifest has no packages list.")
     identifiers = []
     for entry in packages:
-        if not isinstance(entry, dict) or "id" in entry:
+        if not isinstance(entry, dict) or "packageId" in entry:
             raise QualificationError(
                 "release-manifest-invalid",
-                "Each package must be an object declaring packageId and no id.",
+                "Each package must be an object declaring id and no packageId.",
             )
-        package_id = entry.get("packageId")
+        package_id = entry.get("id")
         if not isinstance(package_id, str) or not package_id or package_id != package_id.strip():
-            raise QualificationError("release-manifest-invalid", "Each package must declare a canonical packageId.")
+            raise QualificationError("release-manifest-invalid", "Each package must declare a canonical id.")
         identifiers.append(package_id)
     if len({identifier.lower() for identifier in identifiers}) != len(identifiers):
         raise QualificationError("release-manifest-invalid", "Package IDs must be unique ignoring case.")
     return document, tuple(identifiers)
 
 
-def transient_id_document(document: dict) -> dict:
-    """Return the ``id``-shaped copy that the pinned Builds preflight reads."""
-    copy = {}
-    for key, value in document.items():
-        if key == "$schema":
-            # The schema still describes packageId; the transient copy is Builds-only input.
-            continue
-        if key == "packages":
-            value = [{("id" if name == "packageId" else name): item for name, item in entry.items()} for entry in value]
-        copy[key] = value
-    return copy
-
-
 def manifest_bytes(document: dict) -> bytes:
-    """Serialize a transient manifest deterministically."""
+    """Serialize the validated manifest deterministically for qualification."""
     return (json.dumps(document, indent=2) + "\n").encode("utf-8")
 
 
@@ -581,8 +568,8 @@ class Context:
     builds: BuildsBinding | None = None
     source: dict | None = None
     package_ids: tuple = ()
-    transient_document: dict | None = None
-    transient_manifest: bytes = b""
+    release_document: dict | None = None
+    release_manifest: bytes = b""
     discovered: tuple = ()
     prerequisite_failures: list = field(default_factory=list)
     profile_label: str = PROFILE_LABEL
@@ -659,10 +646,11 @@ def prepare_context(root: Path, profile_path: Path, harness_path: Path) -> Conte
     except QualificationError as error:
         context.prerequisite_failures.append(str(error))
     try:
-        document, package_ids = load_release_manifest((root / MANIFEST_PATH).read_bytes())
+        release_manifest = (root / MANIFEST_PATH).read_bytes()
+        document, package_ids = load_release_manifest(release_manifest)
         context.package_ids = package_ids
-        context.transient_document = transient_id_document(document)
-        context.transient_manifest = manifest_bytes(context.transient_document)
+        context.release_document = document
+        context.release_manifest = release_manifest
     except OSError:
         context.prerequisite_failures.append("release-manifest-missing: tools/release-packages.json is unreadable.")
     except QualificationError as error:
@@ -671,7 +659,7 @@ def prepare_context(root: Path, profile_path: Path, harness_path: Path) -> Conte
         context.discovered = discover_container_projects(root)
     except QualificationError as error:
         context.prerequisite_failures.append(str(error))
-    if context.transient_document is not None:
+    if context.release_document is not None:
         drift = mapping_drift(context.profile.mappings, context.discovered) + package_drift(
             context.profile.expected_package_count, context.package_ids, context.package_ids
         )
@@ -1348,7 +1336,7 @@ class Sandbox:
             shutil.copyfile(context.root / mapping.project, target)
         manifest = self.workspace / MANIFEST_PATH
         manifest.parent.mkdir(parents=True, exist_ok=True)
-        manifest.write_bytes(context.transient_manifest)
+        manifest.write_bytes(context.release_manifest)
         self.world.write_config(
             {
                 "releaseDirectory": str(self.release_directory),
@@ -1781,7 +1769,7 @@ def run_complete_set_dry_run(context: Context, scratch: Path, state: dict, resul
         re.search(r"dry[-_ ]?run", publisher_text, re.IGNORECASE) is None and len(logins) == 1 and len(dotnet) == len(mappings),
         "publish-containers.sh declares no dry-run switch; the run logged in once and invoked one SDK publication per member.",
     )
-    result.findings.extend(_static_findings(context, ("package-manifest-id-shape", "provenance-labels-not-emitted",
+    result.findings.extend(_static_findings(context, ("provenance-labels-not-emitted",
                                                        "prepare-domain-release-cannot-publish-containers")))
     for finding in result.findings:
         if finding["code"] == "prepare-domain-release-cannot-publish-containers":
@@ -1809,18 +1797,6 @@ def _static_findings(context: Context, codes) -> list:
         if finding is not None:
             findings.append({"code": code, **finding})
     return findings
-
-
-def _finding_manifest_shape(context: Context):
-    return {
-        "owner": "30-3-guarded-release-dispatch-and-shared-caller-adoption",
-        "summary": "Builds reads packages[].id while tools/release-packages.json still declares packageId; "
-                   "qualification fed Builds a transient id-shaped copy and never edits the manifest. Story 30.3's "
-                   "atomic id rename must also update tools/qualify-builds-publication.py, which reads packageId.",
-        "premiseObserved": True,
-        "evidence": {"path": MANIFEST_PATH.as_posix(), "packageIds": len(context.package_ids),
-                     "transientManifestSha256": sha256_bytes(context.transient_manifest)},
-    }
 
 
 def _finding_provenance_labels(context: Context):
@@ -1891,7 +1867,6 @@ def _finding_evidence_retention(context: Context):
 
 
 STATIC_FINDINGS = {
-    "package-manifest-id-shape": _finding_manifest_shape,
     "provenance-labels-not-emitted": _finding_provenance_labels,
     "prepare-domain-release-cannot-publish-containers": _finding_prepare_domain_release,
     "recovery-workflow-superseded-set": _finding_recovery_workflow,
@@ -1921,7 +1896,7 @@ class DriftVariant:
 def drift_variants(context: Context) -> tuple:
     """Return the dropped, added, renamed, remapped and count-drift variants."""
     declared = context.profile.mappings
-    packages = tuple(context.transient_document["packages"])
+    packages = tuple(context.release_document["packages"])
     swapped = list(declared)
     swapped[0] = Mapping(declared[0].project, declared[1].repository)
     swapped[1] = Mapping(declared[1].project, declared[0].repository)
@@ -2001,7 +1976,7 @@ def run_set_drift(context: Context, scratch: Path, state: dict, result: Checkpoi
         manifest = None
         if variant.kind == "package":
             manifest = "tools/release-packages.drift.json"
-            (sandbox.workspace / manifest).write_bytes(manifest_bytes({**context.transient_document, "packages": list(variant.packages)}))
+            (sandbox.workspace / manifest).write_bytes(manifest_bytes({**context.release_document, "packages": list(variant.packages)}))
         fresh = sandbox.preflight("verify", repositories=[mapping.repository for mapping in variant.mappings],
                                   manifest=manifest, evidence=".hexalith/drift-fresh/preflight")
         result.check(f"{variant.name}:fresh-builds-verdict", _verdict(fresh) == variant.fresh,
@@ -2061,7 +2036,7 @@ def run_phase_verification(context: Context, scratch: Path, state: dict, result:
         and identity.get("source", {}).get("live_sha") == context.source["sha"],
         "container-repository-set": identity.get("container_repositories") == expected_repositories,
         "package-inventory": identity.get("packages", {}).get("ids") == list(context.package_ids)
-        and identity.get("packages", {}).get("manifest_sha256") == sha256_bytes(context.transient_manifest),
+        and identity.get("packages", {}).get("manifest_sha256") == sha256_bytes(context.release_manifest),
         "release-identity": identity.get("repository") == RELEASE_REPOSITORY and identity.get("version") == QUALIFICATION_VERSION
         and identity.get("environment") == ENVIRONMENT_NAME and identity.get("platforms") == list(PLATFORMS),
     }
@@ -2309,7 +2284,7 @@ def run_evidence_upload(context: Context, scratch: Path, state: dict, result: Ch
     required = {f"{QUALIFICATION_VERSION}/preflight/{name}" for name in PREFLIGHT_FILES} | {
         f"{QUALIFICATION_VERSION}/{mapping.repository}/{name}" for mapping in context.profile.mappings for name in MEMBER_FILES
     }
-    # Exact paths only: the installed helpers, the copied projects, the transient manifest and the expected evidence.
+    # Exact paths only: the installed helpers, the copied projects, the release manifest and the expected evidence.
     allowed = {f".hexalith/release/{name}" for name in EXECUTED_HELPERS} | {
         mapping.project for mapping in context.profile.mappings
     } | {MANIFEST_PATH.as_posix()} | {f"{upload_root.relative_to(dry.workspace).as_posix()}/{path}" for path in required}

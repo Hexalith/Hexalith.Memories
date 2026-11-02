@@ -3,11 +3,19 @@ param(
     [string] $RemoteName = "origin",
     [string] $TagFormat = 'v${version}',
     [string] $NextVersion,
-    [string] $SemanticReleaseDryRunOutputPath
+    [string] $SemanticReleaseDryRunOutputPath,
+    [switch] $CheckDestinations
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+# Semantic Release invokes verifyReleaseCmd during classification dry-runs. The caller's
+# outer preflight performs the real tag and destination checks after classification.
+if ($env:HEXALITH_RELEASE_CLASSIFICATION_ONLY -ceq 'true' -and $PSBoundParameters.ContainsKey('NextVersion')) {
+    Write-Host 'Semantic-release classification only; live release preflight is deferred to the caller.'
+    exit 0
+}
 
 $script:SemverPattern = '^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$'
 $script:DryRunReportedStaleCheckout = $false
@@ -298,6 +306,23 @@ try {
 
     Test-LocalTagCollision -TagRef $tagRef
     Test-RemoteTagCollision -TagRef $tagRef -Remote $RemoteName
+
+    if ($CheckDestinations) {
+        Push-Location -LiteralPath $script:ResolvedRepositoryPath
+        try {
+            & python3 ./tools/check-release-destinations.py --version $version
+            if ($LASTEXITCODE -ne 0) {
+                throw "Versioned NuGet and image destination absence was not proved for $version."
+            }
+        }
+        finally {
+            Pop-Location
+        }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_OUTPUT)) {
+        Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value "next-version=$version"
+    }
 
     Write-Host "No stale release tag found for $tagRef."
     exit 0
