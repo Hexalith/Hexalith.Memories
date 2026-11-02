@@ -157,18 +157,6 @@ def make_environment(
     fake_bin.mkdir()
     write_fake_pwsh(fake_bin)
     write_fake_dotnet(fake_bin)
-    write_executable(
-        fake_bin / "python3",
-        '#!/usr/bin/env sh\n'
-        'if [ "$1" = "./tools/check-release-source.py" ]; then\n'
-        '  if [ "${FAKE_SOURCE_PROOF:-pass}" != pass ]; then\n'
-        '    echo "source proof failed" >&2\n'
-        '    exit 1\n'
-        '  fi\n'
-        '  exit 0\n'
-        'fi\n'
-        f'exec "{sys.executable}" "$@"\n',
-    )
     log_path = root / "orchestration.jsonl"
     env = os.environ.copy()
     env["PATH"] = str(fake_bin) + os.pathsep + env["PATH"]
@@ -179,7 +167,6 @@ def make_environment(
     env["FAKE_CONTAINER_STATUS"] = container_status
     env["FAKE_PACKAGE_VALIDATION_STATUS"] = package_validation_status
     env["FAKE_PWSH"] = str(fake_bin / "pwsh")
-    env["FAKE_SOURCE_PROOF"] = "pass"
     return env, log_path
 
 
@@ -188,19 +175,6 @@ def read_log(path: Path) -> list[dict[str, object]]:
 
 
 class ReleaseOrchestrationTests(unittest.TestCase):
-    def test_source_change_refuses_before_any_publisher(self) -> None:
-        with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
-            env, log_path = make_environment(root)
-            env["FAKE_SOURCE_PROOF"] = "stale"
-            result = subprocess.run(
-                [shutil.which("pwsh") or "pwsh", "-NoLogo", "-NoProfile", "-File", str(PUBLISH_SCRIPT),
-                 "-Version", VERSION, "-PowerShellExecutable", env["FAKE_PWSH"]],
-                cwd=REPO_ROOT, env=env, capture_output=True, text=True, check=False,
-            )
-            self.assertNotEqual(0, result.returncode)
-            self.assertFalse(log_path.exists())
-
     def test_publish_release_attempts_both_families_and_writes_aggregate_partial_state(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

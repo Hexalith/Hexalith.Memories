@@ -212,6 +212,27 @@ class ReleasePreflightTests(unittest.TestCase):
             self.assertIn("no release or tag check required", result.stdout)
             self.assertNotIn("No stale release tag found", result.stdout)
 
+    def test_guarded_preflight_rejects_stale_checkout_without_next_version(self):
+        with temporary_directory() as temp:
+            repo = Path(temp) / "work"
+            output = Path(temp) / "dry-run.txt"
+            github_output = Path(temp) / "github-output.txt"
+            self._init_repo(repo)
+            output.write_text(
+                "The local branch main is behind the remote one, therefore a new version won't be published.\n",
+                encoding="utf-8",
+            )
+            env = self._environment()
+            env["GITHUB_OUTPUT"] = str(github_output)
+
+            result = self._run_preflight(
+                repo, "-SemanticReleaseDryRunOutputPath", str(output), "-CheckDestinations", env=env
+            )
+
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("guarded release preflight refuses", result.stderr)
+            self.assertFalse(github_output.exists())
+
     def test_semantic_release_logger_prefixed_stale_checkout_exits_successfully(self):
         logger_lines = (
             "[4:12:33 PM] [semantic-release] › ℹ  The local branch main is behind the remote one, therefore a new version won't be published.\n",

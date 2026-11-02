@@ -90,18 +90,18 @@ protection evidence below stays historical evidence; this story performs no remo
   Invalid `RepositoryPath` values name the required checkout directory. A failed local
   ref probe blocks publication and identifies the ref to inspect; failures retain the
   original exception, inner causes and PowerShell script stack for diagnosis. With `-CheckDestinations`, it uses the pinned Builds destination probe to reject any occupied or ambiguous NuGet package or image tag before OIDC login. The semantic-release verify hook repeats that probe before prepare; `publish-nuget.ps1` repeats it before the first package push.
-- Semantic-release runs `tools/verify-container-registry.ps1` as its `verifyReleaseCmd`, before
+- Semantic-release runs the destination preflight and `tools/verify-container-registry.ps1` as its `verifyReleaseCmd`, before
   prepare creates release artifacts or a tag can be published. The verifier first requires the
   unauthenticated `/v2/` response to advertise a Basic `WWW-Authenticate` realm, then opens and
   immediately cancels authenticated OCI upload sessions in `memories`, `memories-mcp`,
-  `memories-access-telemetry`, and `memories-access-telemetry-clock`.
+  `memories-access-telemetry`, `memories-access-telemetry-clock`, and `memories-domain-service`.
   The challenge check proves challenge-driven clients can select the authfile credential; the
   upload probes separately prove write authorization. Every opened probe session must return HTTP
   204 when cancelled or the release fails closed.
-- `tools/pack-release.ps1` is the `prepareCmd` for `@semantic-release/exec`.
+- `tools/pack-release.ps1` is the `prepareCmd` for `@semantic-release/exec`; its final source proof runs before semantic-release creates the tag.
 - `tools/publish-release.ps1` is the `publishCmd` for `@semantic-release/exec`. It always attempts
   both NuGet and container publication and writes one aggregate release summary.
-- `tools/pack-release.ps1` prebuilds the Server, MCP, access-telemetry lifecycle, and clock OCI archives and the versioned production
+- `tools/pack-release.ps1` prebuilds the Server, MCP, access-telemetry lifecycle, clock, and DomainService OCI archives and the versioned production
   deployment before any publish-side effects occur.
 - `tools/publish-containers.ps1 -Push` publishes the prebuilt archives with `skopeo copy`, passing
   credentials through a scoped temporary authfile built from `HEXALITH_ZOT_USERNAME` and

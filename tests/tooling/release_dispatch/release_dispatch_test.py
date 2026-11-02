@@ -2,8 +2,10 @@
 
 import importlib.util
 import io
+import json
 import os
 import re
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -45,6 +47,7 @@ class ReleaseDispatchTests(unittest.TestCase):
         self.assertIn("prepare-domain-release@" + self.source.APPROVED_BUILDS_SHA, workflow)
         self.assertIn("builds-execution-sha: " + self.source.APPROVED_BUILDS_SHA, workflow)
         self.assertIn("expected-package-count: '10'", workflow)
+        self.assertIn("publication-flag: ${{ vars.HEXALITH_RELEASE_PUBLISH_ENABLED }}", workflow)
         self.assertIn("NuGet/login@v1", workflow)
         self.assertNotIn("./tools/test-release.ps1", workflow)
 
@@ -113,11 +116,64 @@ class ReleaseDispatchTests(unittest.TestCase):
         self.assertEqual(self.source.APPROVED_BUILDS_SHA, self.destination.APPROVED_BUILDS_SHA)
         preflight = (ROOT / "tools/release-preflight.ps1").read_text(encoding="utf-8")
         publisher = (ROOT / "tools/publish-nuget.ps1").read_text(encoding="utf-8")
-        aggregate = (ROOT / "tools/publish-release.ps1").read_text(encoding="utf-8")
+        release_config = json.loads((ROOT / ".releaserc.json").read_text(encoding="utf-8"))
+        prepare_command = release_config["plugins"][2][1]["prepareCmd"]
         self.assertIn("check-release-destinations.py", preflight)
         self.assertIn("check-release-destinations.py", publisher)
         self.assertLess(publisher.index("check-release-destinations.py"), publisher.index("dotnet nuget push"))
-        self.assertLess(aggregate.index("check-release-source.py"), aggregate.index("'./tools/publish-nuget.ps1'"))
+        self.assertLess(prepare_command.index("pack-release.ps1"), prepare_command.index("check-release-source.py"))
+        self.assertNotIn("check-release-source.py", release_config["plugins"][2][1]["publishCmd"])
+
+    def test_late_production_reviewer_check_fails_when_rule_is_absent(self):
+        workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+        step = workflow.split("      - name: Recheck production approval rule before publication", 1)[1]
+        command = re.search(r"        run: \|\n((?:          .*\n)+)", step)
+        self.assertIsNotNone(command)
+        script = "\n".join(line[10:] for line in command.group(1).splitlines())
+        with tempfile.TemporaryDirectory() as temporary:
+            fake_gh = Path(temporary) / "gh"
+            fake_gh.write_text(
+                "#!/usr/bin/env bash\n"
+                "set -euo pipefail\n"
+                "query=''\n"
+                "while [ \"$#\" -gt 0 ]; do\n"
+                "  if [ \"$1\" = '--jq' ]; then shift; query=$1; fi\n"
+                "  shift\n"
+                "done\n"
+                "printf '%s\\n' \"$GH_RESPONSE\" | jq -r \"$query\"\n",
+                encoding="utf-8",
+            )
+            fake_gh.chmod(0o755)
+            for reviewers, expected_success in (([], False), ([{"type": "User", "id": 1}], True)):
+                with self.subTest(reviewers=reviewers):
+                    response = {"protection_rules": [{"type": "required_reviewers", "reviewers": reviewers}]}
+                    environment = dict(os.environ)
+                    environment.update(
+                        PATH=f"{temporary}:{os.environ['PATH']}",
+                        GITHUB_REPOSITORY="Hexalith/Hexalith.Memories",
+                        GH_TOKEN="fixture",
+                        GH_RESPONSE=json.dumps(response),
+                    )
+                    result = subprocess.run(["bash", "-c", script], env=environment, capture_output=True, text=True)
+                    self.assertEqual(expected_success, result.returncode == 0, result.stderr)
+
+    def test_prepare_hook_refuses_failed_source_proof_before_tag_phase(self):
+        release_config = json.loads((ROOT / ".releaserc.json").read_text(encoding="utf-8"))
+        command = release_config["plugins"][2][1]["prepareCmd"].replace("${nextRelease.version}", "1.2.3")
+        with tempfile.TemporaryDirectory() as temporary:
+            fake_bin = Path(temporary)
+            pack = fake_bin / "pwsh"
+            pack.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+            pack.chmod(0o755)
+            proof = fake_bin / "python3"
+            proof.write_text("#!/usr/bin/env bash\nexit 42\n", encoding="utf-8")
+            proof.chmod(0o755)
+            environment = dict(os.environ)
+            environment["PATH"] = f"{temporary}:{os.environ['PATH']}"
+
+            result = subprocess.run(["bash", "-c", command], env=environment, capture_output=True, text=True)
+
+            self.assertEqual(42, result.returncode)
 
     def test_destination_wrapper_probes_exact_publisher_set_and_refuses_uncertain_results(self):
         package_ids = [f"Package.{index}" for index in range(10)]

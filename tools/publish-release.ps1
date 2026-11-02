@@ -15,17 +15,6 @@ param(
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
-Push-Location $repoRoot
-try {
-    & python3 ./tools/check-release-source.py
-    if ($LASTEXITCODE -ne 0) {
-        throw 'The current main tip and exact-source push CI could not be reproved immediately before publication.'
-    }
-}
-finally {
-    Pop-Location
-}
-
 function Resolve-RepoPath {
     param([Parameter(Mandatory)][string]$Path)
 

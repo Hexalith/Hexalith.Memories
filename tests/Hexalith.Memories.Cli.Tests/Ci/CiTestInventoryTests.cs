@@ -429,7 +429,7 @@ public sealed partial class CiTestInventoryTests
         execOptions.EnumerateObject().Select(static property => property.Name).ShouldBe(["verifyReleaseCmd", "prepareCmd", "publishCmd"]);
         execOptions.GetProperty("verifyReleaseCmd").GetString().ShouldBe("pwsh -NoLogo -NoProfile -File ./tools/release-preflight.ps1 -NextVersion ${nextRelease.version} -CheckDestinations && pwsh -NoLogo -NoProfile -File ./tools/verify-container-registry.ps1");
         execOptions.GetProperty("prepareCmd").GetString()
-            .ShouldBe("pwsh -NoLogo -NoProfile -File ./tools/pack-release.ps1 -Version ${nextRelease.version} -OutputDirectory ./artifacts/packages/release");
+            .ShouldBe("pwsh -NoLogo -NoProfile -File ./tools/pack-release.ps1 -Version ${nextRelease.version} -OutputDirectory ./artifacts/packages/release && python3 ./tools/check-release-source.py");
         execOptions.GetProperty("publishCmd").GetString()
             .ShouldBe("pwsh -NoLogo -NoProfile -File ./tools/publish-release.ps1 -Version ${nextRelease.version}");
 

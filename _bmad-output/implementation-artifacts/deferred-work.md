@@ -5966,3 +5966,31 @@ decision: 2026-11-01 keep-open — parked. Reopens only on the trigger: any Prod
 - source_spec: `/home/administrator/projects/hexalith/memories/_bmad-output/implementation-artifacts/spec-30-3-guarded-release-dispatch-and-shared-caller-adoption.md`
   summary: Configure and read back required reviewers on the GitHub production environment before guarded release dispatch can enter the publication job.
   evidence: Review finding Blind 2 (high; external prerequisite). On 2026-11-02, `gh api repos/Hexalith/Hexalith.Memories/environments/production` returned `protection_rules: []` and `deployment_branch_policy: null`. The new source job fails closed on that state. The approved Story 30.3 intent excludes GitHub settings changes; a repository administrator must install the reviewer rule and verify it by API readback before a live release can be accepted.
+
+- source_spec: `/home/administrator/projects/hexalith/memories/_bmad-output/implementation-artifacts/spec-30-3-guarded-release-dispatch-and-shared-caller-adoption.md`
+  summary: Make current five-image recovery accept the real four-image deployment asset without treating DomainService as a deployed workload.
+  evidence: Round 2 Blind 1 and 2 (high). `publish-containers.ps1` publishes DomainService but has no render parameter for it; `complete-partial-release.ps1` requires every published image in the deployment, and the fixture invents a DomainService reference. Story 30.5 owns current-set recovery and should use the actual renderer output.
+
+- source_spec: `/home/administrator/projects/hexalith/memories/_bmad-output/implementation-artifacts/spec-30-3-guarded-release-dispatch-and-shared-caller-adoption.md`
+  summary: Reject a NuGet duplicate response that races the destination absence probe instead of recording it as a successful push.
+  evidence: Round 2 Blind 5 (high). The pre-existing `publish-nuget.ps1` calls `dotnet nuget push --skip-duplicate` and records zero exit as pushed. A package uploaded by another writer after the probe can therefore produce false complete-release evidence. Story 30.5 must reconcile occupied immutable destinations and package identity.
+
+- source_spec: `/home/administrator/projects/hexalith/memories/_bmad-output/implementation-artifacts/spec-30-3-guarded-release-dispatch-and-shared-caller-adoption.md`
+  summary: Put partial-release recovery publication behind an authorized production approval gate.
+  evidence: Round 2 Blind 6 (high). `recover-partial-release.yml` can publish missing images and create a GitHub Release without `environment: production`; this route predates Story 30.3. Story 30.5 owns recovery authorization.
+
+- source_spec: `/home/administrator/projects/hexalith/memories/_bmad-output/implementation-artifacts/spec-30-3-guarded-release-dispatch-and-shared-caller-adoption.md`
+  summary: Bind recovery tooling to a reviewed source and exact successful push CI before it can publish.
+  evidence: Round 2 Blind 7 (high). Recovery copies executable tools from its dispatched main checkout before proving that checkout is the live main tip or has successful exact-source push CI. Story 30.5 owns the recovery source/version proof.
+
+- source_spec: `/home/administrator/projects/hexalith/memories/_bmad-output/implementation-artifacts/spec-30-3-guarded-release-dispatch-and-shared-caller-adoption.md`
+  summary: Scope registry write checks for historical recovery to repositories present in the tagged release.
+  evidence: Round 2 Blind 8 (medium). `recover-partial-release.yml` checks the verifier's current five repositories before checkout of a historical two- or four-image tag, so lost access to an unused newer repository blocks old recovery. Story 30.5 owns the tagged-set contract.
+
+- source_spec: `/home/administrator/projects/hexalith/memories/_bmad-output/implementation-artifacts/spec-30-3-guarded-release-dispatch-and-shared-caller-adoption.md`
+  summary: Qualify the five image project-to-repository mappings as a single publication set.
+  evidence: Round 2 Blind 9 (medium). The destination preflight checks the five repository names but cannot detect a project remap that keeps those names; the current publisher owns project mappings. Story 30.4 explicitly owns their verification.
+
+- source_spec: `/home/administrator/projects/hexalith/memories/_bmad-output/implementation-artifacts/spec-30-3-guarded-release-dispatch-and-shared-caller-adoption.md`
+  summary: Require exactly the approved five image members when completing a ten-package current release.
+  evidence: Round 2 Edge 1 (high). The existing recovery guard requires DomainService for ten packages but accepts a four-member summary omitting the telemetry clock, then can close the incident. Story 30.5 owns full current-set recovery.

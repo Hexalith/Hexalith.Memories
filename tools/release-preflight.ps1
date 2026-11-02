@@ -292,6 +292,9 @@ try {
 
     if ([string]::IsNullOrWhiteSpace($version)) {
         if ($script:DryRunReportedStaleCheckout) {
+            if ($CheckDestinations) {
+                throw 'semantic-release dry-run reported a stale checkout; guarded release preflight refuses to treat this as a successful no-release result.'
+            }
             Write-Host "semantic-release dry-run reported a stale checkout; release preflight passed with no release or tag check required."
         }
         else {
