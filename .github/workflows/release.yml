@@ -34,7 +34,7 @@ permissions:
 jobs:
   release-source:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 60
     permissions:
       actions: read
       contents: read
@@ -70,7 +70,8 @@ jobs:
   release:
     needs: release-source
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Ten packages and five multi-platform images must finish as one publication unit.
+    timeout-minutes: 120
     environment: production
 
     steps:
@@ -128,7 +129,7 @@ jobs:
         if: steps.prepare.outputs.publish-enabled == 'true'
         shell: pwsh
         run: ./tools/release-preflight.ps1 -CheckDestinations
-        timeout-minutes: 10
+        timeout-minutes: 20
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HEXALITH_ZOT_REGISTRY: ${{ vars.HEXALITH_ZOT_REGISTRY || 'registry.hexalith.com' }}
