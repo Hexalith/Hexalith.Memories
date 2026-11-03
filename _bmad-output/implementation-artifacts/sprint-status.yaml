@@ -48,7 +48,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-05T17:40:39+02:00
-last_updated: '2026-11-02'
+last_updated: '2026-11-03'
 project: memories
 project_key: NOKEY
 tracking_system: file-system
@@ -521,7 +521,7 @@ development_status:
   epic-30: in-progress
   30-1-shared-ci-core-and-module-specific-verification-lanes: done
   30-2-pinned-builds-publication-and-recovery-qualification: done
-  30-3-guarded-release-dispatch-and-shared-caller-adoption: review
+  30-3-guarded-release-dispatch-and-shared-caller-adoption: in-progress
   30-4-five-image-publication-contract: backlog
   30-5-partial-release-recovery: backlog
   30-6-release-cutover-parity-and-rollback: backlog

@@ -81,12 +81,39 @@ class ReleasePreflightTests(unittest.TestCase):
             self.assertIn("Versioned NuGet and image destination absence was not proved", result.stdout + result.stderr)
             self.assertFalse(output.exists())
 
+    def test_dispatch_path_writes_dry_run_version_after_destination_proof(self):
+        # release.yml calls the preflight with -CheckDestinations and no -NextVersion, so the
+        # published next-version output must be the version derived from the dry run.
+        with temporary_directory() as temp:
+            repo = Path(temp) / "work"
+            dry_run = Path(temp) / "dry-run.txt"
+            output = Path(temp) / "github-output.txt"
+            probe_arguments = Path(temp) / "probe-arguments.txt"
+            self._init_repo(repo)
+            self._write_destination_probe(repo, 0, probe_arguments)
+            dry_run.write_text("The next release version is 4.5.6\n", encoding="utf-8")
+            env = self._environment()
+            env["GITHUB_OUTPUT"] = str(output)
+
+            result = self._run_preflight(
+                repo, "-SemanticReleaseDryRunOutputPath", str(dry_run), "-CheckDestinations", env=env
+            )
+
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertEqual(["--version", "4.5.6"], probe_arguments.read_text(encoding="utf-8").splitlines())
+            self.assertEqual("next-version=4.5.6\n", output.read_text(encoding="utf-8"))
+
     @staticmethod
-    def _write_destination_probe(repo: Path, exit_code: int) -> None:
+    def _write_destination_probe(repo: Path, exit_code: int, arguments_file: Optional[Path] = None) -> None:
         probe = repo / "tools/check-release-destinations.py"
         probe.parent.mkdir(parents=True)
+        record = (
+            ""
+            if arguments_file is None
+            else f"from pathlib import Path\nPath({str(arguments_file)!r}).write_text('\\n'.join(sys.argv[1:]), encoding='utf-8')\n"
+        )
         probe.write_text(
-            f"import sys\nprint('destination probe fixture')\nsys.exit({exit_code})\n",
+            f"import sys\n{record}print('destination probe fixture')\nsys.exit({exit_code})\n",
             encoding="utf-8",
         )
 
@@ -779,9 +806,11 @@ class ReleasePreflightTests(unittest.TestCase):
 
     @staticmethod
     def _environment(source=None):
-        # Git hooks export routing variables that must not redirect disposable fixtures.
-        return {key: value for key, value in (os.environ if source is None else source).items()
-                if not key.startswith("GIT_")}
+        # Git hooks export routing variables that must not redirect disposable fixtures, and the
+        # runner's own step output must never receive a fixture's next-version record.
+        if source is None:
+            source = {key: value for key, value in os.environ.items() if key != "GITHUB_OUTPUT"}
+        return {key: value for key, value in source.items() if not key.startswith("GIT_")}
 
     def _run_preflight(
         self,

@@ -523,6 +523,27 @@ public sealed partial class CiTestInventoryTests
         ci.ShouldContain(FixtureCommand);
         release.ShouldNotContain(FixtureCommand);
         ci.ShouldContain("tests/tooling/release_dispatch");
+
+        // Release trusts exact-source CI alone for these fixtures, so each must be one blocking,
+        // unconditional step of the required test-unit-contract job, not text anywhere in ci.yml.
+        ReleaseWorkflowStep[] requiredSteps = ParseReleaseWorkflowSteps(
+            GetWorkflowJobLines(File.ReadAllLines(Path.Combine(repoRoot, ".github", "workflows", "ci.yml")), "test-unit-contract"));
+        foreach (string suite in new[]
+                 {
+                     "release_packages",
+                     "release_preflight",
+                     "release_dispatch",
+                     "publish_nuget",
+                     "publish_containers",
+                     "builds_publication_qualification",
+                 })
+        {
+            string command = $"python3 -m unittest discover -s tests/tooling/{suite} -p \"*_test.py\"";
+            ReleaseWorkflowStep[] fixtureSteps = [.. requiredSteps.Where(step => IsReleaseCommand(step, command))];
+            fixtureSteps.Length.ShouldBe(1, $"test-unit-contract must run the {suite} fixtures exactly once.");
+            fixtureSteps[0].If.ShouldBeNull($"the {suite} fixtures must run unconditionally.");
+            fixtureSteps[0].ContinueOnError.ShouldBeNull($"a {suite} fixture failure must fail the required job.");
+        }
     }
 
     [Fact]
@@ -1107,7 +1128,8 @@ public sealed partial class CiTestInventoryTests
             return true;
         }
 
-        // Story 30.1 authorizes this workflow identity, not arbitrary Builds actions or SHAs.
+        // The owner approved this shared-CI identity on 2026-11-03 (Story 30.3 review round 2,
+        // superseding Story 30.1's f0feeb2 pin); it authorizes no other Builds action or SHA.
         if (reference == "Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@6e7011fc754e74ac2a8864da1ce0b6d8f7178a48")
         {
             return true;

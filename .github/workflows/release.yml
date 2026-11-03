@@ -5,8 +5,9 @@ on:
 
 # cancel-in-progress: false is deliberate. A release run that is interrupted mid-publish
 # would leave NuGet in a partial-publish state. The trusted Recover Partial Release workflow
-# can reconcile a tagged partial release, but an in-flight release must still run to completion
-# rather than being cancelled by a later dispatch.
+# reconciles only historical nine-package tags; a current ten-package partial publish has no
+# completion path until Story 30.5 (see docs/dev/release-runbook.md). An in-flight release must
+# therefore run to completion rather than being cancelled by a later dispatch.
 concurrency:
   group: release
   cancel-in-progress: false

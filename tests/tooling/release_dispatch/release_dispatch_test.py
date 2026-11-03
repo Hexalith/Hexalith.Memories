@@ -93,6 +93,39 @@ class ReleaseDispatchTests(unittest.TestCase):
                     with self.subTest(token=token), self.assertRaisesRegex(ValueError, expected):
                         self.source.prove_source("Hexalith/Hexalith.Memories", sha, shared, token)
 
+    def test_wrappers_exit_nonzero_as_processes_when_refusing(self):
+        # Every gate reads only the wrapper's process exit status, so prove it for both scripts.
+        environ = {key: value for key, value in os.environ.items() if not key.startswith("GITHUB_")}
+        environ.update(
+            {
+                "GITHUB_REPOSITORY": "Hexalith/Hexalith.Memories",
+                "GITHUB_EVENT_NAME": "workflow_dispatch",
+                "GITHUB_REF": "refs/heads/other",
+                "GITHUB_SHA": "a" * 40,
+            }
+        )
+        cases = (
+            ([str(SOURCE_SCRIPT)], "[release-source] refused: Release dispatch must select refs/heads/main."),
+            (
+                [str(DESTINATION_SCRIPT), "--version", "invalid"],
+                "[release-destinations] refused: Release version must be an image-taggable semantic version.",
+            ),
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            for arguments, refusal in cases:
+                with self.subTest(script=Path(arguments[0]).name):
+                    result = subprocess.run(
+                        [sys.executable, *arguments],
+                        check=False,
+                        text=True,
+                        capture_output=True,
+                        cwd=temporary,
+                        env=environ,
+                    )
+                    self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+                    self.assertIn(refusal, result.stderr)
+                    self.assertNotIn("pass:", result.stdout)
+
     def test_wrong_builds_checkout_is_rejected_before_loading_shared_helper(self):
         sha = "a" * 40
         shared = Path("unused/Github/publish-containers")

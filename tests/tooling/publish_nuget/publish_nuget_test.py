@@ -462,7 +462,16 @@ class PublishNuGetTests(unittest.TestCase):
             self.assertEqual(42, summary["failed"][0]["exitCode"])
             self.assertIn("PARTIAL PUBLISH - manual reconciliation required", result.stdout)
             self.assertIn("release-runbook.md", summary["recovery"])
-            self.assertIn("release-runbook.md", summary_path.read_text(encoding="utf-8"))
+            step_summary = summary_path.read_text(encoding="utf-8")
+            self.assertIn("release-runbook.md", step_summary)
+            # A current ten-package partial publish cannot be finished by recovery or a rerun.
+            self.assertIn("manually reconcile NuGet publication", summary["recovery"])
+            self.assertIn("for manual NuGet reconciliation of the existing tagged version", step_summary)
+            self.assertIn("for manual NuGet reconciliation.", result.stdout)
+            for retired in ("Recover Partial Release", "rerun the Release workflow"):
+                self.assertNotIn(retired, summary["recovery"])
+                self.assertNotIn(retired, step_summary)
+                self.assertNotIn(retired, result.stdout)
             self.assertNotIn("SECRET_NUGET_API_KEY_SHOULD_NOT_LEAK", result.stdout)
             self.assertNotIn("SECRET_NUGET_API_KEY_SHOULD_NOT_LEAK", result.stderr)
             self.assertNotIn(

@@ -68,7 +68,7 @@ protection evidence below stays historical evidence; this story performs no remo
 ## Current Release Contract
 
 - An operator dispatches `.github/workflows/release.yml` from the current `main` tip. Normal pushes run CI and never publish. The source job proves the selected SHA is the live main tip with a successful completed `ci.yml` push run for that exact SHA, and checks that the production environment has required reviewers, disabled admin bypass and a branch deployment policy. The protected `production` job runs only after that proof succeeds; it reads back protection again before publication.
-- The production job calls pinned `prepare-domain-release@81c88b34d09d34260b92d7f0928dbbc1c7446baa` with the identical `builds-execution-sha` and `expected-package-count: 10`. It restores and builds, then repeats the exact-source CI proof. The caller validates the package manifest, checks local/remote tag and every versioned package/image destination, then reproves source immediately before OIDC login and `npx semantic-release`. Application tests are owned by exact-source CI and are not repeated in release. Semantic-release then drives the prepare, publish, and post-publish
+- The production job calls pinned `prepare-domain-release@81c88b34d09d34260b92d7f0928dbbc1c7446baa` with the identical `builds-execution-sha` and `expected-package-count: 10`. It restores and builds; only when publication is enabled does it then repeat the exact-source CI proof, because a frozen run exits its publish gate before that repeat. The caller validates the package manifest, checks local/remote tag and every versioned package/image destination, then reproves source immediately before OIDC login and `npx semantic-release`. Application tests are owned by exact-source CI and are not repeated in release. Semantic-release then drives the prepare, publish, and post-publish
   phases through its plugin chain —
   `pack-release.ps1` and
   `publish-release.ps1` are not invoked as separate workflow steps; they are invoked by
@@ -173,7 +173,9 @@ Wait for successful push CI on the exact current `main` SHA, then dispatch **Rel
 
 The 2026-11-02 API readback returned `protection_rules: []`, `can_admins_bypass: true` and `deployment_branch_policy: null`. The source job therefore refuses to enter the protected release job until a repository administrator installs the required production controls and a subsequent API readback confirms them. This code change does not alter GitHub environment settings.
 
-The source job checks main tip and exact-source push CI before entering production. Preparation repeats that check after the build; the caller checks once more immediately before login. If main advances or CI cannot be proved at any checkpoint, stop and dispatch again from the new tip after its push CI succeeds. A missing reviewer rule blocks the workflow before the protected job. Never treat a passing workflow declaration or local fixture as proof that the remote approval setting is active.
+On 2026-11-02, Release run `41495447050` published `v3.0.18` from commit `66822bc5`, which temporarily let the owner skip both approval readbacks for one run; `d9d61d8a` removed that bypass. The run proved source, destinations and publication end to end, but it did not exercise an environment approval.
+
+The source job checks main tip and exact-source push CI before entering production. When publication is enabled, preparation repeats that check after the build; the caller checks once more immediately before login. If main advances or CI cannot be proved at any checkpoint, stop and dispatch again from the new tip after its push CI succeeds. A missing reviewer rule blocks the workflow before the protected job. Never treat a passing workflow declaration or local fixture as proof that the remote approval setting is active.
 
 ## Prerequisites
 
@@ -460,7 +462,7 @@ those actions can move the published state away from the CI-recorded audit ancho
   commit.
 - If NuGet publishing partially succeeds, do not delete published packages from nuget.org. There
   are two failure shapes to keep separate:
-  - **HTTP 409 (already published).** The destination preflight refuses an occupied version before tag creation. `dotnet nuget push --skip-duplicate` remains in the publisher for a race after the probe; it does not authorize rerunning a partially published release. Record the exact package state for manual NuGet reconciliation.
+  - **HTTP 409 (already published).** The destination preflight refuses an occupied version before tag creation. `dotnet nuget push --skip-duplicate` remains in the publisher for a race after the probe; it does not authorize rerunning a partially published release. Record the exact package state for manual NuGet reconciliation, defined below.
   - **Non-409 failures (auth, network, server error).** `dotnet nuget push` exits non-zero.
     `publish-nuget.ps1` records the failed package, exit code, and sanitized output, then continues
     to later packages where it can still safely invoke `dotnet nuget push`. If a preflight or
@@ -496,8 +498,12 @@ those actions can move the published state away from the CI-recorded audit ancho
   regenerate the summary, then rerun the alert step. A failed alert does not reconcile a release
   or justify closing its incident.
 - Once a failed publish has created the exact version tag or published any NuGet package, do not
-  rerun normal semantic-release for that version and do not delete or republish packages. Reconcile
-  any missing NuGet package manually with the release owner; the current recovery workflow cannot push NuGet.
+  rerun normal semantic-release for that version and do not delete or republish packages. For a
+  current ten-package release, manual NuGet reconciliation means recording the exact pushed, failed
+  and not-attempted packages in the PARTIAL PUBLISH issue and escalating to the release owner. Until
+  Story 30.5 completes current-set recovery, nothing finishes it: the recovery workflow cannot push
+  NuGet, the destination preflight refuses a Release rerun for that version, and publishing stays
+  CI-only, so never push a package locally.
   **Recover Partial Release** from `main` accepts a historical nine-package tag with the existing bare version (for example, `2.6.6`).
   The workflow accepts only a semantic-version tag reachable from `origin/main` and never creates
   or moves a tag. It stages the recovery scripts and their passing fixtures from current trusted

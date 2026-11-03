@@ -317,7 +317,10 @@ class RepositoryQualificationTests(unittest.TestCase):
         self.assertIn("30-3", findings["prepare-domain-release-cannot-publish-containers"]["owner"])
         self.assertIn("30-4", findings["prepare-domain-release-cannot-publish-containers"]["owner"])
         self.assertIn("recovery-workflow-superseded-set", findings)
-        self.assertEqual("30-5-partial-release-recovery", findings["recovery-workflow-superseded-set"]["owner"])
+        recovery = findings["recovery-workflow-superseded-set"]
+        self.assertEqual("30-5-partial-release-recovery", recovery["owner"])
+        self.assertTrue(recovery["evidence"]["imageCountLines"])
+        self.assertTrue(recovery["evidence"]["packageCountLines"])
         self.assertNotIn("package-manifest-id-shape", findings)
         self.assertEqual("30-4-five-image-publication-contract", findings["builds-identity-omits-project-mapping"]["owner"])
         provenance = findings["provenance-labels-not-emitted"]
