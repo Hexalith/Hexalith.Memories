@@ -36,6 +36,8 @@ const expectedConfiguration = {
         assets: [
           "artifacts/packages/release/*.nupkg",
           "artifacts/deployment/hexalith-memories-production.yaml",
+          "artifacts/release/hexalith-memories-release-evidence.tar.gz",
+          "artifacts/release/hexalith-memories-release-evidence.tar.gz.sha256.json",
         ],
       },
     ],

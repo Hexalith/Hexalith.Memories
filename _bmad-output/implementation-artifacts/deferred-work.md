@@ -6051,3 +6051,12 @@ decision: 2026-11-01 keep-open — parked. Reopens only on the trigger: any Prod
   summary: Include failed GitHub Release and asset completion in aggregate partial-release incident handling.
   evidence: Round 3 Blind 8 (medium; pre-existing). Both publisher families can succeed before the GitHub semantic-release plugin fails. The unchanged aggregate remains succeeded, and create-partial-publish-issue.ps1 skips statuses other than partial-publish. Owner: Story 30.5 recovery maintainer. Consequence: a release missing GitHub assets can fail without the expected partial-publish incident. Reopen trigger: Story 30.5 qualifies complete-unit publication and GitHub asset recovery.
 
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-30-4-five-image-publication-contract.md`
+  summary: Verify server-side tag immutability for the current skopeo release transport before claiming race-free publication (unverified high impact).
+  evidence: Review E5 identifies an absence-check/copy race if another writer can mutate a tag; actual deployed policy is unknown. Owner: Jérôme Piquot; consequence: no race-free registry credit; reopen trigger: authorized immutability-policy readback or an isolated competing-writer registry fixture. No registry setting or publication was changed.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-30-4-five-image-publication-contract.md`
+  summary: Reconcile the independently advanced dependency cohort with the approved CI qualification profile and source-build references.
+  evidence: External commit 8c0b907e0a200164d2c6ee7a732daefb9b29546d advanced six gitlinks during Story 30.4. The parent dispatch run passed 16/17; test_release_pin_is_approved_and_profile_tracks_the_gitlink fails because Builds gitlink 725754075e1d6369430a3adf94d46fb71e6eaf9e differs from approved profile 6e7011fc754e74ac2a8864da1ce0b6d8f7178a48. The recorded source Debug build also has CS1704 for EventStore.Contracts 4.0.4 versus 3.132.2. Owner: Jérôme Piquot; consequence: broad qualification and current CI cannot receive green credit; reopen trigger: explicitly approved dependency/profile reconciliation followed by the recorded exact commands. Story 30.4 changes no dependency pin or approval identity.
+  Follow-up 2026-11-03: external commit 3d6e466238fe7f78dc6216918f5e749f513cca9b restored the approved Builds gitlink. Aligning the clean checkout to the recorded 6e7011fc revision restores dispatch pin parity (17/17 passed). The broader source/cohort qualification portion remains open; the earlier pin mismatch is historical.

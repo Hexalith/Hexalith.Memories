@@ -96,25 +96,35 @@ protection evidence below stays historical evidence; this story performs no remo
   immediately cancels authenticated OCI upload sessions in `memories`, `memories-mcp`,
   `memories-access-telemetry`, `memories-access-telemetry-clock`, and `memories-domain-service`.
   The challenge check proves challenge-driven clients can select the authfile credential; the
-  upload probes separately prove write authorization. Every opened probe session must return HTTP
-  204 when cancelled or the release fails closed.
+  upload probes exercise the preemptive Basic upload-session authorization path. They do not
+  prove a blob/index push succeeded. Every opened probe session must return HTTP 204 when
+  cancelled or the release fails closed. Cross-origin upload locations are refused and never
+  receive credentials. `authorization.json` records the actual `preemptive-basic` probe mode,
+  whether a Basic challenge was observed, the exact repositories, cleanup, owner, consequence
+  and reopen trigger; it always records `pushProven: false`.
 - `tools/pack-release.ps1` starts the `prepareCmd` for `@semantic-release/exec`; destination validation runs next, followed by the terminal source proof immediately before semantic-release creates the tag.
-- `tools/publish-release.ps1` is the `publishCmd` for `@semantic-release/exec`. It always attempts
-  both NuGet and container publication and writes one aggregate release summary.
-- `tools/pack-release.ps1` prebuilds the Server, MCP, access-telemetry lifecycle, clock, and DomainService OCI archives and the versioned production
-  deployment before any publish-side effects occur.
-- `tools/publish-containers.ps1 -Push` publishes the prebuilt archives with `skopeo copy`, passing
-  credentials through a scoped temporary authfile built from `HEXALITH_ZOT_USERNAME` and
-  `HEXALITH_ZOT_API_KEY` and deleted after publication. The docker daemon must not be used to push
-  to this registry: the registry allows anonymous read, so zot answers the daemon's
-  unauthenticated `GET /v2/` ping with HTTP 200, the daemon caches "no auth required", and it then
-  never sends credentials on push, failing with `unauthorized: authentication required`
-  (project-zot/zot#2928). skopeo uses the Basic challenge preserved by Zot's `/v2/` response and
-  the scoped authfile. It also fails if an ingress replaces that response with a synthetic `200`
-  that omits `WWW-Authenticate`, so the release verifier checks this server-side precondition.
-  Remote tag reconciliation compares the archive and remote manifest config digests through the
-  same skopeo path. The local side of that comparison is the prebuilt archive manifest's config
-  digest (the archives are single-platform), no longer a daemon-loaded image ID.
+- `tools/publish-release.ps1` is the `publishCmd` for `@semantic-release/exec`. It validates the
+  frozen five-image identity and all prepared archive hashes, then executes the shared publish
+  preflight before either publication family writes. After authorization, it attempts both NuGet
+  and container publication and writes one aggregate release summary.
+- `tools/pack-release.ps1` builds five stable deployment archives, five separate two-platform OCI
+  archives, and the caller-rendered production deployment before publication. The exact approved
+  Builds `Props/ContainerProvenance.targets` emits source, revision, version, release URL,
+  documentation URL and one shared creation instant on every child image.
+- `tools/publish-containers.ps1 -PublicationContract` uses `tools/release-containers.json` and
+  `container-publication-contract.py` to freeze project mappings, version, source SHA, workflow
+  SHA/ref/run/attempt, the approved Builds SHA and helper hashes into `identity.json` and its
+  `setSha256`. The current release path requires all five members; a missing, extra or remapped
+  project, identity drift, occupied tag or ambiguous destination refuses before registry writes.
+- The approved shared preflight runs once per phase: `verify` during archive preparation,
+  `publish` before either artifact family writes, and `container` before the first image copy.
+  The new transport uses `skopeo copy --all --preserve-digests` from `oci-archive:`. The scoped
+  temporary authfile also supplies Docker's digest-bound health pulls and is removed afterward.
+  The unchanged approved OCI validator checks the remote index, both child digests, configs and
+  provenance against the prepared graph. Docker is never used to push.
+- Current publication refuses every occupied version tag. Matching config-digest reconciliation
+  remains solely on historical source trees without the current manifest; Story 30.5 owns
+  missing-only recovery for current ten-package releases.
 - Semantic-release does not commit generated files back to `main`. It creates the release tag,
   GitHub Release, and package assets without using `@semantic-release/git`, so the release path is
   compatible with the protected-branch rule that requires pull requests for repository changes.
@@ -132,6 +142,54 @@ protection evidence below stays historical evidence; this story performs no remo
 
 The required-check names mapping to `.github/workflows/ci.yml` job IDs is documented in
 [`branch-protection.md`](./branch-protection.md).
+
+### Five-Image Publication And Retained Evidence
+
+`tools/release-containers.json` fixes the following complete set. Every image requires exactly
+`linux/amd64` and `linux/arm64`; health pulls each child by its validated digest in Development.
+
+| Member | Project | Repository | Workload health |
+| --- | --- | --- | --- |
+| Server | `src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj` | `memories` | `/alive` liveness |
+| MCP | `src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj` | `memories-mcp` | `/alive` liveness |
+| Lifecycle | `src/Hexalith.Memories.AccessTelemetry/Hexalith.Memories.AccessTelemetry.csproj` | `memories-access-telemetry` | `/ready` explicitly reports writes disabled |
+| Clock | `src/Hexalith.Memories.AccessTelemetry.Clock/Hexalith.Memories.AccessTelemetry.Clock.csproj` | `memories-access-telemetry-clock` | `/ready` verifies a signed attestation |
+| DomainService | `src/Hexalith.Memories.DomainService/Hexalith.Memories.DomainService.csproj` | `memories-domain-service` | `/alive` liveness |
+
+The Server liveness lane starts private Redis Stack and FalkorDB dependencies using this repository's
+already declared image pins, then injects both keyed connection strings. The stores are test-only
+and are removed with their private network; their cleanup result is retained.
+
+The clock health lane generates temporary P-256 signing material, serves it through an isolated
+Dapr local-file secret authority, and uses the clock's three Development UTC sources. Every
+workload uses its own internal Docker network. Failed container, authority or network cleanup
+fails verification. Test keys/tokens are never retained. These probes establish the declared
+publication health contract; they do not qualify Production clock authorities or enable lifecycle
+writes. DW-17 and parked Production qualification DW-730 remain unchanged.
+
+The stable Docker archive names remain `server.tar.gz`, `mcp.tar.gz`, `access-telemetry.tar.gz`,
+`access-telemetry-clock.tar.gz`, and `domain-service.tar.gz`. All five bind the same source and
+release-set identity. Separate publication files use the corresponding `.oci.tar.gz` suffix.
+The renderer stays caller-owned; DomainService remains an archive/image member without adding
+hosted Production activation. The ordinary archive-only deployment verifier and historical
+archive format remain compatible.
+
+`tools/archive-release-evidence.py` refuses success if any required identity, authorization,
+preflight, archive compatibility, raw OCI graph, digest-bound health, family summary or aggregate
+summary is absent or inconsistent. Its packet hashes every retained record and is attached to
+successful GitHub Releases as `hexalith-memories-release-evidence.tar.gz` with a separate SHA-256
+receipt. The always-running upload preserves failure evidence for 90 days; an incomplete packet
+is explicitly `diagnostic-only` and grants no publication-success credit.
+
+The Story 30.2 approval remains bound to Builds `81c88b34d09d34260b92d7f0928dbbc1c7446baa`.
+The newer CI profile grants no publication approval. Story 30.4's local fixture qualification
+controls SDK, registry and process boundaries and does not prove an actual registry push.
+The recorded unauthenticated `/v2/` observation returned HTTP 401 with `Basic realm="zot-distribution"`;
+local credentials are absent. Owner: Jérôme Piquot. Consequence: registry publication and both
+architecture runtime checks remain unqualified until an authorized credentialed run retains the
+complete packet. Reopen trigger: approved credentialed registry validation. Implementation does
+not enable the publication flag, change protected settings, publish a release, or change
+Production lifecycle state.
 
 ### Release-Tooling Dependency Safety
 
@@ -195,9 +253,9 @@ Before relying on the release path:
    five flat repositories: `memories`, `memories-mcp`, `memories-access-telemetry`,
    `memories-access-telemetry-clock`, and `memories-domain-service`. `HEXALITH_ZOT_REGISTRY` may override the
    default `registry.hexalith.com` host.
-8. The `skopeo` CLI is on the release runner's PATH (preinstalled on the GitHub-hosted
-   `ubuntu-24.04` image). Container publication fails closed with disposition `tooling-missing`
-   when it is absent.
+8. The runner has `skopeo`, Docker/buildx, arm64 QEMU, OpenSSL and curl. The guarded workflow
+   installs missing skopeo and initializes QEMU only on an enabled publication path. Health also
+   needs read access to the existing pinned Dapr test image. Missing tools or emulation fail closed.
 9. The merge to `main` uses a conventional commit that semantic-release can classify.
 10. The local working tree is clean before opening the release PR — no uncommitted edits, no
    in-flight tag drift, no orphan packages in `artifacts/`. The release job builds from the merged

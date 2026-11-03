@@ -441,6 +441,8 @@ public sealed partial class CiTestInventoryTests
         [
             "artifacts/packages/release/*.nupkg",
             "artifacts/deployment/hexalith-memories-production.yaml",
+            "artifacts/release/hexalith-memories-release-evidence.tar.gz",
+            "artifacts/release/hexalith-memories-release-evidence.tar.gz.sha256.json",
         ]);
     }
 
@@ -690,7 +692,7 @@ public sealed partial class CiTestInventoryTests
     }
 
     [Fact]
-    public void ReleaseConfiguration_PublishesRetrySafeFourImageUnitAndVersionedDeployment()
+    public void ReleaseConfiguration_PublishesFiveImageContractAndVersionedDeployment()
     {
         string repoRoot = GetRepoRoot();
         string releaseConfig = File.ReadAllText(Path.Combine(repoRoot, ".releaserc.json"));
@@ -731,6 +733,10 @@ public sealed partial class CiTestInventoryTests
         publishContainers.ShouldNotContain("docker login");
         publishContainers.ShouldNotContain("& docker");
         publishContainers.ShouldContain("disposition = $Disposition");
+        publishContainers.ShouldContain("container-publication-contract.py");
+        packRelease.ShouldContain("-PublicationContract");
+        publishRelease.ShouldContain("--phase authorize");
+        publishRelease.ShouldContain("archive-release-evidence.py");
         renderDeployment.ShouldContain("All release image references must end with the semantic-release version");
         renderDeployment.ShouldContain("[string]$AccessTelemetryImage");
         renderDeployment.ShouldContain("[string]$AccessTelemetryClockImage");

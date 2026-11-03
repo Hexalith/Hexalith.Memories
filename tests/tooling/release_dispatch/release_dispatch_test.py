@@ -101,6 +101,25 @@ class ReleaseDispatchTests(unittest.TestCase):
         ).stdout.strip()
         self.assertEqual(gitlink, profile["buildsSha"])
 
+    def test_five_image_release_retains_diagnostic_and_durable_success_evidence(self):
+        workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+        configuration = json.loads((ROOT / ".releaserc.json").read_text(encoding="utf-8"))
+        assets = configuration["plugins"][3][1]["assets"]
+        self.assertIn("artifacts/release/hexalith-memories-release-evidence.tar.gz", assets)
+        self.assertIn("artifacts/release/hexalith-memories-release-evidence.tar.gz.sha256.json", assets)
+        diagnostics = workflow.split("      - name: Archive release failure diagnostics\n", 1)[1].split("      - name:", 1)[0]
+        upload = workflow.split("      - name: Upload release publication evidence\n", 1)[1].split("      - name:", 1)[0]
+        self.assertIn("if: failure()", diagnostics)
+        self.assertIn("--diagnostics", diagnostics)
+        self.assertIn("if: always()", upload)
+        self.assertIn("artifacts/release/**", upload)
+        self.assertIn("retention-days: 90", upload)
+        self.assertLess(workflow.index("Archive release failure diagnostics"), workflow.index("Upload release publication evidence"))
+        publisher = (ROOT / "tools/publish-release.ps1").read_text(encoding="utf-8")
+        self.assertLess(publisher.index("--phase authorize"), publisher.index("-Script './tools/publish-nuget.ps1'"))
+        self.assertIn("-PublicationContract", publisher)
+        self.assertIn("archive-release-evidence.py", publisher)
+
     def test_non_main_ref_is_rejected_without_loading_shared_helper(self):
         sha = "a" * 40
         environ = {"GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_REF": "refs/heads/other", "GITHUB_SHA": sha}

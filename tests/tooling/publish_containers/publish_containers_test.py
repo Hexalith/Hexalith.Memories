@@ -311,6 +311,18 @@ def run_publish(
     extra_arguments: list[str] | None = None,
     repository_root: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
+    # These fixtures protect the historical archive/reconciliation interface. Current
+    # release publication is qualified independently by publication_contract_test.py.
+    if repository_root is None:
+        repository_root = output.parent / "historical-source"
+        (repository_root / "tools").mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(REPO_ROOT / "tools/render-production-deployment.ps1", repository_root / "tools/render-production-deployment.ps1")
+        for project in (
+            "Server", "Mcp", "AccessTelemetry", "AccessTelemetry.Clock", "DomainService"
+        ):
+            path = repository_root / f"src/Hexalith.Memories.{project}/Hexalith.Memories.{project}.csproj"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("<Project />\n", encoding="utf-8")
     invocation = [
         "pwsh",
         "-NoLogo",

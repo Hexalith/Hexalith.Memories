@@ -74,6 +74,7 @@ try {
 
     & $PowerShellExecutable -NoLogo -NoProfile -File ./tools/publish-containers.ps1 `
         -Version $Version `
+        -PublicationContract `
         -OutputDirectory $ContainerOutputDirectory
     if ($LASTEXITCODE -ne 0) {
         throw "Release container preparation failed."

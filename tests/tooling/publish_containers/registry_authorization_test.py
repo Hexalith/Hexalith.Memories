@@ -1,6 +1,8 @@
 import base64
+import json
 import os
 import subprocess
+import tempfile
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -107,6 +109,7 @@ def run_probe(
     *,
     include_credentials: bool = True,
     classification_only: bool = False,
+    evidence_path: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     if include_credentials:
@@ -129,6 +132,7 @@ def run_probe(
             str(SCRIPT),
             "-Registry",
             origin,
+            *(["-EvidencePath", str(evidence_path)] if evidence_path is not None else []),
         ],
         cwd=REPO_ROOT,
         env=env,
@@ -139,6 +143,27 @@ def run_probe(
 
 
 class RegistryAuthorizationTests(unittest.TestCase):
+    def test_authorization_receipt_records_actual_mode_redaction_and_no_push_credit(self) -> None:
+        for denied, cancel_status, expected in ((None, 204, "pass"), ("memories-mcp", 204, "fail"), (None, 500, "fail")):
+            state = RegistryState()
+            state.denied_repository = denied
+            state.cancel_status = cancel_status
+            with self.subTest(denied=denied, cleanup=cancel_status), tempfile.TemporaryDirectory() as temporary, RegistryServer(state) as registry:
+                receipt = Path(temporary) / "authorization.json"
+                result = run_probe(registry.origin, evidence_path=receipt)
+                text = receipt.read_text(encoding="utf-8-sig")
+                evidence = json.loads(text)
+                self.assertEqual(expected, evidence["result"])
+                self.assertEqual("preemptive-basic", evidence["mode"])
+                self.assertTrue(evidence["challengeObserved"])
+                self.assertFalse(evidence["pushProven"])
+                self.assertEqual(REPOSITORIES, evidence["repositories"])
+                self.assertEqual("Jérôme Piquot", evidence["owner"])
+                self.assertTrue(evidence["consequence"])
+                self.assertTrue(evidence["reopenTrigger"])
+                self.assertNotIn(USERNAME, text + result.stdout + result.stderr)
+                self.assertNotIn(API_KEY, text + result.stdout + result.stderr)
+
     def test_probe_verifies_and_cancels_all_repository_upload_sessions(self) -> None:
         state = RegistryState()
         with RegistryServer(state) as registry:
@@ -177,7 +202,7 @@ class RegistryAuthorizationTests(unittest.TestCase):
         self.assertEqual(["/v2/"], state.gets)
         self.assertEqual(REPOSITORIES, state.posts)
 
-    def test_cross_origin_upload_locations_are_cancelled_without_forwarding_credentials(self) -> None:
+    def test_cross_origin_upload_locations_fail_without_forwarding_credentials(self) -> None:
         registry_state = RegistryState()
         cancellation_state = RegistryState()
         with RegistryServer(cancellation_state) as cancellation_server:
@@ -185,13 +210,13 @@ class RegistryAuthorizationTests(unittest.TestCase):
             with RegistryServer(registry_state) as registry:
                 result = run_probe(registry.origin)
 
-        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
-        self.assertEqual(REPOSITORIES, registry_state.posts)
+        self.assertNotEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertEqual(REPOSITORIES[:1], registry_state.posts)
         self.assertEqual(
-            [f"/uploads/{repository}" for repository in REPOSITORIES],
+            [],
             cancellation_state.deletes,
         )
-        self.assertEqual([None] * len(REPOSITORIES), cancellation_state.delete_authorizations)
+        self.assertEqual([], cancellation_state.delete_authorizations)
         self.assertNotIn(USERNAME, result.stdout + result.stderr)
         self.assertNotIn(API_KEY, result.stdout + result.stderr)
 

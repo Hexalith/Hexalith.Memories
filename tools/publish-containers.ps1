@@ -14,6 +14,8 @@ param(
     [ValidateNotNullOrEmpty()]
     [string]$SkopeoCommand = 'skopeo',
 
+    [switch]$PublicationContract,
+
     [switch]$Push
 )
 
@@ -472,6 +474,24 @@ try {
         })
         Write-ContainerSummary -Status 'publish-failed' -StartedAt $startedAt -Outcomes $outcomes -SummaryPath $summaryPath
         throw $reason
+    }
+
+    # Release publication freezes the complete current set. The archive-only path remains
+    # available to deployment verification, and historical source trees retain recovery behavior.
+    $currentContract = Test-Path -LiteralPath (Join-Path $repoRoot 'tools/release-containers.json')
+    if ($PublicationContract -or ($Push -and $currentContract)) {
+        if (-not $currentContract) {
+            throw 'The current five-image release manifest is required for publication.'
+        }
+        $phase = if ($Push) { 'publish' } else { 'build' }
+        & python3 (Join-Path $PSScriptRoot 'container-publication-contract.py') `
+            --phase $phase --version $Version --registry $Registry `
+            --repository-prefix $RepositoryPrefix --output-directory $outputPath `
+            --skopeo-command $SkopeoCommand
+        if ($LASTEXITCODE -ne 0) {
+            throw "Five-image publication contract failed during '$phase'. See artifacts/release/container-evidence."
+        }
+        return
     }
 
     $authFile = $null

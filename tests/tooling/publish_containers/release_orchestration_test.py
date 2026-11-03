@@ -157,6 +157,15 @@ def make_environment(
     fake_bin.mkdir()
     write_fake_pwsh(fake_bin)
     write_fake_dotnet(fake_bin)
+    python = fake_bin / "fake_python.py"
+    python.write_text(
+        "import json, os, sys\n"
+        "with open(os.environ['FAKE_ORCHESTRATION_LOG'], 'a') as log:\n"
+        "    log.write(json.dumps({'command': 'python3', 'args': sys.argv[1:]}) + '\\n')\n"
+        "sys.exit(int(os.environ.get('FAKE_AUTHORIZATION_EXIT' if '--phase' in sys.argv else 'FAKE_EVIDENCE_EXIT', '0')))\n",
+        encoding="utf-8",
+    )
+    write_executable(fake_bin / "python3", f'#!/usr/bin/env sh\nexec "{sys.executable}" "{python}" "$@"\n')
     log_path = root / "orchestration.jsonl"
     env = os.environ.copy()
     env["PATH"] = str(fake_bin) + os.pathsep + env["PATH"]
@@ -175,6 +184,52 @@ def read_log(path: Path) -> list[dict[str, object]]:
 
 
 class ReleaseOrchestrationTests(unittest.TestCase):
+    def test_evidence_failure_preserves_completed_side_effects_and_marks_aggregate_partial(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            env, log_path = make_environment(root)
+            env["FAKE_EVIDENCE_EXIT"] = "47"
+            packages, containers, summaries = root / "packages", root / "containers", root / "summaries"
+            deployment = root / "deployment.yaml"
+            result = subprocess.run(
+                [shutil.which("pwsh") or "pwsh", "-NoLogo", "-NoProfile", "-File", str(PUBLISH_SCRIPT),
+                 "-Version", VERSION, "-PackageDirectory", str(packages), "-ContainerOutputDirectory", str(containers),
+                 "-SummaryDirectory", str(summaries), "-DeploymentPath", str(deployment), "-PowerShellExecutable", env["FAKE_PWSH"]],
+                cwd=REPO_ROOT, env=env, capture_output=True, text=True, check=False,
+            )
+            self.assertNotEqual(0, result.returncode)
+            summary = json.loads((summaries / "publish-summary.json").read_text(encoding="utf-8-sig"))
+            self.assertEqual("partial-publish", summary["status"])
+            self.assertEqual("incomplete", summary["evidenceStatus"])
+            self.assertEqual(2, len(summary["pushed"]))
+            self.assertTrue(all(family["status"] == "succeeded" for family in summary["families"]))
+            self.assertEqual(["release evidence"], [failure["package"] for failure in summary["failed"]])
+            self.assertEqual(47, summary["failed"][0]["exitCode"])
+            call = next(call for call in read_log(log_path) if call["command"] == "python3" and any("archive-release-evidence.py" in argument for argument in call["args"]))
+            for option, path in (("--container-directory", containers), ("--package-directory", packages), ("--summary-directory", summaries), ("--deployment-path", deployment)):
+                self.assertEqual(str(path), call["args"][call["args"].index(option) + 1])
+            self.assertEqual(str(summaries / "hexalith-memories-release-evidence.tar.gz"), call["args"][call["args"].index("--output") + 1])
+
+    def test_failed_frozen_authorization_refuses_both_families_and_retains_aggregate(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            env, log_path = make_environment(root)
+            env["FAKE_AUTHORIZATION_EXIT"] = "42"
+            summary_directory = root / "release"
+            result = subprocess.run(
+                [shutil.which("pwsh") or "pwsh", "-NoLogo", "-NoProfile", "-File", str(PUBLISH_SCRIPT),
+                 "-Version", VERSION, "-SummaryDirectory", str(summary_directory), "-PowerShellExecutable", env["FAKE_PWSH"]],
+                cwd=REPO_ROOT, env=env, capture_output=True, text=True, check=False,
+            )
+            self.assertNotEqual(0, result.returncode)
+            calls = read_log(log_path)
+            self.assertEqual(["python3"], [call["command"] for call in calls])
+            self.assertIn("authorize", calls[0]["args"])
+            summary = json.loads((summary_directory / "publish-summary.json").read_text(encoding="utf-8-sig"))
+            self.assertEqual("publish-failed", summary["status"])
+            self.assertEqual(2, len(summary["notAttempted"]))
+            self.assertTrue(all(family["status"] == "not-attempted" for family in summary["families"]))
+
     def test_publish_release_attempts_both_families_and_writes_aggregate_partial_state(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

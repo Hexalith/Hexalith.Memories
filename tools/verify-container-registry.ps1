@@ -2,6 +2,8 @@
 param(
     [string]$Registry = 'registry.hexalith.com',
 
+    [string]$EvidencePath = 'artifacts/release/container-evidence/authorization.json',
+
     [string[]]$Repositories = @(
         'memories',
         'memories-mcp',
@@ -25,6 +27,33 @@ if (-not $PSBoundParameters.ContainsKey('Registry') -and
     $Registry = $env:HEXALITH_ZOT_REGISTRY
 }
 
+$authorizationEvidence = [ordered]@{
+    schemaVersion = 'hexalith.memories.registry-authorization.v1'
+    result = 'fail'
+    registry = if ($Registry -match '[@\s]') { 'invalid-registry' } else { $Registry -replace '^https?://', '' }
+    repositories = $Repositories
+    mode = 'preemptive-basic'
+    transport = 'skopeo-authfile'
+    challengeObserved = $false
+    challengeStatus = $null
+    uploadResults = [Collections.Generic.List[object]]::new()
+    pushProven = $false
+    cleanup = 'not-run'
+    owner = 'Jérôme Piquot'
+    consequence = 'No registry-success credit until complete digest and health validation.'
+    reopenTrigger = 'Authorized credentialed validation with the approved complete image set.'
+    checkedAt = [DateTime]::UtcNow.ToString('o')
+}
+function Write-AuthorizationEvidence {
+    $parent = Split-Path -Parent $EvidencePath
+    if (-not [string]::IsNullOrEmpty($parent)) {
+        New-Item -ItemType Directory -Path $parent -Force | Out-Null
+    }
+    $authorizationEvidence | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $EvidencePath -Encoding utf8
+}
+# Even early credential/configuration failures retain a redacted accountable record.
+Write-AuthorizationEvidence
+
 $username = $env:HEXALITH_ZOT_USERNAME
 $apiKey = $env:HEXALITH_ZOT_API_KEY
 if ([string]::IsNullOrWhiteSpace($username) -or [string]::IsNullOrWhiteSpace($apiKey)) {
@@ -44,6 +73,7 @@ else {
 
 $registryUri = [Uri]::new($registryUriText.TrimEnd('/') + '/', [UriKind]::Absolute)
 if ($registryUri.Scheme -notin @('http', 'https') -or
+    -not [string]::IsNullOrEmpty($registryUri.UserInfo) -or
     $registryUri.AbsolutePath -ne '/' -or
     -not [string]::IsNullOrEmpty($registryUri.Query) -or
     -not [string]::IsNullOrEmpty($registryUri.Fragment)) {
@@ -99,6 +129,7 @@ try {
             $response = $client.Send($request)
             try {
                 $statusCode = [int]$response.StatusCode
+                $authorizationEvidence.challengeStatus = $statusCode
                 if ($statusCode -notin @(200, 401)) {
                     throw "Container registry authentication negotiation failed with HTTP $statusCode at /v2/."
                 }
@@ -111,6 +142,7 @@ try {
                     $basicChallenge[0].Parameter -notmatch '(?i)(?:^|,)\s*realm\s*=') {
                     throw 'Container registry /v2/ did not advertise a Basic WWW-Authenticate realm. Challenge-driven OCI clients would omit credentials from later write requests; ensure the ingress routes /v2/ to Zot without replacing its response headers.'
                 }
+                $authorizationEvidence.challengeObserved = $true
             }
             finally {
                 $response.Dispose()
@@ -127,6 +159,10 @@ try {
             try {
                 $response = $client.Send($request)
                 try {
+                    $authorizationEvidence.uploadResults.Add([ordered]@{
+                        repository = $repository
+                        status = [int]$response.StatusCode
+                    })
                     if ([int]$response.StatusCode -ne 202) {
                         throw "Container registry write-scope verification failed for repository '$repository' with HTTP $([int]$response.StatusCode). Confirm the Zot username/API-key pair and grant push authorization for this repository."
                     }
@@ -152,7 +188,7 @@ try {
                             IncludeAuthorization = $sameOrigin
                         })
 
-                    if ($cancellationUri.Scheme -notin @('http', 'https') -or
+                    if (-not $sameOrigin -or $cancellationUri.Scheme -notin @('http', 'https') -or
                         ($registryUri.Scheme -eq 'https' -and $cancellationUri.Scheme -ne 'https')) {
                         throw "Container registry write-scope verification for repository '$repository' returned an unsafe upload location."
                     }
@@ -171,6 +207,10 @@ try {
     }
     finally {
         foreach ($session in $sessions) {
+            if (-not $session.IncludeAuthorization) {
+                $cancellationFailures.Add("repository '$($session.Repository)' returned a cross-origin location; cleanup cannot be proven")
+                continue
+            }
             $request = New-RegistryRequest -Method ([Net.Http.HttpMethod]::Delete) -Uri $session.Uri `
                 -IncludeAuthorization:$session.IncludeAuthorization -EmptyContent
             try {
@@ -199,6 +239,9 @@ finally {
     $client.Dispose()
     $handler.Dispose()
     $credential = $null
+    $authorizationEvidence.cleanup = if ($cancellationFailures.Count -eq 0) { 'pass' } else { 'failure' }
+    $authorizationEvidence.result = if ($null -eq $probeFailure -and $cancellationFailures.Count -eq 0) { 'pass' } else { 'fail' }
+    Write-AuthorizationEvidence
 }
 
 if ($cancellationFailures.Count -gt 0) {

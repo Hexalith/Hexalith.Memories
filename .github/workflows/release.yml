@@ -106,6 +106,23 @@ jobs:
         shell: pwsh
         run: ./tools/validate-release-packages.ps1
 
+      - name: Initialize both container platforms
+        if: steps.prepare.outputs.publish-enabled == 'true'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Require archive transport and isolated health tools
+        if: steps.prepare.outputs.publish-enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v skopeo >/dev/null || { sudo apt-get update && sudo apt-get install -y skopeo; }
+          command -v docker
+          command -v openssl
+          command -v curl
+          docker buildx inspect --bootstrap
+
       - name: Run release preflight
         id: release-preflight
         if: steps.prepare.outputs.publish-enabled == 'true'
@@ -191,18 +208,22 @@ jobs:
           GITHUB_RUN_ID: ${{ github.run_id }}
           GITHUB_SERVER_URL: ${{ github.server_url }}
 
+      - name: Archive release failure diagnostics
+        if: failure()
+        run: python3 tools/archive-release-evidence.py --diagnostics --output artifacts/release/hexalith-memories-release-diagnostics.tar.gz
+
       - name: Upload release publication evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: release-publication-evidence
           path: |
-            artifacts/release/publish-summary.json
+            artifacts/release/**
             artifacts/packages/release/publish-summary.json
             artifacts/containers/release/publish-summary.json
             artifacts/containers/release/build-summary.json
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 90
 
       - name: Upload package artifacts
         if: success() && steps.release-publication.outputs.published == 'true'

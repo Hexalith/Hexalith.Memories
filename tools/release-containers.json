@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "hexalith.memories.container-publication.v1",
+  "buildsSha": "81c88b34d09d34260b92d7f0928dbbc1c7446baa",
+  "platforms": ["linux/amd64", "linux/arm64"],
+  "images": [
+    {"name": "server", "project": "src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj", "repository": "memories", "health": "liveness"},
+    {"name": "mcp", "project": "src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj", "repository": "memories-mcp", "health": "liveness"},
+    {"name": "access-telemetry", "project": "src/Hexalith.Memories.AccessTelemetry/Hexalith.Memories.AccessTelemetry.csproj", "repository": "memories-access-telemetry", "health": "disabled-readiness"},
+    {"name": "access-telemetry-clock", "project": "src/Hexalith.Memories.AccessTelemetry.Clock/Hexalith.Memories.AccessTelemetry.Clock.csproj", "repository": "memories-access-telemetry-clock", "health": "signed-readiness"},
+    {"name": "domain-service", "project": "src/Hexalith.Memories.DomainService/Hexalith.Memories.DomainService.csproj", "repository": "memories-domain-service", "health": "liveness"}
+  ]
+}
