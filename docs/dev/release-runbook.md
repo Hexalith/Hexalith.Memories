@@ -118,7 +118,7 @@ protection evidence below stays historical evidence; this story performs no remo
   project, identity drift, occupied tag or ambiguous destination refuses before registry writes.
 - The approved shared preflight runs once per phase: `verify` during archive preparation,
   `publish` before either artifact family writes, and `container` before the first image copy.
-  The new transport uses `skopeo copy --all --preserve-digests` from `oci-archive:`. The scoped
+  The transport extracts each validated OCI archive without restoring tar ownership, then uses `skopeo copy --all --preserve-digests` from the temporary `oci:` layout. The scoped
   temporary authfile also supplies Docker's digest-bound health pulls and is removed afterward.
   The unchanged approved OCI validator checks the remote index, both child digests, configs and
   provenance against the prepared graph. Docker is never used to push.

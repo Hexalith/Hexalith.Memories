@@ -179,6 +179,10 @@ class PublicationContractTests(unittest.TestCase):
                 self.preflight._validate_publication(parsed)
         elif arguments[0] == "skopeo":
             name = next(image["name"] for image in CONTRACT.CANONICAL_IMAGES if arguments[-1] == f"docker://registry.test/{image['repository']}:{VERSION}")
+            self.assertTrue(arguments[-2].startswith("oci:"))
+            layout = Path(arguments[-2].removeprefix("oci:"))
+            self.assertEqual(("index.json", "oci-layout"), tuple(sorted(path.name for path in layout.iterdir() if path.is_file())))
+            self.assertTrue((layout / "blobs/sha256").is_dir())
             if name == self.fail_copy:
                 raise ValueError("controlled fixture authorization denial")
             self.remote_graphs[arguments[-1].removeprefix("docker://")] = self.graphs[name]
@@ -320,7 +324,7 @@ class PublicationContractTests(unittest.TestCase):
         self.assertEqual(5, len(copies))
         for command in copies:
             self.assertEqual(["copy", "--all", "--preserve-digests"], command[1:4])
-            self.assertTrue(command[-2].startswith("oci-archive:"))
+            self.assertTrue(command[-2].startswith("oci:"))
         self.assertEqual(10, len([command for command in self.commands if command[0] == "dotnet"]))
         receipt = CONTRACT.read_json(self.evidence / "archive-compatibility.json")
         self.assertEqual([image["name"] + ".tar.gz" for image in CONTRACT.CANONICAL_IMAGES], [record["filename"] for record in receipt["archives"]])
@@ -342,6 +346,23 @@ class PublicationContractTests(unittest.TestCase):
         with self.execution(), self.assertRaisesRegex(ValueError, "changed"):
             CONTRACT.publish_archives(self.output, self.evidence, self.shared, self.identity, self.validator, "skopeo")
         self.assertEqual(before, len(self.commands))
+
+    def test_archive_materialization_rejects_paths_and_links_outside_layout(self):
+        for name, link in (("../escape", False), ("blobs/sha256/link", True)):
+            with self.subTest(name=name):
+                archive_path = self.root / "unsafe.tar.gz"
+                with tarfile.open(archive_path, "w:gz") as archive:
+                    header = tarfile.TarInfo(name)
+                    if link:
+                        header.type = tarfile.SYMTYPE
+                        header.linkname = "../../escape"
+                        archive.addfile(header)
+                    else:
+                        header.size = 1
+                        archive.addfile(header, io.BytesIO(b"x"))
+                with self.assertRaisesRegex(ValueError, "unsafe member"):
+                    CONTRACT.materialize_oci_archive(archive_path, self.root / "unpacked")
+                shutil.rmtree(self.root / "unpacked")
 
     def test_transport_denial_and_health_failure_retain_aggregate_partial_outcomes(self):
         self.prepare()

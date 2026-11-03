@@ -8,8 +8,9 @@ import hashlib
 import importlib.util
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -309,6 +310,26 @@ def validate_authorization(evidence, identity):
     return authorization
 
 
+def materialize_oci_archive(archive_path, destination):
+    """Unpack validated OCI bytes without skopeo's rootless chown of tar owners."""
+    destination.mkdir()
+    with tarfile.open(archive_path, "r:*") as archive:
+        for member in archive:
+            name = member.name.removeprefix("./")
+            relative = PurePosixPath(name)
+            if not name or name == ".":
+                continue
+            if relative.is_absolute() or ".." in relative.parts or not (member.isfile() or member.isdir()):
+                raise ValueError(f"OCI archive contains an unsafe member: {member.name}")
+            target = destination.joinpath(*relative.parts)
+            if member.isdir():
+                target.mkdir(parents=True, exist_ok=True)
+            else:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with archive.extractfile(member) as source, target.open("xb") as result:
+                    shutil.copyfileobj(source, result)
+
+
 def publish_archives(output, evidence, shared, identity, validator, skopeo):
     graphs = validate_archives(output, evidence, identity, validator)
     validate_authorization(evidence, identity)
@@ -335,7 +356,9 @@ def publish_archives(output, evidence, shared, identity, validator, skopeo):
                     # ambiguous tag can never be reconciled by the current publication path.
                     absence = preflight.validate_container_absence(identity["version"], [f"{identity['registry']}/{image['repository']}"], preflight.destination_probe(username, key))
                     write_json(member / "destination-before-copy.json", absence)
-                    run([skopeo, "copy", "--all", "--preserve-digests", "--authfile", auth, f"oci-archive:{output / (image['name'] + '.oci.tar.gz')}", f"docker://{reference}"], member / "transport.log")
+                    layout = Path(temporary) / image["name"]
+                    materialize_oci_archive(output / (image["name"] + ".oci.tar.gz"), layout)
+                    run([skopeo, "copy", "--all", "--preserve-digests", "--authfile", auth, f"oci:{layout}", f"docker://{reference}"], member / "transport.log")
                     transported = True
                     remote = validator.validate_registry(reference, username, key, labels_for(validator, identity))
                     if remote["index_digest"] != graphs[image["name"]]["index_digest"]:
