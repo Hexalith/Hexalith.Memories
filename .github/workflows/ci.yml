@@ -343,17 +343,20 @@ jobs:
       - name: Run NuGet publish fixtures
         run: python3 -m unittest discover -s tests/tooling/publish_nuget -p "*_test.py"
 
-      - name: Run container publish fixtures
-        run: python3 -m unittest discover -s tests/tooling/publish_containers -p "*_test.py"
-
-      - name: Fetch historical Builds qualification source
+      - name: Fetch historical Builds publication sources
         run: |
           set -euo pipefail
-          # The qualification compares immutable historical helper bytes. The initializer's
-          # shallow checkout contains only the current gitlink, so fetch that exact source.
-          historical_builds_sha=f0feeb234cbc16f88c2886a6ffae7122e05dd64b
-          git -C references/Hexalith.Builds fetch --no-tags --depth=1 origin "$historical_builds_sha"
-          git -C references/Hexalith.Builds cat-file -e "$historical_builds_sha^{commit}"
+          # The publication fixtures compare immutable historical helper bytes. The initializer's
+          # shallow checkout contains only the current gitlink, so fetch both approved sources.
+          for historical_builds_sha in \
+            81c88b34d09d34260b92d7f0928dbbc1c7446baa \
+            f0feeb234cbc16f88c2886a6ffae7122e05dd64b; do
+            git -C references/Hexalith.Builds fetch --no-tags --depth=1 origin "$historical_builds_sha"
+            git -C references/Hexalith.Builds cat-file -e "$historical_builds_sha^{commit}"
+          done
+
+      - name: Run container publish fixtures
+        run: python3 -m unittest discover -s tests/tooling/publish_containers -p "*_test.py"
 
       - name: Run Builds publication qualification fixtures
         # Offline: drives the pinned references/Hexalith.Builds publisher helpers
