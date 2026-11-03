@@ -500,14 +500,14 @@ development_status:
   # See the 28-1 row's own inline note for current status detail.
   epic-28: in-progress
   28-1-adopt-owner-approved-eventstore-runtime-identity: done  # 2026-09-05 code review: human decision accepted Task 4's DW-713 deferral (real EventStore-originated Dapr publish full-stack proof) as a formal story-closing decision, matching the spec's own frontmatter status. Source-SHA gitlink pin, package-identity rebuild (local dev + ephemeral CI provisioning), and the single `eventstore` AppHost resource are done and verified. Task 4 needs an EventStore domain-service resource this story is not scoped to add; see DW-713 (the gap and candidate resolutions), DW-716 (CI provisioning duplication + unconfirmed AppHost start-ordering), DW-717 (production-deployment-verification job not confirmed to need the same provisioning), and DW-728 (2026-09-05 code review: eventstore resource cannot start under SDK 10.0.400-only environments — a real, high-severity residual gap, accepted as story-closing alongside Task 4, not blocking `done`) in deferred-work.md.
-  epic-28-retrospective: optional
+  epic-28-retrospective: done  # 2026-11-02: retro complete (epic-28-retro-2026-11-02.md, verdict rejected: criteria 5 real-publish clause and 6 not met; the eventstore AppHost resource cannot start; human override to accepted-with-open-items available).
 
   # Epic 29: OpenBao-First Dapr Secret Management
   # Registered on 2026-07-19 by the approved OpenBao-First Aspire Secret Management course correction.
   epic-29: in-progress
   29-1-openbao-backed-apphost-secret-topology: done
   29-2-provider-neutral-aspire-composition-and-secret-verification: done
-  epic-29-retrospective: optional
+  epic-29-retrospective: done  # 2026-11-02: retro complete (epic-29-retro-2026-11-02.md, verdict accepted-with-open-items: all declared criteria met on the root AppHost topology; open items A1-A11 cover the unexecuted reusable Aspire path, allow-list and name contracts, and hardening residuals).
 
   # Epic 30: CI/CD Pipeline Ownership and Alignment
   # Historical origin: 2026-07-26 ownership and 2026-07-27 DW 27.3-CR16 split.
@@ -852,3 +852,117 @@ action_items:
     owner: "Amelia"
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-27-retro-2026-11-01.md"
+  - id: "epic-28-retro-item-72-make-the-story-28-1-eventstore-apphost-r"
+    epic: 28
+    action: "Make the Story 28.1 eventstore AppHost resource run or gate it off by default: reopen DW-728 with the real causes (gateway never built because SuppressBuild has no build-only ProjectReference, statestore scoped to memories only, sidecar outside the usesRedis gate, no app-channel token, JWT security, Dapr tokens or domain-service registrations), then unskip EventStoreResource_StartsAndBecomesHealthy and assert generated component scopes"
+    owner: "Amelia (Winston decides)"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-28-retro-2026-11-02.md"
+  - id: "epic-28-retro-item-73-fix-integrationstubclosureguardtests-so"
+    epic: 28
+    action: "Fix IntegrationStubClosureGuardTests so SkipReasonRegex also matches verbatim Skip = @\"...\" reasons and fails when a skip cites a DW entry whose ledger status is done"
+    owner: "Murat"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-28-retro-2026-11-02.md"
+  - id: "epic-28-retro-item-74-reconcile-epic-28-records-with-the-as-bu"
+    epic: 28
+    action: "Reconcile Epic 28 records with the as-built state: record the f7fef9fb EventStore 3.102.0 supersession in epics.md Story 28.1 and the spec Change Log, correct spec lines 101 and 136, refresh the 28-1 sprint-status note, move epic-28 to done once the identity and gateway decisions are made, fix DW-728's resolution text and add a provenance note for releases v2.23.0 to v2.24.1"
+    owner: "Paige, John"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-28-retro-2026-11-02.md"
+  - id: "epic-28-retro-item-75-decide-the-eventstore-identity-policy-ex"
+    epic: 28
+    action: "Decide the EventStore identity policy (exact owner-approved identity versus Builds catalog plus the 3.129.0 floor) and enforce it: either a contract check tying the EventStore gitlink tag to HexalithEventStoreVersion with an approval record meeting the Epic 28 activation bar, or retire the invariant in epics.md and name the selector for the AppHost gateway runtime"
+    owner: "Jérôme Piquot, Winston"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-28-retro-2026-11-02.md"
+  - id: "epic-28-retro-item-76-route-dw-713-create-the-follow-up-story"
+    epic: 28
+    action: "Route DW-713: create the follow-up story for its 2026-09-01 own-a-domain-service decision in epics.md and sprint-status, or withdraw the decision, and remove the duplicated decision lines in DW-713 and DW-716"
+    owner: "John, Winston"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-28-retro-2026-11-02.md"
+  - id: "epic-28-retro-item-77-retire-the-superseded-eventstore-proof-f"
+    epic: 28
+    action: "Retire the superseded EventStore proof-feed workaround: delete tools/ci/provision-eventstore-local-feed.sh, the 999.1.20-proof manifest and its .gitignore rule, close DW-716's CI-provisioning half, and ask developers to delete local NuGet.local.config and proof feeds"
+    owner: "Amelia"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-28-retro-2026-11-02.md"
+  - id: "epic-28-retro-item-78-add-fixtures-for-the-spec-artifact-fallb"
+    epic: 28
+    action: "Add fixtures for the spec- artifact fallback in check-story-review-readiness.py and check-story-slice-scope.py, fail on the ambiguous case where both <key>.md and spec-<key>.md exist, and apply the C4 spec exemption to fallback-resolved artifacts"
+    owner: "Murat, Amelia"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-28-retro-2026-11-02.md"
+  - id: "epic-28-retro-item-79-record-the-epic-28-process-lessons-super"
+    epic: 28
+    action: "Record the Epic 28 process lessons: supersession commits retire predecessor artifacts, ledger entries and epic text; skip-gated DW closures remove the skip and cite a green run; applied review patches cite commit and file:line; story-scoped dependency overrides never land on shared Builds main; skip-only or ledger-only commits do not use fix:; toolchain claims record the version measured in the command's working directory"
+    owner: "John, Amelia"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-28-retro-2026-11-02.md"
+  - id: "epic-29-retro-item-80-add-an-executable-aspire-model-test-that"
+    epic: 29
+    action: "Add an executable Aspire model test that composes both Hexalith.Memories.Aspire extensions with vault-typed secret-store components and asserts per-resource references, WaitFor and sidecar Config, replacing the source-text occurrence counts (57c65134 removed the infeasibility rationale)"
+    owner: "Murat, Amelia"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-29-retro-2026-11-02.md"
+  - id: "epic-29-retro-item-81-carry-the-story-29-1-per-sidecar-boundar"
+    epic: 29
+    action: "Carry the Story 29.1 per-sidecar boundary into the reusable Aspire extensions: give the server sidecar a Dapr Config, split lifecycle and clock configurations, forward or validate the secret-store names (Memories__SecretStoreName, Clock__SecretStoreName) and fix the README sample so no sidecar can read the clock signing key"
+    owner: "Amelia (Winston decides)"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-29-retro-2026-11-02.md"
+  - id: "epic-29-retro-item-82-document-local-secret-supply-for-the-roo"
+    epic: 29
+    action: "Document local secret supply for the root AppHost: the openbao-runtime-seeds and openbao-access-telemetry-seeds parameter format, user-secrets usage, the orphaned repo-root secrets.json, and a local-AppHost section in docs/operations/openbao.md"
+    owner: "Paige"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-29-retro-2026-11-02.md"
+  - id: "epic-29-retro-item-83-exercise-the-shipped-deploy-dapr-config"
+    epic: 29
+    action: "Exercise the shipped deploy/dapr/config.yaml allow-list in the live OpenBao matrix (the fixture overrides MEMORIES_DAPR_CONFIG_PATH) or pin its exact key set, and make the template scope tests exact including memories-mcp absence"
+    owner: "Murat"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-29-retro-2026-11-02.md"
+  - id: "epic-29-retro-item-84-make-the-openbao-bootstrap-retry-safe-re"
+    epic: 29
+    action: "Make the OpenBao bootstrap retry safe: retry only pre-init connection failures and treat a failure after /v1/sys/init as a generation teardown with an accurate error (Program.cs InitializeOpenBaoWithRetryAsync, OpenBaoInitializer.cs)"
+    owner: "Amelia"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-29-retro-2026-11-02.md"
+  - id: "epic-29-retro-item-85-give-the-openbao-image-pin-and-the-kv-pr"
+    epic: 29
+    action: "Give the OpenBao image pin and the KV prefixes one source of truth across AppHost, CI, tools and docs; resolve the dev 2.6.0 versus production 2.6.4 split and openbao.md:24 versus :56 without changing PG-ONPREM-2 profile inputs"
+    owner: "Winston"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-29-retro-2026-11-02.md"
+  - id: "epic-29-retro-item-86-decide-whether-eventstore-belongs-in-the"
+    epic: 29
+    action: "Decide whether eventstore belongs in the runtime secretstore scope (templates and Kubernetes base yes, root AppHost no) and route the decision to Epic 31, which owns the deployed platform"
+    owner: "Winston, Jérôme Piquot"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-29-retro-2026-11-02.md"
+  - id: "epic-29-retro-item-87-add-an-automated-breaking-change-signal"
+    epic: 29
+    action: "Add an automated breaking-change signal for packable public APIs (public-API baseline or API-compat check on Hexalith.Memories.Aspire and the other packable libraries) and record v2.23.0 as an unsignalled source-breaking change; this lands the open Epic 25 and 26 breaking-change items"
+    owner: "Jérôme Piquot, Amelia"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-29-retro-2026-11-02.md"
+  - id: "epic-29-retro-item-88-reconcile-epic-29-records-move-epic-29-t"
+    epic: 29
+    action: "Reconcile Epic 29 records: move epic-29 to done, correct the spec-29-2 ticked OpenBaoTopologyIntegrationTests task and its :208 citation plus the stale test name at OpenBaoTopologyIntegrationTests.cs:187, scope the epics.md exclusively-OpenBao goal to Memories-owned topology with the Tenants local.file consumer as an accepted deviation, and refresh the DW-711 anchor"
+    owner: "Paige, John"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-29-retro-2026-11-02.md"
+  - id: "epic-29-retro-item-89-record-the-epic-29-process-lessons-l1-l6"
+    epic: 29
+    action: "Record the Epic 29 process lessons L1-L6 and wire L5 into the review gate: live-topology stories close on a passing CI-lane run, quick-dev spec stories carry the same File List and runner-derived test-delta ledger, and review patches land in story-scoped commits rather than /pushall syncs"
+    owner: "John, Murat"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-29-retro-2026-11-02.md"
+  - id: "epic-29-retro-item-90-register-the-epic-29-residuals-as-owned"
+    epic: 29
+    action: "Register the Epic 29 residuals as owned DW entries with reopen triggers: the seven F17 OpenBao AppHost hardening items, the F18 duplicates (fingerprint x3, token regex x3 including the missing hvr form, repo-root helpers, seed parsing, matrix encoded twice) and the Program.cs and AspireIngestionPipelineFixture split candidates linked to Epic 27 item 71"
+    owner: "Amelia"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-29-retro-2026-11-02.md"
