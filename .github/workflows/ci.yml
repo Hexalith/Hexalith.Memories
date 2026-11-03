@@ -348,10 +348,22 @@ jobs:
           set -euo pipefail
           # The publication fixtures compare immutable historical helper bytes. The initializer's
           # shallow checkout contains only the current gitlink, so fetch both approved sources.
-          for historical_builds_sha in \
-            81c88b34d09d34260b92d7f0928dbbc1c7446baa \
-            f0feeb234cbc16f88c2886a6ffae7122e05dd64b; do
-            git -C references/Hexalith.Builds fetch --no-tags --depth=1 origin "$historical_builds_sha"
+          historical_builds_shas=(
+            81c88b34d09d34260b92d7f0928dbbc1c7446baa
+            f0feeb234cbc16f88c2886a6ffae7122e05dd64b
+          )
+          for attempt in 1 2 3; do
+            if git -C references/Hexalith.Builds -c maintenance.auto=false \
+              fetch --no-recurse-submodules --no-tags --depth=1 origin "${historical_builds_shas[@]}"; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "Unable to fetch approved Builds sources after three attempts." >&2
+              exit 1
+            fi
+            sleep "$attempt"
+          done
+          for historical_builds_sha in "${historical_builds_shas[@]}"; do
             git -C references/Hexalith.Builds cat-file -e "$historical_builds_sha^{commit}"
           done
 
