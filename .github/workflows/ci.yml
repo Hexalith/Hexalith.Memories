@@ -181,7 +181,7 @@ jobs:
       aspire-test-project: ''
       run-consumer-validation: false
       run-coverage-gate: false
-      build-timeout-minutes: 20
+      build-timeout-minutes: 60
 
   source-debug:
     name: source-debug

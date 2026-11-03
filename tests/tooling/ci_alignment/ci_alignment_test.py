@@ -167,7 +167,7 @@ class SharedCiAlignmentTests(unittest.TestCase):
             "builds-execution-sha": SHA, "test-platform": "microsoft-testing-platform",
             "unit-test-projects": CONTRACTS, "integration-test-projects": "",
             "aspire-test-project": "", "run-consumer-validation": False,
-            "run-coverage-gate": False, "build-timeout-minutes": 20,
+            "run-coverage-gate": False, "build-timeout-minutes": 60,
         }, shared["with"])
         for key in ("if", "continue-on-error", "needs", "secrets"):
             self.assertNotIn(key, shared)
