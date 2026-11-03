@@ -346,10 +346,7 @@ jobs:
       - name: Run container publish fixtures
         run: python3 -m unittest discover -s tests/tooling/publish_containers -p "*_test.py"
 
-      - name: Run Builds publication qualification fixtures
-        # Offline: drives the pinned references/Hexalith.Builds publisher helpers
-        # through fake network, registry, docker and dotnet seams. Never publishes.
-        # A Builds gitlink bump fails this step by design: re-qualify the profile, the test pin and the evidence.
+      - name: Fetch historical Builds qualification source
         run: |
           set -euo pipefail
           # The qualification compares immutable historical helper bytes. The initializer's
@@ -357,7 +354,12 @@ jobs:
           historical_builds_sha=f0feeb234cbc16f88c2886a6ffae7122e05dd64b
           git -C references/Hexalith.Builds fetch --no-tags --depth=1 origin "$historical_builds_sha"
           git -C references/Hexalith.Builds cat-file -e "$historical_builds_sha^{commit}"
-          python3 -m unittest discover -s tests/tooling/builds_publication_qualification -p "*_test.py"
+
+      - name: Run Builds publication qualification fixtures
+        # Offline: drives the pinned references/Hexalith.Builds publisher helpers
+        # through fake network, registry, docker and dotnet seams. Never publishes.
+        # A Builds gitlink bump fails this step by design: re-qualify the profile, the test pin and the evidence.
+        run: python3 -m unittest discover -s tests/tooling/builds_publication_qualification -p "*_test.py"
 
       - name: Run production deployment evidence fixtures
         run: python3 -m unittest discover -s tests/tooling/production_deployment_evidence -p "*_test.py"
