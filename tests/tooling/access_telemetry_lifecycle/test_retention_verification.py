@@ -954,9 +954,9 @@ class RetentionVerificationTests(unittest.TestCase):
             REPO_ROOT / "src/Hexalith.Memories.Server/Hexalith.Memories.Server.QualificationCurl.targets"
         ).read_text(encoding="utf-8")
         self.assertIn("curl-linux-x86_64-musl-8.20.0.tar.xz", stager)
-        self.assertIn("58c6fab6e3f62d39d23224d752de1302cb717d997288d0f23d6fa7e79c393c1f", stager)
+        self.assertIn("7a12a4c460967e769fad9ddae2de4fce6679633b5a1891628e657dad8df57f3d", stager)
         self.assertIn("curl-linux-aarch64-musl-8.20.0.tar.xz", stager)
-        self.assertIn("32799692a41e88f9f2be85348c2230baf5a0a29ded2d6c086e49e5cbab22b3f4", stager)
+        self.assertIn("b5dde6790a33f55dee04e965d5b0fcd9c82493b72e1e5608c09ce1483359fb81", stager)
         self.assertIn('AfterTargets="Publish"', targets)
         self.assertIn("linux-musl-x64", targets)
         self.assertIn("linux-musl-arm64", targets)

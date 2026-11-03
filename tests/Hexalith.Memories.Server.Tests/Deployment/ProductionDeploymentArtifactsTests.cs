@@ -50,9 +50,9 @@ public sealed class ProductionDeploymentArtifactsTests
         targets.ShouldContain("stage-qualification-curl.py");
         targets.ShouldContain("Value=\"/app:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\"");
         stager.ShouldContain("curl-linux-x86_64-musl-8.20.0.tar.xz");
-        stager.ShouldContain("58c6fab6e3f62d39d23224d752de1302cb717d997288d0f23d6fa7e79c393c1f");
+        stager.ShouldContain("7a12a4c460967e769fad9ddae2de4fce6679633b5a1891628e657dad8df57f3d");
         stager.ShouldContain("curl-linux-aarch64-musl-8.20.0.tar.xz");
-        stager.ShouldContain("32799692a41e88f9f2be85348c2230baf5a0a29ded2d6c086e49e5cbab22b3f4");
+        stager.ShouldContain("b5dde6790a33f55dee04e965d5b0fcd9c82493b72e1e5608c09ce1483359fb81");
     }
 
     [Fact]
