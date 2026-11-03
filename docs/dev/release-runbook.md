@@ -98,7 +98,7 @@ protection evidence below stays historical evidence; this story performs no remo
   The challenge check proves challenge-driven clients can select the authfile credential; the
   upload probes separately prove write authorization. Every opened probe session must return HTTP
   204 when cancelled or the release fails closed.
-- `tools/pack-release.ps1` starts the `prepareCmd` for `@semantic-release/exec`; the source and destination proofs at the end of that hook run before semantic-release creates the tag.
+- `tools/pack-release.ps1` starts the `prepareCmd` for `@semantic-release/exec`; destination validation runs next, followed by the terminal source proof immediately before semantic-release creates the tag.
 - `tools/publish-release.ps1` is the `publishCmd` for `@semantic-release/exec`. It always attempts
   both NuGet and container publication and writes one aggregate release summary.
 - `tools/pack-release.ps1` prebuilds the Server, MCP, access-telemetry lifecycle, clock, and DomainService OCI archives and the versioned production
@@ -171,9 +171,11 @@ contract tests green in the same pull request.
 
 Wait for successful push CI on the exact current `main` SHA, then dispatch **Release** from `main`. Read back `gh api repos/Hexalith/Hexalith.Memories/environments/production` and require a nonempty `required_reviewers` rule, `can_admins_bypass: false` and a non-null `deployment_branch_policy` restricting deployments to `main` or protected branches. A workflow `environment: production` declaration alone is insufficient. The sole owner's self-review is an accepted exception until a second eligible reviewer is available. Set `HEXALITH_RELEASE_PUBLISH_ENABLED` to the exact lowercase value `true` at repository scope only for an authorized publication, and set `NUGET_USER` to the individual account that created the NuGet Trusted Publishing policy. Any other publication-flag value leaves the release frozen before OIDC and semantic-release.
 
-The 2026-11-02 API readback returned `protection_rules: []`, `can_admins_bypass: true` and `deployment_branch_policy: null`. The source job therefore refuses to enter the protected release job until a repository administrator installs the required production controls and a subsequent API readback confirms them. This code change does not alter GitHub environment settings.
+Historical protection evidence: the 2026-11-02 API readback returned `protection_rules: []`, `can_admins_bypass: true` and `deployment_branch_policy: null`. The source job refused entry under that configuration; this readback does not describe the current environment.
 
 On 2026-11-02, Release run `41495447050` published `v3.0.18` from commit `66822bc5`, which temporarily let the owner skip both approval readbacks for one run; `d9d61d8a` removed that bypass. The run proved source, destinations and publication end to end, but it did not exercise an environment approval.
+
+On 2026-11-03, the authorized production configuration was verified with required reviewer `jpiquot`, admin bypass disabled and deployments restricted to branch `main`. Approved frozen Release run `41624526890` on `d7e44d01b66f0800bdb7edca8553934fe44dc145` followed successful push CI `41621265465`. Approval was submitted as `jpiquot` on the user's behalf through the normal production gate, with no bypass; publication stayed frozen.
 
 The source job checks main tip and exact-source push CI before entering production. When publication is enabled, preparation repeats that check after the build; the caller checks once more immediately before login. If main advances or CI cannot be proved at any checkpoint, stop and dispatch again from the new tip after its push CI succeeds. A missing reviewer rule blocks the workflow before the protected job. Never treat a passing workflow declaration or local fixture as proof that the remote approval setting is active.
 
