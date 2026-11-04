@@ -163,8 +163,10 @@ and are removed with their private network; their cleanup result is retained.
 The clock health lane generates temporary P-256 signing material, serves it through an isolated
 Dapr local-file secret authority, and uses the clock's three Development UTC sources. Every
 workload uses its own internal Docker network. Failed container, authority or network cleanup
-fails verification. Test keys/tokens are never retained. These probes establish the declared
-publication health contract; they do not qualify Production clock authorities or enable lifecycle
+fails verification. Test keys/tokens are never retained. A disposable, digest-pinned BusyBox
+probe shares the workload's network namespace to check health because internal networks expose
+no host port. These probes establish the declared publication health contract; they do not
+qualify Production clock authorities or enable lifecycle
 writes. DW-17 and parked Production qualification DW-730 remain unchanged.
 
 The stable Docker archive names remain `server.tar.gz`, `mcp.tar.gz`, `access-telemetry.tar.gz`,

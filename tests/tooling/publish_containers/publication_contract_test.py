@@ -632,6 +632,13 @@ class WorkloadHealthTests(unittest.TestCase):
                 self.assertIn("dependency=redis;image=", log)
                 self.assertIn("dependency=falkordb;image=", log)
                 self.assertEqual(2, len([call for call in calls if call[:3] == ["docker", "rm", "--force"]]))
+                self.assertTrue(any(call[:4] == ["docker", "network", "create", "--internal"] for call in calls))
+                workload = next(call for call in calls if call[:2] == ["docker", "run"] and call[-1].startswith("registry.test/memories@"))
+                self.assertNotIn("--publish", workload)
+                probe = next(call for call in calls if call[:3] == ["docker", "run", "--rm"])
+                self.assertIn("container:memories-publication-server-amd64-", " ".join(probe))
+                self.assertIn(HEALTH.PROBE_IMAGE, probe)
+                self.assertTrue(probe[-1].endswith("/alive"))
 
     def test_run_platform_lifecycle_and_clock_require_ready_even_when_alive_would_pass(self):
         @contextmanager
@@ -644,12 +651,12 @@ class WorkloadHealthTests(unittest.TestCase):
                 body = {"status": "Healthy", "entries": {entry: {"status": "Healthy", "description": "Access telemetry lifecycle writes are disabled."}} if valid else {}}
                 def command(arguments):
                     calls.append(arguments)
-                    return SimpleNamespace(returncode=0, stdout=json.dumps(body) if arguments[0] == "curl" and arguments[-1].endswith("/ready") else "alive passes", stderr="")
+                    return SimpleNamespace(returncode=0, stdout=json.dumps(body) if arguments[:3] == ["docker", "run", "--rm"] and arguments[-1].endswith("/ready") else "alive passes", stderr="")
                 smoke = SimpleNamespace(_pull_immutable=lambda *_: "pass", _poll_liveness=mock.Mock(return_value=("pass", 1)), _append_runtime_evidence=lambda *_: None, _remove_container=lambda *_: "pass", _run_or_none=lambda *_: SimpleNamespace(returncode=0, stdout="127.0.0.1:12345"), _container_state=lambda *_: "running|0", SMOKE_JWT_ISSUER="issuer", SMOKE_JWT_AUDIENCE="audience", SMOKE_JWT_SIGNING_KEY="development-key")
                 with self.subTest(name=name, valid=valid), tempfile.TemporaryDirectory() as temporary, mock.patch.object(HEALTH, "command", side_effect=command), mock.patch.object(HEALTH, "clock_authority", authority), mock.patch.object(HEALTH.time, "monotonic", side_effect=[0, 2]):
                     result = HEALTH.run_platform(name, "registry.test/" + name, "linux/amd64", "sha256:" + "c" * 64, Path(temporary), smoke, 1)
                 self.assertEqual("pass" if valid else "readiness-timeout", result["outcome"])
-                self.assertTrue(any(call[0] == "curl" and call[-1].endswith("/ready") for call in calls))
+                self.assertTrue(any(call[:3] == ["docker", "run", "--rm"] and call[-1].endswith("/ready") for call in calls))
                 smoke._poll_liveness.assert_not_called()
 
     def test_clock_authority_is_ephemeral_grpc_and_cleanup_failure_is_terminal(self):

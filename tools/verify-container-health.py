@@ -29,6 +29,7 @@ def command(arguments):
 
 # Reuse the exact non-Production Dapr dependency already declared by this repository.
 DAPR_TEST_AUTHORITY_IMAGE = "ghcr.io/dapr/daprd:1.18.1@sha256:b7f7d296f01f0b4b82bf3c5f087ecf26165ce08caf3e87f94b8c72b9e11873f8"
+PROBE_IMAGE = "docker.io/library/busybox:1.37.0@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec"
 
 
 class CleanupFailure(ValueError):
@@ -137,14 +138,17 @@ def health_response_valid(name, body):
         return False
 
 
+def probe(container, endpoint):
+    # An internal Docker network has no published host port. Share only the
+    # workload's network namespace with a digest-pinned, disposable HTTP probe.
+    return command(["docker", "run", "--rm", "--pull=never", "--network", "container:" + container,
+                    PROBE_IMAGE, "wget", "-q", "-T", "5", "-t", "1", "-O", "-", "http://127.0.0.1:8080" + endpoint])
+
+
 def poll_readiness(name, container, smoke, timeout):
-    port = smoke._run_or_none(["docker", "port", container, "8080/tcp"])
-    match = re.search(r"127\.0\.0\.1:(\d+)", port.stdout if port and port.returncode == 0 else "")
-    if match is None:
-        return "readiness-port-unavailable"
     deadline = time.monotonic() + timeout
     while True:
-        result = command(["curl", "--silent", "--show-error", "--max-time", "5", "--fail", f"http://127.0.0.1:{match[1]}/ready"])
+        result = probe(container, "/ready")
         if result.returncode == 0 and health_response_valid(name, result.stdout):
             return "pass"
         state = smoke._container_state(container)
@@ -152,6 +156,21 @@ def poll_readiness(name, container, smoke, timeout):
             return "image-start-failure"
         if time.monotonic() >= deadline:
             return "readiness-timeout"
+        time.sleep(2)
+
+
+def poll_liveness(container, smoke, timeout, logs):
+    deadline = time.monotonic() + timeout
+    while True:
+        if probe(container, "/alive").returncode == 0:
+            return "pass"
+        state = smoke._container_state(container)
+        if state:
+            logs.append(f"container_state={state}")
+            if not state.startswith("running|"):
+                return "image-start-failure"
+        if time.monotonic() >= deadline:
+            return "liveness-timeout"
         time.sleep(2)
 
 
@@ -182,7 +201,7 @@ def run_platform(name, repository, platform, digest, directory, smoke, timeout):
                         "Authentication__JwtBearer__SigningKey": smoke.SMOKE_JWT_SIGNING_KEY,
                         "Authentication__JwtBearer__AllowInsecureSymmetricKey": "true", **extra}
             arguments = ["docker", "run", "--detach", "--platform", platform, "--network", network,
-                         "--publish", "127.0.0.1::8080", "--name", container]
+                         "--name", container]
             for key, value in settings.items():
                 arguments += ["--env", key + "=" + value]
             container_attempted = True
@@ -191,7 +210,7 @@ def run_platform(name, repository, platform, digest, directory, smoke, timeout):
                 return smoke._classify_start_failure(started)
             if name in ("access-telemetry", "access-telemetry-clock"):
                 return poll_readiness(name, container, smoke, timeout)
-            return smoke._poll_liveness(container, timeout, 2, logs)[0]
+            return poll_liveness(container, smoke, timeout, logs)
 
         if name == "access-telemetry-clock":
             with clock_authority(network) as settings:
@@ -229,6 +248,8 @@ def verify(name, image, directory, shared, set_sha256, timeout=180):
         raise ValueError("Health image differs from the validated OCI image.")
     repository = smoke._repository_without_tag(image)
     outcome, _ = smoke._preflight(repository, children[smoke.ARM64_PLATFORM], directory)
+    if outcome == "pass" and command(["docker", "pull", "--platform", "linux/amd64", PROBE_IMAGE]).returncode:
+        raise ValueError("Digest-pinned private-network HTTP probe could not be pulled.")
     platforms = []
     if outcome == "pass":
         platforms = [run_platform(name, repository, platform, children[platform], directory, smoke, timeout) for platform in contract.PLATFORMS]
