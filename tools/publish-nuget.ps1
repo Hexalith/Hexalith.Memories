@@ -184,6 +184,8 @@ try {
         Write-PublishSummary -Status $status -StartedAt $startedAt -Pushed $pushed -Failed $failed -NotAttempted $notAttempted | Out-Null
         throw "NuGet publishing finished with $($failed.Count) failed package(s) and $($notAttempted.Count) not-attempted package(s)."
     }
+
+    Write-PublishSummary -Status "succeeded" -StartedAt $startedAt -Pushed $pushed -Failed @() -NotAttempted @() | Out-Null
 }
 finally {
     Pop-Location

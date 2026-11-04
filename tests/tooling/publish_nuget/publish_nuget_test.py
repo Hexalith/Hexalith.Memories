@@ -371,7 +371,7 @@ class PublishNuGetTests(unittest.TestCase):
                 self.assertEqual(0, result.returncode, result.stdout + result.stderr)
                 self.assertEqual(10, len(log_path.read_text(encoding="utf-8").splitlines()))
 
-    def test_all_packages_publish_successfully_without_failure_summary(self) -> None:
+    def test_all_packages_publish_successfully_with_complete_summary(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             package_directory = root / "packages"
@@ -389,12 +389,17 @@ class PublishNuGetTests(unittest.TestCase):
                 for line in log_path.read_text(encoding="utf-8").splitlines()
             ]
             self.assertEqual([package.name for package in packages], calls)
-            self.assertFalse((package_directory / "publish-summary.json").exists())
+            summary = json.loads((package_directory / "publish-summary.json").read_text(encoding="utf-8"))
+            self.assertEqual("succeeded", summary["status"])
+            self.assertEqual("1.2.3", summary["version"])
+            self.assertEqual([package.name for package in packages], summary["pushed"])
+            self.assertEqual([], summary["failed"])
+            self.assertEqual([], summary["notAttempted"])
 
             first_call = json.loads(log_path.read_text(encoding="utf-8").splitlines()[0])
             self.assertIn("--skip-duplicate", first_call["args"])
 
-    def test_post_probe_duplicate_response_does_not_create_failure_summary(self) -> None:
+    def test_post_probe_duplicate_response_records_success_summary(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             package_directory = root / "packages"
@@ -423,7 +428,10 @@ class PublishNuGetTests(unittest.TestCase):
                 for line in log_path.read_text(encoding="utf-8").splitlines()
             ]
             self.assertEqual([package.name for package in packages], calls)
-            self.assertFalse((package_directory / "publish-summary.json").exists())
+            summary = json.loads((package_directory / "publish-summary.json").read_text(encoding="utf-8"))
+            self.assertEqual("succeeded", summary["status"])
+            self.assertEqual([package.name for package in packages], summary["pushed"])
+            self.assertEqual([], summary["failed"])
 
     def test_middle_package_failure_still_attempts_later_packages_and_writes_summary(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
