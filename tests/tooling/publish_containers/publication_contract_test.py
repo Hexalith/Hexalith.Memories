@@ -623,6 +623,7 @@ class WorkloadHealthTests(unittest.TestCase):
                     self.assertTrue(any(value.startswith("ConnectionStrings__redis=memories-publication-server-") for value in environment))
                     self.assertTrue(any(value.startswith("ConnectionStrings__falkordb=memories-publication-server-") for value in environment))
                     self.assertIn("AccessTelemetryLifecycle__Enabled=false", environment)
+                    self.assertTrue(any(value.startswith("DAPR_GRPC_ENDPOINT=http://memories-dapr-authority-") for value in environment))
                 return SimpleNamespace(returncode=0, stdout="", stderr="")
             smoke = SimpleNamespace(_pull_immutable=lambda *_: "pass", _poll_liveness=lambda *_: ("pass", 1), _append_runtime_evidence=lambda *_: None, _remove_container=lambda *_: "pass", SMOKE_JWT_ISSUER="issuer", SMOKE_JWT_AUDIENCE="audience", SMOKE_JWT_SIGNING_KEY="development-key")
             with self.subTest(cleanup_failure=cleanup_failure), tempfile.TemporaryDirectory() as temporary, mock.patch.object(HEALTH, "command", side_effect=command):
@@ -631,7 +632,7 @@ class WorkloadHealthTests(unittest.TestCase):
                 log = (Path(temporary) / "health-amd64.log").read_text()
                 self.assertIn("dependency=redis;image=", log)
                 self.assertIn("dependency=falkordb;image=", log)
-                self.assertEqual(2, len([call for call in calls if call[:3] == ["docker", "rm", "--force"]]))
+                self.assertEqual(3, len([call for call in calls if call[:3] == ["docker", "rm", "--force"]]))
                 self.assertTrue(any(call[:4] == ["docker", "network", "create", "--internal"] for call in calls))
                 workload = next(call for call in calls if call[:2] == ["docker", "run"] and call[-1].startswith("registry.test/memories@"))
                 self.assertNotIn("--publish", workload)
