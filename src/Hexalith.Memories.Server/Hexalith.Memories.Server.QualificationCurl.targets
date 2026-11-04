@@ -3,6 +3,9 @@
        SDK Alpine containers cannot install packages at image build, so musl-static curl is staged at publish. -->
   <ItemGroup Condition="'$(EnableContainer)' == 'true'">
     <ContainerEnvironmentVariable Include="PATH" Value="/app:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" />
+    <!-- Multi-RID container publishing can split PATH at its first colon. Use an absolute
+         runtime path so the image still starts when the copied PATH is only /app. -->
+    <ContainerAppCommand Include="/usr/share/dotnet/dotnet;/app/Hexalith.Memories.Server.dll" />
   </ItemGroup>
 
   <Target Name="StageQualificationCurl"

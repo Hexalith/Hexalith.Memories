@@ -92,7 +92,7 @@ def clock_authority(network):
         components = Path(temporary) / "components"
         components.mkdir()
         secret = Path(temporary) / "secrets.json"
-        contract.write_json(secret, {"access-telemetry-clock-key": {"signing-key-pkcs8": base64.b64encode(pkcs8).decode()}})
+        contract.write_json(secret, {"access-telemetry-clock-key": base64.b64encode(pkcs8).decode()})
         secret.chmod(0o600)
         (components / "secretstore.yaml").write_text("""apiVersion: dapr.io/v1alpha1
 kind: Component
@@ -124,6 +124,27 @@ spec:
         finally:
             if command(["docker", "rm", "--force", authority]).returncode:
                 raise CleanupFailure("Clock test authority cleanup failed.")
+
+
+@contextmanager
+def mcp_authority(network):
+    """Provide the isolated Dapr sidecar required by the MCP liveness check."""
+    authority = "memories-mcp-authority-" + secrets.token_hex(6)
+    token = secrets.token_hex(32)
+    if command(["docker", "pull", "--platform", "linux/amd64", DAPR_TEST_AUTHORITY_IMAGE]).returncode:
+        raise ValueError("Isolated MCP test authority image could not be pulled.")
+    started = command(["docker", "run", "--detach", "--platform", "linux/amd64", "--network", network,
+                       "--name", authority, "--env", "DAPR_API_TOKEN=" + token, "--entrypoint", "/daprd",
+                       DAPR_TEST_AUTHORITY_IMAGE, "--app-id", "publication-mcp-test", "--mode", "standalone",
+                       "--log-level", "error", "--enable-metrics=false"])
+    if started.returncode:
+        raise ValueError("Isolated MCP test authority did not start.")
+    try:
+        yield {"DAPR_HTTP_ENDPOINT": f"http://{authority}:3500", "DAPR_GRPC_ENDPOINT": f"http://{authority}:50001",
+               "DAPR_API_TOKEN": token}
+    finally:
+        if command(["docker", "rm", "--force", authority]).returncode:
+            raise CleanupFailure("MCP test authority cleanup failed.")
 
 
 def health_response_valid(name, body):
@@ -217,6 +238,9 @@ def run_platform(name, repository, platform, digest, directory, smoke, timeout):
                 result = execute(settings)
         elif name == "server":
             with server_dependencies(network, logs) as settings:
+                result = execute(settings)
+        elif name == "mcp":
+            with mcp_authority(network) as settings:
                 result = execute(settings)
         else:
             result = execute({})
