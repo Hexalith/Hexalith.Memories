@@ -1,4 +1,5 @@
 import base64
+import importlib.util
 import json
 import os
 import subprocess
@@ -11,6 +12,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = REPO_ROOT / "tools" / "verify-container-registry.ps1"
+_CONTRACT_SPEC = importlib.util.spec_from_file_location("registry_authorization_contract", REPO_ROOT / "tools" / "container-publication-contract.py")
+CONTRACT = importlib.util.module_from_spec(_CONTRACT_SPEC)
+_CONTRACT_SPEC.loader.exec_module(CONTRACT)
 USERNAME = "SECRET_ZOT_USERNAME_SHOULD_NOT_LEAK"
 API_KEY = "SECRET_ZOT_API_KEY_SHOULD_NOT_LEAK"
 REPOSITORIES = [
@@ -123,28 +127,32 @@ def run_probe(
     else:
         env.pop("HEXALITH_RELEASE_CLASSIFICATION_ONLY", None)
 
-    return subprocess.run(
-        [
-            "pwsh",
-            "-NoLogo",
-            "-NoProfile",
-            "-File",
-            str(SCRIPT),
-            "-Registry",
-            origin,
-            *(["-EvidencePath", str(evidence_path)] if evidence_path is not None else []),
-        ],
-        cwd=REPO_ROOT,
-        env=env,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    # Never let a fixture receipt land in the repository's real release evidence directory.
+    with tempfile.TemporaryDirectory() as temporary:
+        receipt = evidence_path if evidence_path is not None else Path(temporary) / "authorization.json"
+        return subprocess.run(
+            [
+                "pwsh",
+                "-NoLogo",
+                "-NoProfile",
+                "-File",
+                str(SCRIPT),
+                "-Registry",
+                origin,
+                "-EvidencePath",
+                str(receipt),
+            ],
+            cwd=REPO_ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
 
 
 class RegistryAuthorizationTests(unittest.TestCase):
     def test_authorization_receipt_records_actual_mode_redaction_and_no_push_credit(self) -> None:
-        for denied, cancel_status, expected in ((None, 204, "pass"), ("memories-mcp", 204, "fail"), (None, 500, "fail")):
+        for denied, cancel_status, expected, cleanup in ((None, 204, "pass", "pass"), ("memories-mcp", 204, "fail", "pass"), (None, 500, "fail", "failure")):
             state = RegistryState()
             state.denied_repository = denied
             state.cancel_status = cancel_status
@@ -154,6 +162,12 @@ class RegistryAuthorizationTests(unittest.TestCase):
                 text = receipt.read_text(encoding="utf-8-sig")
                 evidence = json.loads(text)
                 self.assertEqual(expected, evidence["result"])
+                self.assertEqual(cleanup, evidence["cleanup"])
+                registry_host = registry.origin.removeprefix("http://")
+                self.assertEqual(registry_host, evidence["registry"])
+                if expected == "pass":
+                    # The real PowerShell receipt must satisfy the gate that consumes it.
+                    CONTRACT.validate_authorization(receipt.parent, {"registry": registry_host})
                 self.assertEqual("preemptive-basic", evidence["mode"])
                 self.assertTrue(evidence["challengeObserved"])
                 self.assertFalse(evidence["pushProven"])

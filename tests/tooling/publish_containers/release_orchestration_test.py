@@ -211,24 +211,30 @@ class ReleaseOrchestrationTests(unittest.TestCase):
             self.assertEqual(str(summaries / "hexalith-memories-release-evidence.tar.gz"), call["args"][call["args"].index("--output") + 1])
 
     def test_failed_frozen_authorization_refuses_both_families_and_retains_aggregate(self) -> None:
-        with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
-            env, log_path = make_environment(root)
-            env["FAKE_AUTHORIZATION_EXIT"] = "42"
-            summary_directory = root / "release"
-            result = subprocess.run(
-                [shutil.which("pwsh") or "pwsh", "-NoLogo", "-NoProfile", "-File", str(PUBLISH_SCRIPT),
-                 "-Version", VERSION, "-SummaryDirectory", str(summary_directory), "-PowerShellExecutable", env["FAKE_PWSH"]],
-                cwd=REPO_ROOT, env=env, capture_output=True, text=True, check=False,
-            )
-            self.assertNotEqual(0, result.returncode)
-            calls = read_log(log_path)
-            self.assertEqual(["python3"], [call["command"] for call in calls])
-            self.assertIn("authorize", calls[0]["args"])
-            summary = json.loads((summary_directory / "publish-summary.json").read_text(encoding="utf-8-sig"))
-            self.assertEqual("publish-failed", summary["status"])
-            self.assertEqual(2, len(summary["notAttempted"]))
-            self.assertTrue(all(family["status"] == "not-attempted" for family in summary["families"]))
+        for registry, expected_source in ((None, "NuGet and registry.hexalith.com"), ("registry.fixture.test", "NuGet and registry.fixture.test")):
+            with self.subTest(registry=registry), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                env, log_path = make_environment(root)
+                env["FAKE_AUTHORIZATION_EXIT"] = "42"
+                env.pop("HEXALITH_ZOT_REGISTRY", None)
+                if registry is not None:
+                    env["HEXALITH_ZOT_REGISTRY"] = registry
+                summary_directory = root / "release"
+                result = subprocess.run(
+                    [shutil.which("pwsh") or "pwsh", "-NoLogo", "-NoProfile", "-File", str(PUBLISH_SCRIPT),
+                     "-Version", VERSION, "-SummaryDirectory", str(summary_directory), "-PowerShellExecutable", env["FAKE_PWSH"]],
+                    cwd=REPO_ROOT, env=env, capture_output=True, text=True, check=False,
+                )
+                self.assertNotEqual(0, result.returncode)
+                calls = read_log(log_path)
+                self.assertEqual(["python3"], [call["command"] for call in calls])
+                self.assertIn("authorize", calls[0]["args"])
+                summary = json.loads((summary_directory / "publish-summary.json").read_text(encoding="utf-8-sig"))
+                self.assertEqual("publish-failed", summary["status"])
+                self.assertEqual(2, len(summary["notAttempted"]))
+                self.assertTrue(all(family["status"] == "not-attempted" for family in summary["families"]))
+                # No container summary exists, so the aggregate names the registry the contract would use.
+                self.assertEqual(expected_source, summary["source"])
 
     def test_publish_release_attempts_both_families_and_writes_aggregate_partial_state(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

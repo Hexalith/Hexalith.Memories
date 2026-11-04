@@ -300,6 +300,20 @@ def prepare_archives(output: Path) -> None:
     (output / "domain-service.tar.gz").write_bytes(b"domain-service-archive")
 
 
+def write_source_tree(repository_root: Path, *, current: bool = False) -> Path:
+    (repository_root / "tools").mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(REPO_ROOT / "tools/render-production-deployment.ps1", repository_root / "tools/render-production-deployment.ps1")
+    if current:
+        shutil.copyfile(REPO_ROOT / "tools/release-containers.json", repository_root / "tools/release-containers.json")
+    for project in (
+        "Server", "Mcp", "AccessTelemetry", "AccessTelemetry.Clock", "DomainService"
+    ):
+        path = repository_root / f"src/Hexalith.Memories.{project}/Hexalith.Memories.{project}.csproj"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("<Project />\n", encoding="utf-8")
+    return repository_root
+
+
 def run_publish(
     output: Path,
     env: dict[str, str],
@@ -314,15 +328,7 @@ def run_publish(
     # These fixtures protect the historical archive/reconciliation interface. Current
     # release publication is qualified independently by publication_contract_test.py.
     if repository_root is None:
-        repository_root = output.parent / "historical-source"
-        (repository_root / "tools").mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(REPO_ROOT / "tools/render-production-deployment.ps1", repository_root / "tools/render-production-deployment.ps1")
-        for project in (
-            "Server", "Mcp", "AccessTelemetry", "AccessTelemetry.Clock", "DomainService"
-        ):
-            path = repository_root / f"src/Hexalith.Memories.{project}/Hexalith.Memories.{project}.csproj"
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text("<Project />\n", encoding="utf-8")
+        repository_root = write_source_tree(output.parent / "historical-source")
     invocation = [
         "pwsh",
         "-NoLogo",
@@ -882,6 +888,30 @@ class PublishContainersTests(unittest.TestCase):
             self.assertEqual("publish-failed", summary["status"])
             self.assertEqual(len(ALL_IMAGES), len(summary["notAttempted"]))
             self.assertEqual([], copy_references(root))
+
+    def test_render_failure_recovery_guidance_matches_the_source_tree_boundary(self) -> None:
+        # Current trees refuse occupied tags and defer missing-only recovery to Story 30.5;
+        # only historical tagged trees keep the config-digest recovery dispatch guidance.
+        for current in (False, True):
+            with self.subTest(current=current), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                _, env = prepare_environment(root)
+                output = root / "artifacts"
+                prepare_archives(output)
+                source = write_source_tree(root / "source", current=current)
+
+                result = run_publish(output, env, push=True, kubectl_exit=42, repository_root=source)
+
+                self.assertNotEqual(0, result.returncode)
+                summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
+                self.assertEqual("publish-failed", summary["status"])
+                self.assertEqual([], copy_references(root))
+                if current:
+                    self.assertIn("current missing-only recovery belongs to Story 30.5", summary["recovery"])
+                    self.assertNotIn("dispatch Recover Partial Release from main", summary["recovery"])
+                else:
+                    self.assertIn("dispatch Recover Partial Release from main", summary["recovery"])
+                    self.assertNotIn("Story 30.5", summary["recovery"])
 
     def test_successful_kubectl_warning_is_not_written_to_deployment(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

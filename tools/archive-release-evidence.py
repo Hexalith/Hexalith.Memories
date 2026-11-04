@@ -7,6 +7,7 @@ import importlib.util
 import io
 import json
 from pathlib import Path
+import re
 import sys
 import tarfile
 import tempfile
@@ -24,6 +25,21 @@ def required_files(evidence, container_directory, package_directory, summary_dir
         paths += [evidence / image["name"] / name for name in MEMBER_FILES]
     paths += [Path("tools/release-containers.json"), Path("tools/release-packages.json"), container_directory / "build-summary.json", container_directory / "publish-summary.json", package_directory / "publish-summary.json", summary_directory / "publish-summary.json", deployment_path]
     return paths
+
+
+ISO_TIMESTAMP = re.compile(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})")
+
+
+def timestamps_normalized(value):
+    """Drop trailing fractional-second zeros, which PowerShell's JSON round trip trims; all else stays exact."""
+    if isinstance(value, dict):
+        return {key: timestamps_normalized(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [timestamps_normalized(item) for item in value]
+    if isinstance(value, str) and (match := ISO_TIMESTAMP.fullmatch(value)):
+        fraction = (match[2] or "").rstrip("0")
+        return match[1] + ("." + fraction if fraction else "") + match[3]
+    return value
 
 
 def validate_recorded_graph(directory, graph, identity, validator, reference):
@@ -83,7 +99,7 @@ def validate_summaries(identity, container_directory, package_directory, summary
     pushed = []
     for family, name, child, path in zip(aggregate["families"], ("NuGet packages", "container images"), (packages, containers["publish-summary.json"]), (package_directory / "publish-summary.json", container_directory / "publish-summary.json")):
         if (family.get("name") != name or family.get("status") != "succeeded" or family.get("exitCode") != 0
-                or family.get("summary") != child or not isinstance(family.get("summaryPath"), str)
+                or timestamps_normalized(family.get("summary")) != timestamps_normalized(child) or not isinstance(family.get("summaryPath"), str)
                 or Path(family["summaryPath"]).resolve() != path.resolve()):
             raise ValueError("Aggregate family summary contradicts its actual recorded publisher summary.")
         pushed += [f"{name}: {item}" for item in child["pushed"]]

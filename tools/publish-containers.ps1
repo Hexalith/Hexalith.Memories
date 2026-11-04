@@ -50,6 +50,15 @@ $repoRoot = if ([string]::IsNullOrWhiteSpace($RepositoryRoot)) {
 else {
     (Resolve-Path -LiteralPath $RepositoryRoot).Path
 }
+# Current source trees carry the frozen five-image manifest and refuse every occupied tag;
+# Story 30.5 owns their missing-only recovery. Historical tagged trees keep reconciliation.
+$currentContract = Test-Path -LiteralPath (Join-Path $repoRoot 'tools/release-containers.json')
+$recoveryGuidance = if ($currentContract) {
+    'Stop and reconcile immutable evidence with Jérôme Piquot; current missing-only recovery belongs to Story 30.5.'
+}
+else {
+    'If the exact tag exists, repair registry authorization and dispatch Recover Partial Release from main. Matching immutable remote tags are reconciled by config digest; conflicting tags fail closed.'
+}
 $outputPath = if ([System.IO.Path]::IsPathRooted($OutputDirectory)) {
     $OutputDirectory
 }
@@ -276,7 +285,7 @@ function Write-ContainerSummary {
         notAttempted = @($notAttempted | ForEach-Object {
             [ordered]@{ package = $_.image; reason = $_.error }
         })
-        recovery = 'If the exact tag exists, repair registry authorization and dispatch Recover Partial Release from main. Matching immutable remote tags are reconciled by config digest; conflicting tags fail closed.'
+        recovery = $recoveryGuidance
     }
     $summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $SummaryPath -Encoding utf8
     Write-Host "Container publication summary: $SummaryPath ($Status)"
@@ -478,7 +487,6 @@ try {
 
     # Release publication freezes the complete current set. The archive-only path remains
     # available to deployment verification, and historical source trees retain recovery behavior.
-    $currentContract = Test-Path -LiteralPath (Join-Path $repoRoot 'tools/release-containers.json')
     if ($PublicationContract -or ($Push -and $currentContract)) {
         if (-not $currentContract) {
             throw 'The current five-image release manifest is required for publication.'

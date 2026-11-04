@@ -167,15 +167,26 @@ foreach ($family in $families) {
     }
 }
 
+$containerSummary = @($families | Where-Object name -eq 'container images')[0].summary
+# Authorization failures leave no container summary; name the registry the contract would have used.
+$containerSource = if ($null -ne $containerSummary -and -not [string]::IsNullOrWhiteSpace([string]$containerSummary.source)) {
+    [string]$containerSummary.source
+}
+elseif (-not [string]::IsNullOrWhiteSpace($env:HEXALITH_ZOT_REGISTRY)) {
+    $env:HEXALITH_ZOT_REGISTRY
+}
+else {
+    'registry.hexalith.com'
+}
 $summary = [ordered]@{
     schemaVersion = 1
     artifactKind = 'release-artifacts'
     status = $status
     version = $Version
-    sourceSha = @($families | Where-Object name -eq 'container images')[0].summary.sourceSha
-    setSha256 = @($families | Where-Object name -eq 'container images')[0].summary.setSha256
+    sourceSha = $containerSummary.sourceSha
+    setSha256 = $containerSummary.setSha256
     packageDirectory = [System.IO.Path]::GetRelativePath($repoRoot, $resolvedSummaryDirectory).Replace('\', '/')
-    source = "NuGet and $(@($families | Where-Object name -eq 'container images')[0].summary.source)"
+    source = "NuGet and $containerSource"
     startedAt = $startedAt.ToString('o')
     completedAt = [DateTime]::UtcNow.ToString('o')
     families = $families

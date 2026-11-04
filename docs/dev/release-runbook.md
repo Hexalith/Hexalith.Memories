@@ -257,7 +257,11 @@ Before relying on the release path:
    default `registry.hexalith.com` host.
 8. The runner has `skopeo`, Docker/buildx, arm64 QEMU, OpenSSL and curl. The guarded workflow
    installs missing skopeo and initializes QEMU only on an enabled publication path. Health also
-   needs read access to the existing pinned Dapr test image. Missing tools or emulation fail closed.
+   pulls four test images, each digest-pinned in `tools/verify-container-health.py`: Docker Hub
+   `redis/redis-stack-server:7.4.0-v8` and `falkordb/falkordb:v4.12.0` for the Server
+   dependencies, `ghcr.io/dapr/daprd:1.18.1` for the clock authority and the Server/MCP Dapr
+   sidecars, and `busybox:1.37.0` for the private-network HTTP probe. Missing tools, emulation
+   or image access fail closed.
 9. The merge to `main` uses a conventional commit that semantic-release can classify.
 10. The local working tree is clean before opening the release PR — no uncommitted edits, no
    in-flight tag drift, no orphan packages in `artifacts/`. The release job builds from the merged

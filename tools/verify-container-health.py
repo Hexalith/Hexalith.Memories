@@ -208,10 +208,10 @@ def run_platform(name, repository, platform, digest, directory, smoke, timeout):
         result = smoke._pull_immutable(platform, image)
         if result != "pass":
             return {"platform": platform, "digest": digest, "outcome": result, "cleanup": cleanup}
-        network_attempted = True
         created = command(["docker", "network", "create", "--internal", network])
         if created.returncode:
             raise ValueError("Isolated test network could not be created.")
+        network_attempted = True
 
         def execute(extra):
             nonlocal container_attempted
@@ -244,11 +244,13 @@ def run_platform(name, repository, platform, digest, directory, smoke, timeout):
                 result = execute(settings)
         else:
             result = execute({})
-    except CleanupFailure:
+    except CleanupFailure as error:
         result = "cleanup-failure"
         cleanup = "failure"
-    except Exception:
+        logs.append(contract.redact(f"error={type(error).__name__}: {error}"))
+    except Exception as error:
         result = "workload-health-failure"
+        logs.append(contract.redact(f"error={type(error).__name__}: {error}"))
     finally:
         if container_attempted:
             # Reuse approved bounded runtime diagnostics and exact removal checks.

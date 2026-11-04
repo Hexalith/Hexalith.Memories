@@ -125,7 +125,8 @@ def validate_manifest(root, path):
         if "obj" in project.relative_to(root).parts or "bin" in project.relative_to(root).parts:
             continue
         tree = ET.parse(project)
-        if any((node.text or "").strip() == "true" for node in tree.findall(".//EnableContainer")):
+        # MSBuild boolean conditions are case-insensitive, so `True` also enables a container.
+        if any((node.text or "").strip().lower() == "true" for node in tree.findall(".//EnableContainer")):
             repositories = [node.text for node in tree.findall(".//ContainerRepository")]
             discovered[project.relative_to(root).as_posix()] = repositories
     if discovered != {image["project"]: [image["repository"]] for image in CANONICAL_IMAGES}:
