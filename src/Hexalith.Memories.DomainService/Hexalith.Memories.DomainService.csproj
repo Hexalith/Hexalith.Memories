@@ -9,6 +9,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Hexalith.Memories.EventStore\Hexalith.Memories.EventStore.csproj" Condition="'$(MemoriesPublishedHostedTestProfile)' != 'true'" />
+    <ProjectReference Include="..\Hexalith.Memories.EventStoreExtensions\Hexalith.Memories.EventStoreExtensions.csproj" Condition="'$(MemoriesPublishedHostedTestProfile)' != 'true'" />
     <ProjectReference Include="$(HexalithEventStoreRoot)/src/Hexalith.EventStore.DomainService/Hexalith.EventStore.DomainService.csproj" Condition="'$(HexalithEventStoreFromSource)' == 'true' and '$(MemoriesPublishedHostedTestProfile)' != 'true'" />
     <PackageReference Include="Hexalith.EventStore.DomainService" Condition="'$(HexalithEventStoreFromSource)' != 'true' or '$(MemoriesPublishedHostedTestProfile)' == 'true'" />
     <InternalsVisibleTo Include="Hexalith.Memories.DomainService.Tests" />

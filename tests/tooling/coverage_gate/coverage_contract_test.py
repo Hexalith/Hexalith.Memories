@@ -38,6 +38,7 @@ class CoverageContractTests(unittest.TestCase):
                 "Hexalith.Memories.ServiceDefaults",
                 "Hexalith.Memories.Telemetry",
                 "Hexalith.Memories.Web",
+                "Hexalith.Memories.DomainService",
             ],
             configuration["requiredAssemblies"],
         )
@@ -68,9 +69,27 @@ class CoverageContractTests(unittest.TestCase):
                 "Hexalith.Memories.Mcp.Tests",
                 "Hexalith.Memories.EventStore.Tests",
                 "Hexalith.Memories.Web.Tests",
+                "Hexalith.Memories.DomainService.Tests",
             ],
             configuration["requiredReportProjects"],
         )
+
+    def test_required_reports_match_the_executable_unit_contract_inventory(self):
+        projects = [
+            Path(line.strip())
+            for line in (REPO_ROOT / "tools" / "test-projects.unit-contract.txt")
+            .read_text(encoding="utf-8")
+            .splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+        self.assertTrue(projects)
+        self.assertEqual(len(projects), len(set(projects)))
+        for project in projects:
+            with self.subTest(project=project):
+                self.assertEqual(Path("tests") / project.stem / f"{project.stem}.csproj", project)
+                self.assertTrue((REPO_ROOT / project).is_file())
+        configuration = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+        self.assertEqual([project.stem for project in projects], configuration["requiredReportProjects"])
 
     def test_configuration_is_not_excluded_from_version_control(self):
         result = subprocess.run(
@@ -101,6 +120,11 @@ class CoverageContractTests(unittest.TestCase):
             with self.subTest(project=project_name):
                 project_path = REPO_ROOT / "tests" / project_name / f"{project_name}.csproj"
                 root = ET.parse(project_path).getroot()
+                if project_name == "Hexalith.Memories.DomainService.Tests":
+                    # This MTP project inherits the repository coverage extension; the
+                    # original seven projects retain their direct collector contract below.
+                    self._assert_inherited_mtp_reference(root)
+                    continue
                 references: list[tuple[ET.Element, tuple[str, ...]]] = []
                 mutators: list[ET.Element] = []
 
@@ -165,6 +189,37 @@ class CoverageContractTests(unittest.TestCase):
                     child_text(reference, "IncludeAssets"),
                     f"{project_name}: coverlet.collector IncludeAssets must match the repository standard",
                 )
+
+    def _assert_inherited_mtp_reference(self, project: ET.Element) -> None:
+        for reference in project.iter("PackageReference"):
+            self.assertFalse(
+                any(reference.get(operation) == "coverlet.MTP" for operation in ("Include", "Update", "Remove")),
+                "DomainService must inherit the central MTP reference without a local override",
+            )
+        shared = ET.parse(REPO_ROOT / "tests" / "Directory.Build.props").getroot()
+        parents = {child: parent for parent in shared.iter() for child in parent}
+        references = [
+            element
+            for element in shared.iter("PackageReference")
+            if any(element.get(operation) == "coverlet.MTP" for operation in ("Include", "Update", "Remove"))
+        ]
+        self.assertEqual(1, len(references), "Expected one inherited MTP reference without mutators")
+        reference = references[0]
+        self.assertEqual({"Include": "coverlet.MTP"}, reference.attrib)
+        self.assertEqual("all", reference.findtext("PrivateAssets"))
+        self.assertEqual(
+            "compile; runtime; build; native; contentfiles; analyzers; buildtransitive",
+            reference.findtext("IncludeAssets"),
+        )
+        self.assertEqual({"PrivateAssets", "IncludeAssets"}, {child.tag for child in reference})
+        current = reference
+        while current is not None:
+            self.assertFalse(current.get("Condition"), "The inherited MTP reference must be unconditional")
+            self.assertNotIn(current.tag, {"Choose", "When", "Otherwise"})
+            current = parents.get(current)
+        self._assert_unconditional_mtp_pin(
+            ET.parse(REPO_ROOT / "tests" / "Directory.Packages.props").getroot()
+        )
 
     def test_runsettings_is_valid_and_collects_only_first_party_production_code(self):
         root = ET.parse(RUNSETTINGS_PATH).getroot()
@@ -365,6 +420,12 @@ class CoverageContractTests(unittest.TestCase):
             test_readme,
         )
         self.assertIn(formatted_threshold, test_readme_coverage)
+        self.assertIn("eight-project Docker-free inventory", test_readme_coverage)
+        self.assertIn("eight required project reports", test_readme_coverage)
+        shared_ci = self._read_atx_section(test_readme, "Shared CI regression fixtures")
+        self.assertIn("complete eight-project Coverlet collection", shared_ci)
+        self.assertNotIn("seven-project", test_readme_coverage + shared_ci)
+        self.assertNotIn("seven required project reports", test_readme_coverage)
         self.assertIn("Category=Benchmark", test_readme)
         self.assertIn("all 17 tests", test_readme)
         self.assertIn("80%", test_readme)
@@ -381,12 +442,37 @@ class CoverageContractTests(unittest.TestCase):
         for project in (
             "Contracts.Tests",
             "Server.Tests",
+            "AccessTelemetry.Tests",
             "Cli.Tests",
             "Mcp.Tests",
             "EventStore.Tests",
             "Web.Tests",
+            "DomainService.Tests",
         ):
             self.assertIn(project, contributing)
+        documented_inventory = re.search(
+            r"`tools/test-projects\.unit-contract\.txt`:\n\n```text\n(?P<projects>.*?)\n```",
+            contributing_tests,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(documented_inventory)
+        inventory_projects = [
+            Path(line.strip()).stem.removeprefix("Hexalith.Memories.")
+            for line in (REPO_ROOT / "tools" / "test-projects.unit-contract.txt")
+            .read_text(encoding="utf-8")
+            .splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+        self.assertEqual(inventory_projects, documented_inventory.group("projects").splitlines())
+        pull_request_ci = self._read_atx_section(contributing, "Pull Request CI")
+        self.assertIn(
+            "| `test-unit-contract` | Run eight Docker-free unit/contract projects with Coverlet, "
+            "enforce the 76.5% line gate, and pack/validate the approved NuGet topology before merge. |",
+            pull_request_ci,
+        )
+        self.assertIn("its package topology verifier and eight-project Coverlet contract locally.", pull_request_ci)
+        self.assertNotIn("Run seven Docker-free", pull_request_ci)
+        self.assertNotIn("seven-project Coverlet contract", pull_request_ci)
         self.assertIn(formatted_threshold, contributing_tests)
         self.assertIn("all 17 tests", contributing)
         self.assertIn("test-unit-contract-results", contributing)
