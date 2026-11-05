@@ -438,6 +438,7 @@ Cli.Tests
 Mcp.Tests
 EventStore.Tests
 Web.Tests
+DomainService.Tests
 ```
 
 `Hexalith.Memories.TestHelpers` builds through the solution but is not a direct test target.
@@ -498,7 +499,7 @@ The scheduled `.github/workflows/nightly.yml` workflow remains the Tier 3 slow i
 | `build` | Always-run aggregate requiring both shared Release verification and local Debug/source verification to succeed. |
 | `shared-ci / build-and-test` | Pinned shared Release restore/build with warnings as errors and the explicit Contracts MTP shard. |
 | `source-debug` | Debug/source restore/build and at least three passing, unskipped source-selected catalog tests. |
-| `test-unit-contract` | Run seven Docker-free unit/contract projects with Coverlet, enforce the 76.5% line gate, and pack/validate the approved NuGet topology before merge. |
+| `test-unit-contract` | Run eight Docker-free unit/contract projects with Coverlet, enforce the 76.5% line gate, and pack/validate the approved NuGet topology before merge. |
 | `integration-fast` | Run Docker-backed `Category=Integration&Category!=IntegrationSlow&Category!=Performance` tests and verify required surface evidence. |
 
 Build and test lanes initialize root-declared submodules under `references/` and use the SDK from `global.json`.
@@ -506,7 +507,7 @@ Build and test lanes initialize root-declared submodules under `references/` and
 `81c88b34d09d34260b92d7f0928dbbc1c7446baa`, with a matching `builds-execution-sha`, a 20-minute
 budget, explicit `microsoft-testing-platform` and only `Contracts.Tests` selected. Integration and
 Aspire selections are empty. Shared consumer validation and coverage stay disabled: Memories keeps
-its package topology verifier and seven-project Coverlet contract locally. Contracts intentionally
+its package topology verifier and eight-project Coverlet contract locally. Contracts intentionally
 runs in both lanes until collector/report equivalence is proved. No collector or package pin changes.
 
 `build` runs with `always()` after `shared-ci` and `source-debug`; failure, cancellation, skipping or

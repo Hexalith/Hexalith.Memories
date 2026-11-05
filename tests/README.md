@@ -86,7 +86,7 @@ dotnet test
 
 ### Coverage
 
-The required `test-unit-contract` PR/push job collects the seven-project Docker-free inventory and then
+The required `test-unit-contract` PR/push job collects the eight-project Docker-free inventory and then
 enforces unioned first-party line coverage. Run the same blocking sequence locally from the repository
 root after a Release build:
 
@@ -101,7 +101,7 @@ python tools/validate-coverage.py --results-directory TestResults/test-unit-cont
 ```
 
 `tests/tooling/coverage_gate/line-coverage-gate.json` is the single source for the **76.5%** minimum, production source
-scope, required assemblies, seven required project reports, and Server/CLI/MCP composition-root evidence. Each wrapper
+scope, required assemblies, eight required project reports, and Server/CLI/MCP composition-root evidence. Each wrapper
 removes the requested repository-local results directory before starting, so repeated runs cannot union stale
 attachments. The validator unions
 Cobertura lines by normalized repository path and line number, deduplicates collector attachment
@@ -198,7 +198,7 @@ three source-selected owner catalog tests with no failures, errors, skips or not
 XML is uploaded as `source-catalog-verification` after failure as well as success. The unchanged
 required `build` status depends on both lanes and succeeds only when both succeed.
 
-The complete seven-project Coverlet collection, **76.5%** gate and package-only validation stay in
+The complete eight-project Coverlet collection, **76.5%** gate and package-only validation stay in
 `test-unit-contract`, retaining `test-unit-contract-results` for 14 days. Contracts appears in both
 lanes until coverage collector/report equivalence is proved. Shared consumer/coverage gates remain
 disabled because Memories owns these specialized checks; no collectors change. Web E2E, tenant

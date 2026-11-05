@@ -420,6 +420,12 @@ class CoverageContractTests(unittest.TestCase):
             test_readme,
         )
         self.assertIn(formatted_threshold, test_readme_coverage)
+        self.assertIn("eight-project Docker-free inventory", test_readme_coverage)
+        self.assertIn("eight required project reports", test_readme_coverage)
+        shared_ci = self._read_atx_section(test_readme, "Shared CI regression fixtures")
+        self.assertIn("complete eight-project Coverlet collection", shared_ci)
+        self.assertNotIn("seven-project", test_readme_coverage + shared_ci)
+        self.assertNotIn("seven required project reports", test_readme_coverage)
         self.assertIn("Category=Benchmark", test_readme)
         self.assertIn("all 17 tests", test_readme)
         self.assertIn("80%", test_readme)
@@ -436,12 +442,37 @@ class CoverageContractTests(unittest.TestCase):
         for project in (
             "Contracts.Tests",
             "Server.Tests",
+            "AccessTelemetry.Tests",
             "Cli.Tests",
             "Mcp.Tests",
             "EventStore.Tests",
             "Web.Tests",
+            "DomainService.Tests",
         ):
             self.assertIn(project, contributing)
+        documented_inventory = re.search(
+            r"`tools/test-projects\.unit-contract\.txt`:\n\n```text\n(?P<projects>.*?)\n```",
+            contributing_tests,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(documented_inventory)
+        inventory_projects = [
+            Path(line.strip()).stem.removeprefix("Hexalith.Memories.")
+            for line in (REPO_ROOT / "tools" / "test-projects.unit-contract.txt")
+            .read_text(encoding="utf-8")
+            .splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+        self.assertEqual(inventory_projects, documented_inventory.group("projects").splitlines())
+        pull_request_ci = self._read_atx_section(contributing, "Pull Request CI")
+        self.assertIn(
+            "| `test-unit-contract` | Run eight Docker-free unit/contract projects with Coverlet, "
+            "enforce the 76.5% line gate, and pack/validate the approved NuGet topology before merge. |",
+            pull_request_ci,
+        )
+        self.assertIn("its package topology verifier and eight-project Coverlet contract locally.", pull_request_ci)
+        self.assertNotIn("Run seven Docker-free", pull_request_ci)
+        self.assertNotIn("seven-project Coverlet contract", pull_request_ci)
         self.assertIn(formatted_threshold, contributing_tests)
         self.assertIn("all 17 tests", contributing)
         self.assertIn("test-unit-contract-results", contributing)
