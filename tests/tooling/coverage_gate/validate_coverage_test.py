@@ -168,6 +168,42 @@ class ValidateCoverageTests(unittest.TestCase):
             with self.assertRaisesRegex(MODULE.CoverageValidationError, "required assemblies have no executable lines.*Cli"):
                 MODULE.validate_coverage(root / "results", config, root)
 
+    def test_domain_report_cannot_substitute_other_assembly_evidence(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            config = self._write_config(
+                root,
+                required_assemblies=["Hexalith.Memories.Server", "Hexalith.Memories.DomainService"],
+                required_report_projects=["Hexalith.Memories.DomainService.Tests"],
+            )
+            results = root / "results"
+            self._write_report(
+                results / "Hexalith.Memories.DomainService.Tests" / "coverage.cobertura.xml",
+                {"Hexalith.Memories.Server": {"src/Hexalith.Memories.Server/Program.cs": [(1, 1)]}},
+            )
+
+            with self.assertRaisesRegex(
+                MODULE.CoverageValidationError,
+                "required assemblies have no executable lines: Hexalith.Memories.DomainService",
+            ):
+                MODULE.validate_coverage(results, config, root)
+
+    def test_domain_assembly_cannot_claim_foreign_source_evidence(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            config = self._write_config(root, required_assemblies=["Hexalith.Memories.DomainService"])
+            results = root / "results"
+            self._write_report(
+                results / "coverage.cobertura.xml",
+                {"Hexalith.Memories.DomainService": {"src/Hexalith.Memories.Server/Program.cs": [(1, 1)]}},
+            )
+
+            with self.assertRaisesRegex(
+                MODULE.CoverageValidationError,
+                "maps assembly 'Hexalith.Memories.DomainService' to source outside its declared scope",
+            ):
+                MODULE.validate_coverage(results, config, root)
+
     def test_validator_unions_windows_and_posix_paths(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

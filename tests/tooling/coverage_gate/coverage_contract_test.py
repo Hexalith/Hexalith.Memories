@@ -38,6 +38,7 @@ class CoverageContractTests(unittest.TestCase):
                 "Hexalith.Memories.ServiceDefaults",
                 "Hexalith.Memories.Telemetry",
                 "Hexalith.Memories.Web",
+                "Hexalith.Memories.DomainService",
             ],
             configuration["requiredAssemblies"],
         )
@@ -68,9 +69,27 @@ class CoverageContractTests(unittest.TestCase):
                 "Hexalith.Memories.Mcp.Tests",
                 "Hexalith.Memories.EventStore.Tests",
                 "Hexalith.Memories.Web.Tests",
+                "Hexalith.Memories.DomainService.Tests",
             ],
             configuration["requiredReportProjects"],
         )
+
+    def test_required_reports_match_the_executable_unit_contract_inventory(self):
+        projects = [
+            Path(line.strip())
+            for line in (REPO_ROOT / "tools" / "test-projects.unit-contract.txt")
+            .read_text(encoding="utf-8")
+            .splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+        self.assertTrue(projects)
+        self.assertEqual(len(projects), len(set(projects)))
+        for project in projects:
+            with self.subTest(project=project):
+                self.assertEqual(Path("tests") / project.stem / f"{project.stem}.csproj", project)
+                self.assertTrue((REPO_ROOT / project).is_file())
+        configuration = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+        self.assertEqual([project.stem for project in projects], configuration["requiredReportProjects"])
 
     def test_configuration_is_not_excluded_from_version_control(self):
         result = subprocess.run(
@@ -101,6 +120,11 @@ class CoverageContractTests(unittest.TestCase):
             with self.subTest(project=project_name):
                 project_path = REPO_ROOT / "tests" / project_name / f"{project_name}.csproj"
                 root = ET.parse(project_path).getroot()
+                if project_name == "Hexalith.Memories.DomainService.Tests":
+                    # This MTP project inherits the repository coverage extension; the
+                    # original seven projects retain their direct collector contract below.
+                    self._assert_inherited_mtp_reference(root)
+                    continue
                 references: list[tuple[ET.Element, tuple[str, ...]]] = []
                 mutators: list[ET.Element] = []
 
@@ -165,6 +189,37 @@ class CoverageContractTests(unittest.TestCase):
                     child_text(reference, "IncludeAssets"),
                     f"{project_name}: coverlet.collector IncludeAssets must match the repository standard",
                 )
+
+    def _assert_inherited_mtp_reference(self, project: ET.Element) -> None:
+        for reference in project.iter("PackageReference"):
+            self.assertFalse(
+                any(reference.get(operation) == "coverlet.MTP" for operation in ("Include", "Update", "Remove")),
+                "DomainService must inherit the central MTP reference without a local override",
+            )
+        shared = ET.parse(REPO_ROOT / "tests" / "Directory.Build.props").getroot()
+        parents = {child: parent for parent in shared.iter() for child in parent}
+        references = [
+            element
+            for element in shared.iter("PackageReference")
+            if any(element.get(operation) == "coverlet.MTP" for operation in ("Include", "Update", "Remove"))
+        ]
+        self.assertEqual(1, len(references), "Expected one inherited MTP reference without mutators")
+        reference = references[0]
+        self.assertEqual({"Include": "coverlet.MTP"}, reference.attrib)
+        self.assertEqual("all", reference.findtext("PrivateAssets"))
+        self.assertEqual(
+            "compile; runtime; build; native; contentfiles; analyzers; buildtransitive",
+            reference.findtext("IncludeAssets"),
+        )
+        self.assertEqual({"PrivateAssets", "IncludeAssets"}, {child.tag for child in reference})
+        current = reference
+        while current is not None:
+            self.assertFalse(current.get("Condition"), "The inherited MTP reference must be unconditional")
+            self.assertNotIn(current.tag, {"Choose", "When", "Otherwise"})
+            current = parents.get(current)
+        self._assert_unconditional_mtp_pin(
+            ET.parse(REPO_ROOT / "tests" / "Directory.Packages.props").getroot()
+        )
 
     def test_runsettings_is_valid_and_collects_only_first_party_production_code(self):
         root = ET.parse(RUNSETTINGS_PATH).getroot()
