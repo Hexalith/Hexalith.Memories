@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(os.environ.get("MEMORIES_HOST_PROFILE_ROOT", Path(__file__).resolve().parents[3]))
 PROJECTS = {
     "Server": {"Hexalith.Memories.Contracts", "Hexalith.Memories.EventStore", "Hexalith.Memories.ServiceDefaults", "Hexalith.Memories.Telemetry"},
-    "DomainService": {"Hexalith.Memories.EventStore"},
+    "DomainService": {"Hexalith.Memories.EventStore", "Hexalith.Memories.EventStoreExtensions"},
 }
 
 
