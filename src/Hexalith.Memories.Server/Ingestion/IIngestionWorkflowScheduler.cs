@@ -10,5 +10,9 @@ using Hexalith.Memories.Contracts.V1;
 /// <summary>Internal seam for scheduling ingestion workflows with a caller-specified workflow instance id.</summary>
 internal interface IIngestionWorkflowScheduler
 {
+    /// <summary>Schedules only a claimed failed record after independently proving its previous workflow/source/candidate.</summary>
+    Task<string> ScheduleFailedRetryAsync(FailedUnitRecord record, IngestionInput input, CancellationToken cancellationToken = default)
+        => throw new InvalidOperationException("failed-retry-scheduler-proof-unavailable");
+
     Task<string> ScheduleAsync(string instanceId, IngestionInput input, CancellationToken cancellationToken = default);
 }

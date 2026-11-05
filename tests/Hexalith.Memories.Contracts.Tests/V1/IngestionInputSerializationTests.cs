@@ -10,6 +10,18 @@ using Shouldly;
 public class IngestionInputSerializationTests
 {
     [Fact]
+    public void RoundTrip_FailedRetryContextIsOptionalAndRetainsExactLineage()
+    {
+        IngestionInput input = CreateFullInput() with { FailedRetry = new("prior-workflow", "stable-memory") };
+        string json = JsonSerializer.Serialize(input, MemoriesJsonContext.Options);
+        JsonSerializer.Deserialize<IngestionInput>(json, MemoriesJsonContext.Options)!.FailedRetry.ShouldBe(input.FailedRetry);
+        string legacy = JsonSerializer.Serialize(CreateFullInput(), MemoriesJsonContext.Options);
+        var document = System.Text.Json.Nodes.JsonNode.Parse(legacy)!.AsObject();
+        document.Remove("failedRetry");
+        JsonSerializer.Deserialize<IngestionInput>(document.ToJsonString(), MemoriesJsonContext.Options)!.FailedRetry.ShouldBeNull();
+    }
+
+    [Fact]
     public void RoundTrip_AllFieldsPopulated_ShouldProduceIdenticalJson()
     {
         IngestionInput original = CreateFullInput();

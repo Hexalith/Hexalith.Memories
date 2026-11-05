@@ -8,6 +8,9 @@ namespace Hexalith.Memories.Contracts.V1;
 /// <summary>Input for the ingestion workflow — a single file to be processed through the full pipeline.</summary>
 public sealed record IngestionInput : IWorkflowTraceContextCarrier
 {
+    /// <summary>Gets scheduler-owned failed-attempt lineage. Null preserves every ordinary and historical workflow's identity rules.</summary>
+    public FailedIngestionRetry? FailedRetry { get; init; }
+
     public required string TenantId { get; init; }
 
     public required string CaseId { get; init; }

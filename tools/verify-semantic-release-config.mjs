@@ -213,8 +213,8 @@ async function loadInstalledPluginGraph(root, configuration, packageManifest) {
     "semantic-release must remain pinned exactly to 25.0.9 while the verifier uses its internal plugin loader.",
   );
   ensure(
-    packageManifest.devDependencies?.cosmiconfig === "9.0.2",
-    "cosmiconfig must remain a direct dependency pinned exactly to 9.0.2.",
+    packageManifest.devDependencies?.cosmiconfig === "10.0.1",
+    "cosmiconfig must remain a direct dependency pinned exactly to 10.0.1.",
   );
   ensure(
     packageManifest.scripts?.["verify:semantic-release-config"] ===

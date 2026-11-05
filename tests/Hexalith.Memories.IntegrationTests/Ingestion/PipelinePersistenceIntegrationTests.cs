@@ -16,6 +16,7 @@ using System.Text.Json;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.IntegrationTests.Fixtures;
 using Hexalith.Memories.Server.Infrastructure;
+using Hexalith.Memories.Server.Actors;
 
 using NFalkorDB;
 
@@ -208,14 +209,35 @@ public sealed class PipelinePersistenceIntegrationTests
 
         _ = await WaitForBackendWritesAsync(tenantId, caseId, firstSourceUri).ConfigureAwait(false);
 
+        RateLimitState beforeRestart = await _fixture.CreateEmbeddingRateLimiterActorProxy(tenantId).GetStateAsync().ConfigureAwait(false);
+        beforeRestart.Remaining.ShouldBe(0);
+        beforeRestart.CeilingPerMinute.ShouldBe(1);
         _ = await _fixture.RestartTopologyAsync().ConfigureAwait(false);
+        RateLimitState afterRestart = await _fixture.CreateEmbeddingRateLimiterActorProxy(tenantId).GetStateAsync().ConfigureAwait(false);
+        afterRestart.ShouldBe(beforeRestart, "Restart must retain Remaining, CeilingPerMinute and WindowStart without refilling on read.");
 
         string secondSourceUri = $"file:///{Guid.NewGuid():N}-budget-2.txt";
-        _ = await PostInlineIngestionAsync(
+        DateTime submittedAt = DateTime.UtcNow;
+        string secondWorkflow = await PostInlineIngestionAsync(
             tenantId,
             caseId,
             secondSourceUri,
             "Rate limiter persistence second document.").ConfigureAwait(false);
+
+        string terminal = await WaitForTerminalWorkflowStatusAsync(tenantId, secondWorkflow, DefaultTimeout).ConfigureAwait(false);
+        RateLimitState afterConsumption = await _fixture.CreateEmbeddingRateLimiterActorProxy(tenantId).GetStateAsync().ConfigureAwait(false);
+        afterConsumption.CeilingPerMinute.ShouldBe(beforeRestart.CeilingPerMinute);
+        afterConsumption.Remaining.ShouldBe(0);
+        if (terminal == "Completed")
+        {
+            afterConsumption.WindowStart.ShouldBeGreaterThanOrEqualTo(beforeRestart.WindowStart.AddMinutes(1));
+            afterConsumption.WindowStart.ShouldBeLessThanOrEqualTo(DateTime.UtcNow);
+            _ = await WaitForBackendWritesAsync(tenantId, caseId, secondSourceUri).ConfigureAwait(false);
+            return;
+        }
+        terminal.ShouldBe("Failed");
+        submittedAt.ShouldBeLessThan(beforeRestart.WindowStart.AddMinutes(1));
+        afterConsumption.WindowStart.ShouldBe(beforeRestart.WindowStart);
 
         FailedUnitsPage failedUnits = await WaitForFailedUnitsPageAsync(
             tenantId,
@@ -520,6 +542,22 @@ public sealed class PipelinePersistenceIntegrationTests
         string workflowInstanceId = document.RootElement.GetProperty("newWorkflowInstanceId").GetString() ?? string.Empty;
         workflowInstanceId.ShouldNotBeNullOrWhiteSpace();
         return workflowInstanceId;
+    }
+
+    private async Task<string> WaitForTerminalWorkflowStatusAsync(string tenantId, string instanceId, TimeSpan timeout)
+    {
+        DateTimeOffset deadline = DateTimeOffset.UtcNow.Add(timeout);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/ingest/{instanceId}");
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+                "Bearer", AspireIngestionPipelineFixture.MintServerBearer(tenantId));
+            using HttpResponseMessage response = await _fixture.MemoriesClient.SendAsync(request).ConfigureAwait(false);
+            if (response.StatusCode == HttpStatusCode.OK && TryReadRuntimeStatus(await response.Content.ReadAsStringAsync().ConfigureAwait(false), out string? status)
+                && IsTerminalRuntimeStatus(status)) { return status; }
+            await Task.Delay(TimeSpan.FromMilliseconds(200)).ConfigureAwait(false);
+        }
+        throw new TimeoutException($"Workflow '{instanceId}' did not reach a terminal status.");
     }
 
     private async Task WaitForWorkflowRuntimeStatusAsync(

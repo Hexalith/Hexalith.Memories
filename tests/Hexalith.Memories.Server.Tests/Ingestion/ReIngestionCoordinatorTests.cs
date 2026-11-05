@@ -30,7 +30,7 @@ public class ReIngestionCoordinatorTests
         ReIngestionAttemptResult result = await coordinator.TryScheduleAsync("tenant-1", "case-1", "mu-1", CancellationToken.None);
 
         result.Outcome.ShouldBe(ReIngestionAttemptOutcome.NotFound);
-        await scheduler.DidNotReceive().ScheduleAsync(Arg.Any<string>(), Arg.Any<IngestionInput>());
+        await scheduler.DidNotReceive().ScheduleFailedRetryAsync(Arg.Any<FailedUnitRecord>(), Arg.Any<IngestionInput>());
     }
 
     [Fact]
@@ -49,7 +49,7 @@ public class ReIngestionCoordinatorTests
         ReIngestionAttemptResult result = await coordinator.TryScheduleAsync("tenant-1", "case-1", "mu-1", CancellationToken.None);
 
         result.Outcome.ShouldBe(ReIngestionAttemptOutcome.Conflict);
-        await scheduler.DidNotReceive().ScheduleAsync(Arg.Any<string>(), Arg.Any<IngestionInput>());
+        await scheduler.DidNotReceive().ScheduleFailedRetryAsync(Arg.Any<FailedUnitRecord>(), Arg.Any<IngestionInput>());
     }
 
     [Fact]
@@ -79,15 +79,14 @@ public class ReIngestionCoordinatorTests
 
         registry.GetAsync("tenant-1", "mu-url", Arg.Any<CancellationToken>()).Returns(record);
         registry.RemoveAsync("tenant-1", "case-1", "mu-url", record.SourceUri, Arg.Any<CancellationToken>()).Returns(true);
-        scheduler.ScheduleAsync("mu-url", Arg.Any<IngestionInput>()).Returns("wf-mu-url");
+        scheduler.ScheduleFailedRetryAsync(Arg.Is<FailedUnitRecord>(failure => failure.MemoryUnitId == "mu-url"), Arg.Any<IngestionInput>()).Returns("wf-mu-url");
         ReIngestionCoordinator coordinator = new(registry, payloadStore, scheduler, NullLogger<ReIngestionCoordinator>.Instance);
 
         ReIngestionAttemptResult result = await coordinator.TryScheduleAsync("tenant-1", "case-1", "mu-url", CancellationToken.None);
 
         result.Outcome.ShouldBe(ReIngestionAttemptOutcome.Scheduled);
         await payloadStore.DidNotReceive().ReadAsync(Arg.Any<WorkflowPayloadReference>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<WorkflowPayloadKind>(), Arg.Any<CancellationToken>());
-        await scheduler.Received().ScheduleAsync(
-            "mu-url",
+        await scheduler.Received().ScheduleFailedRetryAsync(Arg.Is<FailedUnitRecord>(failure => failure.MemoryUnitId == "mu-url"),
             Arg.Is<IngestionInput>(input =>
                 input!.SourceType == SourceType.Url
                 && input.PayloadReference == null
@@ -107,7 +106,7 @@ public class ReIngestionCoordinatorTests
         payloadStore.ReadAsync(sourceReference, "tenant-1", "mu-1", WorkflowPayloadKind.SourceBytes, Arg.Any<CancellationToken>())
             .Returns([1, 2, 3]);
         registry.RemoveAsync("tenant-1", "case-1", "mu-1", record.SourceUri, Arg.Any<CancellationToken>()).Returns(true);
-        scheduler.ScheduleAsync("mu-1", Arg.Any<IngestionInput>()).Returns("wf-mu-1");
+        scheduler.ScheduleFailedRetryAsync(Arg.Is<FailedUnitRecord>(failure => failure.MemoryUnitId == "mu-1"), Arg.Any<IngestionInput>()).Returns("wf-mu-1");
 
         ReIngestionCoordinator coordinator = new(registry, payloadStore, scheduler, NullLogger<ReIngestionCoordinator>.Instance);
 
@@ -115,8 +114,7 @@ public class ReIngestionCoordinatorTests
 
         result.Outcome.ShouldBe(ReIngestionAttemptOutcome.Scheduled);
         result.WorkflowInstanceId.ShouldBe("wf-mu-1");
-        await scheduler.Received().ScheduleAsync(
-            "mu-1",
+        await scheduler.Received().ScheduleFailedRetryAsync(Arg.Is<FailedUnitRecord>(failure => failure.MemoryUnitId == "mu-1"),
             Arg.Is<IngestionInput>(input =>
                 input!.TenantId == "tenant-1"
                 && input.CaseId == "case-1"
@@ -151,15 +149,14 @@ public class ReIngestionCoordinatorTests
         payloadStore.ReadAsync(sourceReference, "tenant-1", "mu-event", WorkflowPayloadKind.SourceBytes, Arg.Any<CancellationToken>())
             .Returns([123]);
         registry.RemoveAsync("tenant-1", "case-1", "mu-event", record.SourceUri, Arg.Any<CancellationToken>()).Returns(true);
-        scheduler.ScheduleAsync("mu-event", Arg.Any<IngestionInput>()).Returns("wf-mu-event");
+        scheduler.ScheduleFailedRetryAsync(Arg.Is<FailedUnitRecord>(failure => failure.MemoryUnitId == "mu-event"), Arg.Any<IngestionInput>()).Returns("wf-mu-event");
 
         ReIngestionCoordinator coordinator = new(registry, payloadStore, scheduler, NullLogger<ReIngestionCoordinator>.Instance);
 
         ReIngestionAttemptResult result = await coordinator.TryScheduleAsync("tenant-1", "case-1", "mu-event", CancellationToken.None);
 
         result.Outcome.ShouldBe(ReIngestionAttemptOutcome.Scheduled);
-        await scheduler.Received().ScheduleAsync(
-            "mu-event",
+        await scheduler.Received().ScheduleFailedRetryAsync(Arg.Is<FailedUnitRecord>(failure => failure.MemoryUnitId == "mu-event"),
             Arg.Is<IngestionInput>(input =>
                 input!.SourceType == SourceType.Event
                 && input.SourceUri == record.SourceUri
@@ -195,7 +192,7 @@ public class ReIngestionCoordinatorTests
         payloadStore.ReadAsync(sourceReference, "tenant-1", dedupScopeId, WorkflowPayloadKind.SourceBytes, Arg.Any<CancellationToken>())
             .Returns([123]);
         registry.RemoveAsync("tenant-1", "case-1", "mu-event", record.SourceUri, Arg.Any<CancellationToken>()).Returns(true);
-        scheduler.ScheduleAsync("mu-event", Arg.Any<IngestionInput>()).Returns("wf-mu-event");
+        scheduler.ScheduleFailedRetryAsync(Arg.Is<FailedUnitRecord>(failure => failure.MemoryUnitId == "mu-event"), Arg.Any<IngestionInput>()).Returns("wf-mu-event");
 
         ReIngestionCoordinator coordinator = new(registry, payloadStore, scheduler, NullLogger<ReIngestionCoordinator>.Instance);
 
@@ -208,8 +205,7 @@ public class ReIngestionCoordinatorTests
             dedupScopeId,
             WorkflowPayloadKind.SourceBytes,
             Arg.Any<CancellationToken>());
-        await scheduler.Received().ScheduleAsync(
-            "mu-event",
+        await scheduler.Received().ScheduleFailedRetryAsync(Arg.Is<FailedUnitRecord>(failure => failure.MemoryUnitId == "mu-event"),
             Arg.Is<IngestionInput>(input =>
                 input!.SourceType == SourceType.Event
                 && input.SourceUri == sourceUri
@@ -233,7 +229,7 @@ public class ReIngestionCoordinatorTests
         result.Outcome.ShouldBe(ReIngestionAttemptOutcome.UnsupportedSourcePayload);
         result.ErrorCode.ShouldBe("NON_URL_REINGESTION_UNAVAILABLE");
         await registry.DidNotReceive().RemoveAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
-        await scheduler.DidNotReceive().ScheduleAsync(Arg.Any<string>(), Arg.Any<IngestionInput>());
+        await scheduler.DidNotReceive().ScheduleFailedRetryAsync(Arg.Any<FailedUnitRecord>(), Arg.Any<IngestionInput>());
     }
 
     [Fact]
@@ -309,7 +305,7 @@ public class ReIngestionCoordinatorTests
         payloadStore.ReadAsync(sourceReference, "tenant-1", "mu-1", WorkflowPayloadKind.SourceBytes, Arg.Any<CancellationToken>())
             .Returns([1, 2, 3]);
         registry.RemoveAsync("tenant-1", "case-1", "mu-1", record.SourceUri, Arg.Any<CancellationToken>()).Returns(true);
-        scheduler.ScheduleAsync("mu-1", Arg.Any<IngestionInput>())
+        scheduler.ScheduleFailedRetryAsync(Arg.Is<FailedUnitRecord>(failure => failure.MemoryUnitId == "mu-1"), Arg.Any<IngestionInput>())
             .Returns(Task.FromException<string>(new InvalidOperationException("scheduler down")));
 
         ReIngestionCoordinator coordinator = new(registry, payloadStore, scheduler, NullLogger<ReIngestionCoordinator>.Instance);
@@ -340,8 +336,8 @@ public class ReIngestionCoordinatorTests
                     ? throw new InvalidOperationException("redis hiccup")
                     : true;
             });
-        scheduler.ScheduleAsync(Arg.Any<string>(), Arg.Any<IngestionInput>())
-            .Returns(callInfo => Task.FromResult($"wf-{callInfo.ArgAt<string>(0)}"));
+        scheduler.ScheduleFailedRetryAsync(Arg.Any<FailedUnitRecord>(), Arg.Any<IngestionInput>())
+            .Returns(callInfo => Task.FromResult($"wf-{callInfo.ArgAt<FailedUnitRecord>(0).MemoryUnitId}"));
 
         ReIngestionCoordinator coordinator = new(registry, payloadStore, scheduler, logger);
 
@@ -376,8 +372,8 @@ public class ReIngestionCoordinatorTests
                 : CreateRecord(callInfo.ArgAt<string>(1)));
         registry.RemoveAsync("tenant-1", "case-1", Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(true);
-        scheduler.ScheduleAsync(Arg.Any<string>(), Arg.Any<IngestionInput>())
-            .Returns(callInfo => Task.FromResult($"wf-{callInfo.ArgAt<string>(0)}"));
+        scheduler.ScheduleFailedRetryAsync(Arg.Any<FailedUnitRecord>(), Arg.Any<IngestionInput>())
+            .Returns(callInfo => Task.FromResult($"wf-{callInfo.ArgAt<FailedUnitRecord>(0).MemoryUnitId}"));
 
         ReIngestionCoordinator coordinator = new(registry, payloadStore, scheduler, logger);
 

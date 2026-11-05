@@ -20,7 +20,7 @@ public static partial class IngestionWorkflowDeterminismGuardTests
         (string RelativePath, int Line, string Method, string NameExpression)[] expected =
         [
             ("src/Hexalith.Memories.Server/Activities/Cases/ScheduleAnnotationIngestionActivity.cs", 77, "direct", "nameof(IngestionWorkflow)"),
-            ("src/Hexalith.Memories.Server/Ingestion/DaprIngestionWorkflowScheduler.cs", 109, "direct", "nameof(IngestionWorkflow)"),
+            ("src/Hexalith.Memories.Server/Ingestion/DaprIngestionWorkflowScheduler.cs", 138, "direct", "nameof(IngestionWorkflow)"),
             ("src/Hexalith.Memories.Server/Workflows/AnnotationProjectionWorkflow.cs", 47, "child", "nameof(IngestionWorkflow)"),
         ];
 
@@ -72,8 +72,12 @@ public static partial class IngestionWorkflowDeterminismGuardTests
 
         AssertOrdered(
             scheduler,
-            "slimInput = await PrepareInputAsync( _payloadStore, instanceId, input, _workflowConfigurationCapture, _workflowTraceContextCapture, cancellationToken)",
+            "slimInput = await PrepareInputAsync( _payloadStore, input.FailedRetry?.MemoryUnitId ?? instanceId, input, _workflowConfigurationCapture, _workflowTraceContextCapture, cancellationToken)",
             "ScheduleNewWorkflowAsync(nameof(IngestionWorkflow), instanceId, slimInput, null, cancellationToken)");
+        AssertContains(scheduler, "if (input.FailedRetry is not null) { throw new ArgumentException(");
+        AssertContains(scheduler, "return ScheduleCoreAsync(instanceId, input, null, cancellationToken);");
+        AssertContains(scheduler, "state?.RuntimeStatus != WorkflowRuntimeStatus.Failed");
+        AssertContains(scheduler, "return await ScheduleCoreAsync(attemptId, input with { FailedRetry = new(previous.WorkflowInstanceId!, record.MemoryUnitId) }, previous, cancellationToken)");
         AssertOrdered(
             scheduler,
             "IngestionInput configuredInput = workflowTraceContextCapture.Apply(workflowConfigurationCapture.Apply(input));",

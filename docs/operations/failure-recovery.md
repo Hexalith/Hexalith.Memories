@@ -103,9 +103,15 @@ Per-unit flow:
 4. **Rebuild** an `IngestionInput` from the persisted record. URL records refetch
    from `SourceUri`; supported non-URL records schedule with `ContentBytes = null`
    and the validated retained source reference.
-5. **Schedule** a new `IngestionWorkflow` instance, passing `memoryUnitId` as the DAPR workflow
-   `instanceId`. The workflow's existing `context.InstanceId`-based memory-unit-id fallback picks it
-   up — **annotations and graph edges survive** because the id is preserved.
+5. **Prove and schedule** through the failed-retry scheduler. It independently reads the latest
+   exact producer's Dapr state and durable tenant/case/source/payload input, requires terminal
+   `Failed` plus the matching retained candidate, and appends a fresh workflow attempt under
+   source admission, tenant and output-tombstone fences. The predecessor inventory obligation
+   remains unchanged. Scheduler-captured `FailedRetry` context preserves the existing business
+   `memoryUnitId`, so **annotations and graph edges survive**. Ordinary ingestion rejects a
+   caller-supplied retry context; old durable inputs retain their original identity rules.
+   Missing, active, ambiguous or mismatched workflow proof refuses scheduling and restores the
+   claimed record. Unknown scheduling outcomes remain inventoried rather than being reset.
 6. If scheduling fails after claim, restore the complete original failed-unit record:
    tenant/case/source/audit fields, failure details and timestamps, metadata,
    causation/correlation identifiers, and the optional source reference. If restore

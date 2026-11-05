@@ -22,16 +22,19 @@ internal sealed class PromoteDerivedStoreSourceArtifactActivity(
         byte[] sourceBytes = input.SourceBytes;
         if (input.SourceReference is not null)
         {
-            WorkflowPayloadKind expectedKind = input.SourceReference.ContentKind switch
+            WorkflowPayloadKind expectedKind = input.SourceType == SourceType.Url
+                ? WorkflowPayloadKind.FetchedUrlBytes : WorkflowPayloadKind.SourceBytes;
+            if (input.SourceReference.ContentKind != expectedKind
+                || input.SourceReference.TenantId != input.TenantId
+                || !SourcePayloadScope.IsExpectedOwner(input.TenantId, input.CaseId, input.SourceUri, input.SourceType,
+                    input.MemoryUnitId, input.SourceReference.MemoryUnitId))
             {
-                WorkflowPayloadKind.SourceBytes => WorkflowPayloadKind.SourceBytes,
-                WorkflowPayloadKind.FetchedUrlBytes => WorkflowPayloadKind.FetchedUrlBytes,
-                _ => throw new DerivedStoreStateException("SOURCE_ARTIFACT_KIND_INVALID", "The source reference is not an original or fetched source payload."),
-            };
+                throw new DerivedStoreStateException("SOURCE_ARTIFACT_SCOPE_INVALID", "The source reference does not belong to the exact source owner.");
+            }
             sourceBytes = await payloadStore.ReadAsync(
                 input.SourceReference,
                 input.TenantId,
-                input.MemoryUnitId,
+                input.SourceReference.MemoryUnitId,
                 expectedKind,
                 CancellationToken.None).ConfigureAwait(false);
         }

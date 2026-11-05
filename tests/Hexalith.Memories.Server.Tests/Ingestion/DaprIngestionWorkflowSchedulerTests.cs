@@ -22,6 +22,23 @@ using Shouldly;
 public sealed class DaprIngestionWorkflowSchedulerTests
 {
     [Fact]
+    public async Task OrdinaryScheduleRefusesCallerSelectedFailedRetryIdentity()
+    {
+        var workflow = NSubstitute.Substitute.For<Dapr.Workflow.IDaprWorkflowClient>();
+        var payloads = NSubstitute.Substitute.For<IWorkflowPayloadStore>();
+        var scheduler = new DaprIngestionWorkflowScheduler(workflow, payloads,
+            new IngestionWorkflowConfigurationCapture(Microsoft.Extensions.Options.Options.Create(new IngestionSettings()),
+                Microsoft.Extensions.Options.Options.Create(new Hexalith.Memories.Server.NaturalLanguage.NaturalLanguageDescriptionOptions())),
+            new WorkflowTraceContextCapture(), NSubstitute.Substitute.For<IIngestionWorkflowInFlightRegistry>(), TimeProvider.System,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<DaprIngestionWorkflowScheduler>.Instance);
+        var input = new IngestionInput { TenantId = "tenant", CaseId = "case", SourceUri = "file:///source", ContentType = "text/plain",
+            SourceType = SourceType.File, IngestedBy = "user", ContentBytes = [1], FailedRetry = new("foreign", "foreign-output") };
+        await Should.ThrowAsync<ArgumentException>(() => scheduler.ScheduleAsync("ordinary", input));
+        workflow.ReceivedCalls().ShouldBeEmpty();
+        payloads.ReceivedCalls().ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task ScheduleAsync_WhenWorkflowSchedulesSuccessfully_TracksInstance()
     {
         IDaprWorkflowClient workflowClient = Substitute.For<IDaprWorkflowClient>();

@@ -175,10 +175,14 @@ public sealed class FailedUnitsRegistry : IFailedUnitsRegistry
             record.MemoryUnitId,
         ];
 
-        await db.ScriptEvaluateAsync(
+        RedisResult restored = await TenantIngestionOwnership.WriteAsync(db, record.TenantId,
             PersistFailedUnitActivity.PersistScript,
-            [hashKey, zKey],
-            argv).ConfigureAwait(false);
+            [hashKey, zKey, SourcePublicationVisibility.Tombstone(record.TenantId, record.MemoryUnitId)],
+            argv, cancellationToken).ConfigureAwait(false);
+        if ((long)restored != 1)
+        {
+            throw new InvalidOperationException("failed-unit-restore-fenced");
+        }
     }
 
     Task<FailedUnitRecord?> IFailedUnitsRegistry.GetAsync(string tenantId, string memoryUnitId, CancellationToken cancellationToken)

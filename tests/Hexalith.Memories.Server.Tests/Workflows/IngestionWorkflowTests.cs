@@ -212,13 +212,41 @@ public class IngestionWorkflowTests
     public async Task RunAsync_EventStoreDedupInstanceId_ShouldGenerateIndependentMemoryUnitId()
     {
         IngestionInput input = IngestionInputFactory.Create(sourceType: SourceType.Event, sourceUri: "event-1");
+        string sourceOwner = DedupKeyBuilder.BuildKey(input.TenantId, input.CaseId, input.SourceUri);
+        var dapr = NSubstitute.Substitute.For<Dapr.Client.DaprClient>();
+        WorkflowPayloadStoreEntry? stored = null;
+        dapr.SaveStateAsync("statestore", Arg.Any<string>(), Arg.Do<WorkflowPayloadStoreEntry>(entry => stored = entry),
+            metadata: Arg.Any<IReadOnlyDictionary<string, string>>(), cancellationToken: Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+        dapr.GetStateAsync<WorkflowPayloadStoreEntry?>("statestore", Arg.Any<string>(), cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(_ => stored);
+        var payloads = new DaprWorkflowPayloadStore(dapr, Microsoft.Extensions.Options.Options.Create(new WorkflowPayloadStoreOptions()), TimeProvider.System);
+        byte[] sourceBytes = "actual event source"u8.ToArray();
+        input = input with { ContentBytes = null, PayloadReference = await payloads.SaveAsync(input.TenantId, sourceOwner,
+            WorkflowPayloadKind.SourceBytes, sourceBytes, idSuffix: "source") };
         WorkflowContext context = CreateMockContext();
-        context.InstanceId.Returns("dedup:tenant-1:case-1:abc123");
+        context.InstanceId.Returns(sourceOwner);
         SetupHappyPathActivities(context, input);
         IngestionWorkflow workflow = new();
 
         IngestionResult result = await workflow.RunAsync(context, input);
 
+        var promotion = context.ReceivedCalls().Where(call => call.GetMethodInfo().Name == "CallActivityAsync")
+            .Select(call => call.GetArguments()).Single(arguments => arguments[0] as string == nameof(Hexalith.Memories.Server.DerivedStores.PromoteDerivedStoreSourceArtifactActivity))[1]
+            as Hexalith.Memories.Server.DerivedStores.PromoteDerivedStoreSourceArtifactInput;
+        promotion.ShouldNotBeNull();
+        var database = NSubstitute.Substitute.For<StackExchange.Redis.IDatabase>();
+        string? artifactJson = null;
+        database.ScriptEvaluateAsync(Arg.Any<string>(), Arg.Any<StackExchange.Redis.RedisKey[]>(),
+            Arg.Do<StackExchange.Redis.RedisValue[]>(values => artifactJson = values[0].ToString()), Arg.Any<StackExchange.Redis.CommandFlags>())
+            .Returns(StackExchange.Redis.RedisResult.Create((StackExchange.Redis.RedisValue)1L));
+        var redis = NSubstitute.Substitute.For<StackExchange.Redis.IConnectionMultiplexer>();
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(database);
+        var artifactStore = new Hexalith.Memories.Server.DerivedStores.RedisDerivedStoreService(redis, redis, TimeProvider.System);
+        await new Hexalith.Memories.Server.DerivedStores.PromoteDerivedStoreSourceArtifactActivity(payloads, artifactStore).RunAsync(null!, promotion);
+        var artifact = System.Text.Json.JsonSerializer.Deserialize<Hexalith.Memories.Server.DerivedStores.DurableDerivedStoreSourceArtifact>(artifactJson!, MemoriesJsonContext.Options);
+        artifact.ShouldNotBeNull();
+        artifact.MemoryUnitId.ShouldBe(result.MemoryUnitId);
+        artifact.SourceBytes.ShouldBe(sourceBytes);
         result.MemoryUnitId.ShouldBe(TestGuid.ToString());
         await context.Received().CallActivityAsync<IndexResult>(
             nameof(IndexSyntacticActivity),
@@ -250,6 +278,19 @@ public class IngestionWorkflowTests
             nameof(SaveDedupKeyActivity),
             Arg.Is<DedupKeyInput>(dedup => dedup!.MemoryUnitId == "01KPWY6F9QVEA2H6TT8Z1VJX6P"),
             Arg.Any<WorkflowTaskOptions>());
+    }
+
+    [Fact]
+    public async Task FailedRetryContextPreservesStableBusinessIdentityWithoutReusingTheWorkflowAttempt()
+    {
+        IngestionInput input = IngestionInputFactory.Create() with { FailedRetry = new("previous-workflow", "stable-output") };
+        WorkflowContext context = CreateMockContext();
+        context.InstanceId.Returns("retry-distinct-attempt");
+        SetupHappyPathActivities(context, input);
+        IngestionResult result = await new IngestionWorkflow().RunAsync(context, input);
+        result.MemoryUnitId.ShouldBe("stable-output");
+        await context.Received().CallActivityAsync<IndexResult>(nameof(IndexSyntacticActivity),
+            Arg.Is<IndexInput>(index => index.MemoryUnitId == "stable-output"), Arg.Any<WorkflowTaskOptions>());
     }
 
     // Story 18.6 — the core stability claim for the COMMON path. The two tests above only cover

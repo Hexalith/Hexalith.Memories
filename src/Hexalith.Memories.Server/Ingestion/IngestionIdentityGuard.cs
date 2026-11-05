@@ -29,6 +29,7 @@ internal static class IngestionIdentityGuard
         Scope(input.TenantId, input.SourceUri);
         Handle(input.CaseId);
         if (workflow is not null) { Handle(workflow); }
+        if (input.FailedRetry is { } retry) { Handle(retry.PreviousWorkflowInstanceId); Handle(retry.MemoryUnitId); }
         if (input.ExpectedMemoryUnitId is not null) { Handle(input.ExpectedMemoryUnitId); }
         if (!string.IsNullOrWhiteSpace(input.IdempotencyToken)) { Handle(input.IdempotencyToken, 200); }
         else if (input.IdempotencyToken?.Any(char.IsControl) == true) { throw new ArgumentException("Token contains control characters."); }

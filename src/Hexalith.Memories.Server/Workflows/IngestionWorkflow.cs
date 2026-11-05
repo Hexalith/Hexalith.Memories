@@ -823,6 +823,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
 
     private static string ResolveMemoryUnitId(WorkflowContext context, IngestionInput input)
     {
+        if (input.FailedRetry is { } retry) { return retry.MemoryUnitId; }
         if (!string.IsNullOrWhiteSpace(context.InstanceId)
             && !RequiresIndependentMemoryUnitId(context.InstanceId, input.SourceType))
         {
@@ -1222,12 +1223,8 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
     }
 
     private static bool IsExpectedSourcePayloadScope(IngestionInput input, string memoryUnitId, string referenceMemoryUnitId)
-        => string.Equals(referenceMemoryUnitId, memoryUnitId, StringComparison.Ordinal)
-            || (input.SourceType == SourceType.Event
-                && string.Equals(
-                    referenceMemoryUnitId,
-                    DedupKeyBuilder.BuildKey(input.TenantId, input.CaseId, input.SourceUri),
-                    StringComparison.Ordinal));
+        => SourcePayloadScope.IsExpectedOwner(input.TenantId, input.CaseId, input.SourceUri, input.SourceType,
+            memoryUnitId, referenceMemoryUnitId);
 
     private static async Task CleanupTransientPayloadsAsync(
         WorkflowContext context,

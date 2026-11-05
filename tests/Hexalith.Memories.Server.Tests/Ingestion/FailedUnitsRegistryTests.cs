@@ -226,11 +226,40 @@ public class FailedUnitsRegistryTests
         await registry.RestoreAsync(record, default);
 
         var call = db.ReceivedCalls().Single(x => x.GetMethodInfo().Name == nameof(IDatabase.ScriptEvaluateAsync));
+        RedisKey[] keys = (RedisKey[])call.GetArguments()[1]!;
+        keys.ShouldBe(new RedisKey[] { PersistFailedUnitActivity.BuildHashKey(record.TenantId, record.MemoryUnitId),
+            PersistFailedUnitActivity.BuildSortedSetKey(record.TenantId, record.CaseId),
+            SourcePublicationVisibility.Tombstone(record.TenantId, record.MemoryUnitId),
+            TenantIngestionOwnership.Key(record.TenantId), TenantIngestionOwnership.Fence(record.TenantId) });
+        ((string)call.GetArguments()[0]!).ShouldContain("tenant-ingestion-erased");
         RedisValue[] argv = (RedisValue[])call.GetArguments()[2]!;
         argv.ShouldContain(PersistFailedUnitActivity.FieldSourcePayloadReferenceJson);
         argv.ShouldContain(PersistFailedUnitActivity.FieldMetadataJson);
         argv.ShouldContain(PersistFailedUnitActivity.FieldCausationId);
         argv.ShouldContain(PersistFailedUnitActivity.FieldCorrelationId);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RestoreAsync_RefusesTombstoneOrTenantFence(bool tenantFence)
+    {
+        (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
+        if (tenantFence)
+        {
+            db.ScriptEvaluateAsync(Arg.Any<string>(), Arg.Any<RedisKey[]>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>())
+                .Returns(Task.FromException<RedisResult>(new RedisServerException(default, CommandFlags.None, "tenant-ingestion-erased")));
+        }
+        else
+        {
+            db.ScriptEvaluateAsync(Arg.Any<string>(), Arg.Any<RedisKey[]>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>())
+                .Returns(RedisResult.Create((RedisValue)0L));
+        }
+        var record = new FailedUnitRecord("tenant-1", "case-1", "mu-1", "file:///doc", SourceType.File, "operator", "text/plain",
+            "embedding", "failed", "failure", 1, null, DateTimeOffset.UtcNow);
+        var registry = new FailedUnitsRegistry(redis, NullLogger<FailedUnitsRegistry>.Instance);
+        var refused = await Should.ThrowAsync<InvalidOperationException>(() => registry.RestoreAsync(record, default));
+        refused.Message.ShouldContain(tenantFence ? "tenant-ingestion-erased" : "failed-unit-restore-fenced");
     }
 
     private static (IDatabase Db, IConnectionMultiplexer Redis) CreateRedis()

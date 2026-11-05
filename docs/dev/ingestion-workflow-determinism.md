@@ -22,6 +22,12 @@ directory path performs an earlier claim-check so it can clean up a payload if t
 specific schedule is not accepted; the scheduler still captures configuration on the
 resulting input and preserves the existing source reference before scheduling.
 
+Failed re-ingestion uses a separate scheduler-owned entry point: it proves the prior failed
+workflow and source/candidate identity, then captures optional `FailedRetry` lineage in the
+new durable input. The new attempt has an independent workflow id while its business output
+id is retained. Ordinary scheduling rejects caller-supplied lineage. Replay reads only this
+serialized context; absent context preserves all previous histories and identity decisions.
+
 ## Direct and child workflow entry points
 
 Every path that starts `IngestionWorkflow` has one of these obligations:

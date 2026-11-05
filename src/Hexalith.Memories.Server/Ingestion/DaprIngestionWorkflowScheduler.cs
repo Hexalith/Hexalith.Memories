@@ -55,7 +55,35 @@ internal sealed partial class DaprIngestionWorkflowScheduler : IIngestionWorkflo
         _logger = logger;
     }
 
-    public async Task<string> ScheduleAsync(string instanceId, IngestionInput input, CancellationToken cancellationToken = default)
+    public Task<string> ScheduleAsync(string instanceId, IngestionInput input, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        if (input.FailedRetry is not null) { throw new ArgumentException("failed-retry-context-is-scheduler-owned", nameof(input)); }
+        return ScheduleCoreAsync(instanceId, input, null, cancellationToken);
+    }
+
+    public async Task<string> ScheduleFailedRetryAsync(FailedUnitRecord record, IngestionInput input, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(record);
+        ArgumentNullException.ThrowIfNull(input);
+        if (_sourceInventory is null || input.FailedRetry is not null || input.RefreshExistingSource
+            || input.TenantId != record.TenantId || input.CaseId != record.CaseId || input.SourceUri != record.SourceUri
+            || input.SourceType != record.SourceType || input.PayloadReference != record.SourcePayloadReference)
+        { throw new InvalidOperationException("failed-retry-source-mismatch"); }
+        SourceInventoryEntry previous = await _sourceInventory.FindFailedRetryAsync(record, cancellationToken).ConfigureAwait(false);
+        WorkflowState? state = await _workflowClient.GetWorkflowStateAsync(previous.WorkflowInstanceId!, true, cancellationToken).ConfigureAwait(false);
+        IngestionInput? stored = state?.Exists == true ? state.ReadInputAs<IngestionInput>() : null;
+        if (state?.RuntimeStatus != WorkflowRuntimeStatus.Failed || state.WorkflowName != nameof(IngestionWorkflow) || stored is null
+            || stored.TenantId != record.TenantId || stored.CaseId != record.CaseId || stored.SourceUri != record.SourceUri
+            || stored.RefreshExistingSource || stored.SourceType != record.SourceType || stored.PayloadReference != record.SourcePayloadReference
+            || (stored.FailedRetry is { } retry && retry.MemoryUnitId != record.MemoryUnitId))
+        { throw new InvalidOperationException("failed-retry-workflow-proof-mismatch"); }
+        string attemptId = "retry-" + Guid.NewGuid().ToString("N");
+        return await ScheduleCoreAsync(attemptId, input with
+        { FailedRetry = new(previous.WorkflowInstanceId!, record.MemoryUnitId) }, previous, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<string> ScheduleCoreAsync(string instanceId, IngestionInput input, SourceInventoryEntry? previous, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(instanceId);
         ArgumentNullException.ThrowIfNull(input);
@@ -70,7 +98,8 @@ internal sealed partial class DaprIngestionWorkflowScheduler : IIngestionWorkflo
         }
         if (_sourceInventory is not null)
         {
-            await _sourceInventory.AdmitAsync(instanceId, input, cancellationToken).ConfigureAwait(false);
+            if (previous is null) { await _sourceInventory.AdmitAsync(instanceId, input, cancellationToken).ConfigureAwait(false); }
+            else { await _sourceInventory.AdmitFailedRetryAsync(instanceId, input, previous, cancellationToken).ConfigureAwait(false); }
             input = input with { SourceInventoryTracked = true };
         }
         IngestionInput slimInput;
@@ -78,7 +107,7 @@ internal sealed partial class DaprIngestionWorkflowScheduler : IIngestionWorkflo
         {
             slimInput = await PrepareInputAsync(
                     _payloadStore,
-                    instanceId,
+                    input.FailedRetry?.MemoryUnitId ?? instanceId,
                     input,
                     _workflowConfigurationCapture,
                     _workflowTraceContextCapture,

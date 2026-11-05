@@ -97,7 +97,7 @@ internal sealed class SourceInventoryFailureReconciler(
         }
         if (entry.SourcePayloadReference is { } payload)
         {
-            if (payload.TenantId != tenant || (payload.MemoryUnitId != entry.WorkflowInstanceId && payload.MemoryUnitId != DedupKeyBuilder.BuildKey(tenant, entry.CaseId, source)))
+            if (payload.TenantId != tenant || (payload.MemoryUnitId != candidate && payload.MemoryUnitId != entry.WorkflowInstanceId && payload.MemoryUnitId != DedupKeyBuilder.BuildKey(tenant, entry.CaseId, source)))
             {
                 throw new InvalidOperationException("source-inventory-failed-payload-scope");
             }

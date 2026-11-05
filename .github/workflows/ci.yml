@@ -12,8 +12,8 @@ permissions:
   contents: read
 
 env:
-  DAPR_CLI_VERSION: '1.18.0'
-  DAPR_RUNTIME_VERSION: '1.18.2'
+  DAPR_CLI_VERSION: '1.18.2'
+  DAPR_RUNTIME_VERSION: '1.18.7'
   KUBECTL_VERSION: 'v1.35.0'
   KIND_VERSION: 'v0.31.0'
   KIND_NODE_IMAGE: 'kindest/node:v1.35.0'

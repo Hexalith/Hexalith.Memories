@@ -49,6 +49,39 @@ internal sealed class SourceInventoryStore([FromKeyedServices("redis")] IConnect
         }, cancellationToken);
     }
 
+    /// <summary>Finds the newest exact output obligation; unknown/ambiguous scheduling never proves a failed retry.</summary>
+    internal async Task<SourceInventoryEntry> FindFailedRetryAsync(FailedUnitRecord record, CancellationToken token)
+    {
+        SourceInventorySnapshot current = await ReadSnapshotAsync(record.TenantId, record.SourceUri, token).ConfigureAwait(false);
+        if (current.AdmissionClosed) { throw new InvalidOperationException("source-inventory-admission-closed"); }
+        SourceInventoryEntry? entry = (current.Entries ?? []).LastOrDefault(item => item.CandidateMemoryUnitId == record.MemoryUnitId
+            || item.MemoryUnitId == record.MemoryUnitId || item.WorkflowInstanceId == record.MemoryUnitId);
+        if (entry is null || entry.CaseId != record.CaseId || entry.WorkflowInstanceId is null || entry.SchedulingState != "Scheduled"
+            || entry.TerminalVerified || entry.State == "Deleted" || entry.CandidateMemoryUnitId != record.MemoryUnitId
+            || entry.SourcePayloadReference != record.SourcePayloadReference)
+        { throw new InvalidOperationException("failed-retry-inventory-proof-mismatch"); }
+        return entry;
+    }
+
+    /// <summary>Adds an independent failed-attempt generation without resetting or removing its predecessor's source/output obligations.</summary>
+    internal Task AdmitFailedRetryAsync(string instanceId, IngestionInput input, SourceInventoryEntry previous, CancellationToken token)
+    {
+        IngestionIdentityGuard.Input(input, instanceId);
+        FailedIngestionRetry retry = input.FailedRetry ?? throw new InvalidOperationException("failed-retry-context-required");
+        return ChangeAsync(input.TenantId, input.SourceUri, current =>
+        {
+            if (current.AdmissionClosed) { throw new InvalidOperationException("source-inventory-admission-closed"); }
+            SourceInventoryEntry? latest = (current.Entries ?? []).LastOrDefault(entry => entry.CandidateMemoryUnitId == retry.MemoryUnitId
+                || entry.MemoryUnitId == retry.MemoryUnitId || entry.WorkflowInstanceId == retry.MemoryUnitId);
+            if (latest != previous || previous.WorkflowInstanceId != retry.PreviousWorkflowInstanceId || previous.CaseId != input.CaseId
+                || (current.Entries ?? []).Any(entry => entry.WorkflowInstanceId == instanceId))
+            { throw new InvalidOperationException("failed-retry-inventory-changed"); }
+            return current with { Entries = [.. current.Entries ?? [], new(input.CaseId, instanceId, TokenHash(input.IdempotencyToken),
+                SchedulingState: "Preparing", CandidateMemoryUnitId: retry.MemoryUnitId,
+                SourcePayloadReference: IngestionPayloadClaimCheck.GetSourceReference(instanceId, input))] };
+        }, token, retry.MemoryUnitId);
+    }
+
     /// <summary>Commits scheduling provenance before the only remote scheduling call.</summary>
     internal Task SetSchedulingAsync(string tenant, string source, string workflow, string scheduling, CancellationToken token)
         => ChangeAsync(tenant, source, current =>
@@ -314,7 +347,7 @@ internal sealed class SourceInventoryStore([FromKeyedServices("redis")] IConnect
         return Parse(value, tenantId, sourceUri);
     }
 
-    private async Task ChangeAsync(string tenantId, string sourceUri, Func<SourceInventorySnapshot, SourceInventorySnapshot> change, CancellationToken cancellationToken)
+    private async Task ChangeAsync(string tenantId, string sourceUri, Func<SourceInventorySnapshot, SourceInventorySnapshot> change, CancellationToken cancellationToken, string? liveMemoryUnitId = null)
     {
         string key = BuildKey(tenantId, sourceUri);
         IDatabase db = redis.GetDatabase();
@@ -341,8 +374,11 @@ internal sealed class SourceInventoryStore([FromKeyedServices("redis")] IConnect
             string serialized = JsonSerializer.Serialize(updated with { Version = Guid.NewGuid().ToString("N") }, Json);
             if (serialized.Length > MaximumDocumentCharacters) { throw new InvalidOperationException("source-inventory-document-capacity"); }
             const string insert = "if redis.call('EXISTS',KEYS[1]) == 1 then return 0 end redis.call('SET',KEYS[1],ARGV[2]); return 1";
+            RedisKey[] keys = liveMemoryUnitId is null ? [(RedisKey)key]
+                : [(RedisKey)key, (RedisKey)SourcePublicationVisibility.Tombstone(tenantId, liveMemoryUnitId)];
             bool saved = (long)await TenantIngestionOwnership.WriteAsync(db, tenantId, raw.HasValue ? CompareExchange : insert,
-                [(RedisKey)key], [(RedisValue)(raw.HasValue ? raw.ToString() : string.Empty), (RedisValue)serialized], cancellationToken).ConfigureAwait(false) == 1;
+                keys, [(RedisValue)(raw.HasValue ? raw.ToString() : string.Empty), (RedisValue)serialized], cancellationToken,
+                precondition: liveMemoryUnitId is null ? null : "if redis.call('EXISTS',KEYS[2])==1 then return redis.error_reply('failed-retry-output-erased') end").ConfigureAwait(false) == 1;
             if (saved) { return; }
         }
         throw new InvalidOperationException("source-inventory-concurrency-exhausted");

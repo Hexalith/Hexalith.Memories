@@ -449,8 +449,11 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     {
         using var cts = new CancellationTokenSource(TopologyStartupTimeout);
         Stopwatch stopwatch = Stopwatch.StartNew();
-        await DisposeTopologyAsync(cts.Token).ConfigureAwait(false);
-        await StartTopologyAsync(cts.Token).ConfigureAwait(false);
+        try { await DisposeTopologyAsync(cts.Token).ConfigureAwait(false); }
+        finally { TestContext.Current.TestOutputHelper?.WriteLine($"Owned restart disposal: {stopwatch.Elapsed.TotalSeconds:F2}s"); }
+        TimeSpan disposedAt = stopwatch.Elapsed;
+        try { await StartTopologyAsync(cts.Token).ConfigureAwait(false); }
+        finally { TestContext.Current.TestOutputHelper?.WriteLine($"Owned restart startup/readiness: {(stopwatch.Elapsed - disposedAt).TotalSeconds:F2}s"); }
         stopwatch.Stop();
         return stopwatch.Elapsed;
     }

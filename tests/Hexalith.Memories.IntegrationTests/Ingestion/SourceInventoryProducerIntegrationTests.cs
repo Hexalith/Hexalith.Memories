@@ -137,6 +137,112 @@ public sealed class SourceInventoryProducerIntegrationTests(RedisStackFixture re
         }
     }
 
+    [Theory]
+    [InlineData("valid")]
+    [InlineData("event")]
+    [InlineData("url")]
+    [InlineData("running")]
+    [InlineData("wrong-source")]
+    [InlineData("wrong-tenant")]
+    [InlineData("wrong-case")]
+    [InlineData("wrong-owner")]
+    [InlineData("completed")]
+    [InlineData("terminated")]
+    [InlineData("tombstone")]
+    [InlineData("tenant-fence")]
+    [InlineData("source-fence")]
+    public async Task FailedRetryRetainsOldInventoryAndSchedulesOnlyWithExactFailedProof(string scenario)
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string tenant = "retry-" + Guid.NewGuid().ToString("N");
+        IngestionInput input = Input(tenant);
+        if (scenario == "event") { input = input with { SourceType = SourceType.Event }; }
+        if (scenario == "url") { input = input with { SourceType = SourceType.Url, SourceUri = "https://synthetic.invalid/source", ContentBytes = null }; }
+        string previousWorkflow = scenario == "event" ? DedupKeyBuilder.BuildKey(tenant, input.CaseId, input.SourceUri) : "producer";
+        await OwnedSemanticInventory.ReconcileAsync(redis.Connection.GetDatabase(), tenant, "producer");
+        var inventory = new SourceInventoryStore(redis.Connection, new QueryCursorCodec(new EphemeralDataProtectionProvider(), "RetryTests"));
+        var payloads = Payloads(new Dictionary<string, string>(StringComparer.Ordinal));
+        var workflow = Substitute.For<IDaprWorkflowClient>();
+        IngestionInput? captured = null;
+        workflow.ScheduleNewWorkflowAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IngestionInput>(), null, Arg.Any<CancellationToken>())
+            .Returns(call => { captured = call.Arg<IngestionInput>(); return call.ArgAt<string>(1); });
+        var scheduler = new DaprIngestionWorkflowScheduler(workflow, payloads,
+            new IngestionWorkflowConfigurationCapture(Options.Create(new IngestionSettings()), Options.Create(new NaturalLanguageDescriptionOptions())),
+            new WorkflowTraceContextCapture(), Substitute.For<IIngestionWorkflowInFlightRegistry>(), TimeProvider.System,
+            NullLogger<DaprIngestionWorkflowScheduler>.Instance, inventory);
+        await scheduler.ScheduleAsync(previousWorkflow, input, token);
+        await inventory.RecordCandidateAsync(tenant, input.SourceUri, previousWorkflow, "producer", token);
+        SourceInventoryEntry original = (await inventory.ReadAsync(tenant, input.SourceUri, null, 100, token)).Entries.ShouldHaveSingleItem();
+        var record = new FailedUnitRecord(tenant, input.CaseId, "producer", input.SourceUri, input.SourceType, input.IngestedBy, input.ContentType,
+            "embedding", "provider-failed", "failed source", 3, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, captured!.PayloadReference,
+            new Dictionary<string, MetadataField> { ["source"] = new("original", MetadataOrigin.Human, 1f) }, "cause", "correlation");
+        var registry = new FailedUnitsRegistry(redis.Connection, NullLogger<FailedUnitsRegistry>.Instance);
+        await registry.RestoreAsync(record, token);
+        using var recreated = await ConnectionMultiplexer.ConnectAsync(redis.ConnectionString);
+        var restoredRegistry = new FailedUnitsRegistry(recreated, NullLogger<FailedUnitsRegistry>.Instance);
+        var restored = (await restoredRegistry.GetAsync(tenant, "producer", token)).ShouldNotBeNull();
+        restored.SourcePayloadReference.ShouldBe(record.SourcePayloadReference);
+        restored.Metadata!["source"].ShouldBe(record.Metadata!["source"]);
+        restored.FailedAt.ShouldBe(record.FailedAt);
+        restored.CausationId.ShouldBe(record.CausationId);
+        IngestionInput stateInput = scenario switch
+        {
+            "wrong-source" => captured with { SourceUri = "file:///foreign" },
+            "wrong-tenant" => captured with { TenantId = "foreign" },
+            "wrong-case" => captured with { CaseId = "foreign" },
+            "wrong-owner" => captured with { PayloadReference = captured.PayloadReference! with { MemoryUnitId = "foreign" } },
+            _ => captured,
+        };
+        WorkflowRuntimeStatus runtime = scenario switch { "running" => WorkflowRuntimeStatus.Running,
+            "completed" => WorkflowRuntimeStatus.Completed, "terminated" => WorkflowRuntimeStatus.Terminated,
+            _ => WorkflowRuntimeStatus.Failed };
+        workflow.GetWorkflowStateAsync(previousWorkflow, true, Arg.Any<CancellationToken>())
+            .Returns(State(stateInput, runtime));
+        if (scenario == "source-fence") { await inventory.FenceAsync(tenant, input.SourceUri, true, token); }
+        if (scenario == "tombstone") { await redis.Connection.GetDatabase().StringSetAsync(SourcePublicationVisibility.Tombstone(tenant, "producer"), "1"); }
+        if (scenario == "tenant-fence") { await redis.Connection.GetDatabase().StringSetAsync(TenantIngestionOwnership.Fence(tenant), "1"); }
+        var coordinator = new ReIngestionCoordinator(restoredRegistry, payloads, scheduler, NullLogger<ReIngestionCoordinator>.Instance);
+        if (scenario is "valid" or "event" or "url")
+        {
+            var result = await coordinator.TryScheduleAsync(tenant, input.CaseId, "producer", token);
+            result.Outcome.ShouldBe(ReIngestionAttemptOutcome.Scheduled);
+            result.MemoryUnitId.ShouldBe("producer");
+            result.WorkflowInstanceId.ShouldNotBe("producer");
+            captured!.FailedRetry.ShouldBe(new FailedIngestionRetry(previousWorkflow, "producer"));
+            if (scenario == "url") { captured.PayloadReference.ShouldBeNull(); }
+            else { captured.PayloadReference!.MemoryUnitId.ShouldBe("producer"); }
+            var entries = (await inventory.ReadAsync(tenant, input.SourceUri, null, 100, token)).Entries;
+            entries.Count.ShouldBe(2);
+            entries[0].ShouldBe(original);
+            entries[1].WorkflowInstanceId.ShouldBe(result.WorkflowInstanceId);
+            entries[1].CandidateMemoryUnitId.ShouldBe("producer");
+            entries[1].SchedulingState.ShouldBe("Scheduled");
+            (await restoredRegistry.GetAsync(tenant, "producer", token)).ShouldBeNull();
+            // Close this owned source and prove both attempt obligations still reconcile through the actual inventory endpoint.
+            var states = Substitute.For<IIngestionWorkflowStateReader>();
+            states.GetWorkflowStateAsync(previousWorkflow, true, Arg.Any<CancellationToken>()).Returns(State(stateInput, WorkflowRuntimeStatus.Failed));
+            states.GetWorkflowStateAsync(result.WorkflowInstanceId!, true, Arg.Any<CancellationToken>()).Returns(State(captured, WorkflowRuntimeStatus.Failed));
+            await inventory.FenceAsync(tenant, input.SourceUri, true, token);
+            var (app, client) = await StartAsync(tenant, inventory, payloads, states, token);
+            await using (app)
+            using (client)
+            {
+                var page = (await client.GetFromJsonAsync<SourceInventoryPage>(Route(tenant, input.SourceUri), token)).ShouldNotBeNull();
+                page.Entries.Count.ShouldBe(2);
+                page.Entries.ShouldAllBe(entry => entry.State == "Deleted" && entry.TerminalVerified);
+            }
+        }
+        else
+        {
+            await Should.ThrowAsync<InvalidOperationException>(() => coordinator.TryScheduleAsync(tenant, input.CaseId, "producer", token));
+            (await inventory.ReadAsync(tenant, input.SourceUri, null, 100, token)).Entries.ShouldBe([original]);
+            if (scenario is not ("tombstone" or "tenant-fence"))
+                (await restoredRegistry.GetAsync(tenant, "producer", token)).ShouldNotBeNull();
+            else
+                (await restoredRegistry.GetAsync(tenant, "producer", token)).ShouldBeNull();
+        }
+    }
+
     [Fact]
     public async Task ActualDaprPayloadAdapterRetainsEveryAcknowledgedArtifactAcrossRestartAndDeletionFence()
     {

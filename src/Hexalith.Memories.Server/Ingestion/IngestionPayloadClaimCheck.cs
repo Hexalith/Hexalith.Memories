@@ -69,6 +69,7 @@ internal static class IngestionPayloadClaimCheck
     internal static WorkflowPayloadReference? GetSourceReference(string unit, IngestionInput input)
     {
         IngestionIdentityGuard.Input(input, unit);
+        unit = input.FailedRetry?.MemoryUnitId ?? unit;
         if (input.PayloadReference is not null) { return input.PayloadReference; }
         if (input.SourceType == SourceType.Url || input.ContentBytes is not { Length: > 0 } bytes) { return null; }
         string hash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes));
