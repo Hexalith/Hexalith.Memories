@@ -302,7 +302,7 @@ public sealed partial class CiTestInventoryTests
             ["@semantic-release/exec"] = "^7.1.0",
             ["@semantic-release/github"] = "^12.0.10",
             ["@semantic-release/release-notes-generator"] = "^14.1.1",
-            ["cosmiconfig"] = "9.0.2",
+            ["cosmiconfig"] = "10.0.1",
             ["semantic-release"] = "25.0.9",
         };
 
@@ -344,7 +344,7 @@ public sealed partial class CiTestInventoryTests
             ["node_modules/@semantic-release/exec"] = "7.1.0",
             ["node_modules/@semantic-release/github"] = "12.0.10",
             ["node_modules/@semantic-release/release-notes-generator"] = "14.1.1",
-            ["node_modules/cosmiconfig"] = "9.0.2",
+            ["node_modules/cosmiconfig"] = "10.0.1",
             ["node_modules/fast-uri"] = "3.1.9",
             ["node_modules/js-yaml"] = "4.3.2",
             ["node_modules/semantic-release"] = "25.0.9",
