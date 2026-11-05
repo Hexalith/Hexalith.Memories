@@ -24,6 +24,27 @@ using Shouldly;
 public sealed class AspireIngestionPipelineFixtureTests
 {
     [Fact]
+    public async Task OwnedGatewaySelectsTheSameSingleSymmetricModeAsTheFixtureTokenFactory()
+    {
+        var gateway = new Aspire.Hosting.ApplicationModel.ProjectResource("eventstore");
+        AspireIngestionPipelineFixture.ConfigureGatewayTestAuthentication(gateway);
+        var environment = new Dictionary<string, object>
+        {
+            ["Authentication__JwtBearer__Authority"] = "https://inherited.invalid/realm",
+            ["Authentication__JwtBearer__SigningKey"] = "inherited",
+        };
+        var context = new Aspire.Hosting.ApplicationModel.EnvironmentCallbackContext(
+            new Aspire.Hosting.DistributedApplicationExecutionContext(new Aspire.Hosting.DistributedApplicationExecutionContextOptions(Aspire.Hosting.DistributedApplicationOperation.Run)), gateway, environment, TestContext.Current.CancellationToken);
+        await gateway.Annotations.OfType<Aspire.Hosting.ApplicationModel.EnvironmentCallbackAnnotation>().ShouldHaveSingleItem().Callback(context);
+        environment["Authentication__JwtBearer__Authority"].ShouldBe(string.Empty);
+        environment["Authentication__JwtBearer__SigningKey"].ShouldBe(AspireIngestionPipelineFixture.ServerDevSigningKey);
+        var token = new JsonWebToken(AspireIngestionPipelineFixture.MintServerBearer("tenant"));
+        token.Issuer.ShouldBe(environment["Authentication__JwtBearer__Issuer"]);
+        token.Audiences.ShouldContain((string)environment["Authentication__JwtBearer__Audience"]);
+        token.Alg.ShouldBe("HS256");
+    }
+
+    [Fact]
     public void MintDevBearer_ExplicitPastExpiry_CreatesExpiredToken()
     {
         DateTime expiresAt = DateTime.UtcNow.AddMinutes(-1);

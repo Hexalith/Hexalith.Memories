@@ -1925,6 +1925,19 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         }
     }
 
+    /// <summary>Selects the fixture's intended symmetric authentication mode without weakening SDK validation.</summary>
+    internal static void ConfigureGatewayTestAuthentication(IResource gateway)
+    {
+        gateway.Annotations.Add(new EnvironmentCallbackAnnotation(context =>
+        {
+            context.EnvironmentVariables["Authentication__JwtBearer__Authority"] = string.Empty;
+            context.EnvironmentVariables["Authentication__JwtBearer__SigningKey"] = ServerDevSigningKey;
+            context.EnvironmentVariables["Authentication__JwtBearer__Issuer"] = ServerDevIssuer;
+            context.EnvironmentVariables["Authentication__JwtBearer__Audience"] = ServerDevAudience;
+            context.EnvironmentVariables["Authentication__JwtBearer__RequireHttpsMetadata"] = "false";
+        }));
+    }
+
     private async Task StartTopologyAsync(CancellationToken cancellationToken)
     {
         int logStartIndex = _logProvider.Count;
@@ -1944,6 +1957,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                 },
                 cancellationToken)
             .ConfigureAwait(false);
+        ConfigureGatewayTestAuthentication(_builder.Resources.Single(resource => resource.Name == "eventstore"));
         ParameterResource accessSeedParameter = _builder.Resources
             .OfType<ParameterResource>()
             .Single(resource => resource.Name == "openbao-access-telemetry-seeds");

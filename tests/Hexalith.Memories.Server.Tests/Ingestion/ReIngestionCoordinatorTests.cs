@@ -19,6 +19,25 @@ using Shouldly;
 public class ReIngestionCoordinatorTests
 {
     [Fact]
+    public async Task SchedulingFailureAndFencedRestorationPreserveBothOriginalCauses()
+    {
+        var registry = Substitute.For<IFailedUnitsRegistry>();
+        var scheduler = Substitute.For<IIngestionWorkflowScheduler>();
+        var record = CreateRecord("mu-url", SourceType.Url);
+        var scheduling = new InvalidOperationException("primary-scheduling-failure");
+        var fenced = new InvalidOperationException("tenant-ingestion-erased");
+        registry.GetAsync("tenant-1", "mu-url", Arg.Any<CancellationToken>()).Returns(record);
+        registry.RemoveAsync("tenant-1", "case-1", "mu-url", record.SourceUri, Arg.Any<CancellationToken>()).Returns(true);
+        scheduler.ScheduleFailedRetryAsync(record, Arg.Any<IngestionInput>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<string>(scheduling));
+        registry.RestoreAsync(record, CancellationToken.None).Returns(Task.FromException(fenced));
+        var coordinator = new ReIngestionCoordinator(registry, Substitute.For<IWorkflowPayloadStore>(), scheduler,
+            NullLogger<ReIngestionCoordinator>.Instance);
+        var error = await Should.ThrowAsync<InvalidOperationException>(() => coordinator.TryScheduleAsync("tenant-1", "case-1", "mu-url", default));
+        error.InnerException.ShouldBeOfType<AggregateException>().InnerExceptions.ShouldBe([scheduling, fenced]);
+    }
+
+    [Fact]
     public async Task TryScheduleAsync_WhenRecordMissing_ReturnsNotFound()
     {
         IFailedUnitsRegistry registry = Substitute.For<IFailedUnitsRegistry>();
