@@ -24,6 +24,7 @@ public sealed partial class CiTestInventoryTests
         "tests/Hexalith.Memories.Mcp.Tests/Hexalith.Memories.Mcp.Tests.csproj",
         "tests/Hexalith.Memories.EventStore.Tests/Hexalith.Memories.EventStore.Tests.csproj",
         "tests/Hexalith.Memories.Web.Tests/Hexalith.Memories.Web.Tests.csproj",
+        "tests/Hexalith.Memories.DomainService.Tests/Hexalith.Memories.DomainService.Tests.csproj",
     ];
 
     private static readonly string[] AllowedDeferredStatuses = ["open", "resolved", "accepted", "carried-forward"];

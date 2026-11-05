@@ -356,6 +356,67 @@ class TestRunnerContractTests(unittest.TestCase):
             self.assertIn("fake-dotnet-stderr", combined_output)
             self.assertIn("dotnet test failed (23)", combined_output)
 
+    def test_unit_contract_runner_selects_every_required_project_with_evidence_options(self):
+        expected_projects = [
+            "tests/Hexalith.Memories.Contracts.Tests/Hexalith.Memories.Contracts.Tests.csproj",
+            "tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj",
+            "tests/Hexalith.Memories.AccessTelemetry.Tests/Hexalith.Memories.AccessTelemetry.Tests.csproj",
+            "tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj",
+            "tests/Hexalith.Memories.Mcp.Tests/Hexalith.Memories.Mcp.Tests.csproj",
+            "tests/Hexalith.Memories.EventStore.Tests/Hexalith.Memories.EventStore.Tests.csproj",
+            "tests/Hexalith.Memories.Web.Tests/Hexalith.Memories.Web.Tests.csproj",
+            "tests/Hexalith.Memories.DomainService.Tests/Hexalith.Memories.DomainService.Tests.csproj",
+        ]
+        results_root = REPO_ROOT / "TestResults"
+        results_root.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=results_root) as results_temp, tempfile.TemporaryDirectory() as fake_temp:
+            results = Path(results_temp)
+            env, _ = self._fake_dotnet_environment(Path(fake_temp), log_all_commands=True, coverage=True)
+            result = subprocess.run(
+                [
+                    "bash", "./tools/test.sh", "--filter", "Category!=Integration",
+                    "--configuration", "Release", "--no-build", "--coverage",
+                    "--results-directory", str(results.relative_to(REPO_ROOT)),
+                ],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            commands = [json.loads(line) for line in Path(env["FAKE_DOTNET_ALL_LOG"]).read_text().splitlines()]
+            print(json.dumps({"kind": "synthetic-runner-selection-only", "commands": commands}))
+            self.assertEqual(expected_projects, [command[1] for command in commands])
+            for project, arguments in zip(expected_projects, commands, strict=True):
+                with self.subTest(project=project):
+                    project_name = Path(project).stem
+                    project_results = results / project_name
+                    self.assertEqual(["test", project, "--configuration", "Release", "--no-build"], arguments[:5])
+                    self.assertEqual(
+                        ["Category=Integration", "Category=Benchmark"],
+                        [arguments[index + 1] for index, argument in enumerate(arguments) if argument == "--filter-not-trait"],
+                    )
+                    self.assertNotIn("--filter", arguments)
+                    self.assertNotIn("--logger", arguments)
+                    self.assertNotIn("--collect", arguments)
+                    self.assertIn("--coverlet", arguments)
+                    self.assertEqual("cobertura", arguments[arguments.index("--coverlet-output-format") + 1])
+                    self.assertEqual("[Hexalith.Memories.*]*", arguments[arguments.index("--coverlet-include") + 1])
+                    self.assertEqual(
+                        ["[*.Tests]*", "[Hexalith.Memories.TestHelpers]*", "[Hexalith.Memories.Web.Specimens]*", "[Hexalith.Memories.MigrateEmbeddingVectors]*"],
+                        [arguments[index + 1] for index, argument in enumerate(arguments) if argument == "--coverlet-exclude"],
+                    )
+                    self.assertIn("--coverlet-skip-auto-props", arguments)
+                    self.assertEqual(str(project_results), arguments[arguments.index("--results-directory") + 1])
+                    self.assertIn("--report-xunit-trx", arguments)
+                    self.assertEqual(project_name + ".trx", arguments[arguments.index("--report-xunit-trx-filename") + 1])
+                    self.assertTrue((project_results / (project_name + ".trx")).is_file())
+                    self.assertEqual(
+                        (project_results / "project.coverage.cobertura.xml").read_bytes(),
+                        (project_results / "coverage.cobertura.xml").read_bytes(),
+                    )
+
     def test_unit_contract_filter_uses_mtp_trait_exclusions(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -402,6 +463,8 @@ class TestRunnerContractTests(unittest.TestCase):
         exit_code: int = 0,
         stdout: str = "",
         stderr: str = "",
+        log_all_commands: bool = False,
+        coverage: bool = False,
     ) -> tuple[dict[str, str], Path]:
         log_path = root / "dotnet-arguments.json"
         script = root / "fake_dotnet.py"
@@ -421,6 +484,9 @@ class TestRunnerContractTests(unittest.TestCase):
                     json.dumps(sys.argv[1:]),
                     encoding="utf-8",
                 )
+                if {log_all_commands}:
+                    with Path(os.environ["FAKE_DOTNET_ALL_LOG"]).open("a", encoding="utf-8") as log:
+                        log.write(json.dumps(sys.argv[1:]) + "\\n")
                 sys.stdout.write({stdout_literal})
                 sys.stdout.flush()
                 sys.stderr.write({stderr_literal})
@@ -438,9 +504,15 @@ class TestRunnerContractTests(unittest.TestCase):
                         'notExecuted="{not_executed}" /></ResultSummary></TestRun>',
                         encoding="utf-8",
                     )
+                if {coverage} and "--results-directory" in sys.argv:
+                    (results / "project.coverage.cobertura.xml").write_text(
+                        '<coverage line-rate="1" lines-valid="1" lines-covered="1" />', encoding="utf-8",
+                    )
                 raise SystemExit({exit_code})
                 """
             ).format(
+                log_all_commands=log_all_commands,
+                coverage=coverage,
                 executed=executed,
                 not_executed=not_executed,
                 exit_code=exit_code,
@@ -457,6 +529,7 @@ class TestRunnerContractTests(unittest.TestCase):
         env["REAL_DOTNET"] = shutil.which("dotnet") or "dotnet"
         env["PATH"] = str(root) + os.pathsep + env["PATH"]
         env["FAKE_DOTNET_LOG"] = str(log_path)
+        env["FAKE_DOTNET_ALL_LOG"] = str(root / "dotnet-all-arguments.jsonl")
         return env, log_path
 
 
