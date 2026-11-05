@@ -46,6 +46,39 @@ public sealed class ReIngestionEndpointE2ETests : IDisposable
         _factory.IngestionWorkflowSchedulerOverride = _scheduler;
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FailedEligibilityReturnsConflictAfterRestoringClaimInsteadOfAnApiFailure(bool bulk)
+    {
+        StubTenantActive();
+        StubCaseExists();
+        FailedUnitRecord record = CreateRecord("mu-proof", SourceType.Url);
+        _registry.GetAsync(TenantId, "mu-proof", Arg.Any<CancellationToken>()).Returns(record);
+        _registry.RemoveAsync(TenantId, CaseId, "mu-proof", record.SourceUri, Arg.Any<CancellationToken>()).Returns(true);
+        _scheduler.ScheduleFailedRetryAsync(record, Arg.Any<IngestionInput>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<string>(new FailedRetryEligibilityException("failed-retry-inventory-proof-mismatch")));
+        using HttpClient client = CreateAuthorizedClient();
+        using HttpResponseMessage response = bulk
+            ? await client.PostAsJsonAsync($"/api/v1/tenants/{TenantId}/cases/{CaseId}/failed-units/re-ingest", new ReIngestRequest(["mu-proof"]), MemoriesJsonContext.Options)
+            : await client.PostAsync($"/api/v1/tenants/{TenantId}/cases/{CaseId}/memory-units/mu-proof/re-ingest", null);
+        if (bulk)
+        {
+            response.StatusCode.ShouldBe(HttpStatusCode.OK);
+            var result = await ReadJsonAsync<BulkReIngestionResponse>(response);
+            result.Conflicted.ShouldBe(1);
+            result.Errored.ShouldBe(0);
+            result.Scheduled.ShouldBe(0);
+            result.Units.ShouldHaveSingleItem().Outcome.ShouldBe("conflict");
+        }
+        else
+        {
+            response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+            (await ReadJsonAsync<ErrorResponse>(response)).Code.ShouldBe("RE_INGESTION_IN_PROGRESS");
+        }
+        await _registry.Received(1).RestoreAsync(record, CancellationToken.None);
+    }
+
     [Fact]
     public async Task PostReIngest_WhenNonUrlSourcePayloadUnavailable_ReturnsActionableErrorWithoutClaim()
     {

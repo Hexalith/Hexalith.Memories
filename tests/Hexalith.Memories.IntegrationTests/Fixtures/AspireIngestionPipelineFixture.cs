@@ -17,6 +17,7 @@ using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Publishing;
 using Aspire.Hosting.Testing;
+using CommunityToolkit.Aspire.Hosting.Dapr;
 using Dapr.Actors;
 using Dapr.Actors.Client;
 using Hexalith.Memories.AppHost;
@@ -1938,6 +1939,22 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         }));
     }
 
+    /// <summary>Allocates fixture-owned sidecar listeners without opening default-port proxies before daprd starts.</summary>
+    internal static void ConfigureOwnedDaprPorts(IEnumerable<IResource> resources)
+    {
+        foreach (IResource resource in resources.OfType<IDaprSidecarResource>())
+        {
+            foreach (DaprSidecarOptionsAnnotation annotation in resource.Annotations.OfType<DaprSidecarOptionsAnnotation>().ToArray())
+            {
+                resource.Annotations.Remove(annotation);
+                resource.Annotations.Add(annotation with
+                {
+                    Options = annotation.Options with { DaprHttpPort = null, DaprGrpcPort = null, MetricsPort = null },
+                });
+            }
+        }
+    }
+
     private async Task StartTopologyAsync(CancellationToken cancellationToken)
     {
         int logStartIndex = _logProvider.Count;
@@ -1958,6 +1975,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                 cancellationToken)
             .ConfigureAwait(false);
         ConfigureGatewayTestAuthentication(_builder.Resources.Single(resource => resource.Name == "eventstore"));
+        ConfigureOwnedDaprPorts(_builder.Resources);
         ParameterResource accessSeedParameter = _builder.Resources
             .OfType<ParameterResource>()
             .Single(resource => resource.Name == "openbao-access-telemetry-seeds");
@@ -2378,8 +2396,18 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
         if (_app is not null)
         {
-            await _app.DisposeAsync().ConfigureAwait(false);
+            DistributedApplication ownedApplication = _app;
             _app = null;
+            try
+            {
+                // Dispose releases host services; Stop runs the owned resource shutdown lifecycle.
+                // A replacement CLI must not enumerate sidecars still attached to disposed proxies.
+                await ownedApplication.StopAsync(cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                await ownedApplication.DisposeAsync().ConfigureAwait(false);
+            }
         }
 
         cancellationToken.ThrowIfCancellationRequested();

@@ -27,7 +27,7 @@ internal sealed class SourceInventoryFailureReconciler(
             return;
         }
         await DeleteArtifactsAsync(tenant, source, entry, token).ConfigureAwait(false);
-        await inventory.RecordFailedDeletionAsync(tenant, source, entry, entry.CandidateMemoryUnitId ?? entry.WorkflowInstanceId!, token).ConfigureAwait(false);
+        await inventory.RecordFailedDeletionAsync(tenant, source, entry, entry.CandidateMemoryUnitId ?? entry.FailedRetryMemoryUnitId ?? entry.WorkflowInstanceId!, token).ConfigureAwait(false);
     }
 
     /// <summary>Reconciles the retained loser only after independently scoped successful workflow completion.</summary>
@@ -43,7 +43,7 @@ internal sealed class SourceInventoryFailureReconciler(
 
     private async Task DeleteArtifactsAsync(string tenant, string source, SourceInventoryEntry entry, CancellationToken token)
     {
-        string candidate = entry.CandidateMemoryUnitId ?? entry.WorkflowInstanceId
+        string candidate = entry.CandidateMemoryUnitId ?? entry.FailedRetryMemoryUnitId ?? entry.WorkflowInstanceId
             ?? throw new InvalidOperationException("source-inventory-failed-candidate-missing");
         bool neverScheduled = await inventory.IsNeverScheduledAsync(tenant, source, entry, token).ConfigureAwait(false);
         if (neverScheduled)

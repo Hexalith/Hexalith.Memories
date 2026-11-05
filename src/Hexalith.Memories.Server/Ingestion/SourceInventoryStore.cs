@@ -49,38 +49,50 @@ internal sealed class SourceInventoryStore([FromKeyedServices("redis")] IConnect
         }, cancellationToken);
     }
 
-    /// <summary>Finds the newest exact output obligation; unknown/ambiguous scheduling never proves a failed retry.</summary>
-    internal async Task<SourceInventoryEntry> FindFailedRetryAsync(FailedUnitRecord record, CancellationToken token)
+    /// <summary>Finds the newest potential failed producer; only conclusively never-scheduled retries can be skipped.</summary>
+    internal async Task<SourceInventoryEntry?> FindFailedRetryAsync(FailedUnitRecord record, CancellationToken token)
     {
         SourceInventorySnapshot current = await ReadSnapshotAsync(record.TenantId, record.SourceUri, token).ConfigureAwait(false);
-        if (current.AdmissionClosed) { throw new InvalidOperationException("source-inventory-admission-closed"); }
-        SourceInventoryEntry? entry = (current.Entries ?? []).LastOrDefault(item => item.CandidateMemoryUnitId == record.MemoryUnitId
-            || item.MemoryUnitId == record.MemoryUnitId || item.WorkflowInstanceId == record.MemoryUnitId);
-        if (entry is null || entry.CaseId != record.CaseId || entry.WorkflowInstanceId is null || entry.SchedulingState != "Scheduled"
-            || entry.TerminalVerified || entry.State == "Deleted" || entry.CandidateMemoryUnitId != record.MemoryUnitId
+        if (current.AdmissionClosed) { throw new FailedRetryEligibilityException("source-inventory-admission-closed"); }
+        SourceInventoryEntry? entry = LatestRetryPredecessor(current, record.CaseId, record.MemoryUnitId);
+        if (entry is null) { return null; }
+        if (entry.CaseId != record.CaseId || entry.WorkflowInstanceId is null || entry.SchedulingState is not ("Scheduled" or "Scheduling")
+            || entry.TerminalVerified || entry.State == "Deleted" || (entry.CandidateMemoryUnitId ?? entry.FailedRetryMemoryUnitId) != record.MemoryUnitId
             || entry.SourcePayloadReference != record.SourcePayloadReference)
-        { throw new InvalidOperationException("failed-retry-inventory-proof-mismatch"); }
+        { throw new FailedRetryEligibilityException("failed-retry-inventory-proof-mismatch"); }
         return entry;
     }
 
     /// <summary>Adds an independent failed-attempt generation without resetting or removing its predecessor's source/output obligations.</summary>
-    internal Task AdmitFailedRetryAsync(string instanceId, IngestionInput input, SourceInventoryEntry previous, CancellationToken token)
+    internal Task AdmitFailedRetryAsync(string instanceId, IngestionInput input, SourceInventoryEntry? previous, CancellationToken token)
     {
         IngestionIdentityGuard.Input(input, instanceId);
-        FailedIngestionRetry retry = input.FailedRetry ?? throw new InvalidOperationException("failed-retry-context-required");
+        FailedIngestionRetry retry = input.FailedRetry ?? throw new FailedRetryEligibilityException("failed-retry-context-required");
         return ChangeAsync(input.TenantId, input.SourceUri, current =>
         {
-            if (current.AdmissionClosed) { throw new InvalidOperationException("source-inventory-admission-closed"); }
-            SourceInventoryEntry? latest = (current.Entries ?? []).LastOrDefault(entry => entry.CandidateMemoryUnitId == retry.MemoryUnitId
-                || entry.MemoryUnitId == retry.MemoryUnitId || entry.WorkflowInstanceId == retry.MemoryUnitId);
-            if (latest != previous || previous.WorkflowInstanceId != retry.PreviousWorkflowInstanceId || previous.CaseId != input.CaseId
+            if (current.AdmissionClosed) { throw new FailedRetryEligibilityException("source-inventory-admission-closed"); }
+            SourceInventoryEntry? latest = LatestRetryPredecessor(current, input.CaseId, retry.MemoryUnitId);
+            if (latest != previous || (previous is not null && (previous.WorkflowInstanceId != retry.PreviousWorkflowInstanceId || previous.CaseId != input.CaseId))
                 || (current.Entries ?? []).Any(entry => entry.WorkflowInstanceId == instanceId))
-            { throw new InvalidOperationException("failed-retry-inventory-changed"); }
-            return current with { Entries = [.. current.Entries ?? [], new(input.CaseId, instanceId, TokenHash(input.IdempotencyToken),
-                SchedulingState: "Preparing", CandidateMemoryUnitId: retry.MemoryUnitId,
-                SourcePayloadReference: IngestionPayloadClaimCheck.GetSourceReference(instanceId, input))] };
+            { throw new FailedRetryEligibilityException("failed-retry-inventory-changed"); }
+            return current with
+            {
+                CoverageComplete = previous is null ? false : current.CoverageComplete,
+                CoverageEvidenceId = previous is null ? null : current.CoverageEvidenceId,
+                IncompleteReason = previous is null ? "legacy-failed-retry-reconciliation-required" : current.IncompleteReason,
+                Entries = [.. current.Entries ?? [], new(input.CaseId, instanceId, TokenHash(input.IdempotencyToken),
+                    SchedulingState: "Preparing",
+                    SourcePayloadReference: IngestionPayloadClaimCheck.GetSourceReference(instanceId, input)) { FailedRetryMemoryUnitId = retry.MemoryUnitId }],
+            };
         }, token, retry.MemoryUnitId);
     }
+
+    private static SourceInventoryEntry? LatestRetryPredecessor(SourceInventorySnapshot snapshot, string caseId, string unit)
+        => (snapshot.Entries ?? []).LastOrDefault(entry =>
+            (entry.CandidateMemoryUnitId == unit || entry.MemoryUnitId == unit || entry.WorkflowInstanceId == unit || entry.FailedRetryMemoryUnitId == unit)
+            && !(entry.CaseId == caseId && entry.WorkflowInstanceId is not null && entry.FailedRetryMemoryUnitId == unit
+                && entry.SchedulingState == "Unscheduled" && entry.CandidateMemoryUnitId is null && entry.MemoryUnitId is null
+                && (entry.State == "Admitted" || (entry.State == "Deleted" && entry.TerminalVerified))));
 
     /// <summary>Commits scheduling provenance before the only remote scheduling call.</summary>
     internal Task SetSchedulingAsync(string tenant, string source, string workflow, string scheduling, CancellationToken token)
@@ -99,7 +111,8 @@ internal sealed class SourceInventoryStore([FromKeyedServices("redis")] IConnect
         => ChangeAsync(tenant, source, current =>
         {
             SourceInventoryEntry entry = (current.Entries ?? []).Single(item => item.WorkflowInstanceId == workflow);
-            if (entry.CandidateMemoryUnitId is not null && entry.CandidateMemoryUnitId != candidate)
+            if ((entry.CandidateMemoryUnitId is not null && entry.CandidateMemoryUnitId != candidate)
+                || (entry.FailedRetryMemoryUnitId is not null && entry.FailedRetryMemoryUnitId != candidate))
             {
                 throw new InvalidOperationException("source-inventory-candidate-mismatch");
             }

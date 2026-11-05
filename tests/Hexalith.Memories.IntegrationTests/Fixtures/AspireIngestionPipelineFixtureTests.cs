@@ -9,6 +9,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using Aspire.Hosting;
 
 using Hexalith.Memories.AppHost;
 using Hexalith.Memories.IntegrationTests.Mcp;
@@ -23,6 +24,24 @@ using Shouldly;
 [Trait("Category", "Integration")]
 public sealed class AspireIngestionPipelineFixtureTests
 {
+    [Fact]
+    public void OwnedSidecarListenersUseAllocatedPortsAndRetainExactRuntimeOptions()
+    {
+        var builder = Aspire.Hosting.DistributedApplication.CreateBuilder();
+        _ = Aspire.Hosting.IDistributedApplicationResourceBuilderExtensions.WithDaprSidecar(
+            builder.AddProject<Projects.Hexalith_Memories_Server>("owned"), sidecar =>
+                sidecar.WithOptions(new CommunityToolkit.Aspire.Hosting.Dapr.DaprSidecarOptions
+                { AppId = "exact-owner", DaprHttpPort = 3500, DaprGrpcPort = 50001, MetricsPort = 9090, Config = "owned.yaml" }));
+        AspireIngestionPipelineFixture.ConfigureOwnedDaprPorts(builder.Resources);
+        var options = builder.Resources.OfType<CommunityToolkit.Aspire.Hosting.Dapr.IDaprSidecarResource>().Single().Annotations
+            .OfType<CommunityToolkit.Aspire.Hosting.Dapr.DaprSidecarOptionsAnnotation>().Single().Options;
+        options.DaprHttpPort.ShouldBeNull();
+        options.DaprGrpcPort.ShouldBeNull();
+        options.MetricsPort.ShouldBeNull();
+        options.AppId.ShouldBe("exact-owner");
+        options.Config.ShouldBe("owned.yaml");
+    }
+
     [Fact]
     public async Task OwnedGatewaySelectsTheSameSingleSymmetricModeAsTheFixtureTokenFactory()
     {

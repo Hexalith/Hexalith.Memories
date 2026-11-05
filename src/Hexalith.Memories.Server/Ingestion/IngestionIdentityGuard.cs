@@ -60,6 +60,7 @@ internal static class IngestionIdentityGuard
         if (entry.WorkflowInstanceId is not null) { Handle(entry.WorkflowInstanceId); }
         if (entry.MemoryUnitId is not null) { Handle(entry.MemoryUnitId); }
         if (entry.CandidateMemoryUnitId is not null) { Handle(entry.CandidateMemoryUnitId); }
+        if (entry.FailedRetryMemoryUnitId is not null) { Handle(entry.FailedRetryMemoryUnitId); }
         if (entry.SourcePayloadReference is { } reference)
         {
             PayloadReference(reference);

@@ -10,6 +10,19 @@ using Shouldly;
 public class IngestionInputSerializationTests
 {
     [Fact]
+    public void RetryInventoryIntentPreservesThePublishedConstructorAndDeconstructShape()
+    {
+        typeof(SourceInventoryEntry).GetConstructors().ShouldHaveSingleItem().GetParameters().Length.ShouldBe(13);
+        typeof(SourceInventoryEntry).GetMethod("Deconstruct")!.GetParameters().Length.ShouldBe(13);
+        var entry = new SourceInventoryEntry("case", "workflow") { FailedRetryMemoryUnitId = "stable-output" };
+        string json = JsonSerializer.Serialize(entry, MemoriesJsonContext.Options);
+        JsonSerializer.Deserialize<SourceInventoryEntry>(json, MemoriesJsonContext.Options)!.FailedRetryMemoryUnitId.ShouldBe("stable-output");
+        var legacy = System.Text.Json.Nodes.JsonNode.Parse(json)!.AsObject();
+        legacy.Remove("failedRetryMemoryUnitId");
+        JsonSerializer.Deserialize<SourceInventoryEntry>(legacy.ToJsonString(), MemoriesJsonContext.Options)!.FailedRetryMemoryUnitId.ShouldBeNull();
+    }
+
+    [Fact]
     public void RoundTrip_FailedRetryContextIsOptionalAndRetainsExactLineage()
     {
         IngestionInput input = CreateFullInput() with { FailedRetry = new("prior-workflow", "stable-memory") };

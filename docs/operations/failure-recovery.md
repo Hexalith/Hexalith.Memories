@@ -112,10 +112,25 @@ Per-unit flow:
    caller-supplied retry context; old durable inputs retain their original identity rules.
    Missing, active, ambiguous or mismatched workflow proof refuses scheduling and restores the
    claimed record. Unknown scheduling outcomes remain inventoried rather than being reset.
+   A missing inventory entry alone grants no legacy fallback: the exact original output-id
+   workflow, or the Event producer's exact tenant/case/source dedup workflow, must independently
+   be `Failed` with matching untracked input and source-payload identity. Inline legacy Event
+   bytes must derive that exact retained claim-check. Prior retry context and ambiguous dedup
+   business output refuse. Admission retains incomplete historical coverage. The new attempt
+   records stable output intent separately from actual candidate materialization.
+   Conclusively never-scheduled preparation attempts retain their cleanup obligations while
+   retry selection uses the newest eligible predecessor. A lost scheduling acknowledgement
+   requires independently `Failed` input/output lineage before another attempt. Expected
+   eligibility refusals restore the claim and return the existing structured conflict outcome.
+   Dedup recovery requires an already retained historical/custom source reference. Default
+   inline Event failures without that reference remain `NON_URL_REINGESTION_UNAVAILABLE`.
 6. If scheduling fails after claim, restore the complete original failed-unit record:
    tenant/case/source/audit fields, failure details and timestamps, metadata,
-   causation/correlation identifiers, and the optional source reference. If restore
-   itself fails, the coordinator raises a combined failure for operator escalation.
+   causation/correlation identifiers, and the optional source reference. Restoration is
+   insert-only: if an accepted retry has already published another failed record, its
+   complete hash and case index remain unchanged. Tenant and output-tombstone fences
+   still refuse restoration. If restore itself fails, the coordinator raises a combined
+   failure for operator escalation.
 
 Bulk endpoint enumerates per-unit outcomes; one missing, conflicted, unsupported, or
 errored unit does **not** abort the batch. Unsupported sources keep the explicit
@@ -265,3 +280,13 @@ as complete the exact-key inventory; a key-shaped name alone is insufficient.
 Unit/case deletion qualification invokes the actual activities with retry queues
 and durable history present. Tenant-wide retry cleanup and malformed historical
 retry addressing remain separately tracked work.
+
+## Owned restart qualification
+
+The integration fixture stops its owned application before disposal and allocates
+sidecar HTTP, gRPC and metrics listener ports per topology. This avoids opening a
+default-port proxy before its sidecar is available: Dapr CLI process discovery can
+otherwise wait on that proxy while inspecting a transient runtime version probe.
+The fixture still requires actual connected workflow workers, both actor types and
+host readiness. The independent warm-restart requirement remains 60 seconds; the
+rate-limiter test separately checks persisted state and elapsed-window refill.

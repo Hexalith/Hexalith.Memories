@@ -34,6 +34,12 @@ public sealed class FailedUnitsRegistry : IFailedUnitsRegistry
         return 1
         """;
 
+    /// <summary>Restores only an absent claim; a failure published by an accepted replacement keeps its hash and case index unchanged.</summary>
+    internal const string RestoreScript =
+        "if redis.call('EXISTS',KEYS[3]) == 1 then return 0 end\n" +
+        "if redis.call('EXISTS',KEYS[1]) == 1 then return 1 end\n" +
+        PersistFailedUnitActivity.PersistScript;
+
     private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<FailedUnitsRegistry> _logger;
 
@@ -176,7 +182,7 @@ public sealed class FailedUnitsRegistry : IFailedUnitsRegistry
         ];
 
         RedisResult restored = await TenantIngestionOwnership.WriteAsync(db, record.TenantId,
-            PersistFailedUnitActivity.PersistScript,
+            RestoreScript,
             [hashKey, zKey, SourcePublicationVisibility.Tombstone(record.TenantId, record.MemoryUnitId)],
             argv, cancellationToken).ConfigureAwait(false);
         if ((long)restored != 1)

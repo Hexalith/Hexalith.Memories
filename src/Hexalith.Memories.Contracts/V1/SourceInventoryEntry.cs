@@ -17,4 +17,8 @@ namespace Hexalith.Memories.Contracts.V1;
 public sealed record SourceInventoryEntry(string CaseId, string? WorkflowInstanceId, string? IdempotencyTokenHash = null,
     string? MemoryUnitId = null, string State = "Admitted", bool TerminalVerified = false, string SchedulingState = "Unknown", string? CandidateMemoryUnitId = null,
     WorkflowPayloadReference? SourcePayloadReference = null, string? RefreshProtocolVersion = null,
-    long? SourceRevisionNumber = null, string? RefreshIdentityDigest = null, bool CandidateArtifactsDeleted = false);
+    long? SourceRevisionNumber = null, string? RefreshIdentityDigest = null, bool CandidateArtifactsDeleted = false)
+{
+    /// <summary>Gets the scheduler-captured stable retry output intent before candidate materialization. Absent on ordinary and legacy entries.</summary>
+    public string? FailedRetryMemoryUnitId { get; init; }
+}

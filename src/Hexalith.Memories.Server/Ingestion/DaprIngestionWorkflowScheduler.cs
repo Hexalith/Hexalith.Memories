@@ -69,18 +69,29 @@ internal sealed partial class DaprIngestionWorkflowScheduler : IIngestionWorkflo
         if (_sourceInventory is null || input.FailedRetry is not null || input.RefreshExistingSource
             || input.TenantId != record.TenantId || input.CaseId != record.CaseId || input.SourceUri != record.SourceUri
             || input.SourceType != record.SourceType || input.PayloadReference != record.SourcePayloadReference)
-        { throw new InvalidOperationException("failed-retry-source-mismatch"); }
-        SourceInventoryEntry previous = await _sourceInventory.FindFailedRetryAsync(record, cancellationToken).ConfigureAwait(false);
-        WorkflowState? state = await _workflowClient.GetWorkflowStateAsync(previous.WorkflowInstanceId!, true, cancellationToken).ConfigureAwait(false);
+        { throw new FailedRetryEligibilityException("failed-retry-source-mismatch"); }
+        SourceInventoryEntry? previous = await _sourceInventory.FindFailedRetryAsync(record, cancellationToken).ConfigureAwait(false);
+        string dedup = DedupKeyBuilder.BuildKey(record.TenantId, record.CaseId, record.SourceUri);
+        bool legacyDedup = previous is null && record.SourceType == SourceType.Event && record.MemoryUnitId != dedup
+            && record.SourcePayloadReference is { ContentKind: WorkflowPayloadKind.SourceBytes } reference
+            && reference.TenantId == record.TenantId && reference.MemoryUnitId == dedup;
+        string previousWorkflow = previous?.WorkflowInstanceId ?? (legacyDedup ? dedup : record.MemoryUnitId);
+        WorkflowState? state = await _workflowClient.GetWorkflowStateAsync(previousWorkflow, true, cancellationToken).ConfigureAwait(false);
         IngestionInput? stored = state?.Exists == true ? state.ReadInputAs<IngestionInput>() : null;
+        bool payloadMatches = stored is not null && (stored.PayloadReference == record.SourcePayloadReference
+            || (legacyDedup && stored.PayloadReference is null && stored.ContentBytes is { Length: > 0 }
+                && IngestionPayloadClaimCheck.GetSourceReference(previousWorkflow, stored) == record.SourcePayloadReference));
         if (state?.RuntimeStatus != WorkflowRuntimeStatus.Failed || state.WorkflowName != nameof(IngestionWorkflow) || stored is null
             || stored.TenantId != record.TenantId || stored.CaseId != record.CaseId || stored.SourceUri != record.SourceUri
-            || stored.RefreshExistingSource || stored.SourceType != record.SourceType || stored.PayloadReference != record.SourcePayloadReference
-            || (stored.FailedRetry is { } retry && retry.MemoryUnitId != record.MemoryUnitId))
-        { throw new InvalidOperationException("failed-retry-workflow-proof-mismatch"); }
+            || stored.RefreshExistingSource || stored.SourceType != record.SourceType || !payloadMatches
+            || (stored.FailedRetry is { } retry && retry.MemoryUnitId != record.MemoryUnitId)
+            || (previous?.FailedRetryMemoryUnitId is { } intended && stored.FailedRetry?.MemoryUnitId != intended)
+            || (previous is null && (stored.SourceInventoryTracked || stored.FailedRetry is not null
+                || (!legacyDedup && stored.SourceType == SourceType.Event && previousWorkflow.StartsWith("dedup:", StringComparison.Ordinal)))))
+        { throw new FailedRetryEligibilityException("failed-retry-workflow-proof-mismatch"); }
         string attemptId = "retry-" + Guid.NewGuid().ToString("N");
         return await ScheduleCoreAsync(attemptId, input with
-        { FailedRetry = new(previous.WorkflowInstanceId!, record.MemoryUnitId) }, previous, cancellationToken).ConfigureAwait(false);
+        { FailedRetry = new(previousWorkflow, record.MemoryUnitId) }, previous, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<string> ScheduleCoreAsync(string instanceId, IngestionInput input, SourceInventoryEntry? previous, CancellationToken cancellationToken)
@@ -98,7 +109,7 @@ internal sealed partial class DaprIngestionWorkflowScheduler : IIngestionWorkflo
         }
         if (_sourceInventory is not null)
         {
-            if (previous is null) { await _sourceInventory.AdmitAsync(instanceId, input, cancellationToken).ConfigureAwait(false); }
+            if (input.FailedRetry is null) { await _sourceInventory.AdmitAsync(instanceId, input, cancellationToken).ConfigureAwait(false); }
             else { await _sourceInventory.AdmitFailedRetryAsync(instanceId, input, previous, cancellationToken).ConfigureAwait(false); }
             input = input with { SourceInventoryTracked = true };
         }

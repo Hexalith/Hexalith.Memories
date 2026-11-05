@@ -81,6 +81,7 @@ internal sealed class ReIngestionCoordinator
         catch (Exception schedulingException)
         {
             await RestoreClaimAsync(record, schedulingException).ConfigureAwait(false);
+            if (schedulingException is FailedRetryEligibilityException) { return ReIngestionAttemptResult.Conflict(memoryUnitId); }
             throw;
         }
     }

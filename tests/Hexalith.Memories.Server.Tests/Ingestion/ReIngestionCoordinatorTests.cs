@@ -18,13 +18,15 @@ using Shouldly;
 
 public class ReIngestionCoordinatorTests
 {
-    [Fact]
-    public async Task SchedulingFailureAndFencedRestorationPreserveBothOriginalCauses()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SchedulingFailureAndFencedRestorationPreserveBothOriginalCauses(bool eligibility)
     {
         var registry = Substitute.For<IFailedUnitsRegistry>();
         var scheduler = Substitute.For<IIngestionWorkflowScheduler>();
         var record = CreateRecord("mu-url", SourceType.Url);
-        var scheduling = new InvalidOperationException("primary-scheduling-failure");
+        InvalidOperationException scheduling = eligibility ? new FailedRetryEligibilityException("proof-refused") : new InvalidOperationException("primary-scheduling-failure");
         var fenced = new InvalidOperationException("tenant-ingestion-erased");
         registry.GetAsync("tenant-1", "mu-url", Arg.Any<CancellationToken>()).Returns(record);
         registry.RemoveAsync("tenant-1", "case-1", "mu-url", record.SourceUri, Arg.Any<CancellationToken>()).Returns(true);
@@ -35,6 +37,26 @@ public class ReIngestionCoordinatorTests
             NullLogger<ReIngestionCoordinator>.Instance);
         var error = await Should.ThrowAsync<InvalidOperationException>(() => coordinator.TryScheduleAsync("tenant-1", "case-1", "mu-url", default));
         error.InnerException.ShouldBeOfType<AggregateException>().InnerExceptions.ShouldBe([scheduling, fenced]);
+    }
+
+    [Fact]
+    public async Task ExactEligibilityRefusalRestoresClaimBeforeReturningStructuredConflict()
+    {
+        var registry = Substitute.For<IFailedUnitsRegistry>();
+        var scheduler = Substitute.For<IIngestionWorkflowScheduler>();
+        var record = CreateRecord("mu-url", SourceType.Url);
+        registry.GetAsync("tenant-1", "mu-url", Arg.Any<CancellationToken>()).Returns(record);
+        registry.RemoveAsync("tenant-1", "case-1", "mu-url", record.SourceUri, Arg.Any<CancellationToken>()).Returns(true);
+        scheduler.ScheduleFailedRetryAsync(record, Arg.Any<IngestionInput>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<string>(new FailedRetryEligibilityException("failed-retry-workflow-proof-mismatch")));
+        bool restored = false;
+        registry.RestoreAsync(record, CancellationToken.None).Returns(_ => { restored = true; return Task.CompletedTask; });
+        var coordinator = new ReIngestionCoordinator(registry, Substitute.For<IWorkflowPayloadStore>(), scheduler,
+            NullLogger<ReIngestionCoordinator>.Instance);
+        var result = await coordinator.TryScheduleAsync("tenant-1", "case-1", "mu-url", default);
+        restored.ShouldBeTrue();
+        result.Outcome.ShouldBe(ReIngestionAttemptOutcome.Conflict);
+        result.WorkflowInstanceId.ShouldBeNull();
     }
 
     [Fact]
