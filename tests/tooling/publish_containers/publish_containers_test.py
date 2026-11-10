@@ -267,6 +267,19 @@ def write_fake_skopeo(directory: Path) -> None:
     )
 
 
+def write_fake_python(directory: Path) -> None:
+    """Shadow python3 so the current-tree contract hand-off is observable and its exit controllable."""
+    script = directory / "fake_python.py"
+    script.write_text(
+        "import json, os, sys\n"
+        "with open(os.environ['FAKE_COMMAND_LOG'], 'a', encoding='utf-8') as log:\n"
+        "    log.write(json.dumps({'command': 'python3', 'args': sys.argv[1:], 'cwd': os.getcwd()}) + '\\n')\n"
+        "sys.exit(int(os.environ.get('FAKE_CONTRACT_EXIT', '0')))\n",
+        encoding="utf-8",
+    )
+    write_executable(directory / "python3", f'#!/usr/bin/env sh\nexec "{sys.executable}" "{script}" "$@"\n')
+
+
 def prepare_environment(root: Path, plan: dict[str, object] | None = None) -> tuple[Path, dict[str, str]]:
     fake_bin = root / "bin"
     fake_bin.mkdir()
@@ -912,6 +925,41 @@ class PublishContainersTests(unittest.TestCase):
                 else:
                     self.assertIn("dispatch Recover Partial Release from main", summary["recovery"])
                     self.assertNotIn("Story 30.5", summary["recovery"])
+
+    def test_current_tree_hands_each_phase_to_the_publication_contract_without_a_legacy_copy(self) -> None:
+        for push, phase in ((False, "build"), (True, "publish")):
+            for exit_code in (0, 7):
+                with self.subTest(push=push, exit_code=exit_code), tempfile.TemporaryDirectory() as temp:
+                    root = Path(temp)
+                    fake_bin, env = prepare_environment(root)
+                    write_fake_python(fake_bin)
+                    env["FAKE_CONTRACT_EXIT"] = str(exit_code)
+                    output = root / "artifacts"
+                    if push:
+                        prepare_archives(output)
+                    source = write_source_tree(root / "source", current=True)
+
+                    result = run_publish(output, env, push=push, repository_root=source, extra_arguments=["-PublicationContract"])
+
+                    entries = command_log(root)
+                    calls = [entry for entry in entries if entry["command"] == "python3"]
+                    self.assertEqual(1, len(calls), entries)
+                    arguments = calls[0]["args"]
+                    self.assertEqual(str(SCRIPT.with_name("container-publication-contract.py")), arguments[0])
+                    self.assertEqual(
+                        {"--phase": phase, "--version": VERSION, "--registry": "registry.test", "--repository-prefix": "memories", "--output-directory": str(output)},
+                        {name: arguments[arguments.index(name) + 1] for name in ("--phase", "--version", "--registry", "--repository-prefix", "--output-directory")},
+                    )
+                    # The contract treats its working directory as the frozen source tree.
+                    self.assertEqual(source.resolve(), Path(calls[0]["cwd"]).resolve())
+                    # Rendering succeeded before the hand-off, and no legacy build or copy follows it.
+                    self.assertTrue((output / "production-deployment.yaml").is_file())
+                    self.assertEqual([], [entry for entry in entries if entry["command"] in ("dotnet", "skopeo")])
+                    if exit_code:
+                        self.assertNotEqual(0, result.returncode)
+                        self.assertIn(f"Five-image publication contract failed during '{phase}'", result.stdout + result.stderr)
+                    else:
+                        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
 
     def test_successful_kubectl_warning_is_not_written_to_deployment(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

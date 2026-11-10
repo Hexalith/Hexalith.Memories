@@ -114,6 +114,7 @@ def run_probe(
     include_credentials: bool = True,
     classification_only: bool = False,
     evidence_path: Path | None = None,
+    working_directory: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     if include_credentials:
@@ -130,6 +131,8 @@ def run_probe(
     # Never let a fixture receipt land in the repository's real release evidence directory.
     with tempfile.TemporaryDirectory() as temporary:
         receipt = evidence_path if evidence_path is not None else Path(temporary) / "authorization.json"
+        # A temporary working directory exercises the script's default -EvidencePath instead.
+        receipt_arguments = [] if working_directory is not None else ["-EvidencePath", str(receipt)]
         return subprocess.run(
             [
                 "pwsh",
@@ -139,10 +142,9 @@ def run_probe(
                 str(SCRIPT),
                 "-Registry",
                 origin,
-                "-EvidencePath",
-                str(receipt),
+                *receipt_arguments,
             ],
-            cwd=REPO_ROOT,
+            cwd=working_directory or REPO_ROOT,
             env=env,
             capture_output=True,
             text=True,
@@ -177,6 +179,21 @@ class RegistryAuthorizationTests(unittest.TestCase):
                 self.assertTrue(evidence["reopenTrigger"])
                 self.assertNotIn(USERNAME, text + result.stdout + result.stderr)
                 self.assertNotIn(API_KEY, text + result.stdout + result.stderr)
+
+    def test_default_receipt_lands_where_the_authorize_phase_reads_it_by_default(self) -> None:
+        repository_receipt = REPO_ROOT / CONTRACT.DEFAULT_EVIDENCE_DIRECTORY / "authorization.json"
+        before = repository_receipt.read_bytes() if repository_receipt.exists() else None
+        state = RegistryState()
+        with tempfile.TemporaryDirectory() as temporary, RegistryServer(state) as registry:
+            workspace = Path(temporary)
+            result = run_probe(registry.origin, working_directory=workspace)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            evidence = workspace / CONTRACT.DEFAULT_EVIDENCE_DIRECTORY
+            self.assertEqual([evidence / "authorization.json"], [path for path in workspace.rglob("*") if path.is_file()])
+            # The authorize phase's default --evidence-directory accepts the default receipt.
+            authorization = CONTRACT.validate_authorization(evidence, {"registry": registry.origin.removeprefix("http://")})
+            self.assertEqual("pass", authorization["result"])
+        self.assertEqual(before, repository_receipt.read_bytes() if repository_receipt.exists() else None)
 
     def test_probe_verifies_and_cancels_all_repository_upload_sessions(self) -> None:
         state = RegistryState()

@@ -346,6 +346,9 @@ class ReleaseOrchestrationTests(unittest.TestCase):
             self.assertIn("publish-containers.ps1", child_scripts)
             publish_call = next(entry for entry in read_log(log_path) if entry.get("script") == "publish-containers.ps1")
             self.assertNotIn("-Push", publish_call["args"])
+            # Release preparation always builds through the five-image publication contract.
+            self.assertIn("-PublicationContract", publish_call["args"])
+            self.assertEqual(str(container_output), publish_call["args"][publish_call["args"].index("-OutputDirectory") + 1])
 
     def test_pack_release_package_only_stops_after_real_package_validation(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

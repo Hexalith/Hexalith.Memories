@@ -16,7 +16,7 @@ specification = importlib.util.spec_from_file_location("memories_contract_archiv
 contract = importlib.util.module_from_spec(specification)
 specification.loader.exec_module(contract)
 
-MEMBER_FILES = ("index.raw", "child-linux-amd64.manifest.raw", "child-linux-amd64.config.raw", "child-linux-arm64.manifest.raw", "child-linux-arm64.config.raw", "oci-validation.json", "health.json", "health-amd64.log", "health-arm64.log", "health-run.log", "transport.log", "destination-before-copy.json", "build-deployment.log", "build-oci.log", "smoke-preflight.log", "local/oci-validation.json", "local/index.raw", "local/child-linux-amd64.manifest.raw", "local/child-linux-amd64.config.raw", "local/child-linux-arm64.manifest.raw", "local/child-linux-arm64.config.raw")
+MEMBER_FILES = ("index.raw", "child-linux-amd64.manifest.raw", "child-linux-amd64.config.raw", "child-linux-arm64.manifest.raw", "child-linux-arm64.config.raw", "oci-validation.json", "health.json", "health-amd64.log", "health-arm64.log", "health-run.log", "transport.log", "destination-before-copy.json", "build-deployment.log", "build-oci.log", "runtime-config-parity.json", "smoke-preflight.log", "local/oci-validation.json", "local/index.raw", "local/child-linux-amd64.manifest.raw", "local/child-linux-amd64.config.raw", "local/child-linux-arm64.manifest.raw", "local/child-linux-arm64.config.raw")
 
 
 def required_files(evidence, container_directory, package_directory, summary_directory, deployment_path):
@@ -137,6 +137,18 @@ def verify(evidence, shared, container_directory=Path("artifacts/containers/rele
         document = contract.read_json(evidence / f"preflight/publication-preflight.{phase}.json")
         if document.get("result") != "pass" or document.get("phase") != phase or document.get("identity_sha256") != preflight_hash or document.get("identity") != preflight_identity:
             raise ValueError("Shared publication phase evidence changed or failed.")
+    compatibility = contract.read_json(evidence / "archive-compatibility.json")["archives"]
+    for image, record in zip(contract.CANONICAL_IMAGES, compatibility):
+        member = evidence / image["name"]
+        # Every child must carry the deployment archive's runtime config; validate_archives has
+        # already recomputed these hashes from the archive bytes.
+        parity = record.get("runtimeConfig")
+        diagnostics = contract.read_json(member / "runtime-config-parity.json")
+        if (not isinstance(parity, dict) or parity.get("fields") != list(contract.RUNTIME_CONFIG_FIELDS)
+                or not re.fullmatch(r"[0-9a-f]{64}", str(parity.get("deploymentSha256")))
+                or parity.get("children") != {platform: parity["deploymentSha256"] for platform in contract.PLATFORMS}
+                or diagnostics.get("result") != "pass" or diagnostics.get("mismatches") != [] or diagnostics.get("sha256") != parity):
+            raise ValueError("Runtime config parity evidence is missing, failed or changed.")
     for image in contract.CANONICAL_IMAGES:
         member = evidence / image["name"]
         reference = f"{identity['registry']}/{image['repository']}:{identity['version']}"
@@ -210,7 +222,7 @@ def archive(evidence, output, shared, diagnostics=False, **directories):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--evidence-directory", type=Path, default=Path("artifacts/release/container-evidence"))
+    parser.add_argument("--evidence-directory", type=Path, default=contract.DEFAULT_EVIDENCE_DIRECTORY)
     parser.add_argument("--output", type=Path, default=Path("artifacts/release/hexalith-memories-release-evidence.tar.gz"))
     parser.add_argument("--shared-directory", type=Path, default=Path(".hexalith/builds-execution/Github/publish-containers"))
     parser.add_argument("--diagnostics", action="store_true")

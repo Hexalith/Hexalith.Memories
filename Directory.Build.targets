@@ -19,4 +19,25 @@
     <ContainerLabel Include="org.opencontainers.image.source" Value="https://github.com/Hexalith/Hexalith.Memories" />
     <ContainerLabel Include="org.opencontainers.image.version" Value="$(ContainerImageTag)" />
   </ItemGroup>
+
+  <!-- A multi-RID container publish hands each single-RID inner build its environment as
+       `%(Identity):%(Value)` and rebuilds ContainerEnvironmentVariables with Split(':')[1], so a
+       value containing ':' (the Server PATH) is cut at its first colon. The inner build evaluates
+       the same declared ContainerEnvironmentVariable items, so rebind each parsed variable to its
+       declared full value immediately before the image is created. Only the inner build of a
+       multi-RID publish receives _ContainerEnvironmentVariables; single-RID publishes skip this. -->
+  <Target Name="RebindMultiRidContainerEnvironmentVariables"
+          BeforeTargets="_PublishSingleContainer"
+          Condition="'$(EnableContainer)' == 'true' and '$(_IsMultiRIDBuild)' == 'false' and '$(_IsSingleRIDBuild)' == 'true' and '$(_ContainerEnvironmentVariables)' != ''">
+    <ItemGroup>
+      <_MemoriesDeclaredContainerEnvironmentVariable Include="@(ContainerEnvironmentVariable)" />
+      <_MemoriesUnparsedContainerEnvironmentVariable Include="@(_MemoriesDeclaredContainerEnvironmentVariable)" Exclude="@(ContainerEnvironmentVariables)" />
+      <_MemoriesReboundContainerEnvironmentVariable Include="@(_MemoriesDeclaredContainerEnvironmentVariable)" Exclude="@(_MemoriesUnparsedContainerEnvironmentVariable)" />
+      <ContainerEnvironmentVariables Remove="@(_MemoriesReboundContainerEnvironmentVariable)" />
+      <ContainerEnvironmentVariables Include="@(_MemoriesReboundContainerEnvironmentVariable)" />
+      <_MemoriesDeclaredContainerEnvironmentVariable Remove="@(_MemoriesDeclaredContainerEnvironmentVariable)" />
+      <_MemoriesUnparsedContainerEnvironmentVariable Remove="@(_MemoriesUnparsedContainerEnvironmentVariable)" />
+      <_MemoriesReboundContainerEnvironmentVariable Remove="@(_MemoriesReboundContainerEnvironmentVariable)" />
+    </ItemGroup>
+  </Target>
 </Project>

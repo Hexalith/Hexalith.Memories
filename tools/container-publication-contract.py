@@ -28,6 +28,11 @@ CANONICAL_IMAGES = [
     {"name": "domain-service", "project": "src/Hexalith.Memories.DomainService/Hexalith.Memories.DomainService.csproj", "repository": "memories-domain-service", "health": "liveness"},
 ]
 SHARED_FILES = ("publication_preflight.py", "oci_registry_validator.py", "smoke_container_platforms.py", "smoke-container-platforms.sh", "publish-containers.sh", "action.yml")
+# Every OCI child must start exactly like the verified single-RID deployment archive.
+RUNTIME_CONFIG_FIELDS = ("Env", "Entrypoint", "Cmd", "WorkingDir", "User", "ExposedPorts")
+COMMAND_TIMEOUT_SECONDS = 1800
+# verify-container-registry.ps1 writes authorization.json here by default; authorize reads it.
+DEFAULT_EVIDENCE_DIRECTORY = Path("artifacts/release/container-evidence")
 
 
 def strict_object(pairs):
@@ -75,14 +80,32 @@ def redact(value):
     return re.sub(r"(?i)(bearer|basic)\s+\S+", r"\1 [redacted]", text)
 
 
-def run(command, log=None):
-    result = subprocess.run([str(item) for item in command], capture_output=True, text=True, check=False, timeout=1800)
-    output = redact(result.stdout + result.stderr)
+def write_log(log, output):
     if log:
         Path(log).parent.mkdir(parents=True, exist_ok=True)
         Path(log).write_text(output, encoding="utf-8")
+
+
+def captured_text(value):
+    # TimeoutExpired always carries bytes, whatever text= requested.
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value or ""
+
+
+def run(command, log=None, timeout=COMMAND_TIMEOUT_SECONDS):
+    name = Path(str(command[0])).name
+    try:
+        result = subprocess.run([str(item) for item in command], capture_output=True, text=True, check=False, timeout=timeout)
+    except subprocess.TimeoutExpired as expired:
+        # Keep the partial output as diagnostic evidence instead of losing it with the process.
+        output = redact(captured_text(expired.stdout) + captured_text(expired.stderr) + f"\n[timeout] {name} did not finish within {timeout} s.\n")
+        write_log(log, output)
+        raise ValueError(f"{name} timed out after {timeout} s: {output[-2000:]}") from None
+    output = redact(result.stdout + result.stderr)
+    write_log(log, output)
     if result.returncode:
-        raise ValueError(f"{Path(str(command[0])).name} failed ({result.returncode}): {output[-2000:]}")
+        raise ValueError(f"{name} failed ({result.returncode}): {output[-2000:]}")
     return result.stdout
 
 
@@ -227,6 +250,40 @@ def labels_for(validator, identity):
     return validator.expected_provenance_labels(identity["repository"], identity["sourceSha"], identity["version"], identity["created"])
 
 
+def deployment_config(path):
+    """Return the image config of a stable single-image Docker deployment archive."""
+    with tarfile.open(path, "r:*") as archive:
+        manifest = json.load(archive.extractfile("manifest.json"))
+        if len(manifest) != 1:
+            raise ValueError("Deployment archive must contain exactly one Docker image.")
+        return json.load(archive.extractfile(manifest[0]["Config"]))
+
+
+def runtime_config(config):
+    image_config = config.get("config") if isinstance(config, dict) else None
+    if not isinstance(image_config, dict):
+        raise ValueError("Image config has no runtime configuration.")
+    return {field: image_config.get(field) for field in RUNTIME_CONFIG_FIELDS}
+
+
+def runtime_config_parity(deployment, graph):
+    """Compare each OCI child's runtime config with the single-RID deployment archive's."""
+    expected = runtime_config(deployment)
+    children = {child["platform"]: runtime_config(json.loads(child["config_bytes"])) for child in graph["children"]}
+    mismatches = [{"platform": platform, "field": field, "deployment": expected[field], "child": values[field]}
+                  for platform, values in children.items() for field in RUNTIME_CONFIG_FIELDS if values[field] != expected[field]]
+    record = {"fields": list(RUNTIME_CONFIG_FIELDS), "deploymentSha256": hashlib.sha256(canonical(expected)).hexdigest(),
+              "children": {platform: hashlib.sha256(canonical(values)).hexdigest() for platform, values in children.items()}}
+    diagnostics = {"result": "fail" if mismatches else "pass", "fields": list(RUNTIME_CONFIG_FIELDS), "deployment": expected,
+                   "children": children, "mismatches": mismatches, "sha256": record}
+    return record, diagnostics
+
+
+def mismatch_error(mismatches):
+    differences = ", ".join(f"{item['platform']} {item['field']}" for item in mismatches)
+    return f"OCI child runtime config differs from the single-RID deployment archive ({differences}); see runtime-config-parity.json."
+
+
 def build_archives(root, output, evidence, shared, identity, validator):
     shared_phase(shared, evidence, identity, "verify")
     compatibility = []
@@ -253,15 +310,17 @@ def build_archives(root, output, evidence, shared, identity, validator):
             graph = archive_graph(oci, validator, labels_for(validator, identity))
             validator.write_evidence(member / "local", f"{identity['registry']}/{image['repository']}:{identity['version']}", graph)
             # Stable deployment archives retain Docker format and the same provenance source.
-            with tarfile.open(legacy, "r:*") as archive:
-                manifest = json.load(archive.extractfile("manifest.json"))
-                if len(manifest) != 1:
-                    raise ValueError("Deployment archive must contain exactly one Docker image.")
-                config = json.load(archive.extractfile(manifest[0]["Config"]))
-                validator._validate_labels(config, labels_for(validator, identity))
-                if config.get("architecture") != "amd64" or config.get("os") != "linux":
-                    raise ValueError("Stable deployment archive must remain linux/amd64 Docker format.")
-            compatibility.append({"name": image["name"], "filename": legacy.name, "format": "docker-archive", "sha256": sha256(legacy), "ociArchive": oci.name, "ociSha256": sha256(oci), "indexDigest": graph["index_digest"], "sourceSha": identity["sourceSha"], "setSha256": identity["setSha256"]})
+            config = deployment_config(legacy)
+            validator._validate_labels(config, labels_for(validator, identity))
+            if config.get("architecture") != "amd64" or config.get("os") != "linux":
+                raise ValueError("Stable deployment archive must remain linux/amd64 Docker format.")
+            # Refuse here, before the authorize/publish phases can write anything, when a child
+            # would start differently from the verified same-source deployment archive.
+            parity, diagnostics = runtime_config_parity(config, graph)
+            write_json(member / "runtime-config-parity.json", diagnostics)
+            if diagnostics["mismatches"]:
+                raise ValueError(mismatch_error(diagnostics["mismatches"]))
+            compatibility.append({"name": image["name"], "filename": legacy.name, "format": "docker-archive", "sha256": sha256(legacy), "ociArchive": oci.name, "ociSha256": sha256(oci), "indexDigest": graph["index_digest"], "runtimeConfig": parity, "sourceSha": identity["sourceSha"], "setSha256": identity["setSha256"]})
             outcomes.append(outcome(image, identity, "succeeded", "built"))
         except Exception as error:
             failures.append(redact(error))
@@ -297,6 +356,9 @@ def validate_archives(output, evidence, identity, validator):
         graph = archive_graph(output / record["ociArchive"], validator, labels_for(validator, identity))
         if graph["index_digest"] != record["indexDigest"]:
             raise ValueError("OCI archive index identity changed.")
+        parity, diagnostics = runtime_config_parity(deployment_config(output / record["filename"]), graph)
+        if diagnostics["mismatches"] or record.get("runtimeConfig") != parity or set(parity["children"].values()) != {parity["deploymentSha256"]}:
+            raise ValueError("Runtime config parity record is missing or differs from the prepared archives.")
         graphs[image["name"]] = graph
     return graphs
 
@@ -387,7 +449,7 @@ def main():
     parser.add_argument("--registry", default=os.environ.get("HEXALITH_ZOT_REGISTRY") or "registry.hexalith.com")
     parser.add_argument("--repository-prefix", default="memories")
     parser.add_argument("--output-directory", type=Path, default=Path("artifacts/containers/release"))
-    parser.add_argument("--evidence-directory", type=Path, default=Path("artifacts/release/container-evidence"))
+    parser.add_argument("--evidence-directory", type=Path, default=DEFAULT_EVIDENCE_DIRECTORY)
     parser.add_argument("--shared-directory", type=Path, default=Path(".hexalith/builds-execution/Github/publish-containers"))
     parser.add_argument("--skopeo-command", default="skopeo")
     arguments = parser.parse_args()

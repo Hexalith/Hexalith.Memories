@@ -176,22 +176,52 @@ The renderer stays caller-owned; DomainService remains an archive/image member w
 hosted Production activation. The ordinary archive-only deployment verifier and historical
 archive format remain compatible.
 
+Each OCI child must start exactly like its image's single-RID Docker deployment archive. The build
+phase compares each child's `Env`, `Entrypoint`, `Cmd`, `WorkingDir`, `User` and `ExposedPorts` with
+the deployment archive's config. The comparison runs after the read-only `verify` preflight (local
+preflight evidence and read-only destination probes) and before the `publish` preflight and any
+registry write. A mismatch fails the build, and `<member>/runtime-config-parity.json` records each differing platform, field and value.
+`archive-compatibility.json` records the SHA-256 of the compared values for the deployment archive
+and for each child. The authorize and publish phases and the evidence archiver recompute those
+hashes from the archive bytes and refuse a missing or different record. The check exists because
+SDK 10.0.403 multi-RID inner builds rebuild container environment variables with `Split(':')[1]`,
+which cut the Server `PATH` to `/app`. The `RebindMultiRidContainerEnvironmentVariables` target in
+`Directory.Build.targets` restores each declared value in those inner builds only; single-RID
+publishes skip it.
+
 `tools/archive-release-evidence.py` refuses success if any required identity, authorization,
 preflight, archive compatibility, raw OCI graph, digest-bound health, family summary or aggregate
 summary is absent or inconsistent. Its packet hashes every retained record and is attached to
 successful GitHub Releases as `hexalith-memories-release-evidence.tar.gz` with a separate SHA-256
-receipt. The always-running upload preserves failure evidence for 90 days; an incomplete packet
-is explicitly `diagnostic-only` and grants no publication-success credit.
+receipt. The always-running `release-publication-evidence` upload requests 90 days, but the
+repository's artifact retention maximum caps it at 30 days; both authorized runs below logged that
+cap. Failure diagnostics therefore expire after 30 days, while successful packets stay durable as
+release assets. An incomplete packet is explicitly `diagnostic-only` and grants no
+publication-success credit.
 
 The Story 30.2 approval remains bound to Builds `81c88b34d09d34260b92d7f0928dbbc1c7446baa`.
 The newer CI profile grants no publication approval. Story 30.4's local fixture qualification
 controls SDK, registry and process boundaries and does not prove an actual registry push.
-The recorded unauthenticated `/v2/` observation returned HTTP 401 with `Basic realm="zot-distribution"`;
-local credentials are absent. Owner: Jérôme Piquot. Consequence: registry publication and both
-architecture runtime checks remain unqualified until an authorized credentialed run retains the
-complete packet. Reopen trigger: approved credentialed registry validation. Implementation does
-not enable the publication flag, change protected settings, publish a release, or change
-Production lifecycle state.
+Authorized credentialed Release runs `42108808279` (v3.0.24, source `859680b3`) and
+`42134622308` (v3.0.25, source `246157a7`) published all five images through this contract. Each
+attached `hexalith-memories-release-evidence.tar.gz` and its SHA-256 receipt to its GitHub release.
+On 2026-11-10 both receipts matched their packets, and read-only registry reads returned the
+packets' exact index and child manifest bytes. Anonymous `/v2/` and manifest reads return HTTP 401
+with `Basic realm="zot-distribution"`, so registry reads need the scoped credentials.
+
+**Do not deploy the v3.0.20 through v3.0.25 Server images.** Read-only registry reads on
+2026-11-10 show that each of v3.0.20, v3.0.21, v3.0.22, v3.0.23, v3.0.24 and v3.0.25 holds all five
+two-platform image indexes, and both Server children of every one carry `PATH=/app` instead of the
+declared `PATH`. The Production overlay's `wget` exec startup, readiness and liveness probes
+therefore exit 127 and can never pass. The v3.0.20 and v3.0.21 Server children also keep the
+relative `dotnet` entrypoint, which `PATH=/app` cannot resolve, so they cannot start at all.
+v3.0.19 pushed no image. No packet check compared child runtime config with the deployment archive
+before this check existed. Published tags are immutable: never retag, overwrite or delete them.
+Only the next authorized release, whose children pass runtime-config parity, carries the fix.
+Owner: Jérôme Piquot. Consequence: no v3.0.20–v3.0.25 Server image may be deployed. Reopen
+trigger: the owner marks the affected GitHub releases do-not-deploy and the Story 30.6 cutover
+refuses those tags. Implementation does not enable the publication flag, change protected
+settings, publish a release, or change Production lifecycle state.
 
 ### Release-Tooling Dependency Safety
 

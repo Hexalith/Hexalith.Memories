@@ -7,6 +7,7 @@ these tests grant no live registry or workload qualification credit.
 from contextlib import contextmanager, redirect_stderr
 from copy import deepcopy
 import hashlib
+from html import escape
 import importlib.util
 import io
 import json
@@ -45,6 +46,10 @@ ENVIRONMENT = {
     "GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_ACTOR": "fixture", "GITHUB_TRIGGERING_ACTOR": "fixture",
     "HEXALITH_ZOT_USERNAME": "fixture-user", "HEXALITH_ZOT_API_KEY": "fixture-secret", "GITHUB_TOKEN": "fixture-github-token",
 }
+# The runtime config every fixture deployment archive declares, shaped like the Server image.
+RUNTIME = {"Env": ["PATH=/app:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "ASPNETCORE_HTTP_PORTS=8080"],
+           "Entrypoint": ["/usr/share/dotnet/dotnet", "/app/Hexalith.Memories.Server.dll"], "WorkingDir": "/app/", "User": "1654",
+           "ExposedPorts": {"8080/tcp": {}}}
 
 
 BUILDS = ROOT / "references/Hexalith.Builds"
@@ -125,6 +130,7 @@ class PublicationContractTests(unittest.TestCase):
         write_approved_helpers(cls.shared)
         cls.validator = load(cls.shared / "oci_registry_validator.py", "approved_adapter_oci")
         cls.preflight = load_with_validator(cls.shared / "publication_preflight.py", "approved_adapter_preflight", cls.validator)
+        cls.smoke = load_with_validator(cls.shared / "smoke_container_platforms.py", "approved_adapter_smoke", cls.validator)
 
     @classmethod
     def tearDownClass(cls):
@@ -167,6 +173,10 @@ class PublicationContractTests(unittest.TestCase):
         self.status = 404
         self.fail_copy = None
         self.fail_health = None
+        # Image name -> runtime config its OCI children carry instead of their archive's RUNTIME.
+        self.runtime_overrides = {}
+        # Platform -> outcome function; when set, the real verify-container-health CLI runs.
+        self.real_health = None
 
     def fixture_archives(self, image, legacy, oci, labels_override=None, identity=None):
         identity = self.identity if identity is None else identity
@@ -175,9 +185,9 @@ class PublicationContractTests(unittest.TestCase):
         children = []
         amd64_config = None
         for platform in CONTRACT.PLATFORMS:
-            config = bytes_json({"architecture": platform.split("/")[1], "os": "linux", "config": {"Labels": labels}})
+            config = bytes_json({"architecture": platform.split("/")[1], "os": "linux", "config": {"Labels": labels, **self.runtime_overrides.get(image["name"], RUNTIME)}})
             if platform == "linux/amd64":
-                amd64_config = config
+                amd64_config = bytes_json({"architecture": "amd64", "os": "linux", "config": {"Labels": labels, **RUNTIME}})
             config_descriptor = descriptor(config, self.validator.OCI_CONFIG_MEDIA_TYPE)
             manifest = bytes_json({"schemaVersion": 2, "mediaType": self.validator.OCI_MANIFEST_MEDIA_TYPE, "config": config_descriptor, "layers": []})
             child = descriptor(manifest, self.validator.OCI_MANIFEST_MEDIA_TYPE)
@@ -226,6 +236,8 @@ class PublicationContractTests(unittest.TestCase):
             self.remote_graphs[arguments[-1].removeprefix("docker://")] = self.graphs[name]
             auth = Path(arguments[arguments.index("--authfile") + 1])
             self.assertEqual(0o600, auth.stat().st_mode & 0o777)
+        elif arguments[1].endswith("verify-container-health.py") and self.real_health:
+            self.run_real_health(arguments)
         elif arguments[1].endswith("verify-container-health.py"):
             name = arguments[arguments.index("--name") + 1]
             graph = self.graphs[name]
@@ -238,6 +250,24 @@ class PublicationContractTests(unittest.TestCase):
             if name == self.fail_health or self.fail_health == "all":
                 raise ValueError("controlled fixture health failure")
         return ""
+
+    def run_real_health(self, arguments):
+        """Run the real health CLI; only the approved helpers' external process boundary is controlled."""
+        def smoke_process(command, timeout=30):
+            if command[:3] == ["docker", "buildx", "inspect"]:
+                return SimpleNamespace(returncode=0, stdout="Platforms: linux/amd64, linux/arm64\n", stderr="")
+            if "/bin/uname" in command:
+                return SimpleNamespace(returncode=0, stdout="aarch64\n", stderr="")
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        def platform_run(name, repository, platform, digest, directory, smoke, timeout):
+            self.assertIs(type(self).smoke, smoke)
+            outcome = self.real_health(platform)
+            (directory / f"health-{platform.split('/')[1]}.log").write_text(f"controlled workload boundary\noutcome={outcome}\n")
+            return {"platform": platform, "digest": digest, "outcome": outcome, "cleanup": "pass"}
+        with mock.patch.object(sys, "argv", [str(value) for value in arguments[1:]]), mock.patch.object(HEALTH.contract, "load_shared", return_value=(self.preflight, self.validator, type(self).smoke, {})), mock.patch.object(type(self).smoke, "_run", side_effect=smoke_process), mock.patch.object(HEALTH, "command", return_value=SimpleNamespace(returncode=0, stdout="", stderr="")), mock.patch.object(HEALTH, "run_platform", side_effect=platform_run), redirect_stderr(io.StringIO()):
+            code = HEALTH.main()
+        if code:
+            raise ValueError(f"verify-container-health.py failed ({code})")
 
     @contextmanager
     def execution(self):
@@ -395,6 +425,67 @@ class PublicationContractTests(unittest.TestCase):
             for key, value in CONTRACT.labels_for(self.validator, self.identity).items():
                 self.assertEqual(value, labels[key], (image["name"], key))
 
+    def test_inner_multi_rid_build_rebinds_the_full_declared_server_path(self):
+        self.prepare()
+        image = CONTRACT.CANONICAL_IMAGES[0]
+        call = next(call for call in self.commands if call[0] == "dotnet" and call[2] == image["project"] and "-p:ContainerImageFormat=OCI" in call)
+        target = type(self).shared.parents[1] / "Props/ContainerProvenance.targets"
+        properties = [value for value in call if value.startswith("-p:") and not value.startswith("-p:MemoriesApprovedProvenanceTargets=")]
+        properties.append(f"-p:MemoriesApprovedProvenanceTargets={target}")
+        def evaluate(*arguments):
+            result = subprocess.run(["dotnet", "msbuild", str(ROOT / image["project"]), "-nologo", *properties, *arguments], check=True, capture_output=True, text=True)
+            return json.loads(result.stdout)["Items"]
+        declared = evaluate("-getItem:ContainerEnvironmentVariable")["ContainerEnvironmentVariable"]
+        declared_path = next(item["Value"] for item in declared if item["Identity"] == "PATH")
+        self.assertEqual("/app:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", declared_path)
+        expected = [(item["Identity"], item["Value"]) for item in declared]
+        # _PublishMultiArchContainers hands each inner RID build these exact global properties.
+        transported = ";".join(f"{item['Identity']}:{item['Value']}" for item in declared)
+        # A single -getProperty prints the bare value, which is the SDK's own container targets directory.
+        sdk_targets = Path(subprocess.run(["dotnet", "msbuild", str(ROOT / image["project"]), "-nologo", *properties, "-getProperty:_ContainersTargetsDir"],
+                                          check=True, capture_output=True, text=True).stdout.strip()) / "Microsoft.NET.Build.Containers.targets"
+        self.assertTrue(sdk_targets.is_file(), sdk_targets)
+        def image_boundary(inner):
+            """Run the SDK's exact inner target list with _PublishSingleContainer replaced by a no-op stub.
+
+            Like the approved Builds provenance-target test, the stub records the items reaching image
+            creation, so only the BeforeTargets hook (never a named target) can rebind them.
+            """
+            with tempfile.TemporaryDirectory(prefix="memories-image-boundary-") as temporary:
+                observed = Path(temporary) / "environment.txt"
+                hook = Path(temporary) / "stub.targets"
+                # Suppressing the SDK's own import lets this hook import the same file and then win the target name.
+                hook.write_text(f'''<Project>
+  <Import Project="{escape(str(sdk_targets), quote=True)}" />
+  <Target Name="_PublishSingleContainer">
+    <WriteLinesToFile File="{escape(str(observed), quote=True)}" Lines="@(ContainerEnvironmentVariables-&gt;'%(Identity)=%(Value)')" Overwrite="true" />
+  </Target>
+</Project>''')
+                subprocess.run(["dotnet", "msbuild", str(ROOT / image["project"]), "-nologo", *properties, *inner, f"-p:_ContainersTargetsDir={temporary}/",
+                                f"-p:AfterMicrosoftNETSdkTargets={hook}", "-target:_ParseItemsForPublishingSingleContainer;_ComputeContainerExecutionArgs;_PublishSingleContainer"],
+                               check=True, capture_output=True, text=True)
+                return [tuple(line.split("=", 1)) for line in observed.read_text().splitlines()]
+        for rid in ("linux-musl-x64", "linux-musl-arm64"):
+            inner = [f"-p:RuntimeIdentifier={rid}", f"-p:ContainerRuntimeIdentifier={rid}", "-p:_IsMultiRIDBuild=false", "-p:_IsSingleRIDBuild=true", f'-p:_ContainerEnvironmentVariables="{transported}"']
+            for rebind in (True, False):
+                targets = "_ParseItemsForPublishingSingleContainer;_ComputeContainerExecutionArgs" + (";RebindMultiRidContainerEnvironmentVariables" if rebind else "")
+                items = evaluate(*inner, f"-target:{targets}", "-getItem:ContainerEnvironmentVariables", "-getItem:ContainerAppCommand")
+                environment = [(item["Identity"], item["Value"]) for item in items["ContainerEnvironmentVariables"]]
+                with self.subTest(rid=rid, rebind=rebind):
+                    self.assertEqual(["/usr/share/dotnet/dotnet", "/app/Hexalith.Memories.Server.dll"], [item["Identity"] for item in items["ContainerAppCommand"]])
+                    if rebind:
+                        self.assertEqual(expected, environment)
+                    else:
+                        # Negative control: the SDK's Split(':')[1] reconstruction alone cuts PATH.
+                        self.assertIn(("PATH", "/app"), environment)
+            with self.subTest(rid=rid, boundary="_PublishSingleContainer stub"):
+                self.assertEqual(expected, image_boundary(inner))
+        # A single-RID publish never receives the transported list, so its items stay as declared.
+        single = [value for value in next(call for call in self.commands if call[0] == "dotnet" and call[2] == image["project"] and "-p:ContainerImageFormat=Docker" in call) if value.startswith("-p:") and not value.startswith("-p:MemoriesApprovedProvenanceTargets=")]
+        result = subprocess.run(["dotnet", "msbuild", str(ROOT / image["project"]), "-nologo", *single, f"-p:MemoriesApprovedProvenanceTargets={target}",
+                                 "-target:ComputeContainerConfig;RebindMultiRidContainerEnvironmentVariables", "-getItem:ContainerEnvironmentVariables"], check=True, capture_output=True, text=True)
+        self.assertEqual(expected, [(item["Identity"], item["Value"]) for item in json.loads(result.stdout)["Items"]["ContainerEnvironmentVariables"]])
+
     def test_workflow_run_source_and_semver_identity_fail_closed(self):
         for key, value in (("GITHUB_WORKFLOW_REF", "other"), ("GITHUB_SHA", "c" * 40), ("GITHUB_WORKFLOW_SHA", "c" * 40), ("GITHUB_RUN_ID", ""), ("GITHUB_RUN_ATTEMPT", "0"), ("GITHUB_EVENT_NAME", "push")):
             with self.subTest(key=key), mock.patch.dict(os.environ, {key: value}), mock.patch.object(CONTRACT, "run", return_value=SOURCE_SHA), self.assertRaises(ValueError):
@@ -425,6 +516,84 @@ class PublicationContractTests(unittest.TestCase):
         self.assertEqual([image["name"] + ".tar.gz" for image in CONTRACT.CANONICAL_IMAGES], [record["filename"] for record in receipt["archives"]])
         self.assertTrue(all(record["sourceSha"] == SOURCE_SHA for record in receipt["archives"]))
         self.assertEqual("succeeded", CONTRACT.read_json(self.output / "publish-summary.json")["status"])
+
+    def test_child_runtime_config_mismatch_refuses_build_before_any_release_write_or_transport(self):
+        # The v3.0.23-v3.0.25 Server children carried PATH=/app while their deployment archive kept the full PATH.
+        truncated = dict(RUNTIME, Env=["PATH=/app", "ASPNETCORE_HTTP_PORTS=8080"])
+        self.runtime_overrides = {"server": truncated}
+        evidence = self.root / "artifacts/release/parity-evidence"
+        self.assertEqual(1, self.run_main("build", evidence))
+        parity = CONTRACT.read_json(evidence / "server/runtime-config-parity.json")
+        self.assertEqual("fail", parity["result"])
+        self.assertEqual([("linux/amd64", "Env", RUNTIME["Env"], truncated["Env"]), ("linux/arm64", "Env", RUNTIME["Env"], truncated["Env"])],
+                         [(item["platform"], item["field"], item["deployment"], item["child"]) for item in parity["mismatches"]])
+        outcomes = {item["name"]: item for item in CONTRACT.read_json(self.output / "build-summary.json")["images"]}
+        self.assertEqual("build-failed", outcomes["server"]["disposition"])
+        self.assertIn("linux/arm64 Env", outcomes["server"]["error"])
+        self.assertIn("archive builds failed", CONTRACT.read_json(evidence / "failure-build.json")["error"])
+        self.assertEqual("fail", CONTRACT.read_json(evidence / "archive-compatibility.json")["result"])
+        # Matching positive control in the same build: the other children equal their archives.
+        for image in CONTRACT.CANONICAL_IMAGES[1:]:
+            with self.subTest(member=image["name"]):
+                self.assertEqual("built", outcomes[image["name"]]["disposition"])
+                self.assertEqual(("pass", []), (lambda record: (record["result"], record["mismatches"]))(CONTRACT.read_json(evidence / image["name"] / "runtime-config-parity.json")))
+        CONTRACT.write_json(evidence / "authorization.json", {"result": "pass", "mode": "preemptive-basic", "pushProven": False, "cleanup": "pass", "registry": "registry.test", "repositories": [image["repository"] for image in CONTRACT.CANONICAL_IMAGES]})
+        for phase in ("authorize", "publish"):
+            with self.subTest(phase=phase):
+                self.assertEqual(1, self.run_main(phase, evidence))
+                self.assertIn("same-source", CONTRACT.read_json(evidence / f"failure-{phase}.json")["error"])
+        self.assertFalse((evidence / "preflight/publication-preflight.publish.json").exists())
+        self.assertFalse((evidence / "preflight/publication-preflight.container.json").exists())
+        self.assertFalse(any(command[0] == "skopeo" for command in self.commands))
+
+    def test_every_runtime_config_field_mismatch_refuses_the_member_on_both_platforms(self):
+        self.assertEqual(("Env", "Entrypoint", "Cmd", "WorkingDir", "User", "ExposedPorts"), CONTRACT.RUNTIME_CONFIG_FIELDS)
+        # Env drift is covered by the PATH=/app case; each remaining field drifts alone on both children.
+        drift = {"Entrypoint": ["dotnet", "/app/Hexalith.Memories.Server.dll"], "Cmd": ["--urls", "http://+:8080"],
+                 "WorkingDir": "/", "User": "0", "ExposedPorts": {"80/tcp": {}}}
+        for field, value in drift.items():
+            with self.subTest(field=field):
+                shutil.rmtree(self.output)
+                self.output.mkdir()
+                self.runtime_overrides = {"server": dict(RUNTIME, **{field: value})}
+                evidence = self.root / f"artifacts/release/{field.lower()}-evidence"
+                self.assertEqual(1, self.run_main("build", evidence))
+                parity = CONTRACT.read_json(evidence / "server/runtime-config-parity.json")
+                self.assertEqual([("linux/amd64", field), ("linux/arm64", field)], [(item["platform"], item["field"]) for item in parity["mismatches"]])
+                outcomes = {item["name"]: item for item in CONTRACT.read_json(self.output / "build-summary.json")["images"]}
+                self.assertEqual("build-failed", outcomes["server"]["disposition"])
+                self.assertIn(f"linux/arm64 {field}", outcomes["server"]["error"])
+                self.assertEqual(["built"] * 4, [outcomes[image["name"]]["disposition"] for image in CONTRACT.CANONICAL_IMAGES[1:]])
+
+    def test_matching_runtime_config_is_hashed_per_archive_and_required_by_the_archiver(self):
+        self.evidence_packet()
+        expected = hashlib.sha256(CONTRACT.canonical({field: RUNTIME.get(field) for field in CONTRACT.RUNTIME_CONFIG_FIELDS})).hexdigest()
+        receipt_path = self.evidence / "archive-compatibility.json"
+        receipt = CONTRACT.read_json(receipt_path)
+        for record in receipt["archives"]:
+            self.assertEqual({"fields": list(CONTRACT.RUNTIME_CONFIG_FIELDS), "deploymentSha256": expected, "children": dict.fromkeys(CONTRACT.PLATFORMS, expected)}, record["runtimeConfig"])
+        with self.archive_context():
+            ARCHIVE.verify(self.evidence, self.shared)
+        original = receipt_path.read_bytes()
+        for label, mutate in (("record removed", lambda document: document["archives"][0].pop("runtimeConfig")),
+                              ("child hash changed", lambda document: document["archives"][1]["runtimeConfig"]["children"].update({"linux/arm64": "f" * 64}))):
+            changed = deepcopy(receipt)
+            mutate(changed)
+            CONTRACT.write_json(receipt_path, changed)
+            # The authorize and publish phases gate on the same recomputed record before any write.
+            with self.subTest(receipt=label, consumer="validate_archives"), self.execution(), self.assertRaisesRegex(ValueError, "Runtime config parity record"):
+                CONTRACT.validate_archives(self.output, self.evidence, self.identity, self.validator)
+            with self.subTest(receipt=label, consumer="archiver"), self.archive_context(), self.assertRaisesRegex(ValueError, "Runtime config parity"):
+                ARCHIVE.verify(self.evidence, self.shared)
+        receipt_path.write_bytes(original)
+        diagnostics_path = self.evidence / "server/runtime-config-parity.json"
+        diagnostics = diagnostics_path.read_bytes()
+        CONTRACT.write_json(diagnostics_path, dict(json.loads(diagnostics), result="fail"))
+        with self.subTest(diagnostics="failed"), self.archive_context(), self.assertRaisesRegex(ValueError, "Runtime config parity"):
+            ARCHIVE.verify(self.evidence, self.shared)
+        diagnostics_path.unlink()
+        with self.subTest(diagnostics="missing"), self.archive_context(), self.assertRaisesRegex(ValueError, "incomplete"):
+            ARCHIVE.verify(self.evidence, self.shared)
 
     def test_occupied_and_ambiguous_destinations_refuse_before_builds_or_copy(self):
         for status, code, message in ((200, "version-collision", "already exists"), (401, "destination-probe-failure", "could not be proved"), (503, "destination-probe-failure", "could not be proved")):
@@ -594,6 +763,26 @@ class PublicationContractTests(unittest.TestCase):
         with self.archive_context(), self.assertRaisesRegex(ValueError, "authorization"):
             ARCHIVE.verify(self.evidence, self.shared)
 
+    def test_real_health_cli_record_satisfies_the_archiver_and_a_failed_platform_exits_nonzero(self):
+        self.real_health = lambda platform: "pass"
+        self.evidence_packet()
+        health = CONTRACT.read_json(self.evidence / "mcp/health.json")
+        # Written by the real verify(), which the fixture health stub never produces.
+        self.assertEqual(("mcp", "Development only"), (health["name"], health["authorities"]))
+        with self.archive_context():
+            ARCHIVE.verify(self.evidence, self.shared)
+        self.real_health = lambda platform: "liveness-timeout" if platform == "linux/arm64" else "pass"
+        member = self.evidence / "mcp"
+        arguments = [sys.executable, ROOT / "tools/verify-container-health.py", "--name", "mcp", "--image", f"registry.test/memories-mcp:{VERSION}",
+                     "--shared-directory", self.shared, "--evidence-directory", member, "--set-sha256", self.identity["setSha256"]]
+        with working_directory(self.root), self.assertRaisesRegex(ValueError, r"failed \(1\)"):
+            self.run_real_health(arguments)
+        failed = CONTRACT.read_json(member / "health.json")
+        self.assertEqual("workload-health-failure", failed["result"])
+        self.assertEqual(["pass", "liveness-timeout"], [item["outcome"] for item in failed["platforms"]])
+        with self.archive_context(), self.assertRaisesRegex(ValueError, "health"):
+            ARCHIVE.verify(self.evidence, self.shared)
+
     def test_empty_wrong_set_and_contradictory_summaries_are_refused(self):
         self.evidence_packet()
         cases = (
@@ -735,6 +924,21 @@ class PublicationContractTests(unittest.TestCase):
                     ARCHIVE.archive(self.evidence, packet, self.shared, diagnostics=True)
                 self.assertFalse(packet.exists(), "Refusal must precede packet creation and cannot retain the link target.")
                 self.assertFalse(packet.with_suffix(packet.suffix + ".sha256.json").exists())
+
+
+class CommandRunnerTests(unittest.TestCase):
+    def test_timed_out_command_keeps_its_partial_redacted_log(self):
+        with tempfile.TemporaryDirectory() as temporary, mock.patch.dict(os.environ, {"HEXALITH_ZOT_API_KEY": "fixture-timeout-secret"}):
+            log = Path(temporary) / "server/transport.log"
+            script = "echo partial transport output; echo using fixture-timeout-secret >&2; exec sleep 30"
+            with self.assertRaisesRegex(ValueError, r"^sh timed out after 1 s") as refusal:
+                CONTRACT.run(["sh", "-c", script], log, timeout=1)
+            text = log.read_text(encoding="utf-8")
+        self.assertIn("partial transport output", text)
+        self.assertIn("using [redacted]", text)
+        self.assertIn("[timeout] sh did not finish within 1 s.", text)
+        self.assertIn("partial transport output", str(refusal.exception))
+        self.assertNotIn("fixture-timeout-secret", text + str(refusal.exception))
 
 
 class WorkloadHealthTests(unittest.TestCase):
