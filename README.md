@@ -127,6 +127,14 @@ Use `--format json` for scripts and LLM agents — the envelope is versioned and
 - [CLI output formats](docs/dev/cli-output-formats.md) — envelope schema, per-command examples, versioning policy.
 - [Quickstart wizard](docs/dev/quickstart.md) — per-step walkthrough, failure decision tree, OS-specific notes, dry-run mode, JSON envelope reference.
 
+## Legacy compatibility surfaces
+
+These are versioned compatibility binaries. They are not retired and stay outside every Hexalith.Platform composition.
+
+- `Hexalith.Memories.Cli` (.NET tool `memories`): removal gate "Memories gates, including forwarded per-user identity in the HTTP release" ([technical-tools inventory 1.0.2](https://github.com/Hexalith/Hexalith.McpCli/blob/c70ca9784da393cb1929741c6a6c9564717eace5/_bmad-output/implementation-artifacts/technical-tools-migration-inventory-v1.md) PS06; [Memories inventory 1.0.0](https://github.com/Hexalith/Hexalith.McpCli/blob/c70ca9784da393cb1929741c6a6c9564717eace5/_bmad-output/implementation-artifacts/memories-migration-inventory-v1.md)). Forwarded per-user identity is necessary but not sufficient for retirement.
+- `Hexalith.Memories.Mcp` (container `memories-mcp`): removal gate "Memories gates, including forwarded per-user identity in the HTTP release" ([technical-tools inventory 1.0.2](https://github.com/Hexalith/Hexalith.McpCli/blob/c70ca9784da393cb1929741c6a6c9564717eace5/_bmad-output/implementation-artifacts/technical-tools-migration-inventory-v1.md) PS07; [Memories inventory 1.0.0](https://github.com/Hexalith/Hexalith.McpCli/blob/c70ca9784da393cb1929741c6a6c9564717eace5/_bmad-output/implementation-artifacts/memories-migration-inventory-v1.md)). Forwarded per-user identity is necessary but not sufficient for retirement.
+- `tools/MigrateEmbeddingVectors` (operator CLI): removal gate "G3 Memories inventory update; G4 compatibility surface; Memories inventory gates" ([technical-tools inventory 1.0.2](https://github.com/Hexalith/Hexalith.McpCli/blob/c70ca9784da393cb1929741c6a6c9564717eace5/_bmad-output/implementation-artifacts/technical-tools-migration-inventory-v1.md) PS14; [Memories inventory 1.0.0](https://github.com/Hexalith/Hexalith.McpCli/blob/c70ca9784da393cb1929741c6a6c9564717eace5/_bmad-output/implementation-artifacts/memories-migration-inventory-v1.md)). Forwarded per-user identity is necessary but not sufficient for retirement.
+
 ## Integration Guides
 
 - [EventStore pub/sub subscription](docs/dev/eventstore-integration.md) — zero-code DAPR pub/sub subscription for event-sourced ingestion (Story 9.1).

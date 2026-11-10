@@ -14,7 +14,7 @@
     <PackageId>Hexalith.Memories.Cli</PackageId>
     <RootNamespace>Hexalith.Memories.Cli</RootNamespace>
     <AssemblyName>Hexalith.Memories.Cli</AssemblyName>
-    <Description>Hexalith.Memories global CLI tool (Story 7.1 foundation).</Description>
+    <Description>Compatibility binary, not retired; see "Legacy compatibility surfaces" in the repository README for its removal gate. Hexalith.Memories global CLI tool (Story 7.1 foundation).</Description>
     <Authors>ITANEO</Authors>
     <Company>ITANEO</Company>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
