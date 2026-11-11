@@ -24,6 +24,15 @@ internal sealed class FakeProcessRunner : IProcessRunner
         _responses[fileName] = () => result;
     }
 
+    /// <summary>Registers a response for one exact executable and argument pair.</summary>
+    /// <param name="fileName">The executable name.</param>
+    /// <param name="arguments">The exact argument string.</param>
+    /// <param name="result">The scripted process result.</param>
+    public void Register(string fileName, string arguments, ProcessResult result)
+    {
+        _responses[$"{fileName}\0{arguments}"] = () => result;
+    }
+
     public void Register(string fileName, Func<ProcessResult> factory)
     {
         _responses[fileName] = factory;
@@ -33,7 +42,8 @@ internal sealed class FakeProcessRunner : IProcessRunner
     {
         Calls.Add((fileName, arguments));
 
-        if (_responses.TryGetValue(fileName, out Func<ProcessResult>? factory))
+        if (_responses.TryGetValue($"{fileName}\0{arguments}", out Func<ProcessResult>? factory)
+            || _responses.TryGetValue(fileName, out factory))
         {
             return Task.FromResult(factory());
         }

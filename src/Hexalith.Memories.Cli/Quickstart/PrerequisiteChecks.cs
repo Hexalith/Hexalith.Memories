@@ -12,7 +12,7 @@ using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 
 /// <summary>
-/// Sub-checks for wizard step 1 (prerequisite verification). Docker, .NET 10 SDK, and port
+/// Sub-checks for wizard step 1 (prerequisite verification). Docker, .NET 11 SDK / .NET 10 shared frameworks, and port
 /// availability are hard-fail signals; OS platform is informational; DAPR CLI is soft-fail
 /// (its absence is expected for local Aspire-managed dev).
 /// </summary>
@@ -24,7 +24,7 @@ internal sealed partial class PrerequisiteChecks
     private static readonly TimeSpan DockerTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan DotnetTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan DaprTimeout = TimeSpan.FromSeconds(3);
-    private static readonly Version MinimumDotnetSdkVersion = new(10, 0, 400);
+    private static readonly Version MinimumDotnetSdkVersion = new(11, 0, 100);
 
     private readonly IProcessRunner _processRunner;
 
@@ -73,7 +73,7 @@ internal sealed partial class PrerequisiteChecks
             RecoverySuggestion: null);
     }
 
-    /// <summary>Checks that at least one compatible .NET 10 SDK is installed via <c>dotnet --list-sdks</c>.</summary>
+    /// <summary>Checks the SDK and the .NET 10 shared frameworks required by the repository AppHost.</summary>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The sub-check result.</returns>
     public async Task<PrerequisiteCheckResult> CheckDotnetSdkAsync(CancellationToken ct)
@@ -85,7 +85,7 @@ internal sealed partial class PrerequisiteChecks
             return new PrerequisiteCheckResult(
                 Passed: false,
                 Diagnostic: ".NET SDK (dotnet) not found on PATH.",
-                RecoverySuggestion: "Install .NET SDK 10.0.400 or newer from https://dotnet.microsoft.com/download/dotnet/10.0, then retry.");
+                RecoverySuggestion: "Install .NET SDK 11.0.100 or newer from https://dotnet.microsoft.com/download/dotnet/11.0, then retry.");
         }
 
         if (result.TimedOut)
@@ -101,7 +101,7 @@ internal sealed partial class PrerequisiteChecks
             return new PrerequisiteCheckResult(
                 Passed: false,
                 Diagnostic: $"'dotnet --list-sdks' failed (exit {result.ExitCode}).",
-                RecoverySuggestion: "Verify .NET SDK 10.0.400 or newer is installed: run 'dotnet --version'. Install from https://dotnet.microsoft.com/download/dotnet/10.0 if missing.");
+                RecoverySuggestion: "Verify .NET SDK 11.0.100 or newer is installed: run 'dotnet --version'. Install from https://dotnet.microsoft.com/download/dotnet/11.0 if missing.");
         }
 
         string sdkListing = result.StdOut.Trim();
@@ -113,16 +113,16 @@ internal sealed partial class PrerequisiteChecks
                 return new PrerequisiteCheckResult(
                     Passed: false,
                     Diagnostic: "No .NET SDKs were reported by 'dotnet --list-sdks'.",
-                    RecoverySuggestion: "Install .NET SDK 10.0.400 or newer from https://dotnet.microsoft.com/download/dotnet/10.0, then retry.");
+                    RecoverySuggestion: "Install .NET SDK 11.0.100 or newer from https://dotnet.microsoft.com/download/dotnet/11.0, then retry.");
             }
 
             // Parse-fail advisory per Risk #4 — unusual locales or formats. Pass with advisory rather
             // than fail hard.
-            return new PrerequisiteCheckResult(
+            return await VerifyDotnetRuntimesAsync(new PrerequisiteCheckResult(
                 Passed: true,
                 Diagnostic: "Unable to parse 'dotnet --list-sdks' output; skipping version check.",
                 RecoverySuggestion: null,
-                IsSkipped: true);
+                IsSkipped: true), ct).ConfigureAwait(false);
         }
 
         Version? highestCompatibleVersion = null;
@@ -160,11 +160,11 @@ internal sealed partial class PrerequisiteChecks
 
         if (parsedVersionCount == 0)
         {
-            return new PrerequisiteCheckResult(
+            return await VerifyDotnetRuntimesAsync(new PrerequisiteCheckResult(
                 Passed: true,
                 Diagnostic: "Unable to parse 'dotnet --list-sdks' output; skipping version check.",
                 RecoverySuggestion: null,
-                IsSkipped: true);
+                IsSkipped: true), ct).ConfigureAwait(false);
         }
 
         if (highestCompatibleVersion is null)
@@ -172,16 +172,53 @@ internal sealed partial class PrerequisiteChecks
             return new PrerequisiteCheckResult(
                 Passed: false,
                 Diagnostic: $"No .NET SDK {MinimumDotnetSdkVersion} or newer found. Highest installed SDK: {highestParsedVersion}.",
-                RecoverySuggestion: "Install .NET SDK 10.0.400 or newer from https://dotnet.microsoft.com/download/dotnet/10.0, then retry.");
+                RecoverySuggestion: "Install .NET SDK 11.0.100 or newer from https://dotnet.microsoft.com/download/dotnet/11.0, then retry.");
         }
 
         string suffix = olderCount == 0
             ? string.Empty
             : $" (and {olderCount} older).";
-        return new PrerequisiteCheckResult(
+        return await VerifyDotnetRuntimesAsync(new PrerequisiteCheckResult(
             Passed: true,
             Diagnostic: $".NET SDK {highestVersion}{suffix}",
-            RecoverySuggestion: null);
+            RecoverySuggestion: null), ct).ConfigureAwait(false);
+    }
+
+    private async Task<PrerequisiteCheckResult> VerifyDotnetRuntimesAsync(PrerequisiteCheckResult sdkResult, CancellationToken ct)
+    {
+        ProcessResult result = await _processRunner.RunAsync("dotnet", "--list-runtimes", DotnetTimeout, ct).ConfigureAwait(false);
+        const string recovery = "Install the ASP.NET Core 10 runtime (including the .NET 10 runtime) from https://dotnet.microsoft.com/download/dotnet/10.0, or install the .NET 10 SDK alongside SDK 11.0.100. Verify 'dotnet --list-runtimes' lists Microsoft.NETCore.App 10.0.x and Microsoft.AspNetCore.App 10.0.x, then retry.";
+        if (result.TimedOut)
+        {
+            return new PrerequisiteCheckResult(
+                Passed: false,
+                Diagnostic: $"'dotnet --list-runtimes' timed out after {DotnetTimeout.TotalSeconds:F0}s.",
+                RecoverySuggestion: "The dotnet CLI is present but hung. Check for hung processes and retry.");
+        }
+
+        if (result.NotFound || result.ExitCode != 0)
+        {
+            return new PrerequisiteCheckResult(
+                Passed: false,
+                Diagnostic: $"Unable to inspect .NET shared frameworks with 'dotnet --list-runtimes' (exit {result.ExitCode}).",
+                RecoverySuggestion: recovery);
+        }
+
+        HashSet<string> installed = RuntimeVersionPattern().Matches(result.StdOut)
+            .Select(match => match.Groups[1].Value)
+            .ToHashSet(StringComparer.Ordinal);
+        string[] missing = new[] { "Microsoft.NETCore.App", "Microsoft.AspNetCore.App" }
+            .Where(framework => !installed.Contains(framework))
+            .ToArray();
+        if (missing.Length > 0)
+        {
+            return new PrerequisiteCheckResult(
+                Passed: false,
+                Diagnostic: $"Missing .NET 10 shared framework(s): {string.Join(", ", missing)}.",
+                RecoverySuggestion: recovery);
+        }
+
+        return sdkResult with { Diagnostic = $"{sdkResult.Diagnostic}; .NET 10 and ASP.NET Core 10 runtimes available." };
     }
 
     /// <summary>Attempts to bind each port on the loopback interface to verify availability.</summary>
@@ -281,6 +318,9 @@ internal sealed partial class PrerequisiteChecks
         Match match = SdkVersionPattern().Match(stdOut);
         return match.Success ? match.Value : string.Empty;
     }
+
+    [GeneratedRegex(@"^(Microsoft\.NETCore\.App|Microsoft\.AspNetCore\.App) 10\.0\.\d+\s+\[", RegexOptions.Multiline)]
+    private static partial Regex RuntimeVersionPattern();
 
     [GeneratedRegex(@"^(\d+)\.(\d+)\.(\d+)", RegexOptions.Multiline)]
     private static partial Regex SdkVersionPattern();

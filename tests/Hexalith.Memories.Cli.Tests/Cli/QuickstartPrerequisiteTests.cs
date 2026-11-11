@@ -67,16 +67,17 @@ public sealed class QuickstartPrerequisiteTests
     }
 
     [Fact]
-    public async Task CheckDotnetSdk_Passes_WhenDotnet10FeatureBandPresent()
+    public async Task CheckDotnetSdk_Passes_WhenSdk11AndBothNet10FrameworksPresent()
     {
         var runner = new FakeProcessRunner();
-        runner.Register("dotnet", new ProcessResult(0, "9.0.100\n10.0.203\n10.0.400\n", string.Empty, TimeSpan.FromMilliseconds(30)));
+        runner.Register("dotnet", new ProcessResult(0, "9.0.100\n10.0.403\n11.0.100\n", string.Empty, TimeSpan.FromMilliseconds(30)));
+        runner.Register("dotnet", "--list-runtimes", new ProcessResult(0, "Microsoft.NETCore.App 10.0.15 [/dotnet/shared]\nMicrosoft.AspNetCore.App 10.0.15 [/dotnet/shared]\n", string.Empty, TimeSpan.Zero));
         var checks = new PrerequisiteChecks(runner);
 
         PrerequisiteCheckResult result = await checks.CheckDotnetSdkAsync(CancellationToken.None);
 
         result.Passed.ShouldBeTrue();
-        result.Diagnostic.ShouldContain("10.0.400");
+        result.Diagnostic.ShouldContain("11.0.100");
     }
 
     [Fact]
@@ -89,7 +90,7 @@ public sealed class QuickstartPrerequisiteTests
         PrerequisiteCheckResult result = await checks.CheckDotnetSdkAsync(CancellationToken.None);
 
         result.Passed.ShouldBeFalse();
-        result.Diagnostic.ShouldContain("No .NET SDK 10.0.400 or newer");
+        result.Diagnostic.ShouldContain("No .NET SDK 11.0.100 or newer");
     }
 
     [Fact]
@@ -110,12 +111,65 @@ public sealed class QuickstartPrerequisiteTests
     {
         var runner = new FakeProcessRunner();
         runner.Register("dotnet", new ProcessResult(0, "(no recognized output)\n", string.Empty, TimeSpan.Zero));
+        runner.Register("dotnet", "--list-runtimes", new ProcessResult(0, "Microsoft.NETCore.App 10.0.15 [/dotnet/shared]\nMicrosoft.AspNetCore.App 10.0.15 [/dotnet/shared]\n", string.Empty, TimeSpan.Zero));
         var checks = new PrerequisiteChecks(runner);
 
         PrerequisiteCheckResult result = await checks.CheckDotnetSdkAsync(CancellationToken.None);
 
         result.Passed.ShouldBeTrue();
         result.Diagnostic.ShouldContain("skipping version check");
+    }
+
+    [Fact]
+    public async Task CheckDotnetSdk_Fails_WhenOnlySdk10IsInstalled()
+    {
+        var runner = new FakeProcessRunner();
+        runner.Register("dotnet", new ProcessResult(0, "10.0.403 [/dotnet/sdk]\n", string.Empty, TimeSpan.Zero));
+        var checks = new PrerequisiteChecks(runner);
+
+        PrerequisiteCheckResult result = await checks.CheckDotnetSdkAsync(CancellationToken.None);
+
+        result.Passed.ShouldBeFalse();
+        result.Diagnostic.ShouldContain("11.0.100");
+        result.RecoverySuggestion.ShouldNotBeNull();
+        result.RecoverySuggestion.ShouldContain("/dotnet/11.0");
+        runner.Calls.Count.ShouldBe(1);
+    }
+
+    [Theory]
+    [InlineData("", "Microsoft.NETCore.App, Microsoft.AspNetCore.App")]
+    [InlineData("Microsoft.NETCore.App 10.0.15 [/dotnet/shared]\n", "Microsoft.AspNetCore.App")]
+    [InlineData("Microsoft.AspNetCore.App 10.0.15 [/dotnet/shared]\n", "Microsoft.NETCore.App")]
+    [InlineData("Microsoft.NETCore.App 11.0.0 [/dotnet/shared]\nMicrosoft.AspNetCore.App 11.0.0 [/dotnet/shared]\n", "Microsoft.NETCore.App, Microsoft.AspNetCore.App")]
+    public async Task CheckDotnetSdk_Fails_WhenRequiredNet10FrameworkMissing(string runtimes, string missing)
+    {
+        var runner = new FakeProcessRunner();
+        runner.Register("dotnet", new ProcessResult(0, "11.0.100 [/dotnet/sdk]\n", string.Empty, TimeSpan.Zero));
+        runner.Register("dotnet", "--list-runtimes", new ProcessResult(0, runtimes, string.Empty, TimeSpan.Zero));
+        var checks = new PrerequisiteChecks(runner);
+
+        PrerequisiteCheckResult result = await checks.CheckDotnetSdkAsync(CancellationToken.None);
+
+        result.Passed.ShouldBeFalse();
+        result.Diagnostic.ShouldContain(missing);
+        result.RecoverySuggestion.ShouldNotBeNull();
+        result.RecoverySuggestion.ShouldContain("ASP.NET Core 10");
+        result.RecoverySuggestion.ShouldContain("/dotnet/10.0");
+    }
+
+    [Fact]
+    public async Task CheckDotnetSdk_Fails_WhenRuntimeInspectionTimesOut()
+    {
+        var runner = new FakeProcessRunner();
+        runner.Register("dotnet", new ProcessResult(0, "11.0.100 [/dotnet/sdk]\n", string.Empty, TimeSpan.Zero));
+        runner.Register("dotnet", "--list-runtimes", new ProcessResult(-1, string.Empty, string.Empty, TimeSpan.FromSeconds(5), TimedOut: true));
+        var checks = new PrerequisiteChecks(runner);
+
+        PrerequisiteCheckResult result = await checks.CheckDotnetSdkAsync(CancellationToken.None);
+
+        result.Passed.ShouldBeFalse();
+        result.IsSkipped.ShouldBeFalse();
+        result.Diagnostic.ShouldContain("--list-runtimes' timed out after 5s");
     }
 
     [Fact]

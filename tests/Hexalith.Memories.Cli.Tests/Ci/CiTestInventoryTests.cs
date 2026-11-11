@@ -1095,7 +1095,7 @@ public sealed partial class CiTestInventoryTests
                 }
 
                 IsAllowedExternalActionReference(reference).ShouldBeTrue(
-                    $"third-party action '{reference}' must use a major version tag like '@v7', or the exact reviewed upload-artifact v7.0.2 SHA; Hexalith.Builds actions must use '@main' except the exact reviewed domain-ci workflow SHA.");
+                    $"third-party action '{reference}' must use a major version tag like '@v7', or the exact reviewed upload-artifact v7.0.2 SHA; Hexalith.Builds actions must use '@main' except the exact reviewed workflow and helper identities.");
                 foundAny = true;
             }
         }
@@ -1108,6 +1108,9 @@ public sealed partial class CiTestInventoryTests
     [InlineData("actions/upload-artifact@v7", true)]
     [InlineData("actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9", true)]
     [InlineData("Hexalith/Hexalith.Builds/Github/initialize-build@main", true)]
+    [InlineData("Hexalith/Hexalith.Builds/Github/initialize-apt@a9f443f0bd482359731dcd54711e44fbd23d58fe", true)]
+    [InlineData("Hexalith/Hexalith.Builds/Github/initialize-apt@a9f443f0bd482359731dcd54711e44fbd23d58ff", false)]
+    [InlineData("Hexalith/Hexalith.Builds/Github/initialize-build@a9f443f0bd482359731dcd54711e44fbd23d58fe", false)]
     [InlineData("Hexalith/Hexalith.Builds/Github/prepare-domain-release@81c88b34d09d34260b92d7f0928dbbc1c7446baa", true)]
     [InlineData("Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@6e7011fc754e74ac2a8864da1ce0b6d8f7178a48", true)]
     [InlineData("Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@f0feeb234cbc16f88c2886a6ffae7122e05dd640", false)]
@@ -1143,6 +1146,12 @@ public sealed partial class CiTestInventoryTests
         }
 
         if (reference == "Hexalith/Hexalith.Builds/Github/prepare-domain-release@81c88b34d09d34260b92d7f0928dbbc1c7446baa")
+        {
+            return true;
+        }
+
+        // Only this reviewed signed-mirror prerequisite helper is authorized at this SHA.
+        if (reference == "Hexalith/Hexalith.Builds/Github/initialize-apt@a9f443f0bd482359731dcd54711e44fbd23d58fe")
         {
             return true;
         }

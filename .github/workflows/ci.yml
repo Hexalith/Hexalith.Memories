@@ -172,6 +172,7 @@ jobs:
     with:
       solution: Hexalith.Memories.slnx
       dotnet-global-json: global.json
+      package-prepare-script: tools/ensure-dotnet10.sh
       builds-execution-sha: 6e7011fc754e74ac2a8864da1ce0b6d8f7178a48
       test-platform: microsoft-testing-platform
       # The shared shard has no integration-exclusion input. Keep the full
@@ -509,6 +510,9 @@ jobs:
       - name: Install Memories web E2E dependencies
         run: npm ci
         working-directory: tests/Hexalith.Memories.Web.E2E
+
+      - name: Initialize Ubuntu APT mirrors
+        uses: Hexalith/Hexalith.Builds/Github/initialize-apt@a9f443f0bd482359731dcd54711e44fbd23d58fe
 
       - name: Install Chromium browser
         run: npx playwright install --with-deps chromium
