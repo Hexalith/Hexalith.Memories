@@ -325,8 +325,8 @@ public sealed partial class CiTestInventoryTests
 
         JsonElement overrides = manifest.RootElement.GetProperty("overrides");
         overrides.EnumerateObject().Select(static property => property.Name).ShouldBe(["fast-uri", "js-yaml", "semantic-release"]);
-        overrides.GetProperty("fast-uri").GetString().ShouldBe("3.1.9");
-        overrides.GetProperty("js-yaml").GetString().ShouldBe("4.3.2");
+        overrides.GetProperty("fast-uri").GetString().ShouldBe("4.2.3");
+        overrides.GetProperty("js-yaml").GetString().ShouldBe("5.5.0");
         JsonElement semanticReleaseOverride = overrides.GetProperty("semantic-release");
         semanticReleaseOverride.EnumerateObject().Select(static property => property.Name).ShouldBe(["@semantic-release/npm"]);
         semanticReleaseOverride.GetProperty("@semantic-release/npm").GetString().ShouldBe("npm:@semantic-release/error@4.0.0");
@@ -346,8 +346,8 @@ public sealed partial class CiTestInventoryTests
             ["node_modules/@semantic-release/github"] = "12.0.10",
             ["node_modules/@semantic-release/release-notes-generator"] = "14.1.1",
             ["node_modules/cosmiconfig"] = "10.0.1",
-            ["node_modules/fast-uri"] = "3.1.9",
-            ["node_modules/js-yaml"] = "4.3.2",
+            ["node_modules/fast-uri"] = "4.2.3",
+            ["node_modules/js-yaml"] = "5.5.0",
             ["node_modules/semantic-release"] = "25.0.9",
             ["node_modules/undici"] = "7.30.1",
         };
