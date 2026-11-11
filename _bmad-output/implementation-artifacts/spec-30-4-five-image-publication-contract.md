@@ -2,7 +2,7 @@
 title: 'Five-image publication contract'
 type: 'chore'
 created: '2026-11-03'
-status: 'done'
+status: 'in-progress'
 route: 'dispatch'
 review_loop_iteration: 1
 story_key: '30-4-five-image-publication-contract'
@@ -92,6 +92,58 @@ context: ['{project-root}/_bmad-output/implementation-artifacts/epic-30-context.
 - Given a semantic-release version, when publishing, then exactly the five canonical mappings share source/workflow/set identity and each passes declared platform and health checks.
 - Given registry authorization, when verified, then record the actual mode and any accountable blocker without treating preemptive upload probes as push proof.
 - Given production verification, when consuming archives, then all five stable filenames remain same-source compatible and rendering remains caller-owned.
+
+### Review Findings
+
+Round 6 (2026-11-11): six layers reviewed `git diff d959bdae edd2a43d` restricted to the 23 File List paths (Blind Hunter, Edge Case Hunter, Verification Gap, Acceptance Auditor, Historical Slice Guard and Story Phase Ledger), plus four parent findings. No layer failed. Every individual verdict is logged as `R6-*` in the Review Triage Log.
+
+- [ ] [Review][Patch] G22 — Pin the privileged QEMU/binfmt image by digest and record the skopeo version in the production release job (R6-B13, R6-A2; decision D1 resolved by the owner on 2026-11-11: pin by digest now) [.github/workflows/release.yml:112]
+- [x] [Review][Defer] Multi-RID children carry a truncated `org.opencontainers.image.base.name` (`mcr.microsoft.com/dotnet/aspnet`, tag lost) because of the SDK inner-build label `Split(':')[1]` (R6-E1, R6-E2; decision D2 resolved by the owner on 2026-11-11) [Directory.Build.targets:29] — deferred: low-severity metadata; base identity remains provable through `base.digest`, and published tags are immutable, so any fix ships only with the next release.
+- [ ] [Review][Patch] G1 — Keep authority/probe failure output and stop cleanup errors from masking the original failure (R6-B3, R6-A1, R6-E4) [tools/verify-container-health.py:100]
+- [ ] [Review][Patch] G2 — The closeout set `done` while the story-key readiness gate fails C4 (`done` vs sprint `review`) and the second recorded hold was never reconciled (R6-P1, R6-L10, R6-B5) [_bmad-output/implementation-artifacts/spec-30-4-five-image-publication-contract.md:5]
+- [ ] [Review][Patch] G3 — Supersede stale count/status/blocker statements in the verification record (R6-B1, R6-B7a, R6-L9) [_bmad-output/implementation-artifacts/spec-30-4-five-image-publication-contract.md:392]
+- [ ] [Review][Patch] G4 — The do-not-deploy ledger entry still names v3.0.25 as Latest (R6-B4) [_bmad-output/implementation-artifacts/deferred-work.md:6101]
+- [ ] [Review][Patch] G5 — Record exact-source CI for the closeout tooling and the fixture-only status of post-release tool changes (R6-B6, R6-A9, R6-H6) [_bmad-output/implementation-artifacts/spec-30-4-five-image-publication-contract.md:733]
+- [ ] [Review][Patch] G6 — Runbook says implementation publishes no release, directly after describing v3.0.26 (R6-B7b, R6-A3) [docs/dev/release-runbook.md:234]
+- [ ] [Review][Patch] G7 — Structural record defects: blank line splits the Review Triage Log, nonexistent `R3-E11` citation, detached retention status (R6-B9, R6-A10) [_bmad-output/implementation-artifacts/spec-30-4-five-image-publication-contract.md:368]
+- [ ] [Review][Patch] G8 — External work in the baseline range is neither listed nor excluded, and existing exclusion reasons are stale (R6-L1, R6-L2, R6-B11, R6-A7) [_bmad-output/implementation-artifacts/spec-30-4-five-image-publication-contract.md:181]
+- [ ] [Review][Patch] G9 — The cross-origin upload test does not assert the recorded cleanup failure (R6-B17) [tests/tooling/publish_containers/registry_authorization_test.py:256]
+- [ ] [Review][Patch] G10 — The authorization receipt omits the probe failure reason (R6-A5) [tools/verify-container-registry.ps1:247]
+- [ ] [Review][Patch] G11 — The runbook's rerun reconciliation line is unqualified for current trees, and current open registry blockers are not listed (R6-A8) [docs/dev/release-runbook.md:622]
+- [ ] [Review][Patch] G12 — Add the required Historical Context Classification and Slice Proof record; `check-story-slice-scope.py --require-record` exits 1 (R6-H1) [_bmad-output/implementation-artifacts/spec-30-4-five-image-publication-contract.md:87]
+- [ ] [Review][Patch] G13 — The Archive compatibility row omits the epic-required Story 27.3 consumer result (R6-H5) [_bmad-output/implementation-artifacts/spec-30-4-five-image-publication-contract.md:118]
+- [ ] [Review][Patch] G14 — Ledger repairs: missing round-3 `code-review` row, non-canonical `code-review patch` phases, unexplained external +1, no cumulative delta or double-counted +5, unnamed units/commands, no cumulative File List reconciliation (R6-L3–R6-L8) [_bmad-output/implementation-artifacts/spec-30-4-five-image-publication-contract.md:199]
+- [ ] [Review][Patch] G15 — Health pulls depend on the scoped `DOCKER_CONFIG`, which no test asserts (R6-V1) [tests/tooling/publish_containers/publication_contract_test.py:241]
+- [ ] [Review][Patch] G16 — The real SDK wrapper `index.json` layout is never exercised (R6-V2) [tests/tooling/publish_containers/publication_contract_test.py:183]
+- [ ] [Review][Patch] G17 — A current-tree `-Push` without `-PublicationContract` is not tested for hand-off to the contract (R6-V3) [tests/tooling/publish_containers/publish_containers_test.py:929]
+- [ ] [Review][Patch] G18 — The published `.sha256.json` receipt is never checked against its packet (R6-V4) [tests/tooling/publish_containers/publication_contract_test.py:790]
+- [ ] [Review][Patch] G19 — The authorize-phase refusal conditions are untested (R6-V5) [tests/tooling/publish_containers/publication_contract_test.py:822]
+- [ ] [Review][Patch] G20 — The policy-required `### Epic AC Verification` record is missing (R6-P2) [_bmad-output/implementation-artifacts/spec-30-4-five-image-publication-contract.md:87]
+- [ ] [Review][Patch] G21 — The remediation runtime checklist applicability is not stated (R6-P3) [_bmad-output/implementation-artifacts/spec-30-4-five-image-publication-contract.md:87]
+- [x] [Review][Defer] Story 30.4 owned paths in `epics.md` are narrower than the delivered File Scope, including the 30.3-owned `CiTestInventoryTests.cs` (R6-H2) [_bmad-output/planning-artifacts/epics.md:5805] — deferred: amending `epics.md` is a planning-artifact edit outside this story's File Scope. G12 records the edits as declared cross-story edits.
+- [x] [Review][Defer] The 14th "Runtime config parity" checkpoint is not registered in the `epics.md` Story 30.4 checkpoint table (R6-H3a) [_bmad-output/planning-artifacts/epics.md:5812] — deferred: registration is a planning-artifact edit. The row exists in this story with owner, artifact, review and completion state, inside the frozen platform/health intent.
+- [x] [Review][Defer] The do-not-deploy reopen trigger depends on a Story 30.6 tag refusal that 30.6 never registered (R6-H4) [_bmad-output/implementation-artifacts/deferred-work.md:6101] — deferred: adding the criterion to Story 30.6 is a planning change to another story.
+- [x] [Review][Defer] The `epics.md` Story 30.4 text is stale: `Status: backlog`, "All artifacts below are planned; no gate has passed", 13 `pending` rows, and an unre-verified zot "Known risk" (R6-P4) [_bmad-output/planning-artifacts/epics.md:5774] — deferred: the Epic AC Verification table records the corrected values, and the source correction is a planning-artifact edit outside File Scope.
+
+Rejected (17):
+
+- R6-B2 low — Only MCP declares a Description among the five projects. A future semicolon fails closed at prepare (MSB4184) before any write, and generalizing needs a five-project SDK evaluation harness.
+- R6-B7c low — The stale checked-task and Code Map wording is human-owned spec text, so the fix edits the spec under review. Current facts are recorded in the review and verification sections.
+- R6-B8 low — Process critique of the base workflow rule; the fix changes the workflow, not this story.
+- R6-B10 low — Spec Change Log gaps: the fix edits the spec. The 2026-11-11 amendments are recorded in Change Log rows and dated Verification sections.
+- R6-B12 low — The durable packet, receipt hashes and per-row digests are recorded. `/tmp` logs are supplemental, and committing them would add new artifacts for little gain.
+- R6-B14 low — Parity against the deployment archive is the spec's design. A same-way SDK PATH regression would also fail the Story 27.3 production-deployment-verification exec probes that consume that archive.
+- R6-B15 low — The R3-B10 curl-provenance entry stays open with its owner and trigger. It comes from external commit 49c913da, and mentioning it at Completion is a spec edit.
+- R6-B16 low — Ownership changes are rare, and moving the owner into configuration adds surface.
+- R6-A4 low — Both release dispatches were explicit user-authorized exceptions recorded at the time. The frozen block is human-owned.
+- R6-A6 low — Carried R4-E15/R5-E6. No registry write precedes parity, and the runbook states the actual order; the remaining wording is a task-text edit.
+- R6-H3b low — Retention is part of the evidence-archiving outcome, not a separately registered checkpoint, and its asset/receipt evidence is recorded. A new row would be a spec edit.
+- R6-V6 low — A current-tag recovery dispatch fails closed because the staged tooling lacks the contract. Pre-mutation recovery validation is already deferred to Story 30.5 (Story 30.3 Round 3 Blind 2).
+- R6-E3 low — An explicit `:443` registry configuration is not used. The receipt mismatch fails closed, and the fix adds a branch.
+- R6-E5 low — A `docker network rm` timeout over 150 s on an ephemeral runner is unlikely, and verification still fails; the fix adds a guard.
+- R6-E6 low — Over-redaction of `--env` values in failure output is the safe direction. Narrowing it needs a secret-key list.
+- R6-E7 false — The release job runs on `ubuntu-latest` (amd64). An arm64 daemon is never reached, and a missing probe variant would fail loudly.
+- R6-E8 low — A stamp-matching foreign `.pyc` in the exact approved Builds checkout requires prior runner compromise. Fixing it requires a custom loader.
 
 ## Checkpoint Evidence
 
@@ -216,6 +268,7 @@ Allowed files for this story:
 | 2026-11-11 | dev-story | Qualified the authorized repaired-source v3.0.26 release against its retained packet and registry; reconciled all 14 checkpoint rows to one source/run/set and resolved the MCP preparation blocker. Preserved older do-not-deploy restrictions; final public readback confirms all ten package downloads. | Exact-source CI passed all 99 container tests with zero skips; release workflow and read-only packet/graph/health/parity verification passed. No test added in this evidence-only reconciliation. | This phase changes spec and deferred-work.md; both are already listed. |
 | 2026-11-11 | code-review patch | Logged all 17 round-5 findings before grouping: six direct correction groups, eight rejected findings, two carried deferrals and one new potentially high unverified ingestion deferral outside the five-image goal. Corrected origin redaction, missing-upload cleanup attribution, detailed runtime-parity binding, bounded dependency/timeout diagnostics and the clock mount/key regression. | Container fixtures 99→104 (+5: publication contract 47→50, registry authorization 10→12), all 104 passed with zero skips; dispatch 17/17, preflight 50/50, qualification 70/70, C# inventory 138/138. The clock missing-file mutation failed as required. | All eight review/evidence working-tree paths are already listed; no source image, workflow, dependency or protected setting was changed by these corrections. |
 | 2026-11-11 | code-review | Completed the three-layer round-5 review, recorded full parent verification and the successful authorized v3.0.26 packet, marked the spec done and synchronized Story 30.4 to sprint review. Preserved later-story backlog and the immutable release source. | No further tests added; final container delta 99→104 (+5), all 104 passed with zero skips; adjacent gates and source Debug/inventory checks passed as recorded below. | Matched 9/9 closeout working-tree paths against File Scope and File List, including the listed sprint-status.yaml synchronization. |
+| 2026-11-11 | code-review | Round 6: six layers (Blind Hunter, Edge Case Hunter, Verification Gap, Acceptance Auditor, Historical Slice Guard and Story Phase Ledger) reviewed the unchunked 23-path File List diff `d959bdae..edd2a43d`; all completed and none failed. 64 R6 verdict rows (60 layer, 4 parent) were logged before grouping: 2 decisions (D1 resolved to patch G22, D2 deferred), 22 patch groups left unchecked as action items by the owner's choice, 5 deferrals and 17 rejections. No code, test, workflow or dependency file changed. Status was restated to `in-progress`, failing closed while C4, the slice-scope record, Epic AC Verification, the runtime-checklist note and the ledger repairs stay open. | Review-patch phase delta +0 in every lane; no patch was applied. Unit: unittest test methods from loader discovery (`python3 -B` with `unittest.defaultTestLoader.discover(<lane>, pattern='*_test.py')`) over `tests/tooling/<lane>`. publish_containers 104→104 (publication_contract 50, publish_containers 26, registry_authorization 12, release_orchestration 7, partial_release_completion 9). Cumulative from the create baseline: 46 + 57 story + 1 external = 104; the external +1 is 4536ae93 `test_archive_materialization_rejects_paths_and_links_outside_layout`, owner workspace maintainer. `publication_contract_test.py` was a new scope in the first dev-story (0→20). release_dispatch 17→17 (cumulative 16 + 1 story). release_preflight 50→50 and builds_publication_qualification 70→70 (cumulative +0). C# `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Cli.Tests/bin/Debug/net10.0/Hexalith.Memories.Cli.Tests.dll -class Hexalith.Memories.Cli.Tests.Ci.CiTestInventoryTests`: 69 methods (`-list tests`) and 138 xUnit cases executed, 138 passed with zero skips (cumulative +0). | Matched 23/23 story paths: the File List against `git diff --name-status d959bdae edd2a43d -- <File List>`. The raw `git diff --name-status d959bdae edd2a43d` set holds 98 paths: 23 listed plus 14 excluded leaves 61 external paths unaccounted. Blocker: G8 is left as an action item. Owner: Jérôme Piquot. Consequence: no `done` while those paths lack exclusion bullets. Reopen trigger: G8 adds the exclusions and the readiness gate passes on the raw set. |
 
 ## Spec Change Log
 
@@ -383,6 +436,70 @@ Allowed files for this story:
 | R5-E5 | maybe-false | defer (carried D2) | carried: the same final-index PUT/failed-copy uncertainty as R5-B9 and the existing R2-E4 ledger entry; the new successful release does not exercise that failure trigger. |
 | R5-E6 | low | reject | carried: R4-E15. The runbook already correctly places parity before publish preflight and registry writes; the remaining checked-task phrasing is a spec edit, which review triage explicitly rejects. |
 | R5-V1 | medium | patch (J6) | The filed mutation proves the unit fixture does not bind the generated component's secretsFile to the mounted secret. Current real clock/Dapr readiness is independently qualified on both platforms by Release 43018206370. Add the smallest semantic mount/file/key consistency regression that catches the demonstrated missing-file mutation; retain real protocol integration as the existing live release gate rather than introducing a new image-build/registry harness. |
+| R6-B1 | low | patch (G3) | The 2026-11-03 Frozen matrix audit predates round 3–5 covering tests (`test_child_runtime_config_mismatch_refuses_build_before_any_release_write_or_transport`, `test_timed_out_command_keeps_its_partial_redacted_log`, `test_server_dependency_failures_keep_bounded_redacted_process_output`, `test_ambiguous_destination_through_main_records_accountable_refusal_before_writes`), so the later "19/19" credit reads as current coverage. A dated inline supersession note is a record repair. |
+| R6-B2 | low | reject | Only MCP declares a Description among the five container projects. A future semicolon fails closed at prepare (MSB4184) before any write, and generalizing needs a five-project SDK evaluation harness. |
+| R6-B3 | medium | patch (G1) | Verified at `tools/verify-container-health.py`. Lines 100–102, 123–125, 133–134, 149–150, 155–156, 226–228 and 295–296 raise bare messages, and the `finally` cleanup raises at 87, 141 and 162 replace the original exception that carries J3's bounded output. `run_platform` then overwrites an already-returned outcome with `cleanup-failure` (280–281). This breaks the frozen "preserve diagnostic evidence" row. |
+| R6-B4 | low | patch (G4) | `gh release list` shows v3.0.26 as Latest (2026-11-11T12:31:25Z). The do-not-deploy entry still says "v3.0.25 is the repository's Latest release" and "the Latest release still offers one". |
+| R6-B5 | low | patch (G2) | "Present (2026-11-10)" held `in-progress` for a second reason: `done` would satisfy the Story 30.5 gate while every published Server image was undeployable. Completion never recorded that v3.0.26's qualified Server children retire that premise, while older tags stay do-not-deploy. |
+| R6-B6 | medium | patch (G5) | Commit edd2a43d changed `verify-container-registry.ps1`, `archive-release-evidence.py` and `verify-container-health.py` after the released source f807701e. Its CI 43027864725 was cancelled. CI 43028921325 on fe27727d (edd2a43d plus only `src/Hexalith.Memories.AppHost/Hexalith.Memories.AppHost.csproj`) succeeded, including test-unit-contract, production-deployment-verification and build. None of this was recorded. |
+| R6-B7a | low | patch (G3) | Lines 392, 415, 451–452 and 701 still read as open blockers or pending status ("Push unverified", "remain unverified", "both `in-progress`", "Review/final workflow status is pending") after run 43018206370 fired their triggers. |
+| R6-B7b | low | patch (G6) | `docs/dev/release-runbook.md:234-235` says "Implementation does not … publish a release" immediately after describing the v3.0.26 release. |
+| R6-B7c | low | reject | The stale checked-task and Code Map wording is human-owned spec text, so the fix edits the spec under review. Current facts are recorded in the review and verification sections. |
+| R6-B8 | low | reject | Critique of the base workflow's spec-edit rejection rule; the fix changes the workflow, not this story. |
+| R6-B9 | low | patch (G7) | Confirmed. A blank line at spec line 368 splits the R5 rows from the table. R5-B6 cites `R3-E11`, which does not exist (R3-E ends at E8). A blank line separates the retention entry's `evidence:` from its `status:` in deferred-work.md. |
+| R6-B10 | low | reject | The fix edits the Spec Change Log in the spec under review. The 2026-11-11 amendments are recorded in Change Log rows 214–216 and the dated Verification sections. |
+| R6-B11 | low | patch (G8) | Story-listed paths carry external hunks: cosmiconfig 9.0.2→10.0.1 (38572369, 859680b3), the DomainService.Tests coverage entry (246157a7) and the release-source timeout 10→60 (10ac2d67). No File List note attributes them. |
+| R6-B12 | low | reject | The durable packet, receipt hashes and per-row digests are recorded. `/tmp` logs are supplemental. |
+| R6-B13 | medium | decision (D1) → patch (G22) | `.github/workflows/release.yml:112` uses `docker/setup-qemu-action@v3` with no `image:`, so the default `tonistiigi/binfmt:latest` runs privileged in the production job, and skopeo is unversioned (`:121`). This was never triaged in rounds 1–5. Repository convention pins actions by major tag, and the frozen block forbids dependency changes, so the pin is an owner choice. |
+| R6-B14 | low | reject | Parity against the deployment archive is the spec's design. A same-way SDK PATH regression would also fail production-deployment-verification exec probes on that archive. |
+| R6-B15 | low | reject | The R3-B10 entry stays open with its owner and trigger (external 49c913da). Mentioning it at Completion is a spec edit. |
+| R6-B16 | low | reject | Ownership changes are rare; moving the owner into configuration adds surface. |
+| R6-B17 | low | patch (G9) | Not contacting a cross-origin upload location is deliberate (credential safety), and the receipt records `cleanup: failure` (`verify-container-registry.ps1:215,246`). The open-session part is false. The test, however, never asserts that receipt state. |
+| R6-A1 | medium | patch (G1) | Same defect as R6-B3. |
+| R6-A2 | medium | decision (D1) → patch (G22) | Same as R6-B13. |
+| R6-A3 | low | patch (G6) | Same line as R6-B7b. |
+| R6-A4 | low | reject | Both release dispatches were explicit, recorded user-authorized exceptions; the frozen block is human-owned. |
+| R6-A5 | low | patch (G10) | `mode` is the probe's literal and only mode, so that part is false. However, `$probeFailure` is thrown but never written to `authorization.json` (`verify-container-registry.ps1:210,247`), so the receipt cannot name the blocker. Adding one credential-free field is direct. |
+| R6-A6 | low | reject | carried: R4-E15/R5-E6. |
+| R6-A7 | low | patch (G8) | Same as R6-B11. |
+| R6-A8 | low | patch (G11) | `docs/dev/release-runbook.md:622-624` describes config-digest acceptance of occupied tags without limiting it to historical trees, contradicting `:125`. The open E5 immutability and D2 interrupted-transport entries are not listed as current blockers. |
+| R6-A9 | medium | patch (G5) | Same as R6-B6. |
+| R6-A10 | low | patch (G7) | Same as R6-B9's deferred-work blank line. |
+| R6-H1 | high | patch (G12) | `python3 tools/check-story-slice-scope.py --story-key 30-4-five-image-publication-contract --require-record` exits 1 with no `Historical Context Classification` or `Slice Proof` section, although the spec cites Stories 30.2, 30.3, 30.5, 30.6 and 27.3 and the former four-image alias. |
+| R6-H2 | medium | defer | Story 30.4 edited `CiTestInventoryTests.cs` (30.3-owned per epics.md:5754), `release.yml`, `.releaserc.json`, `release_dispatch_test.py`, `Directory.Build.targets` and the MCP csproj beyond epics.md:5805's owned paths. Per the standing ownership preference, the delivered breadth is ratified and recorded as declared cross-story edits in G12. The `epics.md` amendment is a planning edit outside File Scope. |
+| R6-H3a | medium | defer | The 14th Runtime config parity row is not among epics.md's 13 registered checkpoints. It corrects the platform/health contract inside the frozen intent and carries its own owner, artifact and states, so it is not a hidden slice. Registration is a planning edit. |
+| R6-H3b | low | reject | Retention belongs to the evidence-archiving outcome, and its asset/receipt evidence is recorded. A new checkpoint row would be a spec edit. |
+| R6-H4 | medium | defer | Story 30.6 (epics.md:5860-5894) registers no tag refusal, yet the do-not-deploy trigger depends on one. Adding it is a planning change to another story. |
+| R6-H5 | medium | patch (G13) | epics.md:5826 requires a "Story 27.3 input compatibility result". CI 43015850134 on f807701e has `production-deployment-verification` success (job 130506596775), but the row does not cite it. |
+| R6-H6 | medium | patch (G5) | Same as R6-B6. |
+| R6-L1 | medium | patch (G8) | f2c1d8a8 (no Story trailer) changed `tools/builds-publication-qualification.json` and its test. The spec calls it "separately authorized configuration maintenance", so per the standing ownership preference it is excluded as external (listed for veto). |
+| R6-L2 | medium | patch (G8) | `git diff --name-only d959bdae HEAD` has 98 paths. The File List (23) and exclusions (14) leave 61 unaccounted, all from external commits. The six gitlink and `ci.yml` reasons cite only one of their commits. |
+| R6-L3 | medium | patch (G14) | The last cumulative reconciliation was 22/22; the MCP csproj made the set 23, and no later row records it. |
+| R6-L4 | medium | patch (G14) | The round-3 review (Spec Change Log 2026-11-10 loopback, R3-* rows) has no `code-review` Change Log row. |
+| R6-L5 | medium | patch (G14) | Rows 210 and 217 use `code-review patch`. `check_ledger` collects only `CANONICAL_PHASES` (`tools/check-story-review-readiness.py:724`), so those rows are invisible to C2. |
+| R6-L6 | low | patch (G14) | External 4536ae93 added `test_archive_materialization_rejects_paths_and_links_outside_layout` (contract 33→34). No row names that external +1, which explains the 89→90 drift. |
+| R6-L7 | low | patch (G14) | No row records the cumulative story delta, and row 218 restates the +5 as "final container delta", so summed phase deltas read +62 instead of +57. |
+| R6-L8 | low | patch (G14) | Test-count cells omit units and commands. The C# lane is 69 methods / 138 cases. `publication_contract_test.py` 0→20 was never named. |
+| R6-L9 | low | patch (G3/G5) | Same stale statements as R6-B7a, plus the unrecorded closeout CI from R6-B6. |
+| R6-L10 | high | patch (G2) | The story reads `done` while the slice-scope gate, ledger rows and File List reconciliation fail. Fail-closed status gate. |
+| R6-V1 | medium | patch (G15) | Pre-verified. Deleting `contract.py:411` (`DOCKER_CONFIG`) leaves 46/46 green; no test asserts the scoped authfile reaches health pulls. |
+| R6-V2 | medium | patch (G16) | Pre-verified. Making the wrapper-`index.json` branch raise unconditionally leaves 46/46 green; fixtures never emit the SDK wrapper layout. |
+| R6-V3 | medium | patch (G17) | Pre-verified. Changing `publish-containers.ps1:490` to `if ($PublicationContract)` leaves 26/26 + 16/16 green. |
+| R6-V4 | medium | patch (G18) | Pre-verified. A receipt of `"0"*64`/`pass` leaves 46/46 green. |
+| R6-V5 | medium | patch (G19) | Pre-verified. Removing the authorize-phase gate call, or reducing it to `pushProven`, leaves 46/46 + 12/12 green. |
+| R6-V6 | low | reject | A current-tag recovery fails closed because the staged tooling lacks the contract. Pre-mutation recovery validation is already deferred to Story 30.5 (Story 30.3 Round 3 Blind 2). |
+| R6-E1 | low | decision (D2) → defer | Confirmed in the retained v3.0.26 packet: `org.opencontainers.image.base.name` is `mcr.microsoft.com/dotnet/aspnet` on both children of every image, with `:10.0-alpine` cut by the SDK inner-build label `Split(':')[1]`. `base.digest` is intact. Several fixes are possible. |
+| R6-E2 | low | decision (D2) → defer | Same root cause as R6-E1: the six-field parity comparison cannot detect the label divergence. |
+| R6-E3 | low | reject | An explicit `:443` registry configuration is not used; the mismatch fails closed, and the fix adds a branch. |
+| R6-E4 | medium | patch (G1) | Same defect as R6-B3. |
+| R6-E5 | low | reject | A `docker network rm` timeout over 150 s on an ephemeral runner is unlikely, and verification still fails; the fix adds a guard. |
+| R6-E6 | low | reject | Over-redaction of `--env` values in failure output is the safe direction. |
+| R6-E7 | false | reject | The release job runs on `ubuntu-latest` (amd64), so the non-amd64 daemon case is unreachable. |
+| R6-E8 | low | reject | A stamp-matching foreign `.pyc` in the approved Builds checkout requires prior runner compromise; the fix needs a custom loader. |
+| R6-P1 | high | patch (G2) | `python3 tools/check-story-review-readiness.py --story-key 30-4-five-image-publication-contract` exits 1: "C4: story declares status 'done' but sprint-status records 'review'". Round 5's pass used the `spec-` key, which skips C4 although this story has a `development_status` row. |
+| R6-P2 | medium | patch (G20) | `_bmad/custom/epic-ac-verification.md` requires `### Epic AC Verification` on every governed story or spec; this spec has none. |
+| R6-P3 | medium | patch (G21) | `_bmad/custom/remediation-runtime-checklist.md` requires explicit applicability. The registry probe opens and cancels upload sessions in shared production repositories (Category 3), and no note exists. |
+| R6-P4 | low | defer | epics.md:5774-5826 still reads `Status: backlog`, "no gate has passed", 13 `pending` rows and an unre-verified zot Known risk. The correction is a planning edit outside File Scope. |
 
 ## Verification
 
@@ -739,3 +856,61 @@ The final workflow step marks this spec `done` and synchronizes Story 30.4 to sp
 
 
 Final closeout checks pass for all 9/9 changed paths: story file scope, review-readiness (C2/C3/C6 and the spec C4 convention), line-ending policy and diff whitespace. C1 is skipped for `done` artifacts and receives no cumulative-completeness pass credit. The sprint review row, later-story backlog, fourteen completed checkpoints, original baseline identifier and byte-identical frozen intent were independently asserted.
+
+### Review round 6 (2026-11-11)
+
+**Scope.** All six configured layers reviewed the unchunked diff `git diff d959bdae edd2a43d -- <23 File List paths>` (4383 lines, 416 KB): Blind Hunter, Edge Case Hunter, Verification Gap, Acceptance Auditor, Historical Slice Guard and Story Phase Ledger. Every layer completed and none failed. Readers worked from the captured diff. The Verification Gap layer mutated only a private worktree, which it removed afterwards. The main tree was byte-identical to the pre-review snapshot before triage: `git status --short` was empty and the `git diff HEAD` SHA-256 was unchanged. HEAD was `edd2a43d1bb945fd9dae860b23e9f8572a985c99`; `origin/main` is `fe27727d0ee43892c55818acb1cfb435370b4005`, which adds only the external AppHost csproj alignment.
+
+**Triage.** Every one of the 64 verdicts was recorded in the Review Triage Log before grouping, and each claim was checked against code, the retained v3.0.26 packet or live read-only GitHub state.
+
+- Decision D1 (unpinned privileged QEMU/binfmt) was resolved by the owner as patch G22.
+- Decision D2 (truncated `base.name` label) was resolved by the owner as a deferral.
+- The owner chose to leave all 22 patch groups (G1–G22) as unchecked action items. No patch was applied, so no code, test, workflow, dependency or protected setting changed.
+- Five deferrals were added to deferred-work.md under the round-6 heading, and 17 findings were rejected with recorded reasons.
+
+**Decisions taken under the owner's standing review preference (open to veto):**
+- R6-H2: the wider File Scope, including the 30.3-owned `CiTestInventoryTests.cs`, is ratified as declared cross-story edits.
+- R6-L1: f2c1d8a8's Builds-profile paths are classified as external maintenance.
+- R6-H3a: Runtime config parity is treated as part of the platform/health contract, not a hidden slice.
+
+**Gates, run independently by the parent:**
+
+| Exact command | Exit | Final line |
+| --- | --- | --- |
+| `python3 tools/check-story-review-readiness.py --story-key 30-4-five-image-publication-contract` (status `done` before this round) | 1 | `Bypass format: Story-Review-Readiness-Bypass: <non-empty reason>` after `C4: story declares status 'done' but sprint-status records 'review'.` |
+| `python3 tools/check-story-review-readiness.py --story-key spec-30-4-five-image-publication-contract` | 0 | `Story review readiness validation passed.` This form skips C4 because a `spec-` key is not looked up in `development_status`, and it skips C1 under `done`. It is not agreement evidence for this story, which has a numeric sprint row. |
+| `python3 tools/check-story-slice-scope.py --story-key 30-4-five-image-publication-contract --require-record` | 1 | `'Story-Slice-Scope: not-applicable - <reason>' commit trailer.` after two violations: no `Historical Context Classification` and no `Slice Proof` section. |
+
+**Discovery and focused evidence (comparable to the ledger):**
+- Unittest loader discovery over `tests/tooling/<lane>` with pattern `*_test.py` (`PYTHONDONTWRITEBYTECODE=1`) found:
+  - publish_containers 104;
+  - release_dispatch 17;
+  - release_preflight 50;
+  - builds_publication_qualification 70;
+  - zero import errors.
+- The C# inventory class discovers 69 methods and executed 138/138 cases with zero errors, failures, skips or not-run. Its test source was last changed in 246157a7, before the assembly build.
+- The full suites were not rerun, because no patch was applied; the round-5 104/104 result is the latest full execution.
+
+**CI for the closeout tooling (read-only):**
+- CI 43027864725 on `edd2a43d` was cancelled and earns no credit.
+- CI 43028921325 on its descendant `fe27727d` (adds only `src/Hexalith.Memories.AppHost/Hexalith.Memories.AppHost.csproj`) succeeded, including test-unit-contract, production-deployment-verification and build.
+- Builds qualification 43028920455 also succeeded on `fe27727d`.
+- The post-release J1–J5 tool changes are proven by fixtures and CI only. The next authorized release must re-qualify them live (G5).
+
+**Status.** Restated to `in-progress`, and the sprint row is synchronized to `in-progress`, because unresolved high and medium patch findings remain open:
+- C4 agreement;
+- the slice-scope record (G12);
+- Epic AC Verification (G20);
+- the runtime-checklist note (G21);
+- the ledger and File List repairs (G8, G14);
+- the five verification gaps (G15–G19);
+- the health diagnostics (G1);
+- the QEMU pin (G22).
+
+The fourteen checkpoint rows and the v3.0.26 release evidence are unchanged. The remediation runtime checklist found no new workflow/runtime dispatch, cleanup or rollback defect class: R6-B17's cross-origin skip is deliberate and records cleanup failure, so no policy category was added. Epic 30 stays in progress, and Stories 30.5 and 30.6 stay in backlog.
+
+Post-synchronization gates (2026-11-11):
+- `python3 tools/check-story-review-readiness.py --story-key 30-4-five-image-publication-contract --changed-files-file <23 File List paths from git diff --name-only d959bdae HEAD>` exits 0 with final line `Story review readiness validation passed.` (C4 agrees at `in-progress`; C1 matches 23/23). This input is curated, so it is a floor, not completeness evidence.
+- The same command with the raw 98-path `git diff --name-only d959bdae HEAD` set exits 1, naming the 61 unaccounted external paths (G8).
+- With the new deferred entries, `CiTestInventoryTests` passes 138/138.
+- `tests/tooling/line_endings` passes, and `git diff --check` is clean.
