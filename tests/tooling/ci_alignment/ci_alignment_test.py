@@ -134,7 +134,7 @@ def read_workflow(name="ci.yml"):
     # Reuse the pinned js-yaml contract used by the commitlint entrypoint fixtures.
     result = subprocess.run(
         ["node", "--input-type=module", "-e",
-         "import fs from 'node:fs'; import yaml from 'js-yaml'; "
+         "import fs from 'node:fs'; import * as yaml from 'js-yaml'; "
          "console.log(JSON.stringify(yaml.load(fs.readFileSync(process.argv[1], 'utf8'))));",
          str(REPO_ROOT / ".github/workflows" / name)],
         cwd=REPO_ROOT, text=True, capture_output=True, check=True, timeout=20,

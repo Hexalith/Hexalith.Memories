@@ -23,7 +23,7 @@ def read_workflow() -> dict:
     # js-yaml is already pinned in the root Node graph used by commitlint.
     result = subprocess.run(
         ["node", "--input-type=module", "-e",
-         "import fs from 'node:fs'; import yaml from 'js-yaml'; "
+         "import fs from 'node:fs'; import * as yaml from 'js-yaml'; "
          "console.log(JSON.stringify(yaml.load(fs.readFileSync(process.argv[1], 'utf8'))));",
          str(WORKFLOW)],
         cwd=REPO_ROOT, text=True, capture_output=True, check=True, timeout=20,
