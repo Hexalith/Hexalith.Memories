@@ -51,6 +51,12 @@ jobs:
       - name: Checkout only the root Builds dependency
         run: git -c submodule.recurse=false submodule update --init --checkout -- references/Hexalith.Builds
 
+      # SDK 11 compiles net10.0; SDK 10 supplies its runtime and reference packs.
+      - name: Install .NET 10 runtime and targeting packs
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
       - name: Install the pinned .NET SDK
         uses: actions/setup-dotnet@v6
         with:
