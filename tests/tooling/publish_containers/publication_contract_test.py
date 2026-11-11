@@ -6,13 +6,15 @@ these tests grant no live registry or workload qualification credit.
 
 from contextlib import contextmanager, redirect_stderr
 from copy import deepcopy
+import base64
 import hashlib
 from html import escape
 import importlib.util
 import io
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+import re
 import shutil
 import subprocess
 import sys
@@ -634,6 +636,27 @@ class PublicationContractTests(unittest.TestCase):
         with self.subTest(diagnostics="missing"), self.archive_context(), self.assertRaisesRegex(ValueError, "incomplete"):
             ARCHIVE.verify(self.evidence, self.shared)
 
+    def test_runtime_config_diagnostics_cannot_contradict_the_accepted_hash(self):
+        self.evidence_packet()
+        path = self.evidence / "server/runtime-config-parity.json"
+        original = CONTRACT.read_json(path)
+        corruptions = (
+            ("fields", lambda document: document.update(fields=["Env"])),
+            ("deployment", lambda document: document["deployment"].update(Env=["PATH=/app"])),
+            ("child", lambda document: document["children"]["linux/arm64"].update(User="0")),
+            ("child removed", lambda document: document["children"].pop("linux/amd64")),
+        )
+        for label, mutate in corruptions:
+            changed = deepcopy(original)
+            mutate(changed)
+            self.assertEqual(original["sha256"], changed["sha256"])
+            CONTRACT.write_json(path, changed)
+            with self.subTest(corruption=label), self.archive_context(), self.assertRaisesRegex(ValueError, "Runtime config parity"):
+                ARCHIVE.verify(self.evidence, self.shared)
+        CONTRACT.write_json(path, original)
+        with self.archive_context():
+            ARCHIVE.verify(self.evidence, self.shared)
+
     def test_occupied_and_ambiguous_destinations_refuse_before_builds_or_copy(self):
         for status, code, message in ((200, "version-collision", "already exists"), (401, "destination-probe-failure", "could not be proved"), (503, "destination-probe-failure", "could not be proved")):
             self.status = status
@@ -981,6 +1004,46 @@ class CommandRunnerTests(unittest.TestCase):
 
 
 class WorkloadHealthTests(unittest.TestCase):
+    def test_server_dependency_failures_keep_bounded_redacted_process_output(self):
+        for stage in ("pull", "start", "readiness"):
+            def command(arguments):
+                failed = ((stage == "pull" and arguments[:2] == ["docker", "pull"])
+                          or (stage == "start" and arguments[:2] == ["docker", "run"])
+                          or (stage == "readiness" and arguments[:2] == ["docker", "exec"]))
+                return SimpleNamespace(returncode=int(failed), stdout="x" * 5000 + "dependency diagnostic\n" if failed else "",
+                                       stderr="connection refused with fixture-zot-user:fixture-zot-secret" if failed else "")
+            smoke = SimpleNamespace(_pull_immutable=lambda *_: "pass")
+            with self.subTest(stage=stage), tempfile.TemporaryDirectory() as temporary, mock.patch.object(HEALTH, "command", side_effect=command), \
+                    mock.patch.object(HEALTH.time, "monotonic", side_effect=[0, 31]), \
+                    mock.patch.dict(os.environ, {"HEXALITH_ZOT_USERNAME": "fixture-zot-user", "HEXALITH_ZOT_API_KEY": "fixture-zot-secret"}):
+                result = HEALTH.run_platform("server", "registry.test/memories", "linux/amd64", "sha256:" + "c" * 64, Path(temporary), smoke, 1)
+                log = (Path(temporary) / "health-amd64.log").read_text()
+            self.assertEqual("workload-health-failure", result["outcome"])
+            self.assertIn("dependency diagnostic", log)
+            self.assertIn("connection refused", log)
+            self.assertNotIn("fixture-zot-user", log)
+            self.assertNotIn("fixture-zot-secret", log)
+            self.assertLess(len(log), 4500)
+
+    def test_timeout_keeps_safe_partial_output_without_the_generated_dapr_token(self):
+        token = "generated-dapr-token-never-retain"
+        def command(arguments):
+            if arguments[:2] == ["docker", "run"]:
+                raise subprocess.TimeoutExpired(arguments, 150, output=("x" * 5000 + "partial timeout output " + token).encode(), stderr=b"authority did not start")
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        smoke = SimpleNamespace(_pull_immutable=lambda *_: "pass")
+        with tempfile.TemporaryDirectory() as temporary, mock.patch.object(HEALTH, "command", side_effect=command), mock.patch.object(HEALTH.secrets, "token_hex", return_value=token):
+            result = HEALTH.run_platform("mcp", "registry.test/memories-mcp", "linux/amd64", "sha256:" + "c" * 64, Path(temporary), smoke, 1)
+            log = (Path(temporary) / "health-amd64.log").read_text()
+        self.assertEqual("workload-health-failure", result["outcome"])
+        self.assertIn("timed out after 150 s", log)
+        self.assertIn("partial timeout output [redacted]", log)
+        self.assertIn("authority did not start", log)
+        self.assertNotIn(token, log)
+        self.assertNotIn("--env", log)
+        self.assertNotIn("DAPR_API_TOKEN", log)
+        self.assertLess(len(log), 4500)
+
     def test_server_caller_starts_both_keyed_dependencies_and_records_their_cleanup(self):
         for cleanup_failure in (False, True):
             calls = []
@@ -1053,11 +1116,12 @@ class WorkloadHealthTests(unittest.TestCase):
         original = HEALTH.command
         calls = []
         secret_paths = []
+        fail_cleanup = False
         def controlled(arguments):
             calls.append(arguments)
             if arguments[0] != "docker":
                 return original(arguments)
-            return SimpleNamespace(returncode=1 if arguments[:3] == ["docker", "rm", "--force"] else 0, stdout="", stderr="")
+            return SimpleNamespace(returncode=1 if arguments[:3] == ["docker", "rm", "--force"] and fail_cleanup else 0, stdout="", stderr="")
         with mock.patch.object(HEALTH, "command", side_effect=controlled), self.assertRaises(HEALTH.CleanupFailure):
             with HEALTH.clock_authority("fixture-isolated-network") as settings:
                 self.assertIn(":50001", settings["DAPR_GRPC_ENDPOINT"])
@@ -1066,14 +1130,26 @@ class WorkloadHealthTests(unittest.TestCase):
                 self.assertEqual("true", settings["Clock__AllowDevelopmentSources"])
                 start = next(call for call in calls if call[:2] == ["docker", "run"])
                 mount = start[start.index("--mount") + 1]
-                source = Path(mount.split("source=", 1)[1].split(",", 1)[0])
+                mount_fields = dict(field.split("=", 1) for field in mount.split(",") if "=" in field)
+                source = Path(mount_fields["source"])
+                destination = PurePosixPath(mount_fields["destination"])
+                resources = PurePosixPath(start[start.index("--resources-path") + 1])
+                component = source / resources.relative_to(destination) / "secretstore.yaml"
+                secret_file = re.search(r"- name: secretsFile\s*\n\s+value:\s*(\S+)", component.read_text()).group(1)
+                mounted_secret = (source / PurePosixPath(secret_file).relative_to(destination)).resolve()
+                self.assertEqual((source / "secrets.json").resolve(), mounted_secret)
                 secret_paths.append(source)
-                self.assertTrue((source / "secrets.json").exists())
-                self.assertEqual(0o600, (source / "secrets.json").stat().st_mode & 0o777)
+                self.assertTrue(mounted_secret.is_file())
+                self.assertEqual(0o600, mounted_secret.stat().st_mode & 0o777)
                 # A flat secret survives Dapr's local-file flattening; the clock reads it through its secret-name fallback.
-                self.assertIsInstance(CONTRACT.read_json(source / "secrets.json")["access-telemetry-clock-key"], str)
+                signing_key = CONTRACT.read_json(mounted_secret)["access-telemetry-clock-key"]
+                public = subprocess.run(["openssl", "pkey", "-inform", "DER", "-pubout", "-outform", "DER"],
+                                        input=base64.b64decode(signing_key, validate=True), capture_output=True, check=True).stdout
+                self.assertEqual(settings["AccessTelemetryLifecycle__AttestationVerificationKey"], base64.b64encode(public).decode())
                 self.assertEqual("readonly", mount.split(",")[-1])
                 self.assertEqual("fixture-isolated-network", start[start.index("--network") + 1])
+                # Only inject cleanup failure after the assertions, so it cannot hide a bad secret path/key.
+                fail_cleanup = True
         self.assertTrue(all(not path.exists() for path in secret_paths))
 
     def test_disabled_readiness_requires_explicit_disabled_description(self):

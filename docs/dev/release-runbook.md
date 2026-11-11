@@ -219,7 +219,16 @@ therefore exit 127 and can never pass. The v3.0.20 and v3.0.21 Server children a
 relative `dotnet` entrypoint, which `PATH=/app` cannot resolve, so they cannot start at all.
 v3.0.19 pushed no image. No packet check compared child runtime config with the deployment archive
 before this check existed. Published tags are immutable: never retag, overwrite or delete them.
-Only the next authorized release, whose children pass runtime-config parity, carries the fix.
+The corrected [v3.0.26 release](https://github.com/Hexalith/Hexalith.Memories/releases/tag/v3.0.26)
+from source `f807701e45297064f3968bcc8052e8002eac6d34` carries the fix. Authorized run
+`43018206370` passed all five two-platform OCI graphs, digest-bound Development health and
+six-field child/deployment-archive runtime parity checks. Its retained evidence packet has
+SHA-256 `f3819e67d3f246e0a5c56dcf854ca34231cb8453753a047b89495541195d70d2`;
+all 128 manifest entries re-hash, the registry metadata matches, and a fresh exact-source
+checkout reproduces the deployment YAML asset byte-for-byte. Both Server children retain the
+full declared PATH. All ten NuGet 3.0.26 package downloads are publicly available. These results
+qualify publication; the declared health checks use Development test authorities and disabled
+lifecycle writes, with no Production lifecycle qualification credit.
 Owner: Jérôme Piquot. Consequence: no v3.0.20–v3.0.25 Server image may be deployed. Reopen
 trigger: the owner marks the affected GitHub releases do-not-deploy and the Story 30.6 cutover
 refuses those tags. Implementation does not enable the publication flag, change protected

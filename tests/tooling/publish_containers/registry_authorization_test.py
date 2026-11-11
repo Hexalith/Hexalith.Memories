@@ -38,6 +38,7 @@ class RegistryState:
         self.denied_repository: str | None = None
         self.cancel_status = 204
         self.location_origin: str | None = None
+        self.omit_location = False
 
 
 def make_handler(state: RegistryState) -> type[BaseHTTPRequestHandler]:
@@ -74,7 +75,8 @@ def make_handler(state: RegistryState) -> type[BaseHTTPRequestHandler]:
             location = f"/uploads/{repository}"
             if state.location_origin is not None:
                 location = state.location_origin + location
-            self.send_header("Location", location)
+            if not state.omit_location:
+                self.send_header("Location", location)
             self.end_headers()
 
         def do_DELETE(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler contract
@@ -153,6 +155,24 @@ def run_probe(
 
 
 class RegistryAuthorizationTests(unittest.TestCase):
+    def test_rejected_origins_never_retain_secrets_or_make_requests(self) -> None:
+        state = RegistryState()
+        with RegistryServer(state) as registry, tempfile.TemporaryDirectory() as temporary:
+            authority = registry.origin.removeprefix("http://")
+            rejected = (f"http://uri-user:uri-secret@{authority}", f"http://uri-user:uri-secret@{authority}:invalid",
+                        registry.origin + "/path-secret", registry.origin + "?token=query-secret", registry.origin + "#fragment-secret")
+            for origin in rejected:
+                with self.subTest(origin=origin):
+                    receipt = Path(temporary) / "authorization.json"
+                    result = run_probe(origin, evidence_path=receipt)
+                    retained = receipt.read_text(encoding="utf-8-sig")
+                    self.assertNotEqual(0, result.returncode)
+                    self.assertIsNone(json.loads(retained)["registry"])
+                    self.assertIn("must be an HTTP(S) origin", result.stdout + result.stderr)
+                    for secret in ("uri-user", "uri-secret", "path-secret", "query-secret", "fragment-secret", USERNAME, API_KEY):
+                        self.assertNotIn(secret, retained + result.stdout + result.stderr)
+        self.assertEqual(([], [], []), (state.gets, state.posts, state.deletes))
+
     def test_authorization_receipt_records_actual_mode_redaction_and_no_push_credit(self) -> None:
         for denied, cancel_status, expected, cleanup in ((None, 204, "pass", "pass"), ("memories-mcp", 204, "fail", "pass"), (None, 500, "fail", "failure")):
             state = RegistryState()
@@ -274,6 +294,19 @@ class RegistryAuthorizationTests(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertEqual(len(REPOSITORIES), len(state.deletes))
         self.assertIn("could not cancel every", result.stdout + result.stderr)
+
+    def test_missing_upload_location_records_unproven_cleanup(self) -> None:
+        state = RegistryState()
+        state.omit_location = True
+        with RegistryServer(state) as registry, tempfile.TemporaryDirectory() as temporary:
+            receipt = Path(temporary) / "authorization.json"
+            result = run_probe(registry.origin, evidence_path=receipt)
+            evidence = json.loads(receipt.read_text(encoding="utf-8-sig"))
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual(("fail", "failure"), (evidence["result"], evidence["cleanup"]))
+        self.assertEqual(REPOSITORIES[:1], state.posts)
+        self.assertEqual([], state.deletes)
+        self.assertIn("cannot be proven", result.stdout + result.stderr)
 
     def test_missing_credentials_fail_without_contacting_registry(self) -> None:
         state = RegistryState()

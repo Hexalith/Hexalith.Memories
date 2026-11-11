@@ -147,7 +147,11 @@ def verify(evidence, shared, container_directory=Path("artifacts/containers/rele
         if (not isinstance(parity, dict) or parity.get("fields") != list(contract.RUNTIME_CONFIG_FIELDS)
                 or not re.fullmatch(r"[0-9a-f]{64}", str(parity.get("deploymentSha256")))
                 or parity.get("children") != {platform: parity["deploymentSha256"] for platform in contract.PLATFORMS}
-                or diagnostics.get("result") != "pass" or diagnostics.get("mismatches") != [] or diagnostics.get("sha256") != parity):
+                or diagnostics.get("result") != "pass" or diagnostics.get("mismatches") != [] or diagnostics.get("sha256") != parity
+                or diagnostics.get("fields") != parity["fields"]
+                or hashlib.sha256(contract.canonical(diagnostics.get("deployment"))).hexdigest() != parity["deploymentSha256"]
+                or diagnostics.get("children") != {child["platform"]: contract.runtime_config(json.loads(child["config_bytes"]))
+                                                   for child in graphs[image["name"]]["children"]}):
             raise ValueError("Runtime config parity evidence is missing, failed or changed.")
     for image in contract.CANONICAL_IMAGES:
         member = evidence / image["name"]

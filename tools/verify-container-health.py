@@ -27,6 +27,19 @@ def command(arguments):
     return subprocess.run(arguments, capture_output=True, text=True, check=False, timeout=150)
 
 
+def failure_output(result):
+    """Retain bounded process output, excluding credentials carried by environment arguments."""
+    output = contract.captured_text(result.stdout) + "\n" + contract.captured_text(result.stderr)
+    arguments = getattr(result, "cmd", getattr(result, "args", ()))
+    if isinstance(arguments, (list, tuple)):
+        for index, argument in enumerate(arguments):
+            if index and arguments[index - 1] == "--env" and "=" in argument:
+                value = argument.split("=", 1)[1]
+                if value:
+                    output = output.replace(value, "[redacted]")
+    return contract.redact(output)[-4000:]
+
+
 # Reuse the exact non-Production Dapr dependency already declared by this repository.
 DAPR_TEST_AUTHORITY_IMAGE = "ghcr.io/dapr/daprd:1.18.1@sha256:b7f7d296f01f0b4b82bf3c5f087ecf26165ce08caf3e87f94b8c72b9e11873f8"
 PROBE_IMAGE = "docker.io/library/busybox:1.37.0@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec"
@@ -47,18 +60,20 @@ def server_dependencies(network, logs):
     try:
         for key, image in images.items():
             name = network + "-" + key
-            if command(["docker", "pull", "--platform", "linux/amd64", image]).returncode:
-                raise ValueError("Isolated Server dependency pull failed.")
+            pulled = command(["docker", "pull", "--platform", "linux/amd64", image])
+            if pulled.returncode:
+                raise ValueError(f"Isolated Server dependency pull failed ({key}): {failure_output(pulled)}")
             attempted.append(name)
-            if command(["docker", "run", "--detach", "--platform", "linux/amd64", "--network", network, "--name", name, image]).returncode:
-                raise ValueError("Isolated Server dependency did not start.")
+            started = command(["docker", "run", "--detach", "--platform", "linux/amd64", "--network", network, "--name", name, image])
+            if started.returncode:
+                raise ValueError(f"Isolated Server dependency did not start ({key}): {failure_output(started)}")
             deadline = time.monotonic() + 30
             while True:
                 ping = command(["docker", "exec", name, "redis-cli", "ping"])
                 if ping.returncode == 0 and ping.stdout.strip() == "PONG":
                     break
                 if time.monotonic() >= deadline:
-                    raise ValueError("Isolated Server dependency did not become available.")
+                    raise ValueError(f"Isolated Server dependency did not become available ({key}): {failure_output(ping)}")
                 time.sleep(1)
             logs.append(f"dependency={key};image={image};ready=pass")
         yield {f"ConnectionStrings__{key}": f"{network}-{key}:6379,abortConnect=false" for key in images}
@@ -248,6 +263,9 @@ def run_platform(name, repository, platform, digest, directory, smoke, timeout):
         result = "cleanup-failure"
         cleanup = "failure"
         logs.append(contract.redact(f"error={type(error).__name__}: {error}"))
+    except subprocess.TimeoutExpired as error:
+        result = "workload-health-failure"
+        logs.append(f"error=TimeoutExpired: Health command timed out after {error.timeout} s.\n{failure_output(error)}")
     except Exception as error:
         result = "workload-health-failure"
         logs.append(contract.redact(f"error={type(error).__name__}: {error}"))

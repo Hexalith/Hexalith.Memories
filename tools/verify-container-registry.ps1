@@ -30,7 +30,7 @@ if (-not $PSBoundParameters.ContainsKey('Registry') -and
 $authorizationEvidence = [ordered]@{
     schemaVersion = 'hexalith.memories.registry-authorization.v1'
     result = 'fail'
-    registry = if ($Registry -match '[@\s]') { 'invalid-registry' } else { $Registry -replace '^https?://', '' }
+    registry = $null
     repositories = $Repositories
     mode = 'preemptive-basic'
     transport = 'skopeo-authfile'
@@ -71,14 +71,17 @@ else {
     "https://$Registry"
 }
 
-$registryUri = [Uri]::new($registryUriText.TrimEnd('/') + '/', [UriKind]::Absolute)
-if ($registryUri.Scheme -notin @('http', 'https') -or
+$registryUri = $null
+if (-not [Uri]::TryCreate($registryUriText.TrimEnd('/') + '/', [UriKind]::Absolute, [ref]$registryUri) -or
+    $registryUri.Scheme -notin @('http', 'https') -or
     -not [string]::IsNullOrEmpty($registryUri.UserInfo) -or
     $registryUri.AbsolutePath -ne '/' -or
     -not [string]::IsNullOrEmpty($registryUri.Query) -or
     -not [string]::IsNullOrEmpty($registryUri.Fragment)) {
-    throw "Container registry '$Registry' must be an HTTP(S) origin without a path, query, or fragment."
+    throw 'Container registry must be an HTTP(S) origin without credentials, a path, query, or fragment.'
 }
+$authorizationEvidence.registry = $registryUri.Authority
+Write-AuthorizationEvidence
 
 if ($Repositories.Count -eq 0) {
     throw 'At least one container repository is required.'
@@ -169,6 +172,7 @@ try {
 
                     $location = $response.Headers.Location
                     if ($null -eq $location) {
+                        $cancellationFailures.Add("repository '$repository' returned no upload location; cleanup cannot be proven")
                         throw "Container registry write-scope verification for repository '$repository' returned HTTP 202 without an upload location."
                     }
 
