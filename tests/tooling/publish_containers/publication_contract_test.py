@@ -425,6 +425,45 @@ class PublicationContractTests(unittest.TestCase):
             for key, value in CONTRACT.labels_for(self.validator, self.identity).items():
                 self.assertEqual(value, labels[key], (image["name"], key))
 
+    def test_generated_mcp_description_labels_survive_the_sdk_multi_rid_parser(self):
+        self.prepare()
+        image = next(image for image in CONTRACT.CANONICAL_IMAGES if image["name"] == "mcp")
+        call = next(call for call in self.commands if call[0] == "dotnet" and call[2] == image["project"] and "-p:ContainerImageFormat=OCI" in call)
+        target = type(self).shared.parents[1] / "Props/ContainerProvenance.targets"
+        properties = [value for value in call if value.startswith("-p:") and not value.startswith("-p:MemoriesApprovedProvenanceTargets=")]
+        properties.append(f"-p:MemoriesApprovedProvenanceTargets={target}")
+        command = ["dotnet", "msbuild", str(ROOT / image["project"]), "-nologo", *properties]
+        generated = subprocess.run([*command, "-target:ComputeContainerConfig", "-getProperty:Description", "-getItem:ContainerLabel"],
+                                   check=True, capture_output=True, text=True)
+        document = json.loads(generated.stdout)
+        description = document["Properties"]["Description"]
+        labels = document["Items"]["ContainerLabel"]
+        description_labels = ("org.opencontainers.artifact.description", "org.opencontainers.image.description")
+        self.assertEqual(dict.fromkeys(description_labels, description), {item["Identity"]: item["Value"] for item in labels if item["Identity"] in description_labels})
+        for rid in ("linux-musl-x64", "linux-musl-arm64"):
+            for old_semicolon in (False, True):
+                # Match _PublishMultiArchContainers' Identity:Value serialization. A temporary
+                # property file preserves its literal punctuation without command-line quoting.
+                carried = [(item["Identity"], item["Value"]) for item in labels]
+                if old_semicolon:
+                    carried = [(name, value.replace("not retired. See", "not retired; see", 1) if name in description_labels else value) for name, value in carried]
+                transported = ";".join(f"{name}:{value}" for name, value in carried)
+                handoff = self.root / "mcp-label-handoff.targets"
+                handoff.write_text(f"<Project><PropertyGroup><_ContainerLabel>{escape(transported)}</_ContainerLabel></PropertyGroup></Project>")
+                result = subprocess.run([*command, f"-p:RuntimeIdentifier={rid}", f"-p:ContainerRuntimeIdentifier={rid}", "-p:_IsMultiRIDBuild=false",
+                                         "-p:_IsSingleRIDBuild=true", f"-p:AfterMicrosoftNETSdkTargets={handoff}",
+                                         "-target:_ParseItemsForPublishingSingleContainer", "-getItem:ContainerLabel"], capture_output=True, text=True)
+                with self.subTest(rid=rid, old_semicolon=old_semicolon):
+                    if old_semicolon:
+                        self.assertNotEqual(0, result.returncode, result.stdout + result.stderr)
+                        self.assertIn("MSB4184", result.stdout + result.stderr)
+                        self.assertIn("Microsoft.NET.Build.Containers.targets", result.stdout + result.stderr)
+                        self.assertIn("Index was outside the bounds", result.stdout + result.stderr)
+                    else:
+                        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+                        parsed = json.loads(result.stdout)["Items"]["ContainerLabel"]
+                        self.assertEqual(dict.fromkeys(description_labels, description), {item["Identity"]: item["Value"] for item in parsed if item["Identity"] in description_labels})
+
     def test_inner_multi_rid_build_rebinds_the_full_declared_server_path(self):
         self.prepare()
         image = CONTRACT.CANONICAL_IMAGES[0]

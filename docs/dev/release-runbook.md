@@ -193,11 +193,13 @@ publishes skip it.
 preflight, archive compatibility, raw OCI graph, digest-bound health, family summary or aggregate
 summary is absent or inconsistent. Its packet hashes every retained record and is attached to
 successful GitHub Releases as `hexalith-memories-release-evidence.tar.gz` with a separate SHA-256
-receipt. The always-running `release-publication-evidence` upload requests 90 days, but the
-repository's artifact retention maximum caps it at 30 days; both authorized runs below logged that
-cap. Failure diagnostics therefore expire after 30 days, while successful packets stay durable as
-release assets. An incomplete packet is explicitly `diagnostic-only` and grants no
-publication-success credit.
+receipt. The always-running `release-publication-evidence` upload requests 90 days. On
+2026-11-11, `GET /repos/Hexalith/Hexalith.Memories/actions/permissions/artifact-and-log-retention`
+returned `days: 90` and `maximum_allowed_days: 90`. Failed Release run `43012088139` retained
+artifact `13850599888` until `2027-02-09T11:27:25Z`, confirming the 90-day policy. The earlier
+v3.0.24 and v3.0.25 runs below logged the then-effective 30-day cap; that is historical evidence.
+Successful packets stay durable as release assets. An incomplete packet is explicitly
+`diagnostic-only` and grants no publication-success credit.
 
 The Story 30.2 approval remains bound to Builds `81c88b34d09d34260b92d7f0928dbbc1c7446baa`.
 The newer CI profile grants no publication approval. Story 30.4's local fixture qualification
