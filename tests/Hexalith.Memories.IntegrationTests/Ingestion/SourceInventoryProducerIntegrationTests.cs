@@ -34,6 +34,80 @@ using Hexalith.Memories.Server.Infrastructure;
 [Collection("RedisStack")]
 public sealed class SourceInventoryProducerIntegrationTests(RedisStackFixture redis, FalkorDbFixture graph) : IClassFixture<FalkorDbFixture>
 {
+    [Fact]
+    public async Task AnnotationChildAdmissionEstablishesFreshCoverageBeforeItsFirstContentWrite()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string tenant = "annotation-fresh-" + Guid.NewGuid().ToString("N");
+        IngestionInput input = Input(tenant) with { SourceType = SourceType.Annotation };
+        var inventory = new SourceInventoryStore(redis.Connection, new QueryCursorCodec(new EphemeralDataProtectionProvider(), "AnnotationFreshTests"));
+        IngestionInput admitted = await new AdmitSourceInventoryActivity(inventory).RunAsync(null!, new("annotation", input));
+        admitted.SourceInventoryTracked.ShouldBeTrue();
+        await new RecordSourceInventoryCandidateActivity(inventory).RunAsync(null!, new(tenant, input.SourceUri, "annotation", input.CaseId, "annotation"));
+        (await redis.Connection.GetDatabase().StringGetAsync(SourcePublicationVisibility.KeyProvenance(tenant, "annotation"))).ToString().ShouldBe("modern");
+        (await SemanticKeyDiscovery.FindAsync(redis.Connection.GetDatabase(), tenant, "annotation", token)).ShouldBe([IndexSchemaDefinitions.BuildSemanticKey(tenant, "annotation")]);
+    }
+
+    [Theory]
+    [InlineData("pre-upgrade")]
+    [InlineData("nl")]
+    [InlineData("tombstone")]
+    public async Task FreshCoverageRefusesPreUpgradeAdmissionOrExistingArtifacts(string scenario)
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string tenant = "fresh-candidate-" + Guid.NewGuid().ToString("N");
+        IngestionInput input = Input(tenant);
+        var inventory = new SourceInventoryStore(redis.Connection, new QueryCursorCodec(new EphemeralDataProtectionProvider(), "FreshCandidateTests"));
+        IDatabase database = redis.Connection.GetDatabase();
+        await inventory.AdmitAsync("producer", input, token);
+        if (scenario == "pre-upgrade")
+        {
+            string key = SourceInventoryStore.BuildKey(tenant, input.SourceUri);
+            var document = System.Text.Json.Nodes.JsonNode.Parse((string)(await database.StringGetAsync(key))!)!;
+            document.AsObject().Remove("freshCandidateWorkflows");
+            await database.StringSetAsync(key, document.ToJsonString());
+            await inventory.RecordCandidateAsync(tenant, input.SourceUri, "producer", "producer", token);
+        }
+        else
+        {
+            if (scenario == "nl") { await database.HashSetAsync(IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenant, "producer"), "memoryUnitId", "producer"); }
+            else { await database.StringSetAsync(SourcePublicationVisibility.Tombstone(tenant, "producer"), "1"); }
+            await Should.ThrowAsync<RedisServerException>(() => inventory.RecordCandidateAsync(tenant, input.SourceUri, "producer", "producer", token));
+        }
+        (await database.KeyExistsAsync(SourcePublicationVisibility.KeyProvenance(tenant, "producer"))).ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CandidateRedeliveryAndFailedRetryCannotCertifyUnknownLegacyCoverage(bool failedRetry)
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string tenant = "legacy-candidate-" + Guid.NewGuid().ToString("N");
+        IngestionInput input = Input(tenant);
+        var inventory = new SourceInventoryStore(redis.Connection, new QueryCursorCodec(new EphemeralDataProtectionProvider(), "LegacyCandidateTests"));
+        IDatabase database = redis.Connection.GetDatabase();
+        if (failedRetry)
+        {
+            await inventory.AdmitFailedRetryAsync("retry", input with { FailedRetry = new("old", "producer") }, null, token);
+            await inventory.RecordCandidateAsync(tenant, input.SourceUri, "retry", "producer", token);
+        }
+        else
+        {
+            await inventory.AdmitAsync("producer", input, token);
+            await inventory.RecordCandidateAsync(tenant, input.SourceUri, "producer", "producer", token);
+            (await database.StringGetAsync(SourcePublicationVisibility.KeyProvenance(tenant, "producer"))).ToString().ShouldBe("modern");
+            // An old retained candidate without coverage cannot regain it through activity redelivery.
+            await database.KeyDeleteAsync(SourcePublicationVisibility.KeyProvenance(tenant, "producer"));
+            await inventory.RecordCandidateAsync(tenant, input.SourceUri, "producer", "producer", token);
+        }
+        (await database.KeyExistsAsync(SourcePublicationVisibility.KeyProvenance(tenant, "producer"))).ShouldBeFalse();
+        await SourcePublicationVisibility.WriteAsync(database, tenant, "producer", IndexSchemaDefinitions.BuildSemanticKey(tenant, "producer"),
+            [new("tenantId", tenant), new("memoryUnitId", "producer")], true, input.CaseId, input.SourceUri);
+        (await database.KeyExistsAsync(SourcePublicationVisibility.KeyProvenance(tenant, "producer"))).ShouldBeFalse("A tracked retry write retains keys without certifying unknown legacy coverage.");
+        await Should.ThrowAsync<InvalidOperationException>(() => SemanticKeyDiscovery.FindAsync(database, tenant, "producer", token));
+    }
+
     [Theory]
     [InlineData("prepare")]
     [InlineData("track")]
@@ -84,7 +158,6 @@ public sealed class SourceInventoryProducerIntegrationTests(RedisStackFixture re
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         string tenant = "failed-" + Guid.NewGuid().ToString("N");
-        await OwnedSemanticInventory.ReconcileAsync(redis.Connection.GetDatabase(), tenant, "producer");
         IngestionInput input = Input(tenant);
         var codec = new QueryCursorCodec(new EphemeralDataProtectionProvider(), "FailedProducerTests");
         var inventory = new SourceInventoryStore(redis.Connection, codec);

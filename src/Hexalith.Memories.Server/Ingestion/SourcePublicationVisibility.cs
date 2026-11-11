@@ -29,7 +29,8 @@ internal static class SourcePublicationVisibility
             if redis.call('GET',KEYS[6]) == ARGV[2] then visible = '1' end
             redis.call('HSET',KEYS[1],'publicationVisible',visible)
         end
-        if ARGV[1] == '1' then redis.call('SET',KEYS[7],'modern') end
+        -- Writers retain keys but cannot certify unknown prior coverage. Only the
+        -- fresh admission/candidate CAS or explicit owner reconciliation grants it.
         return 1
         """;
 

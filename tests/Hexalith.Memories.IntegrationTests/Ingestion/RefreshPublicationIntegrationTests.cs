@@ -485,6 +485,16 @@ public sealed class RefreshPublicationIntegrationTests(RedisStackFixture redis, 
         await WaitForSemanticIndexReadyAsync(db, tenant);
         IndexInput input = IndexInputFactory.Create(memoryUnitId: id, tenantId: tenant, caseId: "captured-case", sourceUri: source,
             content: Encoding.UTF8.GetString(content)) with { SourceInventoryTracked = id != "old" && id != "unrelated" };
+        if (input.SourceInventoryTracked && !await db.KeyExistsAsync(SourcePublicationVisibility.KeyProvenance(tenant, id)))
+        {
+            // Exercise the real fresh producer protocol before indexing. Merely setting
+            // the tracked flag cannot certify an unknown legacy output.
+            var inventory = new SourceInventoryStore(redis.Connection, new QueryCursorCodec(new EphemeralDataProtectionProvider(), "FreshRefreshAdapterTests"));
+            var producer = new IngestionInput { TenantId = tenant, CaseId = input.CaseId, SourceUri = source,
+                SourceType = SourceType.File, ContentType = "text/plain", ContentBytes = content, IngestedBy = input.IngestedBy };
+            await inventory.AdmitAsync("adapter-" + id, producer, TestContext.Current.CancellationToken);
+            await inventory.RecordCandidateAsync(tenant, source, "adapter-" + id, id, TestContext.Current.CancellationToken);
+        }
         WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
         (await new IndexSyntacticActivity(redis.Connection, NullLogger<IndexSyntacticActivity>.Instance).RunAsync(context, input))
             .ShouldBe(new IndexResult("syntactic", id, tenant));

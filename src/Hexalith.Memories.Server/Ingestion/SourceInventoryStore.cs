@@ -41,7 +41,8 @@ internal sealed class SourceInventoryStore([FromKeyedServices("redis")] IConnect
                 return current;
             }
             if ((current.Entries?.Count ?? 0) >= Capacity) { throw new InvalidOperationException("source-inventory-capacity"); }
-            return current with { Entries = [.. current.Entries ?? [], new(input.CaseId, instanceId, TokenHash(input.IdempotencyToken), SchedulingState: "Preparing",
+            return current with { FreshCandidateWorkflows = [.. current.FreshCandidateWorkflows ?? [], instanceId],
+                Entries = [.. current.Entries ?? [], new(input.CaseId, instanceId, TokenHash(input.IdempotencyToken), SchedulingState: "Preparing",
                 SourcePayloadReference: IngestionPayloadClaimCheck.GetSourceReference(instanceId, input),
                 RefreshProtocolVersion: input.RefreshExistingSource && input.RefreshIdentityDigest is not null ? SourceRefreshProtocol.Version : null,
                 SourceRevisionNumber: input.RefreshExistingSource ? input.SourceRevisionNumber : null,
@@ -117,8 +118,9 @@ internal sealed class SourceInventoryStore([FromKeyedServices("redis")] IConnect
                 throw new InvalidOperationException("source-inventory-candidate-mismatch");
             }
             return entry.CandidateMemoryUnitId == candidate ? current : current with
-            { Entries = [.. current.Entries!.Select(item => item == entry ? item with { CandidateMemoryUnitId = candidate } : item)] };
-        }, token);
+            { Entries = [.. current.Entries!.Select(item => item == entry ? item with { CandidateMemoryUnitId = candidate } : item)],
+                FreshCandidateWorkflows = current.FreshCandidateWorkflows?.Where(item => item != workflow).ToArray() };
+        }, token, freshCandidate: (workflow, candidate));
 
     /// <summary>Retains failed output only after independently scoped scheduler/workflow proof and actual artifact deletion.</summary>
     internal async Task RecordFailedDeletionAsync(string tenant, string source, SourceInventoryEntry expected, string candidate, CancellationToken token)
@@ -360,7 +362,8 @@ internal sealed class SourceInventoryStore([FromKeyedServices("redis")] IConnect
         return Parse(value, tenantId, sourceUri);
     }
 
-    private async Task ChangeAsync(string tenantId, string sourceUri, Func<SourceInventorySnapshot, SourceInventorySnapshot> change, CancellationToken cancellationToken, string? liveMemoryUnitId = null)
+    private async Task ChangeAsync(string tenantId, string sourceUri, Func<SourceInventorySnapshot, SourceInventorySnapshot> change, CancellationToken cancellationToken,
+        string? liveMemoryUnitId = null, (string Workflow, string Candidate)? freshCandidate = null)
     {
         string key = BuildKey(tenantId, sourceUri);
         IDatabase db = redis.GetDatabase();
@@ -371,6 +374,10 @@ internal sealed class SourceInventoryStore([FromKeyedServices("redis")] IConnect
             SourceInventorySnapshot current = Parse(raw, tenantId, sourceUri);
             SourceInventorySnapshot updated = change(current);
             if (updated == current) { return; }
+            string? initializeCandidate = freshCandidate is { } fresh && (current.FreshCandidateWorkflows ?? []).Contains(fresh.Workflow, StringComparer.Ordinal)
+                && (current.Entries ?? []).Any(entry =>
+                entry.WorkflowInstanceId == fresh.Workflow && entry.CandidateMemoryUnitId is null && entry.FailedRetryMemoryUnitId is null)
+                ? fresh.Candidate : null;
             SourceInventoryEntry[] entries = [.. updated.Entries ?? []];
             foreach (SourceInventoryEntry entry in entries) { IngestionIdentityGuard.Entry(entry); }
             if (entries.Length > Capacity) { throw new InvalidOperationException("source-inventory-capacity"); }
@@ -389,7 +396,30 @@ internal sealed class SourceInventoryStore([FromKeyedServices("redis")] IConnect
             const string insert = "if redis.call('EXISTS',KEYS[1]) == 1 then return 0 end redis.call('SET',KEYS[1],ARGV[2]); return 1";
             RedisKey[] keys = liveMemoryUnitId is null ? [(RedisKey)key]
                 : [(RedisKey)key, (RedisKey)SourcePublicationVisibility.Tombstone(tenantId, liveMemoryUnitId)];
-            bool saved = (long)await TenantIngestionOwnership.WriteAsync(db, tenantId, raw.HasValue ? CompareExchange : insert,
+            string script = raw.HasValue ? CompareExchange : insert;
+            if (initializeCandidate is not null)
+            {
+                // The first fresh producer retains its empty exact-key coverage in the same
+                // CAS as its candidate identity, before extraction can fail. Redelivery and
+                // failed retries cannot grant authority to an already retained legacy output.
+                keys = [(RedisKey)key, (RedisKey)SourcePublicationVisibility.KeyProvenance(tenantId, initializeCandidate),
+                    (RedisKey)SourcePublicationVisibility.Keys(tenantId, initializeCandidate),
+                    Infrastructure.IndexSchemaDefinitions.BuildSyntacticKey(tenantId, initializeCandidate),
+                    Infrastructure.IndexSchemaDefinitions.BuildSemanticKey(tenantId, initializeCandidate),
+                    Infrastructure.IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenantId, initializeCandidate),
+                    (RedisKey)SourcePublicationVisibility.Tombstone(tenantId, initializeCandidate)];
+                script = """
+                    if redis.call('GET',KEYS[1])~=ARGV[1] then return 0 end
+                    if redis.call('EXISTS',KEYS[2])==0 then
+                        for i=3,7 do
+                            if redis.call('EXISTS',KEYS[i])==1 then return redis.error_reply('source-publication-existing-candidate') end
+                        end
+                        redis.call('SET',KEYS[2],'modern')
+                    end
+                    redis.call('SET',KEYS[1],ARGV[2]); return 1
+                    """;
+            }
+            bool saved = (long)await TenantIngestionOwnership.WriteAsync(db, tenantId, script,
                 keys, [(RedisValue)(raw.HasValue ? raw.ToString() : string.Empty), (RedisValue)serialized], cancellationToken,
                 precondition: liveMemoryUnitId is null ? null : "if redis.call('EXISTS',KEYS[2])==1 then return redis.error_reply('failed-retry-output-erased') end").ConfigureAwait(false) == 1;
             if (saved) { return; }
@@ -405,6 +435,8 @@ internal sealed class SourceInventoryStore([FromKeyedServices("redis")] IConnect
             : new(tenantId, sourceUri, "absent");
         if (current.TenantId != tenantId || current.SourceUri != sourceUri || string.IsNullOrWhiteSpace(current.Version)
             || (current.Entries?.Count ?? 0) > Capacity
+            || (current.FreshCandidateWorkflows?.Count ?? 0) > Capacity
+            || (current.FreshCandidateWorkflows ?? []).Distinct(StringComparer.Ordinal).Count() != (current.FreshCandidateWorkflows?.Count ?? 0)
             || (current.Entries ?? []).Any(entry => entry is null || string.IsNullOrWhiteSpace(entry.CaseId)
                 || (string.IsNullOrWhiteSpace(entry.WorkflowInstanceId) && string.IsNullOrWhiteSpace(entry.MemoryUnitId)) || entry.State is not ("Admitted" or "Completed" or "Deleted")
                 || (entry.State != "Admitted" && string.IsNullOrWhiteSpace(entry.MemoryUnitId)))
