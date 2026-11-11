@@ -408,11 +408,12 @@ internal sealed class SourceInventoryStore([FromKeyedServices("redis")] IConnect
                     Infrastructure.IndexSchemaDefinitions.BuildSyntacticKey(tenantId, initializeCandidate),
                     Infrastructure.IndexSchemaDefinitions.BuildSemanticKey(tenantId, initializeCandidate),
                     Infrastructure.IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenantId, initializeCandidate),
-                    (RedisKey)SourcePublicationVisibility.Tombstone(tenantId, initializeCandidate)];
+                    (RedisKey)SourcePublicationVisibility.Tombstone(tenantId, initializeCandidate),
+                    Infrastructure.IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey(tenantId, initializeCandidate)];
                 script = """
                     if redis.call('GET',KEYS[1])~=ARGV[1] then return 0 end
                     if redis.call('EXISTS',KEYS[2])==0 then
-                        for i=3,7 do
+                        for i=3,8 do
                             if redis.call('EXISTS',KEYS[i])==1 then return redis.error_reply('source-publication-existing-candidate') end
                         end
                         redis.call('SET',KEYS[2],'modern')

@@ -90,6 +90,7 @@ public sealed class SourceInventoryProducerIntegrationTests(RedisStackFixture re
     [Theory]
     [InlineData("pre-upgrade")]
     [InlineData("nl")]
+    [InlineData("legacy-nl")]
     [InlineData("tombstone")]
     public async Task FreshCoverageRefusesPreUpgradeAdmissionOrExistingArtifacts(string scenario)
     {
@@ -110,8 +111,19 @@ public sealed class SourceInventoryProducerIntegrationTests(RedisStackFixture re
         else
         {
             if (scenario == "nl") { await database.HashSetAsync(IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenant, "producer"), "memoryUnitId", "producer"); }
+            else if (scenario == "legacy-nl")
+            {
+                await database.HashSetAsync(IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey(tenant, "producer"),
+                    [new("memoryUnitId", "producer"), new("tenantId", tenant), new("description", "owned legacy NL"), new("vector", new byte[] { 0, 255, 128, 0 })]);
+            }
             else { await database.StringSetAsync(SourcePublicationVisibility.Tombstone(tenant, "producer"), "1"); }
-            await Should.ThrowAsync<RedisServerException>(() => inventory.RecordCandidateAsync(tenant, input.SourceUri, "producer", "producer", token));
+            string legacyKey = IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey(tenant, "producer");
+            HashEntry[] before = await database.HashGetAllAsync(legacyKey);
+            var error = await Should.ThrowAsync<RedisServerException>(() => inventory.RecordCandidateAsync(tenant, input.SourceUri, "producer", "producer", token));
+            error.Message.ShouldContain("source-publication-existing-candidate");
+            (await database.HashGetAllAsync(legacyKey)).OrderBy(item => item.Name.ToString(), StringComparer.Ordinal)
+                .ShouldBe(before.OrderBy(item => item.Name.ToString(), StringComparer.Ordinal));
+            (await inventory.ReadAsync(tenant, input.SourceUri, null, 100, token)).Entries.ShouldHaveSingleItem().CandidateMemoryUnitId.ShouldBeNull();
         }
         (await database.KeyExistsAsync(SourcePublicationVisibility.KeyProvenance(tenant, "producer"))).ShouldBeFalse();
     }

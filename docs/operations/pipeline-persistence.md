@@ -116,6 +116,17 @@ Operationally, that means:
 - restart validation can rely on persisted workflow history,
 - storage growth for completed workflow state is a separate lifecycle concern.
 
+## Historical workflow identity qualification
+
+An absent workflow lookup cannot prove that a unit has no historical chunk
+artifacts. Source-wide coverage also does not prove per-unit freshness when an
+identity moves between sources. Requiring source reconciliation for every fresh
+candidate would block ordinary production cleanup and is not a supported repair.
+The current collision check additionally refuses an existing legacy NL base hash;
+this narrow guard does not qualify unknown historical chunks or concurrent older
+producers. Those cases require an independently approved per-unit freshness or
+older-writer exclusion protocol. No automatic historical completeness is inferred.
+
 ## Natural-language retry history and erasure
 
 The retry scheduler retains a bounded content-free tenant/unit history ledger before
