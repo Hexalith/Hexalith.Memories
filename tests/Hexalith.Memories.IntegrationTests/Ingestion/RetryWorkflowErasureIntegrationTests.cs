@@ -53,6 +53,192 @@ public sealed class RetryWorkflowErasureIntegrationTests(RedisStackFixture redis
         finally { Environment.SetEnvironmentVariable("DAPR_API_TOKEN", _previousApiToken); }
     }
 
+    /// <summary>Refuses real historical workflow identity reuse before fresh admission while preserving an unrelated producer.</summary>
+    [Fact]
+    public async Task ActualSchedulerCannotReuseCompletedHistoricalWorkflowWithUnregisteredChunkArtifacts()
+    {
+        string? previous = Environment.GetEnvironmentVariable("DAPR_GRPC_ENDPOINT");
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(60));
+        CancellationToken token = deadline.Token;
+        string tenant = "historical-reuse-" + Guid.NewGuid().ToString("N");
+        string id = "producer-" + Guid.NewGuid().ToString("N");
+        IDatabase db = redis.Connection.GetDatabase();
+        IngestionInput input = new() { TenantId = tenant, CaseId = "case", SourceUri = "https://synthetic.invalid/reuse",
+            SourceType = SourceType.Url, ContentType = "text/plain", IngestedBy = "owned-control" };
+        string survivorId = "survivor-" + Guid.NewGuid().ToString("N");
+        string chunk = IndexSchemaDefinitions.BuildSemanticChunkKey(tenant, id, 7);
+        string survivorChunk = IndexSchemaDefinitions.BuildSemanticChunkKey(tenant, survivorId, 7);
+        var inventory = new SourceInventoryStore(redis.Connection,
+            new Hexalith.EventStore.Client.Queries.QueryCursorCodec(new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider(), "HistoricalReuse"));
+        try
+        {
+            Environment.SetEnvironmentVariable("DAPR_GRPC_ENDPOINT", _sidecar.DaprGrpcEndpoint);
+            db.FT().Create(IndexSchemaDefinitions.GetSemanticIndexName(tenant), IndexSchemaDefinitions.CreateSemanticParams(tenant),
+                IndexSchemaDefinitions.CreateSemanticSchema(3));
+            using (IHost historical = Host.CreateDefaultBuilder().ConfigureServices(services =>
+            {
+                services.AddKeyedSingleton<IConnectionMultiplexer>("redis", redis.Connection);
+                services.AddDaprWorkflow(options =>
+                {
+                    options.RegisterWorkflow<HistoricalCandidateArtifactWorkflow>(nameof(IngestionWorkflow));
+                    options.RegisterActivity<IndexSemanticChunksActivity>();
+                });
+            }).Build())
+            {
+                await historical.StartAsync(token);
+                var historicalClient = historical.Services.GetRequiredService<DaprWorkflowClient>();
+                await historicalClient.ScheduleNewWorkflowAsync(nameof(IngestionWorkflow), id, input, null, token);
+                (await historicalClient.WaitForWorkflowCompletionAsync(id, true, token)).RuntimeStatus.ShouldBe(WorkflowRuntimeStatus.Completed);
+                await historicalClient.ScheduleNewWorkflowAsync(nameof(IngestionWorkflow), survivorId, input with { SourceUri = input.SourceUri + "/survivor" }, null, token);
+                (await historicalClient.WaitForWorkflowCompletionAsync(survivorId, true, token)).RuntimeStatus.ShouldBe(WorkflowRuntimeStatus.Completed);
+                await historical.StopAsync(token);
+            }
+            (await db.HashGetAsync(chunk, "chunkText")).ToString().ShouldBe("owned historical chunk");
+            (await db.KeyExistsAsync(SourcePublicationVisibility.Keys(tenant, id))).ShouldBeFalse();
+            (await db.KeyExistsAsync(SourcePublicationVisibility.KeyProvenance(tenant, id))).ShouldBeFalse();
+            var candidateEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            using IHost current = Host.CreateDefaultBuilder().ConfigureServices(services =>
+            {
+                services.AddSingleton(inventory);
+                services.AddSingleton<IDaprWorkflowClient>(provider => provider.GetRequiredService<DaprWorkflowClient>());
+                services.AddKeyedSingleton<IConnectionMultiplexer>("falkordb", graph.Connection);
+                services.AddSingleton<IGraphQueryBuilder, GraphQueryBuilder>();
+                services.AddSingleton(Substitute.For<IWorkflowPayloadStore>());
+                services.AddSingleton(new IngestionWorkflowConfigurationCapture(Options.Create(new IngestionSettings()), Options.Create(new NaturalLanguageDescriptionOptions())));
+                services.AddSingleton<WorkflowTraceContextCapture>();
+                services.AddDaprWorkflow(options =>
+                {
+                    options.RegisterWorkflow<IngestionWorkflow>();
+                    options.RegisterWorkflow<AnnotationProjectionWorkflow>();
+                    options.RegisterWorkflow<RetainedAnnotationSchedulingWorkflow>();
+                    options.RegisterActivity<AdmitSourceInventoryActivity>();
+                    options.RegisterActivity<ProjectAnnotationGraphActivity>();
+                    options.RegisterActivity<ScheduleAnnotationIngestionActivity>();
+                    options.RegisterActivity<SourceInventoryOutputInput, bool>(nameof(RecordSourceInventoryCandidateActivity), async (_, candidate) =>
+                    {
+                        bool result = await new RecordSourceInventoryCandidateActivity(inventory).RunAsync(null!, candidate);
+                        candidateEntered.TrySetResult();
+                        return result;
+                    });
+                });
+            }).Build();
+            await current.StartAsync(token);
+            var client = current.Services.GetRequiredService<DaprWorkflowClient>();
+            current.Services.GetRequiredService<IDaprWorkflowClient>().ShouldBeSameAs(client);
+            var annotation = new AnnotationProjectionInput(tenant, input.CaseId, id, "target", input.SourceUri,
+                "owned annotation", null, input.IngestedBy, new Dictionary<string, MetadataField>(), TrackSourceInventory: true);
+            foreach (string workflow in new[] { nameof(AnnotationProjectionWorkflow), nameof(RetainedAnnotationSchedulingWorkflow) })
+            {
+                string parentId = "annotation-parent-" + Guid.NewGuid().ToString("N");
+                await client.ScheduleNewWorkflowAsync(workflow, parentId, annotation, null, token);
+                WorkflowState failedParent = await client.WaitForWorkflowCompletionAsync(parentId, true, token);
+                failedParent.RuntimeStatus.ShouldBe(WorkflowRuntimeStatus.Failed);
+                JsonSerializer.Serialize(failedParent).ShouldContain("source-inventory-existing-workflow-identity");
+                candidateEntered.Task.IsCompleted.ShouldBeFalse("Neither parent may schedule the existing historical child.");
+                (await client.GetWorkflowStateAsync(id, true, token)).ReadInputAs<IngestionInput>()!.SourceInventoryTracked.ShouldBeFalse();
+            }
+            (await new NFalkorDB.FalkorDB(graph.Connection.GetDatabase()).SelectGraph(tenant)
+                .QueryAsync("MATCH (m:MemoryUnit {id:$id}) RETURN m.id", new Dictionary<string, object> { ["id"] = id })).ShouldBeEmpty();
+            var scheduler = new DaprIngestionWorkflowScheduler(client, Substitute.For<IWorkflowPayloadStore>(),
+                new IngestionWorkflowConfigurationCapture(Options.Create(new IngestionSettings()), Options.Create(new NaturalLanguageDescriptionOptions())),
+                new WorkflowTraceContextCapture(), Substitute.For<IIngestionWorkflowInFlightRegistry>(), TimeProvider.System,
+                NullLogger<DaprIngestionWorkflowScheduler>.Instance, inventory);
+            bool refused = false;
+            try
+            {
+                await scheduler.ScheduleAsync(id, input, token);
+                await candidateEntered.Task.WaitAsync(TimeSpan.FromSeconds(10), token);
+            }
+            catch (InvalidOperationException exception) when (exception.Message == "source-inventory-existing-workflow-identity") { refused = true; }
+            refused.ShouldBeTrue("Existing completed workflow history cannot establish fresh candidate coverage.");
+            (await db.KeyExistsAsync(chunk)).ShouldBeTrue();
+            (await db.KeyExistsAsync(SourcePublicationVisibility.KeyProvenance(tenant, id))).ShouldBeFalse();
+            await Should.ThrowAsync<InvalidOperationException>(() => SemanticKeyDiscovery.FindAsync(db, tenant, id, token));
+            (await db.HashGetAsync(survivorChunk, "chunkText")).ToString().ShouldBe("owned historical chunk");
+            (await client.GetWorkflowStateAsync(survivorId, true, token)).RuntimeStatus.ShouldBe(WorkflowRuntimeStatus.Completed);
+            await current.StopAsync(token);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("DAPR_GRPC_ENDPOINT", previous);
+        }
+    }
+
+    /// <summary>Repairs a lost acknowledgement against actual retained Dapr history without a duplicate schedule or new freshness authority.</summary>
+    [Fact]
+    public async Task ActualAcceptedScheduleLostAcknowledgementRecoversOriginalDurableAdmission()
+    {
+        string? previous = Environment.GetEnvironmentVariable("DAPR_GRPC_ENDPOINT");
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(40));
+        CancellationToken token = deadline.Token;
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        string tenant = "actual-lost-ack-" + Guid.NewGuid().ToString("N");
+        string id = "producer-" + Guid.NewGuid().ToString("N");
+        var codec = new Hexalith.EventStore.Client.Queries.QueryCursorCodec(new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider(), "ActualLostAck");
+        var inventory = new SourceInventoryStore(redis.Connection, codec);
+        IDatabase db = redis.Connection.GetDatabase();
+        IngestionInput input = new() { TenantId = tenant, CaseId = "case", SourceUri = "https://synthetic.invalid/lost-ack",
+            SourceType = SourceType.Url, ContentType = "text/plain", IngestedBy = "owned-control" };
+        try
+        {
+            Environment.SetEnvironmentVariable("DAPR_GRPC_ENDPOINT", _sidecar.DaprGrpcEndpoint);
+            using IHost host = Host.CreateDefaultBuilder().ConfigureServices(services => services.AddDaprWorkflow(options =>
+            {
+                options.RegisterWorkflow<IngestionWorkflow>();
+                options.RegisterActivity<SourceInventoryOutputInput, bool>(nameof(RecordSourceInventoryCandidateActivity), async (_, candidate) =>
+                {
+                    entered.TrySetResult();
+                    await release.Task;
+                    return await new RecordSourceInventoryCandidateActivity(inventory).RunAsync(null!, candidate);
+                });
+            })).Build();
+            await host.StartAsync(token);
+            var actual = host.Services.GetRequiredService<DaprWorkflowClient>();
+            var faulting = Substitute.For<IDaprWorkflowClient>();
+            int realSchedules = 0;
+            faulting.GetWorkflowStateAsync(Arg.Any<string>(), true, Arg.Any<CancellationToken>())
+                .Returns(call => actual.GetWorkflowStateAsync(call.Arg<string>(), true, call.Arg<CancellationToken>()));
+            faulting.ScheduleNewWorkflowAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IngestionInput>(), null, Arg.Any<CancellationToken>())
+                .Returns(call => LoseAcknowledgementAsync(call));
+            async Task<string> LoseAcknowledgementAsync(NSubstitute.Core.CallInfo call)
+            {
+                Interlocked.Increment(ref realSchedules);
+                await actual.ScheduleNewWorkflowAsync(call.ArgAt<string>(0), call.ArgAt<string>(1), call.Arg<IngestionInput>(), null, call.Arg<CancellationToken>());
+                throw new IOException("Lost acknowledgement after actual scheduling succeeded.");
+            }
+            var registry = Substitute.For<IIngestionWorkflowInFlightRegistry>();
+            DaprIngestionWorkflowScheduler Scheduler(SourceInventoryStore store) => new(faulting, Substitute.For<IWorkflowPayloadStore>(),
+                new IngestionWorkflowConfigurationCapture(Options.Create(new IngestionSettings()), Options.Create(new NaturalLanguageDescriptionOptions())),
+                new WorkflowTraceContextCapture(), registry, TimeProvider.System, NullLogger<DaprIngestionWorkflowScheduler>.Instance, store);
+            await Should.ThrowAsync<IOException>(() => Scheduler(inventory).ScheduleAsync(id, input, token));
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(10), token);
+            WorkflowState original = await actual.GetWorkflowStateAsync(id, true, token);
+            original.RuntimeStatus.ShouldBe(WorkflowRuntimeStatus.Running);
+            original.ReadInputAs<IngestionInput>()!.SourceInventoryTracked.ShouldBeTrue();
+            SourceInventoryEntry admitted = (await inventory.ReadAsync(tenant, input.SourceUri, null, 100, token)).Entries.ShouldHaveSingleItem();
+            admitted.SchedulingState.ShouldBe("Scheduling");
+            using IConnectionMultiplexer recreated = await ConnectionMultiplexer.ConnectAsync(redis.ConnectionString);
+            var recoveredInventory = new SourceInventoryStore(recreated, codec);
+            (await Scheduler(recoveredInventory).ScheduleAsync(id, input, token)).ShouldBe(id);
+            realSchedules.ShouldBe(1);
+            SourceInventoryEntry recovered = (await recoveredInventory.ReadAsync(tenant, input.SourceUri, null, 100, token)).Entries.ShouldHaveSingleItem();
+            recovered.ShouldBe(admitted with { SchedulingState = "Scheduled" });
+            (await db.KeyExistsAsync(SourcePublicationVisibility.KeyProvenance(tenant, id))).ShouldBeFalse();
+            JsonSerializer.Serialize((await actual.GetWorkflowStateAsync(id, true, token)).ReadInputAs<IngestionInput>())
+                .ShouldBe(JsonSerializer.Serialize(original.ReadInputAs<IngestionInput>()));
+            release.TrySetResult();
+            await host.StopAsync(token);
+        }
+        finally
+        {
+            release.TrySetResult();
+            Environment.SetEnvironmentVariable("DAPR_GRPC_ENDPOINT", previous);
+        }
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

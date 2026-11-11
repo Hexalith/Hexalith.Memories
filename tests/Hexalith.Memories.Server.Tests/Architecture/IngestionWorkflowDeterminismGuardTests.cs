@@ -20,7 +20,7 @@ public static partial class IngestionWorkflowDeterminismGuardTests
         (string RelativePath, int Line, string Method, string NameExpression)[] expected =
         [
             ("src/Hexalith.Memories.Server/Activities/Cases/ScheduleAnnotationIngestionActivity.cs", 77, "direct", "nameof(IngestionWorkflow)"),
-            ("src/Hexalith.Memories.Server/Ingestion/DaprIngestionWorkflowScheduler.cs", 149, "direct", "nameof(IngestionWorkflow)"),
+            ("src/Hexalith.Memories.Server/Ingestion/DaprIngestionWorkflowScheduler.cs", 170, "direct", "nameof(IngestionWorkflow)"),
             ("src/Hexalith.Memories.Server/Workflows/AnnotationProjectionWorkflow.cs", 47, "child", "nameof(IngestionWorkflow)"),
         ];
 
@@ -188,7 +188,7 @@ public static partial class IngestionWorkflowDeterminismGuardTests
         string scheduler = LoadNormalizedSource(repoRoot, "src/Hexalith.Memories.Server/Ingestion/DaprIngestionWorkflowScheduler.cs");
         endpoints.ShouldNotContain("ScheduleNewWorkflowAsync(nameof(IngestionWorkflow)");
         AssertContains(endpoints, "await workflowScheduler.ScheduleAsync(Guid.NewGuid().ToString(), input, cancellationToken);");
-        AssertOrdered(scheduler, "await _sourceInventory.AdmitAsync(instanceId, input, cancellationToken)",
+        AssertOrdered(scheduler, "await _sourceInventory.AdmitAsync(instanceId, input, cancellationToken, requireExistingAdmission)",
             "slimInput = await PrepareInputAsync(", "ScheduleNewWorkflowAsync(nameof(IngestionWorkflow)");
         AssertOrdered(scheduler, "workflowTraceContextCapture.Apply(workflowConfigurationCapture.Apply(input))",
             "IngestionPayloadClaimCheck.PrepareAsync(");

@@ -50,8 +50,8 @@ internal sealed class ScheduleAnnotationIngestionActivity(
 
         if (inventory is not null)
         {
-            await inventory.AdmitAsync(input.AnnotationMemoryUnitId, ingestionInput, CancellationToken.None).ConfigureAwait(false);
-            ingestionInput = ingestionInput with { SourceInventoryTracked = true };
+            ingestionInput = await new Activities.Ingestion.AdmitSourceInventoryActivity(inventory, workflowClient)
+                .RunAsync(context, new(input.AnnotationMemoryUnitId, ingestionInput)).ConfigureAwait(false);
         }
         try
         {

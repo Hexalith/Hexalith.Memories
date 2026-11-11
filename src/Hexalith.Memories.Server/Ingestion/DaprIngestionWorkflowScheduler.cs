@@ -100,6 +100,19 @@ internal sealed partial class DaprIngestionWorkflowScheduler : IIngestionWorkflo
         ArgumentNullException.ThrowIfNull(input);
 
         IngestionIdentityGuard.Input(input, instanceId);
+        bool requireExistingAdmission = false;
+        if (_sourceInventory is not null && input.FailedRetry is null)
+        {
+            WorkflowState? existing = await _workflowClient.GetWorkflowStateAsync(instanceId, true, cancellationToken).ConfigureAwait(false);
+            if (existing?.Exists == true)
+            {
+                IngestionInput? prior = existing.ReadInputAs<IngestionInput>();
+                if (existing.WorkflowName != nameof(IngestionWorkflow) || prior?.SourceInventoryTracked != true
+                    || prior.TenantId != input.TenantId || prior.CaseId != input.CaseId || prior.SourceUri != input.SourceUri)
+                { throw new InvalidOperationException("source-inventory-existing-workflow-identity"); }
+                requireExistingAdmission = true;
+            }
+        }
         input = await IngestionPayloadClaimCheck.NormalizeSourceAsync(_payloadStore, input, cancellationToken).ConfigureAwait(false);
         if (input.RefreshExistingSource)
         {
@@ -109,9 +122,17 @@ internal sealed partial class DaprIngestionWorkflowScheduler : IIngestionWorkflo
         }
         if (_sourceInventory is not null)
         {
-            if (input.FailedRetry is null) { await _sourceInventory.AdmitAsync(instanceId, input, cancellationToken).ConfigureAwait(false); }
+            if (input.FailedRetry is null) { await _sourceInventory.AdmitAsync(instanceId, input, cancellationToken, requireExistingAdmission).ConfigureAwait(false); }
             else { await _sourceInventory.AdmitFailedRetryAsync(instanceId, input, previous, cancellationToken).ConfigureAwait(false); }
             input = input with { SourceInventoryTracked = true };
+            if (requireExistingAdmission)
+            {
+                // The original durable workflow owns this accepted schedule. Repair its
+                // acknowledgement without scheduling a second execution or fresh candidate.
+                await _inFlightRegistry.TrackAsync(new(input.TenantId, instanceId, _timeProvider.GetUtcNow()), cancellationToken).ConfigureAwait(false);
+                await _sourceInventory.SetSchedulingAsync(input.TenantId, input.SourceUri, instanceId, "Scheduled", cancellationToken).ConfigureAwait(false);
+                return instanceId;
+            }
         }
         IngestionInput slimInput;
         try

@@ -18,7 +18,7 @@ internal sealed class SourceInventoryStore([FromKeyedServices("redis")] IConnect
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     /// <summary>Persists admission before scheduling; no failure or lost acknowledgement removes this obligation.</summary>
-    internal Task AdmitAsync(string instanceId, IngestionInput input, CancellationToken cancellationToken)
+    internal Task AdmitAsync(string instanceId, IngestionInput input, CancellationToken cancellationToken, bool requireExistingAdmission = false)
     {
         IngestionIdentityGuard.Input(input, instanceId);
         return ChangeAsync(input.TenantId, input.SourceUri, current =>
@@ -40,6 +40,7 @@ internal sealed class SourceInventoryStore([FromKeyedServices("redis")] IConnect
                 }
                 return current;
             }
+            if (requireExistingAdmission) { throw new InvalidOperationException("source-inventory-existing-workflow-identity"); }
             if ((current.Entries?.Count ?? 0) >= Capacity) { throw new InvalidOperationException("source-inventory-capacity"); }
             return current with { FreshCandidateWorkflows = [.. current.FreshCandidateWorkflows ?? [], instanceId],
                 Entries = [.. current.Entries ?? [], new(input.CaseId, instanceId, TokenHash(input.IdempotencyToken), SchedulingState: "Preparing",

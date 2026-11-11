@@ -34,6 +34,45 @@ using Hexalith.Memories.Server.Infrastructure;
 [Collection("RedisStack")]
 public sealed class SourceInventoryProducerIntegrationTests(RedisStackFixture redis, FalkorDbFixture graph) : IClassFixture<FalkorDbFixture>
 {
+    /// <summary>Preserves lost-acknowledgement recovery only with the original matching durable admission.</summary>
+    /// <param name="existingAdmission">Whether this control retained the original admission before losing the scheduling acknowledgement.</param>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExistingTrackedWorkflowRequiresItsMatchingDurableAdmissionAndPreservesRedelivery(bool existingAdmission)
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string tenant = "existing-admission-" + Guid.NewGuid().ToString("N");
+        IngestionInput input = Input(tenant);
+        var inventory = new SourceInventoryStore(redis.Connection, new QueryCursorCodec(new EphemeralDataProtectionProvider(), "ExistingAdmission"));
+        var client = Substitute.For<IDaprWorkflowClient>();
+        IngestionInput? captured = null;
+        bool loseAcknowledgement = true;
+        client.ScheduleNewWorkflowAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IngestionInput>(), null, Arg.Any<CancellationToken>())
+            .Returns(call => { captured = call.Arg<IngestionInput>(); return loseAcknowledgement
+                ? Task.FromException<string>(new IOException("lost schedule acknowledgement")) : Task.FromResult(call.ArgAt<string>(1)); });
+        var scheduler = new DaprIngestionWorkflowScheduler(client, Payloads(new Dictionary<string, string>(), false),
+            new IngestionWorkflowConfigurationCapture(Options.Create(new IngestionSettings()), Options.Create(new NaturalLanguageDescriptionOptions())),
+            new WorkflowTraceContextCapture(), Substitute.For<IIngestionWorkflowInFlightRegistry>(), TimeProvider.System,
+            NullLogger<DaprIngestionWorkflowScheduler>.Instance, inventory);
+        if (existingAdmission) { await Should.ThrowAsync<IOException>(() => scheduler.ScheduleAsync("producer", input, token)); }
+        loseAcknowledgement = false;
+        client.GetWorkflowStateAsync("producer", true, Arg.Any<CancellationToken>())
+            .Returns(State(captured ?? input with { SourceInventoryTracked = true }, WorkflowRuntimeStatus.Running, instanceId: "producer"));
+        if (existingAdmission)
+        {
+            await scheduler.ScheduleAsync("producer", input, token);
+            (await inventory.ReadAsync(tenant, input.SourceUri, null, 100, token)).Entries.ShouldHaveSingleItem();
+            await new AdmitSourceInventoryActivity(inventory, client).RunAsync(null!, new("producer", input));
+        }
+        else
+        {
+            await Should.ThrowAsync<InvalidOperationException>(() => scheduler.ScheduleAsync("producer", input, token));
+            await Should.ThrowAsync<InvalidOperationException>(() => new AdmitSourceInventoryActivity(inventory, client).RunAsync(null!, new("producer", input)));
+        }
+        (await redis.Connection.GetDatabase().KeyExistsAsync(SourcePublicationVisibility.KeyProvenance(tenant, "producer"))).ShouldBeFalse();
+    }
+
     [Fact]
     public async Task AnnotationChildAdmissionEstablishesFreshCoverageBeforeItsFirstContentWrite()
     {
@@ -41,7 +80,7 @@ public sealed class SourceInventoryProducerIntegrationTests(RedisStackFixture re
         string tenant = "annotation-fresh-" + Guid.NewGuid().ToString("N");
         IngestionInput input = Input(tenant) with { SourceType = SourceType.Annotation };
         var inventory = new SourceInventoryStore(redis.Connection, new QueryCursorCodec(new EphemeralDataProtectionProvider(), "AnnotationFreshTests"));
-        IngestionInput admitted = await new AdmitSourceInventoryActivity(inventory).RunAsync(null!, new("annotation", input));
+        IngestionInput admitted = await new AdmitSourceInventoryActivity(inventory, Substitute.For<IDaprWorkflowClient>()).RunAsync(null!, new("annotation", input));
         admitted.SourceInventoryTracked.ShouldBeTrue();
         await new RecordSourceInventoryCandidateActivity(inventory).RunAsync(null!, new(tenant, input.SourceUri, "annotation", input.CaseId, "annotation"));
         (await redis.Connection.GetDatabase().StringGetAsync(SourcePublicationVisibility.KeyProvenance(tenant, "annotation"))).ToString().ShouldBe("modern");
@@ -611,7 +650,7 @@ public sealed class SourceInventoryProducerIntegrationTests(RedisStackFixture re
             { TrackSourceInventory = true };
         WorkflowContext context = Substitute.For<WorkflowContext>();
         context.CallActivityAsync<IngestionInput>(nameof(AdmitSourceInventoryActivity), Arg.Any<SourceInventoryAdmissionInput>(), Arg.Any<WorkflowTaskOptions>())
-            .Returns(call => new AdmitSourceInventoryActivity(inventory).RunAsync(null!, call.Arg<SourceInventoryAdmissionInput>()));
+            .Returns(call => new AdmitSourceInventoryActivity(inventory, Substitute.For<IDaprWorkflowClient>()).RunAsync(null!, call.Arg<SourceInventoryAdmissionInput>()));
         context.CallActivityAsync<bool>(nameof(SetSourceInventorySchedulingActivity), Arg.Any<SourceInventorySchedulingInput>(), Arg.Any<WorkflowTaskOptions>())
             .Returns(call => new SetSourceInventorySchedulingActivity(inventory).RunAsync(null!, call.Arg<SourceInventorySchedulingInput>()));
         var failure = (WorkflowTaskFailedException)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(WorkflowTaskFailedException));
@@ -621,7 +660,7 @@ public sealed class SourceInventoryProducerIntegrationTests(RedisStackFixture re
             .Returns(Task.FromException<IngestionResult>(failure));
         if (boundary == "preparing")
         {
-            await new AdmitSourceInventoryActivity(inventory).RunAsync(null!, new("annotation", Input(tenant) with { SourceUri = input.SourceUri }));
+            await new AdmitSourceInventoryActivity(inventory, Substitute.For<IDaprWorkflowClient>()).RunAsync(null!, new("annotation", Input(tenant) with { SourceUri = input.SourceUri }));
         }
         else
         {
