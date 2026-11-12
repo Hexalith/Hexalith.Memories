@@ -227,7 +227,7 @@ class ReleaseDispatchTests(unittest.TestCase):
         self.assertIn("--version ${nextRelease.version}", prepare_command)
         self.assertNotIn("check-release-source.py", release_config["plugins"][2][1]["publishCmd"])
 
-    def test_both_production_protection_checks_require_reviewers_no_admin_bypass_and_branch_policy(self):
+    def test_both_production_protection_checks_allow_admin_bypass_and_require_reviewers_and_branch_policy(self):
         workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
         with tempfile.TemporaryDirectory() as temporary:
             fake_gh = Path(temporary) / "gh"
@@ -249,7 +249,11 @@ class ReleaseDispatchTests(unittest.TestCase):
                 ({"protection_rules": [{"type": "wait_timer", "wait_timer": 5}]}, False),
                 ({"protection_rules": [{"type": "required_reviewers", "reviewers": []}]}, False),
                 ({"protection_rules": [{"type": "required_reviewers", "reviewers": [reviewer]}],
+                  "can_admins_bypass": True, "deployment_branch_policy": {"protected_branches": True}}, True),
+                ({"protection_rules": [{"type": "required_reviewers", "reviewers": []}],
                   "can_admins_bypass": True, "deployment_branch_policy": {"protected_branches": True}}, False),
+                ({"protection_rules": [{"type": "required_reviewers", "reviewers": [reviewer]}],
+                  "can_admins_bypass": True, "deployment_branch_policy": None}, False),
                 ({"protection_rules": [{"type": "required_reviewers", "reviewers": [reviewer]}],
                   "can_admins_bypass": False, "deployment_branch_policy": None}, False),
                 ({"protection_rules": [{"type": "required_reviewers", "reviewers": [reviewer]}],

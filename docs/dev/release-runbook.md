@@ -67,7 +67,7 @@ protection evidence below stays historical evidence; this story performs no remo
 
 ## Current Release Contract
 
-- An operator dispatches `.github/workflows/release.yml` from the current `main` tip. Normal pushes run CI and never publish. The source job proves the selected SHA is the live main tip with a successful completed `ci.yml` push run for that exact SHA, and checks that the production environment has required reviewers, disabled admin bypass and a branch deployment policy. The protected `production` job runs only after that proof succeeds; it reads back protection again before publication.
+- An operator dispatches `.github/workflows/release.yml` from the current `main` tip. Normal pushes run CI and never publish. The source job proves the selected SHA is the live main tip with a successful completed `ci.yml` push run for that exact SHA, and checks that the production environment has required reviewers and a branch deployment policy. Administrator approval bypass is permitted when enabled in the environment settings. The protected `production` job runs only after that proof succeeds; it reads back protection again before publication.
 - The production job calls pinned `prepare-domain-release@81c88b34d09d34260b92d7f0928dbbc1c7446baa` with the identical `builds-execution-sha` and `expected-package-count: 10`. It restores and builds; only when publication is enabled does it then repeat the exact-source CI proof, because a frozen run exits its publish gate before that repeat. The caller validates the package manifest, checks local/remote tag and every versioned package/image destination, then reproves source immediately before OIDC login and `npx semantic-release`. Application tests are owned by exact-source CI and are not repeated in release. Semantic-release then drives the prepare, publish, and post-publish
   phases through its plugin chain —
   `pack-release.ps1` and
@@ -270,7 +270,7 @@ contract tests green in the same pull request.
 
 ### Dispatch and Approval
 
-Wait for successful push CI on the exact current `main` SHA, then dispatch **Release** from `main`. Read back `gh api repos/Hexalith/Hexalith.Memories/environments/production` and require a nonempty `required_reviewers` rule, `can_admins_bypass: false` and a non-null `deployment_branch_policy` restricting deployments to `main` or protected branches. A workflow `environment: production` declaration alone is insufficient. The sole owner's self-review is an accepted exception until a second eligible reviewer is available. Set `HEXALITH_RELEASE_PUBLISH_ENABLED` to the exact lowercase value `true` at repository scope only for an authorized publication, and set `NUGET_USER` to the individual account that created the NuGet Trusted Publishing policy. Any other publication-flag value leaves the release frozen before OIDC and semantic-release.
+Wait for successful push CI on the exact current `main` SHA, then dispatch **Release** from `main`. Read back `gh api repos/Hexalith/Hexalith.Memories/environments/production` and require a nonempty `required_reviewers` rule and a non-null `deployment_branch_policy` restricting deployments to `main` or protected branches. Administrator bypass was enabled (`can_admins_bypass: true`) on 2026-11-12 at the owner's explicit request. Administrators may bypass pending production approval through GitHub; current-main CI, destination checks and NuGet Trusted Publishing remain required. A workflow `environment: production` declaration alone is insufficient. The sole owner's self-review is an accepted exception until a second eligible reviewer is available. Set `HEXALITH_RELEASE_PUBLISH_ENABLED` to the exact lowercase value `true` at repository scope only for an authorized publication, and set `NUGET_USER` to the individual account that created the NuGet Trusted Publishing policy. Any other publication-flag value leaves the release frozen before OIDC and semantic-release.
 
 Historical protection evidence: the 2026-11-02 API readback returned `protection_rules: []`, `can_admins_bypass: true` and `deployment_branch_policy: null`. The source job refused entry under that configuration; this readback does not describe the current environment.
 
@@ -288,7 +288,7 @@ Before relying on the release path:
 2. Pull requests are required before merge.
 3. At least one approving review is required.
 4. Required checks are exactly `build`, `test-unit-contract`, and `integration-fast`.
-5. The production environment has required reviewers, disabled admin bypass and a deployment branch policy for `main` or protected branches. Read it back with the GitHub environments API. Keep `HEXALITH_RELEASE_PUBLISH_ENABLED` unset for a frozen guard test; set it to exact lowercase `true` only for authorized publication.
+5. The production environment has required reviewers and a deployment branch policy for `main` or protected branches. Administrator approval bypass is enabled by the current owner policy. Read it back with the GitHub environments API. Keep `HEXALITH_RELEASE_PUBLISH_ENABLED` unset for a frozen guard test; set it to exact lowercase `true` only for authorized publication.
 6. Direct pushes are blocked by the protected-branch policy; the only path to producing a `push`
    event on `main` is merging a PR.
 7. `NUGET_USER` names the individual Trusted Publishing policy creator; `HEXALITH_ZOT_USERNAME` and
