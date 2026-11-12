@@ -1114,6 +1114,7 @@ public sealed partial class CiTestInventoryTests
     [InlineData("Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@6ad5854aa14a9950e1fbfc32d7e27953a1c4b82b", true)]
     [InlineData("Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@f0feeb234cbc16f88c2886a6ffae7122e05dd640", false)]
     [InlineData("Hexalith/Hexalith.Builds/.github/workflows/release.yml@6ad5854aa14a9950e1fbfc32d7e27953a1c4b82b", false)]
+    [InlineData("Hexalith/Hexalith.Builds/Github/initialize-build@163f3d0deac6b0db5ec4bdfcc0934b12e6adb46a", false)]
     [InlineData("Hexalith/Hexalith.Builds/Github/initialize-build@6ad5854aa14a9950e1fbfc32d7e27953a1c4b82b", false)]
     [InlineData("actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd8", false)]
     [InlineData("actions/upload-artifact@0000000000000000000000000000000000000000", false)]

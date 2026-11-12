@@ -41,7 +41,7 @@ HISTORICAL_HASHES = {
     "phase-verification.json": "3226cbb95442b6d6fb0dc45fa08bf4a006b0c0e9e69116cc145c0c9cd143a561",
     "complete-set-dry-run.json": "0dfbb0eb92da1b10a11b711c8f9016f53a1f09ec8363ee44440ad7cc34052cd2",
 }
-PINNED_SHA = "4e79e00ee38a6c95cad1ebaf5496f81524feb021"
+PINNED_SHA = "6ad5854aa14a9950e1fbfc32d7e27953a1c4b82b"
 HISTORICAL_BUILDS_SHA = "f0feeb234cbc16f88c2886a6ffae7122e05dd64b"
 # Epic 30 Story 30.4 names exactly these five mappings under one set identity.
 EXPECTED_MAPPINGS = [
