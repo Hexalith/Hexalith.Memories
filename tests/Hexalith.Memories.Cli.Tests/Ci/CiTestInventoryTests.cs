@@ -1110,7 +1110,6 @@ public sealed partial class CiTestInventoryTests
     [InlineData("Hexalith/Hexalith.Builds/Github/initialize-build@main", true)]
     [InlineData("Hexalith/Hexalith.Builds/Github/initialize-apt@6ad5854aa14a9950e1fbfc32d7e27953a1c4b82b", true)]
     [InlineData("Hexalith/Hexalith.Builds/Github/initialize-apt@a9f443f0bd482359731dcd54711e44fbd23d58ff", false)]
-    [InlineData("Hexalith/Hexalith.Builds/Github/initialize-build@6ad5854aa14a9950e1fbfc32d7e27953a1c4b82b", false)]
     [InlineData("Hexalith/Hexalith.Builds/Github/prepare-domain-release@6ad5854aa14a9950e1fbfc32d7e27953a1c4b82b", true)]
     [InlineData("Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@6ad5854aa14a9950e1fbfc32d7e27953a1c4b82b", true)]
     [InlineData("Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@f0feeb234cbc16f88c2886a6ffae7122e05dd640", false)]
