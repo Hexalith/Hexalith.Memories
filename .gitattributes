@@ -34,3 +34,6 @@ _bmad-output/implementation-artifacts/review-7-2/bundle.txt whitespace=-trailing
 
 # Preserve the authentic selected-run mapping regression bytes.
 tests/tooling/access_telemetry_functional_retention/fixtures/native-selected-source-mapping.json -text
+
+# Preserve authored CRLF in the refreshed current-toolchain guards.
+tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs whitespace=cr-at-eol

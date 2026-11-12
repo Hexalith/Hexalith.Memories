@@ -283,8 +283,8 @@ public sealed partial class CiTestInventoryTests
     public void ReleaseWorkflow_PinnedPreparationOwnsReleaseTooling()
     {
         ReleaseWorkflowStep step = GetReleaseWorkflowStep("Prepare guarded release from pinned Builds");
-        step.Uses.ShouldBe("Hexalith/Hexalith.Builds/Github/prepare-domain-release@81c88b34d09d34260b92d7f0928dbbc1c7446baa");
-        step.With["builds-execution-sha"].ShouldBe("81c88b34d09d34260b92d7f0928dbbc1c7446baa");
+        step.Uses.ShouldBe("Hexalith/Hexalith.Builds/Github/prepare-domain-release@6ad5854aa14a9950e1fbfc32d7e27953a1c4b82b");
+        step.With["builds-execution-sha"].ShouldBe("6ad5854aa14a9950e1fbfc32d7e27953a1c4b82b");
         step.With["expected-package-count"].ShouldBe("10");
     }
 
@@ -781,7 +781,7 @@ public sealed partial class CiTestInventoryTests
 
         string[] sharedJob = GetWorkflowJobLines(workflowLines, "shared-ci");
         GetWorkflowJobScalar(sharedJob, "uses").ShouldBe(
-            "Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@6e7011fc754e74ac2a8864da1ce0b6d8f7178a48");
+            "Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@6ad5854aa14a9950e1fbfc32d7e27953a1c4b82b");
         sharedJob.ShouldContain("      solution: Hexalith.Memories.slnx");
         string.Join('\n', sharedJob).ShouldNotContain("dotnet restore");
         restoreInvocations.Count.ShouldBe(
@@ -1108,14 +1108,14 @@ public sealed partial class CiTestInventoryTests
     [InlineData("actions/upload-artifact@v7", true)]
     [InlineData("actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9", true)]
     [InlineData("Hexalith/Hexalith.Builds/Github/initialize-build@main", true)]
-    [InlineData("Hexalith/Hexalith.Builds/Github/initialize-apt@a9f443f0bd482359731dcd54711e44fbd23d58fe", true)]
+    [InlineData("Hexalith/Hexalith.Builds/Github/initialize-apt@6ad5854aa14a9950e1fbfc32d7e27953a1c4b82b", true)]
     [InlineData("Hexalith/Hexalith.Builds/Github/initialize-apt@a9f443f0bd482359731dcd54711e44fbd23d58ff", false)]
-    [InlineData("Hexalith/Hexalith.Builds/Github/initialize-build@a9f443f0bd482359731dcd54711e44fbd23d58fe", false)]
-    [InlineData("Hexalith/Hexalith.Builds/Github/prepare-domain-release@81c88b34d09d34260b92d7f0928dbbc1c7446baa", true)]
-    [InlineData("Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@6e7011fc754e74ac2a8864da1ce0b6d8f7178a48", true)]
+    [InlineData("Hexalith/Hexalith.Builds/Github/initialize-build@6ad5854aa14a9950e1fbfc32d7e27953a1c4b82b", false)]
+    [InlineData("Hexalith/Hexalith.Builds/Github/prepare-domain-release@6ad5854aa14a9950e1fbfc32d7e27953a1c4b82b", true)]
+    [InlineData("Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@6ad5854aa14a9950e1fbfc32d7e27953a1c4b82b", true)]
     [InlineData("Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@f0feeb234cbc16f88c2886a6ffae7122e05dd640", false)]
-    [InlineData("Hexalith/Hexalith.Builds/.github/workflows/release.yml@6e7011fc754e74ac2a8864da1ce0b6d8f7178a48", false)]
-    [InlineData("Hexalith/Hexalith.Builds/Github/initialize-build@6e7011fc754e74ac2a8864da1ce0b6d8f7178a48", false)]
+    [InlineData("Hexalith/Hexalith.Builds/.github/workflows/release.yml@6ad5854aa14a9950e1fbfc32d7e27953a1c4b82b", false)]
+    [InlineData("Hexalith/Hexalith.Builds/Github/initialize-build@6ad5854aa14a9950e1fbfc32d7e27953a1c4b82b", false)]
     [InlineData("actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd8", false)]
     [InlineData("actions/upload-artifact@0000000000000000000000000000000000000000", false)]
     [InlineData("actions/download-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9", false)]
@@ -1140,18 +1140,18 @@ public sealed partial class CiTestInventoryTests
 
         // The owner approved this shared-CI identity on 2026-11-03 (Story 30.3 review round 2,
         // superseding Story 30.1's f0feeb2 pin); it authorizes no other Builds action or SHA.
-        if (reference == "Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@6e7011fc754e74ac2a8864da1ce0b6d8f7178a48")
+        if (reference == "Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@6ad5854aa14a9950e1fbfc32d7e27953a1c4b82b")
         {
             return true;
         }
 
-        if (reference == "Hexalith/Hexalith.Builds/Github/prepare-domain-release@81c88b34d09d34260b92d7f0928dbbc1c7446baa")
+        if (reference == "Hexalith/Hexalith.Builds/Github/prepare-domain-release@6ad5854aa14a9950e1fbfc32d7e27953a1c4b82b")
         {
             return true;
         }
 
         // Only this reviewed signed-mirror prerequisite helper is authorized at this SHA.
-        if (reference == "Hexalith/Hexalith.Builds/Github/initialize-apt@a9f443f0bd482359731dcd54711e44fbd23d58fe")
+        if (reference == "Hexalith/Hexalith.Builds/Github/initialize-apt@6ad5854aa14a9950e1fbfc32d7e27953a1c4b82b")
         {
             return true;
         }

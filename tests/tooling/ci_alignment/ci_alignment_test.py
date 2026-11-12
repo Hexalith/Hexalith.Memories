@@ -15,7 +15,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-SHA = "6e7011fc754e74ac2a8864da1ce0b6d8f7178a48"
+SHA = "6ad5854aa14a9950e1fbfc32d7e27953a1c4b82b"
 CALLER = f"Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@{SHA}"
 CONTRACTS = "tests/Hexalith.Memories.Contracts.Tests/Hexalith.Memories.Contracts.Tests.csproj"
 AUDIT = "-p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904"
@@ -89,7 +89,7 @@ MANDATORY_COMMANDS = {
     ('test-unit-contract', 'Run production deployment evidence fixtures'): 'python3 -m unittest discover -s tests/tooling/production_deployment_evidence -p "*_test.py"',
     ('test-unit-contract', 'Publish pinned kubectl at the owner-discovery path'): 'installed="$(command -v kubectl)"\ntest -n "$installed"\nif [ "$installed" != "/usr/local/bin/kubectl" ]; then\n  sudo ln -sfn "$installed" /usr/local/bin/kubectl\nfi\ntest -x /usr/local/bin/kubectl\n',
     ('test-unit-contract', 'Run access-telemetry owner discovery fixtures'): 'PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_owner_discovery -p "test_*.py"',
-    ('test-unit-contract', 'Build source Debug descriptor reader'): 'dotnet build references/Hexalith.Builds/src/libraries/Hexalith.Builds.Module.Cli/Hexalith.Builds.Module.Cli.csproj --configuration Debug -m:1 -p:NuGetAudit=false -p:MinVerVersionOverride=1.0.0 -p:RunAnalyzers=false -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904',
+    ('test-unit-contract', 'Build source Debug descriptor reader'): 'dotnet build references/Hexalith.Builds/src/libraries/Hexalith.Builds.Module.Cli/Hexalith.Builds.Module.Cli.csproj --configuration Debug -m:1 -p:NuGetAudit=true -p:NuGetAuditMode=all -p:NuGetAuditLevel=low -p:MinVerVersionOverride=1.0.0 -p:RunAnalyzers=false',
     ('test-unit-contract', 'Run access-telemetry functional-retention safety fixtures'): 'PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_functional_retention -p "test_*.py"',
     ('test-unit-contract', 'Initialize root Platform review-reader dependency'): 'git submodule update --init references/Hexalith.Platform',
     ('test-unit-contract', 'Run story file-scope gate fixtures'): 'python3 -m unittest discover -s tests/tooling/story_scope -p "*_test.py"',

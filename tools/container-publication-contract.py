@@ -18,7 +18,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 
 
-APPROVED_BUILDS_SHA = "81c88b34d09d34260b92d7f0928dbbc1c7446baa"
+APPROVED_BUILDS_SHA = "6ad5854aa14a9950e1fbfc32d7e27953a1c4b82b"
 PLATFORMS = ["linux/amd64", "linux/arm64"]
 CANONICAL_IMAGES = [
     {"name": "server", "project": "src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj", "repository": "memories", "health": "liveness"},

@@ -168,12 +168,12 @@ jobs:
         run: python3 tools/check-story-review-readiness.py --branch-name "$BRANCH_NAME" --commit-message-file "$COMMIT_MESSAGE_FILE" --changed-files-file "$CHANGED_FILES_FILE"
 
   shared-ci:
-    uses: Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@6e7011fc754e74ac2a8864da1ce0b6d8f7178a48
+    uses: Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@6ad5854aa14a9950e1fbfc32d7e27953a1c4b82b
     with:
       solution: Hexalith.Memories.slnx
       dotnet-global-json: global.json
       package-prepare-script: tools/ensure-dotnet10.sh
-      builds-execution-sha: 6e7011fc754e74ac2a8864da1ce0b6d8f7178a48
+      builds-execution-sha: 6ad5854aa14a9950e1fbfc32d7e27953a1c4b82b
       test-platform: microsoft-testing-platform
       # The shared shard has no integration-exclusion input. Keep the full
       # Docker-free inventory and its canonical Coverlet reports in the local lane.
@@ -362,7 +362,7 @@ jobs:
           # The publication fixtures compare immutable historical helper bytes. The initializer's
           # shallow checkout contains only the current gitlink, so fetch both approved sources.
           historical_builds_shas=(
-            81c88b34d09d34260b92d7f0928dbbc1c7446baa
+            6ad5854aa14a9950e1fbfc32d7e27953a1c4b82b
             f0feeb234cbc16f88c2886a6ffae7122e05dd64b
           )
           for attempt in 1 2 3; do
@@ -416,7 +416,7 @@ jobs:
       - name: Build source Debug descriptor reader
         # Its consumer, the access-telemetry lifecycle campaign-environment fixtures, is
         # parked with DW-730 (deferred-work.md); retro item 68 decides whether this step stays.
-        run: dotnet build references/Hexalith.Builds/src/libraries/Hexalith.Builds.Module.Cli/Hexalith.Builds.Module.Cli.csproj --configuration Debug -m:1 -p:NuGetAudit=false -p:MinVerVersionOverride=1.0.0 -p:RunAnalyzers=false -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904
+        run: dotnet build references/Hexalith.Builds/src/libraries/Hexalith.Builds.Module.Cli/Hexalith.Builds.Module.Cli.csproj --configuration Debug -m:1 -p:NuGetAudit=true -p:NuGetAuditMode=all -p:NuGetAuditLevel=low -p:MinVerVersionOverride=1.0.0 -p:RunAnalyzers=false
 
       - name: Run access-telemetry functional-retention safety fixtures
         # Offline only; uses the initialized kubectl client, .NET SDK, OpenSSL,
@@ -512,7 +512,7 @@ jobs:
         working-directory: tests/Hexalith.Memories.Web.E2E
 
       - name: Initialize Ubuntu APT mirrors
-        uses: Hexalith/Hexalith.Builds/Github/initialize-apt@a9f443f0bd482359731dcd54711e44fbd23d58fe
+        uses: Hexalith/Hexalith.Builds/Github/initialize-apt@6ad5854aa14a9950e1fbfc32d7e27953a1c4b82b
 
       - name: Install Chromium browser
         run: npx playwright install --with-deps chromium
