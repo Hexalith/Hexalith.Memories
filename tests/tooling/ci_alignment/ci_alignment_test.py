@@ -215,7 +215,7 @@ class SharedCiAlignmentTests(unittest.TestCase):
             step(jobs["story-file-scope"], "Collect story scope inputs")["run"],
         )
         self.assertIn(
-            "dotnet tests/Hexalith.Memories.EventStore.Tests/bin/Debug/net10.0/Hexalith.Memories.EventStore.Tests.dll "
+            "dotnet tests/Hexalith.Memories.EventStore.Tests/bin/Debug/net11.0/Hexalith.Memories.EventStore.Tests.dll "
             "-class Hexalith.Memories.EventStore.Tests.MemoriesCatalogTests -xml TestResults/source-catalog.xml",
             step(jobs["source-debug"], "Verify source-selected owner catalog contracts")["run"],
         )

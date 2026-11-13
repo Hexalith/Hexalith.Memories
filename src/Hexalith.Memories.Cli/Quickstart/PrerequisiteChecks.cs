@@ -12,7 +12,7 @@ using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 
 /// <summary>
-/// Sub-checks for wizard step 1 (prerequisite verification). Docker, .NET 11 SDK / .NET 10 shared frameworks, and port
+/// Sub-checks for wizard step 1 (prerequisite verification). Docker, .NET 11 SDK / .NET 11 shared frameworks, and port
 /// availability are hard-fail signals; OS platform is informational; DAPR CLI is soft-fail
 /// (its absence is expected for local Aspire-managed dev).
 /// </summary>
@@ -73,7 +73,7 @@ internal sealed partial class PrerequisiteChecks
             RecoverySuggestion: null);
     }
 
-    /// <summary>Checks the SDK and the .NET 10 shared frameworks required by the repository AppHost.</summary>
+    /// <summary>Checks the SDK and the .NET 11 shared frameworks required by the repository AppHost.</summary>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The sub-check result.</returns>
     public async Task<PrerequisiteCheckResult> CheckDotnetSdkAsync(CancellationToken ct)
@@ -187,7 +187,7 @@ internal sealed partial class PrerequisiteChecks
     private async Task<PrerequisiteCheckResult> VerifyDotnetRuntimesAsync(PrerequisiteCheckResult sdkResult, CancellationToken ct)
     {
         ProcessResult result = await _processRunner.RunAsync("dotnet", "--list-runtimes", DotnetTimeout, ct).ConfigureAwait(false);
-        const string recovery = "Install the ASP.NET Core 10 runtime (including the .NET 10 runtime) from https://dotnet.microsoft.com/download/dotnet/10.0, or install the .NET 10 SDK alongside SDK 11.0.100. Verify 'dotnet --list-runtimes' lists Microsoft.NETCore.App 10.0.x and Microsoft.AspNetCore.App 10.0.x, then retry.";
+        const string recovery = "Install the ASP.NET Core 11 runtime (including the .NET 11 runtime) from https://dotnet.microsoft.com/download/dotnet/11.0, or install SDK 11.0.100. Verify 'dotnet --list-runtimes' lists Microsoft.NETCore.App 11.0.x and Microsoft.AspNetCore.App 11.0.x, then retry.";
         if (result.TimedOut)
         {
             return new PrerequisiteCheckResult(
@@ -214,11 +214,11 @@ internal sealed partial class PrerequisiteChecks
         {
             return new PrerequisiteCheckResult(
                 Passed: false,
-                Diagnostic: $"Missing .NET 10 shared framework(s): {string.Join(", ", missing)}.",
+                Diagnostic: $"Missing .NET 11 shared framework(s): {string.Join(", ", missing)}.",
                 RecoverySuggestion: recovery);
         }
 
-        return sdkResult with { Diagnostic = $"{sdkResult.Diagnostic}; .NET 10 and ASP.NET Core 10 runtimes available." };
+        return sdkResult with { Diagnostic = $"{sdkResult.Diagnostic}; .NET 11 and ASP.NET Core 11 runtimes available." };
     }
 
     /// <summary>Attempts to bind each port on the loopback interface to verify availability.</summary>
@@ -319,7 +319,7 @@ internal sealed partial class PrerequisiteChecks
         return match.Success ? match.Value : string.Empty;
     }
 
-    [GeneratedRegex(@"^(Microsoft\.NETCore\.App|Microsoft\.AspNetCore\.App) 10\.0\.\d+\s+\[", RegexOptions.Multiline)]
+    [GeneratedRegex(@"^(Microsoft\.NETCore\.App|Microsoft\.AspNetCore\.App) 11\.0\.\d+\s+\[", RegexOptions.Multiline)]
     private static partial Regex RuntimeVersionPattern();
 
     [GeneratedRegex(@"^(\d+)\.(\d+)\.(\d+)", RegexOptions.Multiline)]

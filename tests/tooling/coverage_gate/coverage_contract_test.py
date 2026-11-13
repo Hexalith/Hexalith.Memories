@@ -397,7 +397,7 @@ class CoverageContractTests(unittest.TestCase):
             job,
         )
         self.assertIn(
-            "tests/Hexalith.Memories.Benchmarks/bin/Release/net10.0/benchmark-results.json",
+            "tests/Hexalith.Memories.Benchmarks/bin/Release/net11.0/benchmark-results.json",
             job,
         )
 

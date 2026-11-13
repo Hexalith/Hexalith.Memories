@@ -1,10 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk.Razor">
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <IsPackable>false</IsPackable>
-    <!-- FrontComposer.Testing packages are not published on the configured CI feed. This
-         non-packable test project consumes the initialized root submodule when it is available. -->
-    <HexalithFrontComposerFromSource Condition="'$(HexalithFrontComposerFromSource)' == '' and Exists('$(HexalithFrontComposerRoot)\src\Hexalith.FrontComposer.Testing\Hexalith.FrontComposer.Testing.csproj')">true</HexalithFrontComposerFromSource>
+    <!-- Source diagnostics use the initialized root dependency only when explicitly selected.
+         CI and package builds consume the published FrontComposer packages. -->
+    <HexalithFrontComposerFromSource Condition="'$(HexalithFrontComposerFromSource)' == '' and '$(UseHexalithProjectReferences)' == 'true' and Exists('$(HexalithFrontComposerRoot)\src\Hexalith.FrontComposer.Testing\Hexalith.FrontComposer.Testing.csproj')">true</HexalithFrontComposerFromSource>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Hexalith.Memories.Web.Specimens\Hexalith.Memories.Web.Specimens.csproj" />

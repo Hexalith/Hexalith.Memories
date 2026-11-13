@@ -138,7 +138,7 @@ public sealed class MigrateEmbeddingVectorsToolTests
         // the SDK with the active configuration ("Debug"/"Release").
         string configuration = typeof(MigrateEmbeddingVectorsToolTests).Assembly
             .GetCustomAttribute<AssemblyConfigurationAttribute>()?.Configuration ?? "Debug";
-        string preferred = Path.Combine(toolBinRoot, configuration, "net10.0", "MigrateEmbeddingVectors.dll");
+        string preferred = Path.Combine(toolBinRoot, configuration, "net11.0", "MigrateEmbeddingVectors.dll");
         if (File.Exists(preferred))
         {
             return preferred;
@@ -149,7 +149,7 @@ public sealed class MigrateEmbeddingVectorsToolTests
         // non-default SDK settings.
         foreach (string candidateConfiguration in new[] { "Release", "Debug" })
         {
-            string candidate = Path.Combine(toolBinRoot, candidateConfiguration, "net10.0", "MigrateEmbeddingVectors.dll");
+            string candidate = Path.Combine(toolBinRoot, candidateConfiguration, "net11.0", "MigrateEmbeddingVectors.dll");
             if (File.Exists(candidate))
             {
                 return candidate;

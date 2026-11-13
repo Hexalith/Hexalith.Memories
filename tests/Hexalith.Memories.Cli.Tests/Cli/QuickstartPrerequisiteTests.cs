@@ -67,11 +67,11 @@ public sealed class QuickstartPrerequisiteTests
     }
 
     [Fact]
-    public async Task CheckDotnetSdk_Passes_WhenSdk11AndBothNet10FrameworksPresent()
+    public async Task CheckDotnetSdk_Passes_WhenSdk11AndBothNet11FrameworksPresent()
     {
         var runner = new FakeProcessRunner();
         runner.Register("dotnet", new ProcessResult(0, "9.0.100\n10.0.403\n11.0.100\n", string.Empty, TimeSpan.FromMilliseconds(30)));
-        runner.Register("dotnet", "--list-runtimes", new ProcessResult(0, "Microsoft.NETCore.App 10.0.15 [/dotnet/shared]\nMicrosoft.AspNetCore.App 10.0.15 [/dotnet/shared]\n", string.Empty, TimeSpan.Zero));
+        runner.Register("dotnet", "--list-runtimes", new ProcessResult(0, "Microsoft.NETCore.App 11.0.0 [/dotnet/shared]\nMicrosoft.AspNetCore.App 11.0.0 [/dotnet/shared]\n", string.Empty, TimeSpan.Zero));
         var checks = new PrerequisiteChecks(runner);
 
         PrerequisiteCheckResult result = await checks.CheckDotnetSdkAsync(CancellationToken.None);
@@ -111,7 +111,7 @@ public sealed class QuickstartPrerequisiteTests
     {
         var runner = new FakeProcessRunner();
         runner.Register("dotnet", new ProcessResult(0, "(no recognized output)\n", string.Empty, TimeSpan.Zero));
-        runner.Register("dotnet", "--list-runtimes", new ProcessResult(0, "Microsoft.NETCore.App 10.0.15 [/dotnet/shared]\nMicrosoft.AspNetCore.App 10.0.15 [/dotnet/shared]\n", string.Empty, TimeSpan.Zero));
+        runner.Register("dotnet", "--list-runtimes", new ProcessResult(0, "Microsoft.NETCore.App 11.0.0 [/dotnet/shared]\nMicrosoft.AspNetCore.App 11.0.0 [/dotnet/shared]\n", string.Empty, TimeSpan.Zero));
         var checks = new PrerequisiteChecks(runner);
 
         PrerequisiteCheckResult result = await checks.CheckDotnetSdkAsync(CancellationToken.None);
@@ -138,10 +138,10 @@ public sealed class QuickstartPrerequisiteTests
 
     [Theory]
     [InlineData("", "Microsoft.NETCore.App, Microsoft.AspNetCore.App")]
-    [InlineData("Microsoft.NETCore.App 10.0.15 [/dotnet/shared]\n", "Microsoft.AspNetCore.App")]
-    [InlineData("Microsoft.AspNetCore.App 10.0.15 [/dotnet/shared]\n", "Microsoft.NETCore.App")]
-    [InlineData("Microsoft.NETCore.App 11.0.0 [/dotnet/shared]\nMicrosoft.AspNetCore.App 11.0.0 [/dotnet/shared]\n", "Microsoft.NETCore.App, Microsoft.AspNetCore.App")]
-    public async Task CheckDotnetSdk_Fails_WhenRequiredNet10FrameworkMissing(string runtimes, string missing)
+    [InlineData("Microsoft.NETCore.App 11.0.0 [/dotnet/shared]\n", "Microsoft.AspNetCore.App")]
+    [InlineData("Microsoft.AspNetCore.App 11.0.0 [/dotnet/shared]\n", "Microsoft.NETCore.App")]
+    [InlineData("Microsoft.NETCore.App 10.0.15 [/dotnet/shared]\nMicrosoft.AspNetCore.App 10.0.15 [/dotnet/shared]\n", "Microsoft.NETCore.App, Microsoft.AspNetCore.App")]
+    public async Task CheckDotnetSdk_Fails_WhenRequiredNet11FrameworkMissing(string runtimes, string missing)
     {
         var runner = new FakeProcessRunner();
         runner.Register("dotnet", new ProcessResult(0, "11.0.100 [/dotnet/sdk]\n", string.Empty, TimeSpan.Zero));
@@ -153,8 +153,8 @@ public sealed class QuickstartPrerequisiteTests
         result.Passed.ShouldBeFalse();
         result.Diagnostic.ShouldContain(missing);
         result.RecoverySuggestion.ShouldNotBeNull();
-        result.RecoverySuggestion.ShouldContain("ASP.NET Core 10");
-        result.RecoverySuggestion.ShouldContain("/dotnet/10.0");
+        result.RecoverySuggestion.ShouldContain("ASP.NET Core 11");
+        result.RecoverySuggestion.ShouldContain("/dotnet/11.0");
     }
 
     [Fact]

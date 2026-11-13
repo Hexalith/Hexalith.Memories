@@ -29,7 +29,7 @@ jobs:
       - name: Initialize build submodules
         uses: Hexalith/Hexalith.Builds/Github/initialize-build@main
 
-      # SDK 11 compiles net10.0; SDK 10 supplies its runtime and reference packs.
+      # SDK 10 supplies retained compatibility fixtures; global.json selects SDK 11.
       - name: Install .NET 10 runtime and targeting packs
         uses: actions/setup-dotnet@v6
         with:
@@ -81,7 +81,7 @@ jobs:
       - name: Initialize build submodules
         uses: Hexalith/Hexalith.Builds/Github/initialize-build@main
 
-      # SDK 11 compiles net10.0; SDK 10 supplies its runtime and reference packs.
+      # SDK 10 supplies retained compatibility fixtures; global.json selects SDK 11.
       - name: Install .NET 10 runtime and targeting packs
         uses: actions/setup-dotnet@v6
         with:
@@ -133,7 +133,7 @@ jobs:
       - name: Initialize build submodules
         uses: Hexalith/Hexalith.Builds/Github/initialize-build@main
 
-      # SDK 11 compiles net10.0; SDK 10 supplies its runtime and reference packs.
+      # SDK 10 supplies retained compatibility fixtures; global.json selects SDK 11.
       - name: Install .NET 10 runtime and targeting packs
         uses: actions/setup-dotnet@v6
         with:
@@ -175,6 +175,6 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: nightly-benchmark-quality-result
-          path: tests/Hexalith.Memories.Benchmarks/bin/Release/net10.0/benchmark-results.json
+          path: tests/Hexalith.Memories.Benchmarks/bin/Release/net11.0/benchmark-results.json
           if-no-files-found: error
           retention-days: 14

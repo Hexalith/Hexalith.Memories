@@ -9,7 +9,7 @@ The guided quickstart gets you from a fresh clone to a first search result in un
 ### 1. Prerequisites (~30s to verify)
 
 - [Docker Desktop](https://docs.docker.com/desktop/) (WSL2 on Windows; resource allocation on macOS)
-- [.NET SDK 11.0.100](https://dotnet.microsoft.com/download/dotnet/11.0) and the [ASP.NET Core 10 runtime](https://dotnet.microsoft.com/download/dotnet/10.0) (including .NET 10) for the net10.0 applications and tests
+- [.NET SDK 11.0.100](https://dotnet.microsoft.com/download/dotnet/11.0) and the [ASP.NET Core 11 runtime](https://dotnet.microsoft.com/download/dotnet/11.0) (including .NET 11) for the net11.0 applications and tests
 - `git` with submodules support
 
 If any of these fail, see [docs/dev/quickstart.md](docs/dev/quickstart.md) for OS-specific setup notes.
@@ -100,7 +100,7 @@ Pass the owner manifest under `references/`, never the Platform's copy in `src/H
 ps --ppid <launcher-pid> -o pid,args
 ```
 
-Attach to the child running the server's `bin/Debug/net10.0/<Assembly>` executable, for example with VS Code ("Attach to a .NET process"). Breakpoints in this checkout's sources bind. Stay attached until you finish, then stop only that run with `down`.
+Attach to the child running the server's `bin/Debug/net11.0/<Assembly>` executable, for example with VS Code ("Attach to a .NET process"). Breakpoints in this checkout's sources bind. Stay attached until you finish, then stop only that run with `down`.
 
 `debug` does not print the run id: it is the file name of the run state `<runId>.json` under `${XDG_DATA_HOME:-$HOME/.local/share}/hexalith-builds/g4-runs/` on Linux. Inspect the state files and select the one whose `projectProcessIds` contains the launcher id reported by this `debug` invocation. Confirm its `manifestHash` matches `sha256sum references/Hexalith.Memories/module/hexalith.module-manifest.v2.json` (ignoring hexadecimal letter case), then use its `runId`. File modification time alone cannot identify your run. When an earlier run used the same manifest, `down --manifest` refuses with `HXR024`; add `--run-id <runId>`. An explicit `--run-id` is not cross-checked against the manifest, so verify both fields before stopping it.
 

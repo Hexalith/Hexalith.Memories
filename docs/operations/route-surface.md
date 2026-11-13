@@ -114,7 +114,7 @@ export MEMORIES_DAPR_SCHEDULER_HOST_ADDRESS=<active-scheduler-host:port>
 Then run the exact proof invocation:
 
 ```bash
-DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.IntegrationTests/bin/Debug/net10.0/Hexalith.Memories.IntegrationTests.dll -method Hexalith.Memories.IntegrationTests.Tenants.TenantIsolationIntegrationTests.VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes
+DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.IntegrationTests/bin/Debug/net11.0/Hexalith.Memories.IntegrationTests.dll -method Hexalith.Memories.IntegrationTests.Tenants.TenantIsolationIntegrationTests.VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes
 ```
 
 The authenticated canary traversal through `GET /api/v1/tenants/{tenantId}/traverse` is a separate

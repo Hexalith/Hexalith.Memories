@@ -14,15 +14,15 @@ The `memories quickstart` command walks a developer through six steps that isola
 
 Mirrors the README prerequisites but with OS-specific install guides.
 
-### .NET SDK 11.0.100 and ASP.NET Core 10 runtime
+### .NET SDK 11.0.100 and ASP.NET Core 11 runtime
 
-Install [SDK 11.0.100](https://dotnet.microsoft.com/download/dotnet/11.0) and the [ASP.NET Core 10 runtime](https://dotnet.microsoft.com/download/dotnet/10.0), including its .NET 10 runtime dependency. The repository selects SDK 11 but its applications still target net10.0. Installing the .NET 10 SDK alongside SDK 11 also supplies both required shared frameworks and targeting packs. The ordinary .NET Runtime alone does not supply `Microsoft.AspNetCore.App`.
+Install [SDK 11.0.100](https://dotnet.microsoft.com/download/dotnet/11.0) and the [ASP.NET Core 11 runtime](https://dotnet.microsoft.com/download/dotnet/11.0), including its .NET 11 runtime dependency. The repository selects SDK 11 and its applications target net11.0. SDK 11 supplies both required shared frameworks and targeting packs. The ordinary .NET Runtime alone does not supply `Microsoft.AspNetCore.App`.
 
-- **Windows**: use the SDK 11 and ASP.NET Core Runtime 10 installers for your architecture from the links above. The Hosting Bundle is an option when IIS hosting is required.
-- **macOS**: install SDK 11 and ASP.NET Core Runtime 10 for the same architecture. On Apple Silicon, use arm64 rather than mixing x64/Rosetta and arm64 installations.
-- **Linux**: follow the [Microsoft package guide](https://learn.microsoft.com/dotnet/core/install/linux) for your distribution, installing `dotnet-sdk-11.0` and `aspnetcore-runtime-10.0`. If your distribution does not provide those packages, use Microsoft's [dotnet-install scripts](https://learn.microsoft.com/dotnet/core/tools/dotnet-install-script): install SDK `11.0.100`, then the `10.0` SDK channel into the same installation directory.
+- **Windows**: use the SDK 11 and ASP.NET Core Runtime 11 installers for your architecture from the links above. The Hosting Bundle is an option when IIS hosting is required.
+- **macOS**: install SDK 11 and ASP.NET Core Runtime 11 for the same architecture. On Apple Silicon, use arm64 rather than mixing x64/Rosetta and arm64 installations.
+- **Linux**: follow the [Microsoft package guide](https://learn.microsoft.com/dotnet/core/install/linux) for your distribution, installing `dotnet-sdk-11.0` and `aspnetcore-runtime-11.0`. If your distribution does not provide those packages, use Microsoft's [dotnet-install scripts](https://learn.microsoft.com/dotnet/core/tools/dotnet-install-script): install SDK `11.0.100` into the selected installation directory.
 
-Verify `dotnet --list-sdks` includes `11.0.100` or a compatible newer SDK, and `dotnet --list-runtimes` includes both `Microsoft.NETCore.App 10.0.x` and `Microsoft.AspNetCore.App 10.0.x`. If either framework is missing, install ASP.NET Core Runtime 10 or SDK 10 alongside SDK 11. If installed frameworks are not listed, check that `PATH` and `DOTNET_ROOT` select that same installation directory and architecture.
+Verify `dotnet --list-sdks` includes `11.0.100` or a compatible newer SDK, and `dotnet --list-runtimes` includes both `Microsoft.NETCore.App 11.0.x` and `Microsoft.AspNetCore.App 11.0.x`. If either framework is missing, install ASP.NET Core Runtime 11 or SDK 11. If installed frameworks are not listed, check that `PATH` and `DOTNET_ROOT` select that same installation directory and architecture.
 
 ### Docker Desktop
 
@@ -38,14 +38,14 @@ Aspire manages the DAPR sidecar for local development, so a DAPR CLI is not requ
 
 ### [1/6] Verifying prerequisites
 
-Runs five sub-checks: Docker daemon (`docker ps`), .NET prerequisites (`dotnet --list-sdks` requires SDK 11.0.100 or newer; `dotnet --list-runtimes` requires both Microsoft.NETCore.App 10.0.x and Microsoft.AspNetCore.App 10.0.x), port availability (5000, 6379, 6380, 3500, 50001), OS platform (informational), and DAPR CLI (soft-fail — missing is OK).
+Runs five sub-checks: Docker daemon (`docker ps`), .NET prerequisites (`dotnet --list-sdks` requires SDK 11.0.100 or newer; `dotnet --list-runtimes` requires both Microsoft.NETCore.App 11.0.x and Microsoft.AspNetCore.App 11.0.x), port availability (5000, 6379, 6380, 3500, 50001), OS platform (informational), and DAPR CLI (soft-fail — missing is OK).
 
 **Common failures and remediation:**
 
 - `Docker command not found` → install Docker Desktop or ensure `docker` is on PATH.
 - `Docker daemon not reachable` → start Docker Desktop; if already running, restart it.
 - `No .NET SDK 11.0.100 or newer` → install SDK 11.0.100 from the SDK link above.
-- `Missing .NET 10 shared framework(s)` → install ASP.NET Core Runtime 10 (including .NET 10) or SDK 10 alongside SDK 11; verify both framework names with `dotnet --list-runtimes`.
+- `Missing .NET 11 shared framework(s)` → install ASP.NET Core Runtime 11 (including .NET 11) or SDK 11; verify both framework names with `dotnet --list-runtimes`.
 - `Port <N> in use` → find the owner with `lsof -i :<N>` (macOS/Linux) or `netstat -ano | findstr :<N>` (Windows) and stop the conflicting process.
 
 Skip the step with `--skip-prereq-check` when you know the environment is fine (e.g., CI with a pre-bootstrapped stack).
@@ -100,7 +100,7 @@ Runs a hybrid search for a sample-specific validation token embedded in the curr
 
 ### macOS
 
-- **Rosetta on Apple Silicon**: SDK 11 and ASP.NET Core Runtime 10 have native arm64 builds. Installing the x64 SDK under Rosetta works but the embedded-image path may slow down Redis Stack boot.
+- **Rosetta on Apple Silicon**: SDK 11 and ASP.NET Core Runtime 11 have native arm64 builds. Installing the x64 SDK under Rosetta works but the embedded-image path may slow down Redis Stack boot.
 - **Docker Desktop resources**: increase CPU/RAM allocation under Settings → Resources if the stack is slow to boot.
 
 ### Linux

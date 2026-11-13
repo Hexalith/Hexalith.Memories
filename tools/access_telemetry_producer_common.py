@@ -78,27 +78,27 @@ _C2_IDEMPOTENCE_CONFLICT_TESTS = (
 _C4_MECHANISM_PROOF_TESTS: Mapping[str, tuple[str, str, tuple[str, ...]]] = {
     "etag-failure": (
         "tests/Hexalith.Memories.AccessTelemetry.Tests/Hexalith.Memories.AccessTelemetry.Tests.csproj",
-        "tests/Hexalith.Memories.AccessTelemetry.Tests/bin/Debug/net10.0/Hexalith.Memories.AccessTelemetry.Tests.dll",
+        "tests/Hexalith.Memories.AccessTelemetry.Tests/bin/Debug/net11.0/Hexalith.Memories.AccessTelemetry.Tests.dll",
         ("WriteRecordAndIndexAsync_ConcurrentCatalogWriteBetweenReadAndCommit_ThrowsAndCommitsNoPartialState",),
     ),
     "ttl-failure": (
         "tests/Hexalith.Memories.AccessTelemetry.Tests/Hexalith.Memories.AccessTelemetry.Tests.csproj",
-        "tests/Hexalith.Memories.AccessTelemetry.Tests/bin/Debug/net10.0/Hexalith.Memories.AccessTelemetry.Tests.dll",
+        "tests/Hexalith.Memories.AccessTelemetry.Tests/bin/Debug/net11.0/Hexalith.Memories.AccessTelemetry.Tests.dll",
         ("WriteRecordAndIndexAsync_TtlReapedRecordWithLingeringBucketEntry_ReturnsConflictWithoutResurrection",),
     ),
     "transaction-failure": (
         "tests/Hexalith.Memories.AccessTelemetry.Tests/Hexalith.Memories.AccessTelemetry.Tests.csproj",
-        "tests/Hexalith.Memories.AccessTelemetry.Tests/bin/Debug/net10.0/Hexalith.Memories.AccessTelemetry.Tests.dll",
+        "tests/Hexalith.Memories.AccessTelemetry.Tests/bin/Debug/net11.0/Hexalith.Memories.AccessTelemetry.Tests.dll",
         ("DeleteAndVerifyAsync_SecondOperationFails_CommitsNoPartialDelete",),
     ),
     "queue-byte-exhaustion": (
         "tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj",
-        "tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll",
+        "tests/Hexalith.Memories.Server.Tests/bin/Debug/net11.0/Hexalith.Memories.Server.Tests.dll",
         ("Queue_DropsNewestAtExactRecordAndByteBounds",),
     ),
     "queue-record-exhaustion": (
         "tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj",
-        "tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll",
+        "tests/Hexalith.Memories.Server.Tests/bin/Debug/net11.0/Hexalith.Memories.Server.Tests.dll",
         ("Queue_DropsNewestAtExactRecordAndByteBounds",),
     ),
 }
@@ -911,7 +911,7 @@ def _fixed_operation_commands(
         return [
             *_fixed_test_commands(
                 "tests/Hexalith.Memories.AccessTelemetry.Tests/Hexalith.Memories.AccessTelemetry.Tests.csproj",
-                "tests/Hexalith.Memories.AccessTelemetry.Tests/bin/Debug/net10.0/Hexalith.Memories.AccessTelemetry.Tests.dll",
+                "tests/Hexalith.Memories.AccessTelemetry.Tests/bin/Debug/net11.0/Hexalith.Memories.AccessTelemetry.Tests.dll",
                 _RETENTION_PROOF_TESTS,
             ),
             (*prefix, "get", "configmap", "access-telemetry-config", "-o", "json"),

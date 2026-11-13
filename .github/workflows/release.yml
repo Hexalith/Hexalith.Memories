@@ -86,7 +86,7 @@ jobs:
         with:
           version: ${{ env.KUBECTL_VERSION }}
 
-      # SDK 11 compiles net10.0; SDK 10 supplies its runtime and reference packs.
+      # SDK 10 supplies retained compatibility fixtures; global.json selects SDK 11.
       - name: Install .NET 10 runtime and targeting packs
         uses: actions/setup-dotnet@v6
         with:

@@ -197,7 +197,7 @@ jobs:
       - name: Initialize build submodules
         uses: Hexalith/Hexalith.Builds/Github/initialize-build@main
 
-      # SDK 11 compiles net10.0; SDK 10 supplies its runtime and reference packs.
+      # SDK 10 supplies retained compatibility fixtures; global.json selects SDK 11.
       - name: Install .NET 10 runtime and targeting packs
         uses: actions/setup-dotnet@v6
         with:
@@ -224,7 +224,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p TestResults
-          dotnet tests/Hexalith.Memories.EventStore.Tests/bin/Debug/net10.0/Hexalith.Memories.EventStore.Tests.dll -class Hexalith.Memories.EventStore.Tests.MemoriesCatalogTests -xml TestResults/source-catalog.xml
+          dotnet tests/Hexalith.Memories.EventStore.Tests/bin/Debug/net11.0/Hexalith.Memories.EventStore.Tests.dll -class Hexalith.Memories.EventStore.Tests.MemoriesCatalogTests -xml TestResults/source-catalog.xml
           python3 - <<'PYTHON'
           import xml.etree.ElementTree as ET
           assemblies = ET.parse('TestResults/source-catalog.xml').getroot().findall('assembly')
@@ -285,7 +285,7 @@ jobs:
       - name: Initialize build submodules
         uses: Hexalith/Hexalith.Builds/Github/initialize-build@main
 
-      # SDK 11 compiles net10.0; SDK 10 supplies its runtime and reference packs.
+      # SDK 10 supplies retained compatibility fixtures; global.json selects SDK 11.
       - name: Install .NET 10 runtime and targeting packs
         uses: actions/setup-dotnet@v6
         with:
@@ -478,7 +478,7 @@ jobs:
       - name: Initialize build submodules
         uses: Hexalith/Hexalith.Builds/Github/initialize-build@main
 
-      # SDK 11 compiles net10.0; SDK 10 supplies its runtime and reference packs.
+      # SDK 10 supplies retained compatibility fixtures; global.json selects SDK 11.
       - name: Install .NET 10 runtime and targeting packs
         uses: actions/setup-dotnet@v6
         with:
@@ -554,7 +554,7 @@ jobs:
       - name: Initialize build submodules
         uses: Hexalith/Hexalith.Builds/Github/initialize-build@main
 
-      # SDK 11 compiles net10.0; SDK 10 supplies its runtime and reference packs.
+      # SDK 10 supplies retained compatibility fixtures; global.json selects SDK 11.
       - name: Install .NET 10 runtime and targeting packs
         uses: actions/setup-dotnet@v6
         with:
@@ -618,7 +618,7 @@ jobs:
       - name: Initialize build submodules
         uses: Hexalith/Hexalith.Builds/Github/initialize-build@main
 
-      # SDK 11 compiles net10.0; SDK 10 supplies its runtime and reference packs.
+      # SDK 10 supplies retained compatibility fixtures; global.json selects SDK 11.
       - name: Install .NET 10 runtime and targeting packs
         uses: actions/setup-dotnet@v6
         with:

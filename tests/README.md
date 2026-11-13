@@ -130,7 +130,7 @@ remains a blocking quality gate: at least 80% of queries must favor hybrid retri
 input runs must produce identical NDCG@10. Do not hide a failure with a narrower filter or retries.
 
 Local TRX evidence is written under `TestResults/benchmark`; the quality JSON is written to
-`tests/Hexalith.Memories.Benchmarks/bin/Release/net10.0/benchmark-results.json`. Nightly uploads them
+`tests/Hexalith.Memories.Benchmarks/bin/Release/net11.0/benchmark-results.json`. Nightly uploads them
 separately as `nightly-benchmark-trx` and `nightly-benchmark-quality-result`, even when the test step
 fails. Keep current outcomes out of this procedural guide: the governed result, production calibration,
 per-query scores, reproducibility proof, and synthetic-vector caveat live in

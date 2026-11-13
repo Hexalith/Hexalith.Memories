@@ -119,7 +119,7 @@ Build the Server and Contracts test projects when their Debug test executables a
 not current, then run:
 
 ```bash
-DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll \
+DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net11.0/Hexalith.Memories.Server.Tests.dll \
   -class Hexalith.Memories.Server.Tests.Architecture.IngestionWorkflowDeterminismGuardTests \
   -class Hexalith.Memories.Server.Tests.Ingestion.DaprIngestionWorkflowSchedulerTests \
   -class Hexalith.Memories.Server.Tests.Ingestion.IngestionPayloadClaimCheckTests \
@@ -129,7 +129,7 @@ DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/De
   -class Hexalith.Memories.Server.Tests.EventStoreIntegration.EventIngestionWorkflowSchedulerAdapterTests \
   -parallel none -noLogo
 
-dotnet exec tests/Hexalith.Memories.Contracts.Tests/bin/Debug/net10.0/Hexalith.Memories.Contracts.Tests.dll \
+dotnet exec tests/Hexalith.Memories.Contracts.Tests/bin/Debug/net11.0/Hexalith.Memories.Contracts.Tests.dll \
   -class Hexalith.Memories.Contracts.Tests.V1.IngestionInputSerializationTests \
   -parallel none -noLogo
 ```

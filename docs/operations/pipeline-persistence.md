@@ -90,7 +90,7 @@ dotnet test tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.Integrati
 
 Benchmark artifact output:
 
-- `tests/Hexalith.Memories.IntegrationTests/bin/Debug/net10.0/pipeline-persistence-performance.json`
+- `tests/Hexalith.Memories.IntegrationTests/bin/Debug/net11.0/pipeline-persistence-performance.json`
 
 ### Latest recorded measurements
 

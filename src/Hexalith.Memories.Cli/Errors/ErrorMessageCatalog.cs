@@ -153,7 +153,7 @@ public static class ErrorMessageCatalog
                 ExitCode: 2),
             ["DOTNET_VERSION_INSUFFICIENT"] = new(
                 CliMessage: null,
-                CliSuggestion: "Install .NET SDK 11.0.100 or newer and the ASP.NET Core 10 runtime (including .NET 10), then retry.",
+                CliSuggestion: "Install .NET SDK 11.0.100 or newer and the ASP.NET Core 11 runtime (including .NET 11), then retry.",
                 ExitCode: 2),
             ["PORT_IN_USE"] = new(
                 CliMessage: null,

@@ -1,13 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk.Razor">
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <!-- Story 17.1: this RCL is an internal building block for the future web Evidence Cockpit
          and has no runnable host yet. Flip to true and add NuGet metadata + README the moment a
          consumer outside the Memories solution needs it. -->
     <IsPackable>false</IsPackable>
-    <!-- FrontComposer packages are not published on the configured CI feed. This non-packable
-         web RCL consumes the initialized root submodule when it is available. -->
-    <HexalithFrontComposerFromSource Condition="'$(HexalithFrontComposerFromSource)' == '' and Exists('$(HexalithFrontComposerRoot)\src\Hexalith.FrontComposer.Shell\Hexalith.FrontComposer.Shell.csproj')">true</HexalithFrontComposerFromSource>
+    <!-- Source diagnostics use the initialized root dependency only when explicitly selected.
+         CI and package builds consume the published FrontComposer packages. -->
+    <HexalithFrontComposerFromSource Condition="'$(HexalithFrontComposerFromSource)' == '' and '$(UseHexalithProjectReferences)' == 'true' and Exists('$(HexalithFrontComposerRoot)\src\Hexalith.FrontComposer.Shell\Hexalith.FrontComposer.Shell.csproj')">true</HexalithFrontComposerFromSource>
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
@@ -17,6 +17,7 @@
     <PackageReference Include="Hexalith.FrontComposer.Contracts" Condition="'$(HexalithFrontComposerFromSource)' != 'true'" />
     <PackageReference Include="Hexalith.FrontComposer.Shell" Condition="'$(HexalithFrontComposerFromSource)' != 'true'" />
     <PackageReference Include="Microsoft.FluentUI.AspNetCore.Components" />
+    <PackageReference Include="Microsoft.Extensions.Validation" />
     <PackageReference Include="Microsoft.IdentityModel.Protocols.OpenIdConnect" />
     <PackageReference Include="Microsoft.IdentityModel.Tokens" />
   </ItemGroup>

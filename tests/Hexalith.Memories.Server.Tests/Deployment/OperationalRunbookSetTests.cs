@@ -395,7 +395,7 @@ public sealed class OperationalRunbookSetTests
         const string buildCommand =
             "dotnet build tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj --configuration Debug --disable-build-servers -m:1 /nr:false";
         string proofCommand =
-            $"DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.IntegrationTests/bin/Debug/net10.0/Hexalith.Memories.IntegrationTests.dll -method {GraphContentProofTestName}";
+            $"DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.IntegrationTests/bin/Debug/net11.0/Hexalith.Memories.IntegrationTests.dll -method {GraphContentProofTestName}";
 
         string tenantMarkdown = ReadRepoFile("docs/operations/tenant-onboarding-offboarding.md");
         string routeMarkdown = ReadRepoFile("docs/operations/route-surface.md");

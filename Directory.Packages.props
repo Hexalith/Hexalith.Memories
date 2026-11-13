@@ -10,6 +10,11 @@
   <Import Project="$(Hexalith1BuildPackageProps)" Condition="Exists('$(Hexalith1BuildPackageProps)') And '$(HexalithVersionsLoaded)' != 'true'" />
   <Import Project="$(Hexalith2BuildPackageProps)" Condition="Exists('$(Hexalith2BuildPackageProps)') And '$(HexalithVersionsLoaded)' != 'true'" />
   <Import Project="$(Hexalith3BuildPackageProps)" Condition="'$(HexalithVersionsLoaded)' != 'true'" />
+  <!-- Older selected Builds catalogs omit the stable validation pin. Keep the current
+       NET11 web host off preview validation assets while newer catalogs own the version. -->
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.Extensions.Validation" Version="11.0.0" Condition="'@(PackageVersion->WithMetadataValue('Identity', 'Microsoft.Extensions.Validation'))' == ''" />
+  </ItemGroup>
   <!-- Owner release prerequisite: keep newer central selections while requiring the delivered catalog SDK. -->
   <PropertyGroup>
     <HexalithEventStoreVersion Condition="'$(HexalithEventStoreFromSource)' != 'true' and ('$(HexalithEventStoreVersion)' == '' or $([MSBuild]::VersionLessThan('$(HexalithEventStoreVersion)', '3.129.0')))">3.129.0</HexalithEventStoreVersion>

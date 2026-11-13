@@ -457,7 +457,7 @@ target test project and run the xUnit v3 assembly directly with `DiffEngine_Disa
 
 ```powershell
 dotnet build tests/Hexalith.Memories.Web.Tests/Hexalith.Memories.Web.Tests.csproj --configuration Debug
-DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Web.Tests/bin/Debug/net10.0/Hexalith.Memories.Web.Tests.dll -class Hexalith.Memories.Web.Tests.Components.Validation.Epic17ConformanceTests
+DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Web.Tests/bin/Debug/net11.0/Hexalith.Memories.Web.Tests.dll -class Hexalith.Memories.Web.Tests.Components.Validation.Epic17ConformanceTests
 ```
 
 `DiffEngine_Disabled=true` prevents snapshot/diff tooling from launching an external diff tool in the
