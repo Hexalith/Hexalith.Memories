@@ -37,3 +37,6 @@ tests/tooling/access_telemetry_functional_retention/fixtures/native-selected-sou
 
 # Preserve authored CRLF in the refreshed current-toolchain guards.
 tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs whitespace=cr-at-eol
+
+# Preserve the catalog wrapper CRLF convention in whitespace checks.
+Directory.Packages.props whitespace=cr-at-eol
