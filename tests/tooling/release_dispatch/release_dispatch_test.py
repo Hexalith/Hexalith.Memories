@@ -90,7 +90,7 @@ class ReleaseDispatchTests(unittest.TestCase):
 
     def test_release_pin_is_approved_and_profile_tracks_the_gitlink(self):
         workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
-        approved = "6ad5854aa14a9950e1fbfc32d7e27953a1c4b82b"
+        approved = "ae77d5690a9411a2154fa4ed5231edc373942573"
         self.assertEqual(approved, self.source.APPROVED_BUILDS_SHA)
         self.assertEqual(approved, self.destination.APPROVED_BUILDS_SHA)
         self.assertEqual(3, workflow.count(approved))

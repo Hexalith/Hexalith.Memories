@@ -20,6 +20,8 @@ using Microsoft.Extensions.DependencyInjection;
 
 using Shouldly;
 
+using StackExchange.Redis;
+
 /// <summary>
 /// Behavioral guard that each Dapr sidecar sees complete current-generation Redis and OpenBao files
 /// at its actual <see cref="BeforeResourceStartedEvent"/> boundary.
@@ -57,7 +59,7 @@ public sealed class AppHostComponentFileOrderingTests
         var observationErrors = new ConcurrentDictionary<string, string>(StringComparer.Ordinal);
         var startedResourceNames = new ConcurrentBag<string>();
 
-        builder.Eventing.Subscribe<BeforeResourceStartedEvent>(async (@event, _) =>
+        builder.Eventing.Subscribe<BeforeResourceStartedEvent>(async (@event, cancellationToken) =>
         {
             startedResourceNames.Add(@event.Resource.Name);
             string? consumer = @event.Resource.Name switch
@@ -99,12 +101,28 @@ public sealed class AppHostComponentFileOrderingTests
                     accessComponent.Contains("hexalith/memories/access-telemetry", StringComparison.Ordinal) &&
                     !accessComponent.Contains("http://127.0.0.1:1", StringComparison.Ordinal);
                 bool redisReady = true;
-                if (consumer is "server" or "lifecycle")
+                if (consumer is "server" or "lifecycle" or "clock")
                 {
                     string stateStore = await File.ReadAllTextAsync(
                         Path.Combine(ownedDirectory, "statestore.yaml")).ConfigureAwait(true);
                     redisReady = stateStore.Contains("redisHost", StringComparison.Ordinal) &&
                         !stateStore.Contains("value: \"127.0.0.1:6379\"", StringComparison.Ordinal);
+                    string pubSub = await File.ReadAllTextAsync(
+                        Path.Combine(ownedDirectory, "pubsub.yaml")).ConfigureAwait(true);
+                    IResource redis = builder.Resources.Single(resource => resource.Name == "memories-vectors");
+                    redis.TryGetEndpoints(out IEnumerable<EndpointAnnotation>? endpoints).ShouldBeTrue();
+                    AllocatedEndpoint allocated = endpoints!.Single(endpoint => endpoint.Name == "redis")
+                        .AllocatedEndpoint.ShouldNotBeNull();
+                    redisReady = redisReady && pubSub.Contains("type: pubsub.redis", StringComparison.Ordinal) &&
+                        pubSub.Contains($"value: \"{allocated.Address}:{allocated.Port}\"", StringComparison.Ordinal);
+                    if (consumer == "clock")
+                    {
+                        // The clock's pubsub consumer must have a responsive Redis at the start boundary.
+                        using ConnectionMultiplexer connection = await ConnectionMultiplexer.ConnectAsync(
+                            $"{allocated.Address}:{allocated.Port},abortConnect=true,connectTimeout=3000")
+                            .WaitAsync(cancellationToken).ConfigureAwait(true);
+                        _ = await connection.GetDatabase().PingAsync().WaitAsync(cancellationToken).ConfigureAwait(true);
+                    }
                 }
 
                 bool observedReady = componentsReady && runtimeTokenReady && accessTokenReady && redisReady;

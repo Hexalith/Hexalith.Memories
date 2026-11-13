@@ -168,12 +168,12 @@ jobs:
         run: python3 tools/check-story-review-readiness.py --branch-name "$BRANCH_NAME" --commit-message-file "$COMMIT_MESSAGE_FILE" --changed-files-file "$CHANGED_FILES_FILE"
 
   shared-ci:
-    uses: Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@6ad5854aa14a9950e1fbfc32d7e27953a1c4b82b
+    uses: Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@ae77d5690a9411a2154fa4ed5231edc373942573
     with:
       solution: Hexalith.Memories.slnx
       dotnet-global-json: global.json
       package-prepare-script: tools/ensure-dotnet10.sh
-      builds-execution-sha: 6ad5854aa14a9950e1fbfc32d7e27953a1c4b82b
+      builds-execution-sha: ae77d5690a9411a2154fa4ed5231edc373942573
       test-platform: microsoft-testing-platform
       # The shared shard has no integration-exclusion input. Keep the full
       # Docker-free inventory and its canonical Coverlet reports in the local lane.
@@ -360,7 +360,7 @@ jobs:
         run: |
           set -euo pipefail
           # The publication fixtures compare immutable historical helper bytes. The initializer's
-          # shallow checkout contains only the current gitlink, so fetch both approved sources.
+          # shallow checkout contains only the current gitlink, so retain both historical sources.
           historical_builds_shas=(
             6ad5854aa14a9950e1fbfc32d7e27953a1c4b82b
             f0feeb234cbc16f88c2886a6ffae7122e05dd64b
@@ -512,7 +512,7 @@ jobs:
         working-directory: tests/Hexalith.Memories.Web.E2E
 
       - name: Initialize Ubuntu APT mirrors
-        uses: Hexalith/Hexalith.Builds/Github/initialize-apt@6ad5854aa14a9950e1fbfc32d7e27953a1c4b82b
+        uses: Hexalith/Hexalith.Builds/Github/initialize-apt@ae77d5690a9411a2154fa4ed5231edc373942573
 
       - name: Install Chromium browser
         run: npx playwright install --with-deps chromium

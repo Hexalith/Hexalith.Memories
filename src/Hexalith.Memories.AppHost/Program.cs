@@ -177,10 +177,12 @@ redis.OnResourceReady((resource, _, _) =>
 builder.Eventing.Subscribe<BeforeResourceStartedEvent>(async (@event, cancellationToken) =>
 {
     bool usesRedis = @event.Resource.Name is "memories" or "memories-access-telemetry" or
+        "memories-access-telemetry-clock" or
         "memories-mcp" or
         "memories-dapr" or "memories-dapr-cli" or
         "memories-mcp-dapr" or "memories-mcp-dapr-cli" or
-        "memories-access-telemetry-dapr" or "memories-access-telemetry-dapr-cli";
+        "memories-access-telemetry-dapr" or "memories-access-telemetry-dapr-cli" or
+        "memories-access-telemetry-clock-dapr" or "memories-access-telemetry-clock-dapr-cli";
     if (usesRedis)
     {
         Task rewriteSignal;
@@ -425,6 +427,7 @@ IResourceBuilder<ProjectResource> accessTelemetryClock = builder
     .WithEnvironment("AccessTelemetryLifecycle__AttestationVerificationKey", accessTelemetryDevelopmentSecrets.VerificationPublicKey)
     .WithEnvironment("AccessTelemetryLifecycle__ClockSignerKeyEpoch", accessTelemetryClockSignerKeyEpoch)
     .WithEnvironment("Clock__AllowDevelopmentSources", "true")
+    .WaitFor(redis)
     .WaitFor(openBao)
     .WaitFor(accessTelemetrySecrets);
 accessTelemetryClock = RandomizeProjectHttpEndpointIfRequested(accessTelemetryClock);

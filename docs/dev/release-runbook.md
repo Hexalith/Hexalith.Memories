@@ -4,6 +4,28 @@ This runbook records the observed first release path (`v1.2.0`, 2026-04-30) and 
 path for the next release. Package and container publishing remains CI-only. Do not publish release
 artifacts from a workstation.
 
+## Current Dependency Maintenance (2026-11-13)
+
+The current SDK is 11.0.100. Root release tooling selects `@semantic-release/github` 12.0.11;
+web E2E selects Node typings 26.6.6 and retains the current Node LTS runtime lane. Keep the npm
+manifests and their lockfiles together when refreshing these selections.
+
+FrontComposer retains its supported net10 project surfaces. Its shared Builds catalog view selects
+OpenIdConnect 10.0.15 for the exact Shell-dependent project identities, including transitive central
+package pins; Memories net11 consumers retain 11.0.0. Keep FrontComposer's catalog import-only.
+The clock project and its Dapr sidecars wait for Redis readiness and rewritten component files,
+so their pubsub connection uses the allocated endpoint instead of the initial port 6379 placeholder.
+
+Current CI, guarded release, publication profiles and caller validators must all select the Builds
+revision recorded by the root gitlink. After a catalog repair is committed and pushed in Builds,
+refresh every current execution pin together. Keep the older `6ad5854` and `f0feeb2` fetches for
+immutable qualification captures; those captures retain their original source and hashes.
+
+Before dispatch, require successful exact-source CI and a fresh dedicated publication qualification
+run at the final Memories and Builds revisions. Record those final workflow links with the release
+verification, then read every package in `tools/release-packages.json` back from NuGet at the released
+version. Local restore/build and offline fixture success do not replace those remote gates.
+
 ## Historical Release-Note Correction (2026-10-28)
 
 Commit [358bef352bf657bcd2a7c4e91cb0a6d298c3f7a4](https://github.com/Hexalith/Hexalith.Memories/commit/358bef352bf657bcd2a7c4e91cb0a6d298c3f7a4)
