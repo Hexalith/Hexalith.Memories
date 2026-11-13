@@ -99,7 +99,7 @@ public sealed class AppHostSecurityConfigurationTests
     public void BuildsCatalog_PinsEventStoreFamilyAtSelectedCentralVersion()
     {
         XDocument catalog = ReadSelectedBuildsCatalog();
-        XElement version = catalog.Descendants("HexalithEventStoreVersion").Single();
+        XElement version = ReadDefaultEventStoreVersion(catalog);
         ((string?)version.Attribute("Condition")).ShouldBe("'$(HexalithEventStoreVersion)' == ''");
         System.Text.RegularExpressions.Regex.IsMatch(version.Value, @"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
             .ShouldBeTrue("The selected EventStore family must have one concrete stable central version.");
@@ -224,7 +224,7 @@ public sealed class AppHostSecurityConfigurationTests
         {
             XDocument catalog = ReadSelectedBuildsCatalog();
             expected = fromSource
-                ? catalog.Descendants("HexalithEventStoreVersion").Single().Value
+                ? ReadDefaultEventStoreVersion(catalog).Value
                 : ReadBuildMetadata("EventStoreCatalogVersion");
             if (selected == "newer-than-catalog")
             {
@@ -285,9 +285,9 @@ public sealed class AppHostSecurityConfigurationTests
     public async Task RootDirectoryPackages_EmptySelectionDistinguishesSourceCatalogBelowOwnerFloorAsync(bool fromSource, string expected)
     {
         XDocument catalog = ReadSelectedBuildsCatalog();
-        catalog.Descendants("HexalithEventStoreVersion").Single().Value = "3.128.4";
+        ReadDefaultEventStoreVersion(catalog).Value = "3.128.4";
         XDocument owningCatalog = XDocument.Parse(ReadRepoFile("Directory.Packages.props"));
-        Version.Parse(catalog.Descendants("HexalithEventStoreVersion").Single().Value)
+        Version.Parse(ReadDefaultEventStoreVersion(catalog).Value)
             .ShouldBeLessThan(Version.Parse(owningCatalog.Descendants("HexalithEventStoreVersion").Single().Value));
         string fixture = Path.Combine(Path.GetTempPath(), "memories-source-catalog-floor-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(fixture);
@@ -401,6 +401,36 @@ public sealed class AppHostSecurityConfigurationTests
             .Message.ShouldContain("Client item", Case.Sensitive);
     }
 
+    [Theory]
+    [InlineData("missing-default")]
+    [InlineData("duplicate-default")]
+    [InlineData("changed-condition")]
+    [InlineData("conditional-group")]
+    public void BuildsCatalog_RefusesMissingAmbiguousOrConditionedDefaultDeclaration(string mutation)
+    {
+        XDocument catalog = XDocument.Load(ReadBuildMetadata("EventStoreCatalogPath"));
+        XElement version = ReadDefaultEventStoreVersion(catalog);
+        switch (mutation)
+        {
+            case "missing-default":
+                version.Remove();
+                break;
+            case "duplicate-default":
+                catalog.Root!.Add(new XElement("PropertyGroup", new XElement(version)));
+                break;
+            case "changed-condition":
+                version.SetAttributeValue("Condition", "'$(HexalithEventStoreVersion)' != ''");
+                break;
+            case "conditional-group":
+                version.Remove();
+                catalog.Root!.Add(new XElement("PropertyGroup", new XAttribute("Condition", "'$(Consumer)' == 'special'"), version));
+                break;
+        }
+
+        Should.Throw<ShouldAssertException>(() => ReadDefaultEventStoreVersion(catalog))
+            .Message.ShouldContain("default EventStore version", Case.Sensitive);
+    }
+
     private static async Task<JsonDocument> EvaluateProjectAsync(string project, params string[] properties)
     {
         var start = new ProcessStartInfo("dotnet")
@@ -446,6 +476,17 @@ public sealed class AppHostSecurityConfigurationTests
         return value;
     }
 
+    private static XElement ReadDefaultEventStoreVersion(XDocument catalog)
+    {
+        XElement root = catalog.Root.ShouldNotBeNull();
+        root.Name.ShouldBe(XName.Get("Project"));
+        return root.Elements("PropertyGroup")
+            .Where(static group => group.Attribute("Condition") is null)
+            .Elements("HexalithEventStoreVersion")
+            .Where(static version => (string?)version.Attribute("Condition") == "'$(HexalithEventStoreVersion)' == ''")
+            .ShouldHaveSingleItem("The unselected catalog must declare exactly one default EventStore version in an unconditional top-level PropertyGroup.");
+    }
+
     private static XDocument ReadSelectedBuildsCatalog() => ReadSelectedBuildsCatalog(
         ReadBuildMetadata("EventStoreCatalogPath"), ReadBuildMetadata("EventStoreCatalogVersion"), ReadBuildMetadata("EventStoreClientVersion"));
 
@@ -468,7 +509,7 @@ public sealed class AppHostSecurityConfigurationTests
         string catalogPath = Path.GetFullPath(evaluatedCatalogPath);
         candidates.ShouldContain(catalogPath, "The evaluated catalog must come from an owning tracked import; path overrides are refused.");
         XDocument catalog = XDocument.Load(catalogPath);
-        string declaredVersion = catalog.Descendants("HexalithEventStoreVersion").Single().Value;
+        string declaredVersion = ReadDefaultEventStoreVersion(catalog).Value;
         string floor = owningCatalog.Descendants("HexalithEventStoreVersion").Single().Value;
         string requiredVersion = Version.Parse(declaredVersion) < Version.Parse(floor) ? floor : declaredVersion;
         evaluatedVersion.ShouldBe(requiredVersion, "An evaluated version override must not replace the tracked catalog pin and owner SDK minimum.");
