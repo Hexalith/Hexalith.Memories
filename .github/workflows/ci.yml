@@ -172,7 +172,7 @@ jobs:
     with:
       solution: Hexalith.Memories.slnx
       dotnet-global-json: global.json
-      package-prepare-script: tools/ensure-dotnet10.sh
+      package-prepare-script: tools/ensure-dotnet11.sh
       builds-execution-sha: ae77d5690a9411a2154fa4ed5231edc373942573
       test-platform: microsoft-testing-platform
       # The shared shard has no integration-exclusion input. Keep the full

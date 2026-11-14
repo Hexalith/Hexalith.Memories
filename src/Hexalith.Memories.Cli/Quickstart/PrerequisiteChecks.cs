@@ -187,7 +187,7 @@ internal sealed partial class PrerequisiteChecks
     private async Task<PrerequisiteCheckResult> VerifyDotnetRuntimesAsync(PrerequisiteCheckResult sdkResult, CancellationToken ct)
     {
         ProcessResult result = await _processRunner.RunAsync("dotnet", "--list-runtimes", DotnetTimeout, ct).ConfigureAwait(false);
-        const string recovery = "Install the ASP.NET Core 11 runtime (including the .NET 11 runtime) from https://dotnet.microsoft.com/download/dotnet/11.0, or install SDK 11.0.100. Verify 'dotnet --list-runtimes' lists Microsoft.NETCore.App 11.0.x and Microsoft.AspNetCore.App 11.0.x, then retry.";
+        const string recovery = "Install the ASP.NET Core 11 runtime (including the .NET 11 runtime) from https://dotnet.microsoft.com/download/dotnet/11.0, or reinstall SDK 11.0.100. Verify 'dotnet --list-runtimes' lists Microsoft.NETCore.App 11.0.x and Microsoft.AspNetCore.App 11.0.x, then retry.";
         if (result.TimedOut)
         {
             return new PrerequisiteCheckResult(

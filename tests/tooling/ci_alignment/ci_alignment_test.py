@@ -164,7 +164,7 @@ class SharedCiAlignmentTests(unittest.TestCase):
         self.assertEqual(CALLER, shared["uses"])
         self.assertEqual({
             "solution": "Hexalith.Memories.slnx", "dotnet-global-json": "global.json",
-            "package-prepare-script": "tools/ensure-dotnet10.sh",
+            "package-prepare-script": "tools/ensure-dotnet11.sh",
             "builds-execution-sha": SHA, "test-platform": "microsoft-testing-platform",
             "unit-test-projects": CONTRACTS, "integration-test-projects": "",
             "aspire-test-project": "", "run-consumer-validation": False,
@@ -434,15 +434,15 @@ class SharedCiAlignmentTests(unittest.TestCase):
 
 class DotnetRuntimeBootstrapTests(unittest.TestCase):
     def run_bootstrap(self, runtimes, *, installer_exit=0):
-        with tempfile.TemporaryDirectory(prefix="dotnet10-bootstrap-") as directory:
+        with tempfile.TemporaryDirectory(prefix="dotnet11-bootstrap-") as directory:
             root = Path(directory)
             binaries = root / "bin"
             binaries.mkdir()
             state = root / "runtimes.txt"
             state.write_text(runtimes)
             completed = root / "complete.txt"
-            completed.write_text("Microsoft.NETCore.App 10.0.15 [/dotnet/shared]\n"
-                                 "Microsoft.AspNetCore.App 10.0.15 [/dotnet/shared]\n")
+            completed.write_text("Microsoft.NETCore.App 11.0.0 [/dotnet/shared]\n"
+                                 "Microsoft.AspNetCore.App 11.0.0 [/dotnet/shared]\n")
             installer = root / "installer.sh"
             installer.write_text('printf "%s\\n" "$@" > "$FIXTURE_INSTALL_ARGS"\n'
                                  f'exit_code={installer_exit}\n'
@@ -462,30 +462,30 @@ class DotnetRuntimeBootstrapTests(unittest.TestCase):
                 "FIXTURE_COMPLETE": str(completed), "FIXTURE_INSTALLER": str(installer),
                 "FIXTURE_DOWNLOAD": str(download), "FIXTURE_INSTALL_ARGS": str(arguments),
             }
-            result = subprocess.run(["bash", str(REPO_ROOT / "tools/ensure-dotnet10.sh")],
+            result = subprocess.run(["bash", str(REPO_ROOT / "tools/ensure-dotnet11.sh")],
                                     env=environment, capture_output=True, text=True, timeout=10)
             return (result, json.loads(download.read_text()) if download.exists() else None,
                     arguments.read_text().splitlines() if arguments.exists() else None, str(installation))
 
-    def test_complete_net10_frameworks_require_no_download(self):
+    def test_complete_net11_frameworks_require_no_download(self):
         result, download, arguments, _ = self.run_bootstrap(
-            "Microsoft.NETCore.App 10.0.15 [/dotnet/shared]\n"
-            "Microsoft.AspNetCore.App 10.0.15 [/dotnet/shared]\n")
+            "Microsoft.NETCore.App 11.0.0 [/dotnet/shared]\n"
+            "Microsoft.AspNetCore.App 11.0.0 [/dotnet/shared]\n")
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIsNone(download)
         self.assertIsNone(arguments)
 
-    def test_missing_or_prerelease_framework_uses_official_sdk10_installer(self):
-        for runtimes in ("", "Microsoft.NETCore.App 10.0.15 [/dotnet/shared]\n",
-                         "Microsoft.AspNetCore.App 10.0.15 [/dotnet/shared]\n",
-                         "Microsoft.NETCore.App 10.0.0-rc.1 [/dotnet/shared]\n"
+    def test_missing_or_prerelease_framework_uses_official_sdk11_installer(self):
+        for runtimes in ("", "Microsoft.NETCore.App 11.0.0 [/dotnet/shared]\n",
+                         "Microsoft.AspNetCore.App 11.0.0 [/dotnet/shared]\n",
+                         "Microsoft.NETCore.App 11.0.0-rc.1 [/dotnet/shared]\n"
                          "Microsoft.AspNetCore.App 11.0.0 [/dotnet/shared]\n"):
             with self.subTest(runtimes=runtimes):
                 result, download, arguments, installation = self.run_bootstrap(runtimes)
                 self.assertEqual(0, result.returncode, result.stderr)
                 self.assertIn("https://dot.net/v1/dotnet-install.sh", download)
                 self.assertEqual("=https", download[download.index("--proto-redir") + 1])
-                self.assertEqual(["--channel", "10.0", "--install-dir", installation, "--no-path"], arguments)
+                self.assertEqual(["--channel", "11.0", "--install-dir", installation, "--no-path"], arguments)
 
     def test_installer_failure_remains_blocking(self):
         result, _, _, _ = self.run_bootstrap("", installer_exit=23)
