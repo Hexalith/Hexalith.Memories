@@ -927,9 +927,9 @@ class PublishContainersTests(unittest.TestCase):
                     self.assertNotIn("Story 30.5", summary["recovery"])
 
     def test_current_tree_hands_each_phase_to_the_publication_contract_without_a_legacy_copy(self) -> None:
-        for push, phase in ((False, "build"), (True, "publish")):
+        for push, explicit_contract, phase in ((False, True, "build"), (True, True, "publish"), (True, False, "publish")):
             for exit_code in (0, 7):
-                with self.subTest(push=push, exit_code=exit_code), tempfile.TemporaryDirectory() as temp:
+                with self.subTest(push=push, explicit_contract=explicit_contract, exit_code=exit_code), tempfile.TemporaryDirectory() as temp:
                     root = Path(temp)
                     fake_bin, env = prepare_environment(root)
                     write_fake_python(fake_bin)
@@ -939,7 +939,7 @@ class PublishContainersTests(unittest.TestCase):
                         prepare_archives(output)
                     source = write_source_tree(root / "source", current=True)
 
-                    result = run_publish(output, env, push=push, repository_root=source, extra_arguments=["-PublicationContract"])
+                    result = run_publish(output, env, push=push, repository_root=source, extra_arguments=["-PublicationContract"] if explicit_contract else [])
 
                     entries = command_log(root)
                     calls = [entry for entry in entries if entry["command"] == "python3"]

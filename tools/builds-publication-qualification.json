@@ -1,6 +1,6 @@
 {
   "schemaVersion": "hexalith.memories.builds-publication-profile.v1",
-  "buildsSha": "ae77d5690a9411a2154fa4ed5231edc373942573",
+  "buildsSha": "73e60af8a1fcdf3f06726d5d1b6e1199cce778ee",
   "expectedPackageCount": 10,
   "containerProjects": [
     "src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj|memories",

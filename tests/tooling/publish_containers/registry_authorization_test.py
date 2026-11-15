@@ -117,6 +117,7 @@ def run_probe(
     classification_only: bool = False,
     evidence_path: Path | None = None,
     working_directory: Path | None = None,
+    repository: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     if include_credentials:
@@ -145,6 +146,7 @@ def run_probe(
                 "-Registry",
                 origin,
                 *receipt_arguments,
+                *([] if repository is None else ["-Repositories", repository]),
             ],
             cwd=working_directory or REPO_ROOT,
             env=env,
@@ -167,9 +169,35 @@ class RegistryAuthorizationTests(unittest.TestCase):
                     result = run_probe(origin, evidence_path=receipt)
                     retained = receipt.read_text(encoding="utf-8-sig")
                     self.assertNotEqual(0, result.returncode)
-                    self.assertIsNone(json.loads(retained)["registry"])
+                    evidence = json.loads(retained)
+                    self.assertIsNone(evidence["registry"])
+                    self.assertEqual(("fail", "not-run"), (evidence["result"], evidence["cleanup"]))
+                    self.assertIn("must be an HTTP(S) origin", evidence["failureReason"])
+                    self.assertLessEqual(len(evidence["failureReason"]), 2000)
+                    self.assertNotIn(origin, retained)
                     self.assertIn("must be an HTTP(S) origin", result.stdout + result.stderr)
                     for secret in ("uri-user", "uri-secret", "path-secret", "query-secret", "fragment-secret", USERNAME, API_KEY):
+                        self.assertNotIn(secret, retained + result.stdout + result.stderr)
+        self.assertEqual(([], [], []), (state.gets, state.posts, state.deletes))
+
+    def test_invalid_repository_configuration_retains_only_safe_reasons_without_requests(self) -> None:
+        state = RegistryState()
+        with RegistryServer(state) as registry, tempfile.TemporaryDirectory() as temporary:
+            cases = (("", None, "must not be empty"),
+                     (registry.origin, "", "safe OCI repository names"),
+                     (registry.origin, f"https://{USERNAME}:{API_KEY}@unsafe-origin/path-secret", "safe OCI repository names"))
+            for origin, repository, reason in cases:
+                with self.subTest(origin=origin, repository=repository):
+                    receipt = Path(temporary) / "authorization.json"
+                    result = run_probe(origin, repository=repository, evidence_path=receipt)
+                    retained = receipt.read_text(encoding="utf-8-sig")
+                    evidence = json.loads(retained)
+                    self.assertNotEqual(0, result.returncode)
+                    self.assertEqual(("fail", "not-run"), (evidence["result"], evidence["cleanup"]))
+                    self.assertEqual([], evidence["repositories"])
+                    self.assertIn(reason, evidence["failureReason"])
+                    self.assertLessEqual(len(evidence["failureReason"]), 2000)
+                    for secret in (USERNAME, API_KEY, "unsafe-origin", "path-secret"):
                         self.assertNotIn(secret, retained + result.stdout + result.stderr)
         self.assertEqual(([], [], []), (state.gets, state.posts, state.deletes))
 
@@ -185,6 +213,11 @@ class RegistryAuthorizationTests(unittest.TestCase):
                 evidence = json.loads(text)
                 self.assertEqual(expected, evidence["result"])
                 self.assertEqual(cleanup, evidence["cleanup"])
+                if denied:
+                    self.assertIn("HTTP 403", evidence["failureReason"])
+                    self.assertIn(denied, evidence["failureReason"])
+                else:
+                    self.assertIsNone(evidence["failureReason"])
                 registry_host = registry.origin.removeprefix("http://")
                 self.assertEqual(registry_host, evidence["registry"])
                 if expected == "pass":
@@ -258,8 +291,12 @@ class RegistryAuthorizationTests(unittest.TestCase):
         cancellation_state = RegistryState()
         with RegistryServer(cancellation_state) as cancellation_server:
             registry_state.location_origin = cancellation_server.origin
-            with RegistryServer(registry_state) as registry:
-                result = run_probe(registry.origin)
+            with tempfile.TemporaryDirectory() as temporary, RegistryServer(registry_state) as registry:
+                receipt = Path(temporary) / "authorization.json"
+                result = run_probe(registry.origin, evidence_path=receipt)
+                evidence = json.loads(receipt.read_text(encoding="utf-8-sig"))
+                self.assertEqual(("fail", "failure"), (evidence["result"], evidence["cleanup"]))
+                self.assertIn("unsafe upload location", evidence["failureReason"])
 
         self.assertNotEqual(0, result.returncode, result.stdout + result.stderr)
         self.assertEqual(REPOSITORIES[:1], registry_state.posts)
@@ -310,8 +347,17 @@ class RegistryAuthorizationTests(unittest.TestCase):
 
     def test_missing_credentials_fail_without_contacting_registry(self) -> None:
         state = RegistryState()
-        with RegistryServer(state) as registry:
-            result = run_probe(registry.origin, include_credentials=False)
+        with RegistryServer(state) as registry, tempfile.TemporaryDirectory() as temporary:
+            receipt = Path(temporary) / "authorization.json"
+            result = run_probe(registry.origin, include_credentials=False, evidence_path=receipt)
+            retained = receipt.read_text(encoding="utf-8-sig")
+            evidence = json.loads(retained)
+            self.assertEqual(("fail", "not-run"), (evidence["result"], evidence["cleanup"]))
+            self.assertIn("HEXALITH_ZOT_USERNAME", evidence["failureReason"])
+            self.assertIn("HEXALITH_ZOT_API_KEY", evidence["failureReason"])
+            self.assertLessEqual(len(evidence["failureReason"]), 2000)
+            self.assertNotIn(USERNAME, retained + result.stdout + result.stderr)
+            self.assertNotIn(API_KEY, retained + result.stdout + result.stderr)
 
         self.assertNotEqual(0, result.returncode)
         self.assertEqual([], state.gets)

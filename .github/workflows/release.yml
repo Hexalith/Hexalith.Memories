@@ -118,6 +118,7 @@ jobs:
         uses: docker/setup-qemu-action@v3
         with:
           platforms: arm64
+          image: tonistiigi/binfmt@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
 
       - name: Require archive transport and isolated health tools
         if: steps.prepare.outputs.publish-enabled == 'true'
@@ -125,6 +126,7 @@ jobs:
         run: |
           set -euo pipefail
           command -v skopeo >/dev/null || { sudo apt-get update && sudo apt-get install -y skopeo; }
+          skopeo --version
           command -v docker
           command -v openssl
           command -v curl

@@ -40,6 +40,19 @@ def failure_output(result):
     return contract.redact(output)[-4000:]
 
 
+def failure_description(error):
+    """Keep the original failure when cleanup raises while unwinding it."""
+    if isinstance(error, subprocess.TimeoutExpired):
+        detail = f"TimeoutExpired: Health command timed out after {error.timeout} s.\n{failure_output(error)}"
+    elif isinstance(error, subprocess.CalledProcessError):
+        detail = f"CalledProcessError: Health command exited {error.returncode}.\n{failure_output(error)}"
+    else:
+        detail = f"{type(error).__name__}: {error}"
+    if error.__context__ is not None:
+        detail = failure_description(error.__context__) + "\ncleanup_error=" + detail
+    return contract.redact(detail)
+
+
 # Reuse the exact non-Production Dapr dependency already declared by this repository.
 DAPR_TEST_AUTHORITY_IMAGE = "ghcr.io/dapr/daprd:1.18.1@sha256:b7f7d296f01f0b4b82bf3c5f087ecf26165ce08caf3e87f94b8c72b9e11873f8"
 PROBE_IMAGE = "docker.io/library/busybox:1.37.0@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec"
@@ -80,8 +93,11 @@ def server_dependencies(network, logs):
     finally:
         failed = False
         for name in reversed(attempted):
-            removed = command(["docker", "rm", "--force", name]).returncode == 0
+            removal = command(["docker", "rm", "--force", name])
+            removed = removal.returncode == 0
             logs.append(f"dependency={name};cleanup={'pass' if removed else 'failure'}")
+            if not removed:
+                logs.append(f"cleanup_error={failure_output(removal)}")
             failed |= not removed
         if failed:
             raise CleanupFailure("Isolated Server dependency cleanup failed.")
@@ -99,7 +115,7 @@ def clock_authority(network):
         private.touch(mode=0o600)
         generated = command(["openssl", "genpkey", "-algorithm", "EC", "-pkeyopt", "ec_paramgen_curve:P-256", "-out", str(private)])
         if generated.returncode:
-            raise ValueError("Could not create the isolated clock test signing authority.")
+            raise ValueError(f"Could not create the isolated clock test signing authority: {failure_output(generated)}")
         pkcs8 = subprocess.run(["openssl", "pkcs8", "-topk8", "-nocrypt", "-in", str(private), "-outform", "DER"], capture_output=True, check=True, timeout=30).stdout
         public = subprocess.run(["openssl", "pkey", "-in", str(private), "-pubout", "-outform", "DER"], capture_output=True, check=True, timeout=30).stdout
         token = secrets.token_hex(32)
@@ -122,7 +138,7 @@ spec:
 """, encoding="utf-8")
         pulled = command(["docker", "pull", "--platform", "linux/amd64", DAPR_TEST_AUTHORITY_IMAGE])
         if pulled.returncode:
-            raise ValueError("Isolated clock test authority image could not be pulled.")
+            raise ValueError(f"Isolated clock test authority image could not be pulled: {failure_output(pulled)}")
         try:
             started = command(["docker", "run", "--detach", "--platform", "linux/amd64", "--network", network, "--user", "0:0",
                                "--name", authority, "--env", "DAPR_API_TOKEN=" + token,
@@ -131,14 +147,15 @@ spec:
                                "--mode", "standalone", "--resources-path", "/authority/components",
                                "--log-level", "error", "--enable-metrics=false"])
             if started.returncode:
-                raise ValueError("Isolated clock test authority did not start.")
+                raise ValueError(f"Isolated clock test authority did not start: {failure_output(started)}")
             yield {"DAPR_HTTP_ENDPOINT": f"http://{authority}:3500", "DAPR_GRPC_ENDPOINT": f"http://{authority}:50001", "DAPR_API_TOKEN": token,
                    "Clock__SecretStoreName": "access-telemetry-secrets", "Clock__AllowDevelopmentSources": "true",
                    "Clock__SignerKeyEpoch": "publication-test-only", "AccessTelemetryLifecycle__ClockSignerKeyEpoch": "publication-test-only",
                    "AccessTelemetryLifecycle__AttestationVerificationKey": base64.b64encode(public).decode()}
         finally:
-            if command(["docker", "rm", "--force", authority]).returncode:
-                raise CleanupFailure("Clock test authority cleanup failed.")
+            removed = command(["docker", "rm", "--force", authority])
+            if removed.returncode:
+                raise CleanupFailure(f"Clock test authority cleanup failed: {failure_output(removed)}")
 
 
 @contextmanager
@@ -146,20 +163,22 @@ def dapr_authority(network):
     """Provide the isolated Dapr sidecar required by workload liveness checks."""
     authority = "memories-dapr-authority-" + secrets.token_hex(6)
     token = secrets.token_hex(32)
-    if command(["docker", "pull", "--platform", "linux/amd64", DAPR_TEST_AUTHORITY_IMAGE]).returncode:
-        raise ValueError("Isolated Dapr test authority image could not be pulled.")
+    pulled = command(["docker", "pull", "--platform", "linux/amd64", DAPR_TEST_AUTHORITY_IMAGE])
+    if pulled.returncode:
+        raise ValueError(f"Isolated Dapr test authority image could not be pulled: {failure_output(pulled)}")
     started = command(["docker", "run", "--detach", "--platform", "linux/amd64", "--network", network,
                        "--name", authority, "--env", "DAPR_API_TOKEN=" + token, "--entrypoint", "/daprd",
                        DAPR_TEST_AUTHORITY_IMAGE, "--app-id", "publication-workload-test", "--mode", "standalone",
                        "--log-level", "error", "--enable-metrics=false"])
     if started.returncode:
-        raise ValueError("Isolated Dapr test authority did not start.")
+        raise ValueError(f"Isolated Dapr test authority did not start: {failure_output(started)}")
     try:
         yield {"DAPR_HTTP_ENDPOINT": f"http://{authority}:3500", "DAPR_GRPC_ENDPOINT": f"http://{authority}:50001",
                "DAPR_API_TOKEN": token}
     finally:
-        if command(["docker", "rm", "--force", authority]).returncode:
-            raise CleanupFailure("Dapr test authority cleanup failed.")
+        removed = command(["docker", "rm", "--force", authority])
+        if removed.returncode:
+            raise CleanupFailure(f"Dapr test authority cleanup failed: {failure_output(removed)}")
 
 
 def health_response_valid(name, body):
@@ -181,7 +200,7 @@ def probe(container, endpoint):
                     PROBE_IMAGE, "wget", "-q", "-T", "5", "-t", "1", "-O", "-", "http://127.0.0.1:8080" + endpoint])
 
 
-def poll_readiness(name, container, smoke, timeout):
+def poll_readiness(name, container, smoke, timeout, logs):
     deadline = time.monotonic() + timeout
     while True:
         result = probe(container, "/ready")
@@ -189,8 +208,10 @@ def poll_readiness(name, container, smoke, timeout):
             return "pass"
         state = smoke._container_state(container)
         if state and not state.startswith("running|"):
+            logs.append(f"probe_failure={failure_output(result)}")
             return "image-start-failure"
         if time.monotonic() >= deadline:
+            logs.append(f"probe_failure={failure_output(result)}")
             return "readiness-timeout"
         time.sleep(2)
 
@@ -198,14 +219,17 @@ def poll_readiness(name, container, smoke, timeout):
 def poll_liveness(container, smoke, timeout, logs):
     deadline = time.monotonic() + timeout
     while True:
-        if probe(container, "/alive").returncode == 0:
+        result = probe(container, "/alive")
+        if result.returncode == 0:
             return "pass"
         state = smoke._container_state(container)
         if state:
             logs.append(f"container_state={state}")
             if not state.startswith("running|"):
+                logs.append(f"probe_failure={failure_output(result)}")
                 return "image-start-failure"
         if time.monotonic() >= deadline:
+            logs.append(f"probe_failure={failure_output(result)}")
             return "liveness-timeout"
         time.sleep(2)
 
@@ -225,7 +249,7 @@ def run_platform(name, repository, platform, digest, directory, smoke, timeout):
             return {"platform": platform, "digest": digest, "outcome": result, "cleanup": cleanup}
         created = command(["docker", "network", "create", "--internal", network])
         if created.returncode:
-            raise ValueError("Isolated test network could not be created.")
+            raise ValueError(f"Isolated test network could not be created. {failure_output(created)}")
         network_attempted = True
 
         def execute(extra):
@@ -243,9 +267,10 @@ def run_platform(name, repository, platform, digest, directory, smoke, timeout):
             container_attempted = True
             started = command(arguments + [image])
             if started.returncode:
+                logs.append(f"start_failure={failure_output(started)}")
                 return smoke._classify_start_failure(started)
             if name in ("access-telemetry", "access-telemetry-clock"):
-                return poll_readiness(name, container, smoke, timeout)
+                return poll_readiness(name, container, smoke, timeout, logs)
             return poll_liveness(container, smoke, timeout, logs)
 
         if name == "access-telemetry-clock":
@@ -260,24 +285,25 @@ def run_platform(name, repository, platform, digest, directory, smoke, timeout):
         else:
             result = execute({})
     except CleanupFailure as error:
-        result = "cleanup-failure"
+        if result in ("fail", "pass"):
+            result = "workload-health-failure" if error.__context__ is not None else "cleanup-failure"
         cleanup = "failure"
-        logs.append(contract.redact(f"error={type(error).__name__}: {error}"))
-    except subprocess.TimeoutExpired as error:
-        result = "workload-health-failure"
-        logs.append(f"error=TimeoutExpired: Health command timed out after {error.timeout} s.\n{failure_output(error)}")
+        logs.append("error=" + failure_description(error))
     except Exception as error:
         result = "workload-health-failure"
-        logs.append(contract.redact(f"error={type(error).__name__}: {error}"))
+        logs.append("error=" + failure_description(error))
     finally:
         if container_attempted:
             # Reuse approved bounded runtime diagnostics and exact removal checks.
             smoke._append_runtime_evidence(container, result, logs)
             if smoke._remove_container(container) != "pass":
                 cleanup = "failure"
-        if network_attempted and command(["docker", "network", "rm", network]).returncode:
-            cleanup = "failure"
-        if cleanup != "pass":
+        if network_attempted:
+            removed = command(["docker", "network", "rm", network])
+            if removed.returncode:
+                cleanup = "failure"
+                logs.append(f"network_cleanup_error={failure_output(removed)}")
+        if cleanup != "pass" and result == "pass":
             result = "cleanup-failure"
         logs += [f"cleanup={cleanup}", f"outcome={result}"]
         (directory / f"health-{platform.split('/')[1]}.log").write_text(contract.redact("\n".join(logs)) + "\n", encoding="utf-8")
@@ -292,8 +318,10 @@ def verify(name, image, directory, shared, set_sha256, timeout=180):
         raise ValueError("Health image differs from the validated OCI image.")
     repository = smoke._repository_without_tag(image)
     outcome, _ = smoke._preflight(repository, children[smoke.ARM64_PLATFORM], directory)
-    if outcome == "pass" and command(["docker", "pull", "--platform", "linux/amd64", PROBE_IMAGE]).returncode:
-        raise ValueError("Digest-pinned private-network HTTP probe could not be pulled.")
+    if outcome == "pass":
+        pulled = command(["docker", "pull", "--platform", "linux/amd64", PROBE_IMAGE])
+        if pulled.returncode:
+            raise ValueError(f"Digest-pinned private-network HTTP probe could not be pulled: {failure_output(pulled)}")
     platforms = []
     if outcome == "pass":
         platforms = [run_platform(name, repository, platform, children[platform], directory, smoke, timeout) for platform in contract.PLATFORMS]
@@ -322,7 +350,7 @@ def main():
         summary = verify(arguments.name, arguments.image, arguments.evidence_directory, arguments.shared_directory, arguments.set_sha256)
         return 0 if summary["result"] == "pass" else 1
     except Exception as error:
-        contract.write_json(arguments.evidence_directory / "health.json", {"result": "fail", "error": contract.redact(error), "setSha256": arguments.set_sha256})
+        contract.write_json(arguments.evidence_directory / "health.json", {"result": "fail", "error": failure_description(error), "setSha256": arguments.set_sha256})
         print("[container-health] workload health proof failed; see retained health evidence.", file=sys.stderr)
         return 1
 

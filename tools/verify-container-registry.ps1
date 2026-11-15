@@ -30,8 +30,9 @@ if (-not $PSBoundParameters.ContainsKey('Registry') -and
 $authorizationEvidence = [ordered]@{
     schemaVersion = 'hexalith.memories.registry-authorization.v1'
     result = 'fail'
+    failureReason = $null
     registry = $null
-    repositories = $Repositories
+    repositories = @()
     mode = 'preemptive-basic'
     transport = 'skopeo-authfile'
     challengeObserved = $false
@@ -51,17 +52,25 @@ function Write-AuthorizationEvidence {
     }
     $authorizationEvidence | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $EvidencePath -Encoding utf8
 }
+function Stop-AuthorizationVerification {
+    param([Parameter(Mandatory)][string]$Reason)
+
+    # Callers supply fixed validation messages, never rejected origins or repository values.
+    $authorizationEvidence.failureReason = $Reason.Substring(0, [Math]::Min(2000, $Reason.Length))
+    Write-AuthorizationEvidence
+    throw $authorizationEvidence.failureReason
+}
 # Even early credential/configuration failures retain a redacted accountable record.
 Write-AuthorizationEvidence
 
 $username = $env:HEXALITH_ZOT_USERNAME
 $apiKey = $env:HEXALITH_ZOT_API_KEY
 if ([string]::IsNullOrWhiteSpace($username) -or [string]::IsNullOrWhiteSpace($apiKey)) {
-    throw 'Container publication requires HEXALITH_ZOT_USERNAME and HEXALITH_ZOT_API_KEY.'
+    Stop-AuthorizationVerification 'Container publication requires HEXALITH_ZOT_USERNAME and HEXALITH_ZOT_API_KEY.'
 }
 
 if ([string]::IsNullOrWhiteSpace($Registry)) {
-    throw 'Container registry must not be empty.'
+    Stop-AuthorizationVerification 'Container registry must not be empty.'
 }
 
 $registryUriText = if ($Registry -match '^https?://') {
@@ -78,20 +87,23 @@ if (-not [Uri]::TryCreate($registryUriText.TrimEnd('/') + '/', [UriKind]::Absolu
     $registryUri.AbsolutePath -ne '/' -or
     -not [string]::IsNullOrEmpty($registryUri.Query) -or
     -not [string]::IsNullOrEmpty($registryUri.Fragment)) {
-    throw 'Container registry must be an HTTP(S) origin without credentials, a path, query, or fragment.'
+    Stop-AuthorizationVerification 'Container registry must be an HTTP(S) origin without credentials, a path, query, or fragment.'
 }
 $authorizationEvidence.registry = $registryUri.Authority
 Write-AuthorizationEvidence
 
 if ($Repositories.Count -eq 0) {
-    throw 'At least one container repository is required.'
+    Stop-AuthorizationVerification 'At least one container repository is required.'
 }
 
 foreach ($repository in $Repositories) {
     if ($repository -notmatch '^[a-z0-9]+(?:[._-][a-z0-9]+)*(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)*$') {
-        throw "Container repository '$repository' is not a safe OCI repository name."
+        Stop-AuthorizationVerification 'Container repositories must contain only safe OCI repository names.'
     }
 }
+
+$authorizationEvidence.repositories = $Repositories
+Write-AuthorizationEvidence
 
 $credentialBytes = [Text.Encoding]::UTF8.GetBytes("$username`:$apiKey")
 $credential = [Convert]::ToBase64String($credentialBytes)
@@ -243,6 +255,13 @@ finally {
     $client.Dispose()
     $handler.Dispose()
     $credential = $null
+    # Preserve a bounded blocker without retaining transport URLs or credentials.
+    $safeFailure = [string]$probeFailure
+    foreach ($secret in @($username, $apiKey, [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("$username`:$apiKey")))) {
+        if (-not [string]::IsNullOrEmpty($secret)) { $safeFailure = $safeFailure.Replace($secret, '[redacted]') }
+    }
+    $safeFailure = $safeFailure -replace 'https?://[^\s]+', '[redacted-origin]'
+    $authorizationEvidence.failureReason = if ($safeFailure.Length -eq 0) { $null } else { $safeFailure.Substring(0, [Math]::Min(2000, $safeFailure.Length)) }
     $authorizationEvidence.cleanup = if ($cancellationFailures.Count -eq 0) { 'pass' } else { 'failure' }
     $authorizationEvidence.result = if ($null -eq $probeFailure -and $cancellationFailures.Count -eq 0) { 'pass' } else { 'fail' }
     Write-AuthorizationEvidence

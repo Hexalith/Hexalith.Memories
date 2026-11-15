@@ -253,8 +253,9 @@ qualify publication; the declared health checks use Development test authorities
 lifecycle writes, with no Production lifecycle qualification credit.
 Owner: Jérôme Piquot. Consequence: no v3.0.20–v3.0.25 Server image may be deployed. Reopen
 trigger: the owner marks the affected GitHub releases do-not-deploy and the Story 30.6 cutover
-refuses those tags. Implementation does not enable the publication flag, change protected
-settings, publish a release, or change Production lifecycle state.
+refuses those tags. The v3.0.26 publication above was a separately authorized guarded release.
+Local implementation and review do not authorize another release, publication-flag or protected-setting
+changes, or Production lifecycle writes.
 
 ### Release-Tooling Dependency Safety
 
@@ -641,9 +642,14 @@ those actions can move the published state away from the CI-recorded audit ancho
   as already present, a missing tag is pushed, and any conflicting digest fails closed.
 - Recovery never invokes a NuGet push. Its completion script reads the tagged manifest unchanged: uniform historical `packageId` or current `id` entries are recognized; mixed shapes fail before package downloads. The workflow currently accepts only the historical nine-package, two-or-four-image unit. It validates nuspec id/version, hashes downloaded bytes, and creates or completes the GitHub Release with exactly those package assets plus `hexalith-memories-production.yaml`. Existing matching assets are retained; unexpected names or mismatched bytes fail closed.
 - Only after the tagged image unit, package unit, versioned deployment, and all corresponding GitHub Release assets verify does recovery attach the evidence artifact to the matching partial-publish incident and close it. A failed or interrupted run remains safely rerunnable and leaves the incident open.
-- Container release members are prebuilt during prepare. On a rerun, an existing immutable image
-  tag is accepted only when its remote config digest matches the prebuilt archive; a conflicting
-  digest fails closed and requires release-owner reconciliation.
+- Historical tagged source trees prebuild container members during prepare and accept an existing
+  immutable image tag only when its remote config digest matches the prebuilt archive. Current
+  five-image trees refuse every occupied or ambiguous tag; missing-only recovery belongs to Story 30.5.
+- Open registry follow-ups (owner: Jérôme Piquot): registry immutability/race policy remains unverified
+  until authoritative policy readback or an isolated concurrent-writer fixture; an interrupted skopeo
+  copy may leave an occupied tag until a manifest-PUT failure fixture or failure re-probe settles it.
+  These unresolved conditions grant no race-free or interrupted-transport reconciliation credit;
+  preserve the packet and escalate to the owner before retrying an affected version.
 - `tools/publish-release.ps1` writes the cross-family audit record to
   `artifacts/release/publish-summary.json`. The release workflow uploads that aggregate summary and
   its child summaries even on failure, and creates one reconciliation issue for an aggregate

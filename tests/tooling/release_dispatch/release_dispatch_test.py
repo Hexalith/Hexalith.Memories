@@ -103,6 +103,10 @@ class ReleaseDispatchTests(unittest.TestCase):
 
     def test_five_image_release_retains_diagnostic_and_durable_success_evidence(self):
         workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+        emulator = workflow.split("      - name: Initialize both container platforms\n", 1)[1].split("      - name:", 1)[0]
+        self.assertRegex(emulator, r"image: tonistiigi/binfmt@sha256:[0-9a-f]{64}(?:\n|$)")
+        tools = workflow.split("      - name: Require archive transport and isolated health tools\n", 1)[1].split("      - name:", 1)[0]
+        self.assertIn("skopeo --version", tools)
         configuration = json.loads((ROOT / ".releaserc.json").read_text(encoding="utf-8"))
         assets = configuration["plugins"][3][1]["assets"]
         self.assertIn("artifacts/release/hexalith-memories-release-evidence.tar.gz", assets)

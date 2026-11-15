@@ -179,6 +179,8 @@ class PublicationContractTests(unittest.TestCase):
         self.runtime_overrides = {}
         # Platform -> outcome function; when set, the real verify-container-health CLI runs.
         self.real_health = None
+        self.sdk_wrapper = False
+        self.health_auth_directories = []
 
     def fixture_archives(self, image, legacy, oci, labels_override=None, identity=None):
         identity = self.identity if identity is None else identity
@@ -198,6 +200,11 @@ class PublicationContractTests(unittest.TestCase):
             files["blobs/sha256/" + child["digest"].split(":")[1]] = manifest
             files["blobs/sha256/" + config_descriptor["digest"].split(":")[1]] = config
         files["index.json"] = bytes_json({"schemaVersion": 2, "mediaType": self.validator.OCI_INDEX_MEDIA_TYPE, "manifests": children})
+        if self.sdk_wrapper:
+            index = files["index.json"]
+            wrapped = descriptor(index, self.validator.OCI_INDEX_MEDIA_TYPE)
+            files["blobs/sha256/" + wrapped["digest"].split(":")[1]] = index
+            files["index.json"] = bytes_json({"schemaVersion": 2, "manifests": [wrapped]})
         tar_bytes(oci, files)
         tar_bytes(legacy, {"manifest.json": bytes_json([{"Config": "config.json", "RepoTags": [f"registry.test/{image['repository']}:{VERSION}"], "Layers": []}]), "config.json": amd64_config})
         self.graphs[image["name"]] = CONTRACT.archive_graph(oci, self.validator, CONTRACT.labels_for(self.validator, identity))
@@ -205,6 +212,13 @@ class PublicationContractTests(unittest.TestCase):
     def fake_run(self, arguments, log=None):
         arguments = [str(value) for value in arguments]
         self.commands.append(arguments)
+        if len(arguments) > 1 and arguments[1].endswith("verify-container-health.py"):
+            scoped = Path(os.environ["DOCKER_CONFIG"])
+            auth = scoped / "config.json"
+            self.assertEqual(0o600, auth.stat().st_mode & 0o777)
+            expected = base64.b64encode(f"{ENVIRONMENT['HEXALITH_ZOT_USERNAME']}:{ENVIRONMENT['HEXALITH_ZOT_API_KEY']}".encode()).decode()
+            self.assertEqual({"auths": {"registry.test": {"auth": expected}}}, CONTRACT.read_json(auth))
+            self.health_auth_directories.append(scoped)
         if log:
             Path(log).parent.mkdir(parents=True, exist_ok=True)
             Path(log).write_text("controlled fixture boundary\n")
@@ -544,7 +558,11 @@ class PublicationContractTests(unittest.TestCase):
 
     def test_full_adapter_preserves_five_stable_archives_and_all_child_digests(self):
         self.prepare()
-        self.publish()
+        with mock.patch.dict(os.environ, {"DOCKER_CONFIG": "previous-docker-configuration"}):
+            self.publish()
+            self.assertEqual("previous-docker-configuration", os.environ["DOCKER_CONFIG"])
+        self.assertEqual(5, len(self.health_auth_directories))
+        self.assertTrue(all(not directory.exists() for directory in self.health_auth_directories))
         phases = [command[command.index("--phase") + 1] for command in self.commands if "--phase" in command]
         self.assertEqual(["verify", "publish", "container"], phases)
         copies = [command for command in self.commands if command[0] == "skopeo"]
@@ -557,6 +575,63 @@ class PublicationContractTests(unittest.TestCase):
         self.assertEqual([image["name"] + ".tar.gz" for image in CONTRACT.CANONICAL_IMAGES], [record["filename"] for record in receipt["archives"]])
         self.assertTrue(all(record["sourceSha"] == SOURCE_SHA for record in receipt["archives"]))
         self.assertEqual("succeeded", CONTRACT.read_json(self.output / "publish-summary.json")["status"])
+
+    def test_health_authentication_is_scoped_and_removed_after_failed_verification(self):
+        self.prepare()
+        self.fail_health = "all"
+        with mock.patch.dict(os.environ):
+            os.environ.pop("DOCKER_CONFIG", None)
+            with self.assertRaisesRegex(ValueError, "verification failed"):
+                self.publish()
+            self.assertNotIn("DOCKER_CONFIG", os.environ)
+        self.assertEqual(5, len(self.health_auth_directories))
+        self.assertTrue(all(not directory.exists() for directory in self.health_auth_directories))
+
+    def test_sdk_wrapped_index_keeps_the_actual_index_and_children_through_publication(self):
+        self.sdk_wrapper = True
+        self.prepare()
+        self.publish()
+        for image in CONTRACT.CANONICAL_IMAGES:
+            path = self.output / (image["name"] + ".oci.tar.gz")
+            with tarfile.open(path) as packet:
+                wrapper = json.loads(packet.extractfile("index.json").read())
+                self.assertEqual(1, len(wrapper["manifests"]))
+                child_index = wrapper["manifests"][0]
+                self.assertEqual(self.graphs[image["name"]]["index_digest"], child_index["digest"])
+            self.assertEqual(list(CONTRACT.PLATFORMS), [child["platform"] for child in self.graphs[image["name"]]["children"]])
+        # Bind the wrapper descriptor to the actual index size, not merely its filename.
+        with tarfile.open(path) as packet:
+            files = {member.name: packet.extractfile(member).read() for member in packet if member.isfile()}
+        wrapper["manifests"][0]["size"] += 1
+        files["index.json"] = bytes_json(wrapper)
+        tar_bytes(path, files)
+        with self.assertRaisesRegex(ValueError, "wrapper changed"):
+            CONTRACT.archive_graph(path, self.validator, CONTRACT.labels_for(self.validator, self.identity))
+
+    def test_authorize_refuses_each_incomplete_or_changed_registry_receipt_before_writes(self):
+        self.prepare()
+        receipt = self.evidence / "authorization.json"
+        accepted = CONTRACT.read_json(receipt)
+        mutations = {"result": "fail", "mode": "challenge-basic", "registry": "different.test", "cleanup": "failure",
+                     "repositories": accepted["repositories"][:-1], "pushProven": True}
+        for field, value in mutations.items():
+            for missing in (False, True):
+                altered = deepcopy(accepted)
+                if missing:
+                    altered.pop(field)
+                else:
+                    altered[field] = value
+                CONTRACT.write_json(receipt, altered)
+                self.commands.clear()
+                with self.subTest(field=field, missing=missing):
+                    self.assertEqual(1, self.run_main("authorize", self.evidence))
+                    self.assertIn("authorization", CONTRACT.read_json(self.evidence / "failure-authorize.json")["error"])
+                    self.assertFalse(any("--phase" in command or command[0] in ("dotnet", "skopeo") for command in self.commands))
+        receipt.unlink()
+        self.assertEqual(1, self.run_main("authorize", self.evidence))
+        CONTRACT.write_json(receipt, accepted)
+        self.assertEqual(0, self.run_main("authorize", self.evidence))
+        self.assertEqual(["publish"], [command[command.index("--phase") + 1] for command in self.commands if "--phase" in command])
 
     def test_child_runtime_config_mismatch_refuses_build_before_any_release_write_or_transport(self):
         # The v3.0.23-v3.0.25 Server children carried PATH=/app while their deployment archive kept the full PATH.
@@ -793,6 +868,8 @@ class PublicationContractTests(unittest.TestCase):
         with self.archive_context():
             manifest = ARCHIVE.archive(self.evidence, output, self.shared)
         self.assertEqual("pass", manifest["result"])
+        receipt = CONTRACT.read_json(output.with_suffix(output.suffix + ".sha256.json"))
+        self.assertEqual({"path": output.name, "sha256": hashlib.sha256(output.read_bytes()).hexdigest(), "result": "pass"}, receipt)
         with tarfile.open(output) as archive:
             for entry in manifest["files"]:
                 self.assertEqual(entry["sha256"], hashlib.sha256(archive.extractfile(entry["path"]).read()).hexdigest())
@@ -987,6 +1064,19 @@ class PublicationContractTests(unittest.TestCase):
                 self.assertFalse(packet.exists(), "Refusal must precede packet creation and cannot retain the link target.")
                 self.assertFalse(packet.with_suffix(packet.suffix + ".sha256.json").exists())
 
+    def test_probe_image_pull_failure_keeps_diagnostics_in_the_real_health_cli_receipt(self):
+        self.evidence_packet()
+        member = self.evidence / "mcp"
+        arguments = ["verify-container-health.py", "--name", "mcp", "--image", f"registry.test/memories-mcp:{VERSION}",
+                     "--shared-directory", str(self.shared), "--evidence-directory", str(member), "--set-sha256", self.identity["setSha256"]]
+        failed = SimpleNamespace(returncode=1, stdout="probe-image access denied", stderr="fixture-user:fixture-secret")
+        with mock.patch.object(sys, "argv", arguments), mock.patch.object(HEALTH.contract, "load_shared", return_value=(self.preflight, self.validator, type(self).smoke, {})), mock.patch.object(type(self).smoke, "_preflight", return_value=("pass", None)), mock.patch.object(HEALTH, "command", return_value=failed), redirect_stderr(io.StringIO()):
+            self.assertEqual(1, HEALTH.main())
+        health = CONTRACT.read_json(member / "health.json")
+        self.assertEqual("fail", health["result"])
+        self.assertIn("probe-image access denied", health["error"])
+        self.assertNotIn(ENVIRONMENT["HEXALITH_ZOT_API_KEY"], health["error"])
+
 
 class CommandRunnerTests(unittest.TestCase):
     def test_timed_out_command_keeps_its_partial_redacted_log(self):
@@ -1043,6 +1133,49 @@ class WorkloadHealthTests(unittest.TestCase):
         self.assertNotIn("--env", log)
         self.assertNotIn("DAPR_API_TOKEN", log)
         self.assertLess(len(log), 4500)
+
+    def test_authority_failures_retain_bounded_redacted_process_diagnostics(self):
+        original = HEALTH.command
+        token = "generated-test-authority-secret"
+        for name in ("mcp", "access-telemetry-clock"):
+            for stage in ("pull", "start"):
+                def command(arguments):
+                    if arguments[0] != "docker":
+                        return original(arguments)
+                    failed = arguments[:2] == ["docker", "pull" if stage == "pull" else "run"]
+                    return SimpleNamespace(args=arguments, returncode=int(failed), stdout="x" * 5000 + "authority diagnostic " + token if failed else "",
+                                           stderr="registry fixture-user:fixture-secret denied" if failed else "")
+                smoke = SimpleNamespace(_pull_immutable=lambda *_: "pass")
+                with self.subTest(name=name, stage=stage), tempfile.TemporaryDirectory() as temporary, mock.patch.dict(os.environ, ENVIRONMENT), mock.patch.object(HEALTH, "command", side_effect=command), mock.patch.object(HEALTH.secrets, "token_hex", return_value=token):
+                    result = HEALTH.run_platform(name, "registry.test/memories", "linux/amd64", "sha256:" + "c" * 64, Path(temporary), smoke, 1)
+                    log = (Path(temporary) / "health-amd64.log").read_text()
+                self.assertEqual("workload-health-failure", result["outcome"])
+                self.assertIn("authority diagnostic", log)
+                self.assertIn("registry", log)
+                self.assertNotIn(ENVIRONMENT["HEXALITH_ZOT_API_KEY"], log)
+                if stage == "start":
+                    self.assertNotIn(token, log)
+                self.assertLess(len(log), 4500)
+
+    def test_cleanup_failure_preserves_original_exception_and_failed_probe_outcome(self):
+        original = HEALTH.command
+        for name in ("server", "mcp", "access-telemetry-clock"):
+            def command(arguments):
+                if arguments[0] != "docker":
+                    return original(arguments)
+                failure = (arguments[:3] in (["docker", "rm", "--force"], ["docker", "run", "--rm"])
+                           or (name != "mcp" and arguments[:2] == ["docker", "run"]))
+                return SimpleNamespace(args=arguments, returncode=int(failure), stdout="original startup diagnostic" if "run" in arguments else "cleanup diagnostic", stderr="")
+            smoke = SimpleNamespace(_pull_immutable=lambda *_: "pass", _container_state=lambda *_: "running|0",
+                                    _append_runtime_evidence=lambda *_: None, _remove_container=lambda *_: "failure",
+                                    SMOKE_JWT_ISSUER="issuer", SMOKE_JWT_AUDIENCE="audience", SMOKE_JWT_SIGNING_KEY="development-key")
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as temporary, mock.patch.object(HEALTH, "command", side_effect=command), mock.patch.object(HEALTH.time, "monotonic", side_effect=[0, 2]):
+                result = HEALTH.run_platform(name, "registry.test/memories", "linux/amd64", "sha256:" + "c" * 64, Path(temporary), smoke, 1)
+                log = (Path(temporary) / "health-amd64.log").read_text()
+            self.assertEqual("liveness-timeout" if name == "mcp" else "workload-health-failure", result["outcome"])
+            self.assertEqual("failure", result["cleanup"])
+            self.assertIn("original startup diagnostic", log)
+            self.assertIn("cleanup diagnostic", log)
 
     def test_server_caller_starts_both_keyed_dependencies_and_records_their_cleanup(self):
         for cleanup_failure in (False, True):
