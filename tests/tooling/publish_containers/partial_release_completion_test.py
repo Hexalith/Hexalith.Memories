@@ -302,8 +302,8 @@ class PartialReleaseCompletionTests(unittest.TestCase):
         )
         for name in staged_names:
             self.assertIn(f"Copy-Item ./tools/{name} $toolingPath", workflow)
-        self.assertIn("@($summary.packages).Count -ne 9", workflow)
-        self.assertIn("@($summary.images).Count -notin @(2, 4)", workflow)
+        self.assertIn("Validate historical inventory before any mutation", workflow)
+        self.assertIn("$repositories.Count -notin @(2,4)", workflow)
         with tempfile.TemporaryDirectory() as temp, PackageServer() as nuget:
             root = Path(temp)
             source, summary, deployment, env = self.prepare(root)
@@ -346,18 +346,16 @@ class PartialReleaseCompletionTests(unittest.TestCase):
             combined = first.stdout + first.stderr + second.stdout + second.stderr
             self.assertNotIn(env["GH_TOKEN"], combined)
 
-    def test_new_catalog_unit_completes_with_ten_packages_and_domain_service(self) -> None:
+    def test_precontract_catalog_unit_refuses_without_retained_identity(self) -> None:
         packages = PACKAGE_IDS + ["Hexalith.Memories.EventStoreExtensions"]
         images = IMAGE_REPOSITORIES + ["memories-domain-service"]
         with tempfile.TemporaryDirectory() as temp, PackageServer(packages) as nuget:
             source, summary, deployment, env = self.prepare(
                 Path(temp), image_repositories=images, package_ids=packages, manifest_shape="id")
             result = run_completion(source, summary, deployment, nuget.origin, env)
-            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
-            evidence = json.loads((source / "recovery-output/completion-summary.json").read_text(encoding="utf-8-sig"))
-            self.assertEqual(10, len(evidence["packages"]))
-            self.assertEqual(5, len(evidence["images"]))
-            self.assertEqual(11, len(evidence["releaseAssets"]))
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("Unsupported historical release set", result.stdout + result.stderr)
+            self.assertFalse(Path(env["FAKE_GH_LOG"]).exists())
 
     def test_new_catalog_unit_refuses_missing_domain_service_before_package_reads(self) -> None:
         packages = PACKAGE_IDS + ["Hexalith.Memories.EventStoreExtensions"]
@@ -451,6 +449,9 @@ class PartialReleaseCompletionTests(unittest.TestCase):
 
             remote_asset = next(Path(env["FAKE_GH_ASSETS"]).glob("*.nupkg"))
             remote_asset.write_bytes(b"conflicting immutable asset")
+            missing_asset = next(path for path in Path(env["FAKE_GH_ASSETS"]).glob("*.nupkg") if path != remote_asset)
+            missing_asset.unlink()
+            remote_inventory = {path.name: path.read_bytes() for path in Path(env["FAKE_GH_ASSETS"]).iterdir()}
             state_path = Path(env["FAKE_GH_STATE"])
             state = json.loads(state_path.read_text(encoding="utf-8"))
             state["issue_open"] = True
@@ -470,6 +471,8 @@ class PartialReleaseCompletionTests(unittest.TestCase):
                 for line in Path(env["FAKE_GH_LOG"]).read_text(encoding="utf-8").splitlines()[previous_commands:]
             ]
             self.assertFalse(any(command[:2] == ["issue", "close"] for command in new_commands))
+            self.assertFalse(any(command[:2] == ["release", "upload"] for command in new_commands))
+            self.assertEqual(remote_inventory, {path.name: path.read_bytes() for path in Path(env["FAKE_GH_ASSETS"]).iterdir()})
             self.assertNotIn(env["GH_TOKEN"], conflict.stdout + conflict.stderr)
 
 

@@ -5974,30 +5974,40 @@ decision: 2026-11-01 keep-open — parked. Reopens only on the trigger: any Prod
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-3-guarded-release-dispatch-and-shared-caller-adoption.md`
   summary: Make current five-image recovery accept the real four-image deployment asset without treating DomainService as a deployed workload.
   evidence: Round 2 Blind 1 and 2 (high). `publish-containers.ps1` publishes DomainService but has no render parameter for it; `complete-partial-release.ps1` requires every published image in the deployment, and the fixture invents a DomainService reference. Story 30.5 owns current-set recovery and should use the actual renderer output. Owner: Story 30.5 release maintainer. Consequence: current five-image releases cannot be recovered by this workflow. Reopen trigger: Story 30.5 implements the actual renderer deployment shape.
+  status: resolved 2026-11-15
+  resolution: Story 30.5 — The retained deployment is checked against the four hosted mappings only; DomainService remains a fifth publication/health member. `PartialReleaseRecoveryTests.test_all_missing_positive_control_verifies_fifteen_and_thirteen_assets` uses the actual four-workload shape and passes. Offline fixtures provide no live NuGet or registry proof.
 
 ## Deferred from: Story 30.3 review — NuGet duplicate after absence probe (2026-11-02)
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-3-guarded-release-dispatch-and-shared-caller-adoption.md`
   summary: Reject a NuGet duplicate response that races the destination absence probe instead of recording it as a successful push.
   evidence: Round 2 Blind 5 (high). The pre-existing `publish-nuget.ps1` calls `dotnet nuget push --skip-duplicate` and records zero exit as pushed. A package uploaded by another writer after the probe can therefore produce false complete-release evidence. Story 30.5 must reconcile occupied immutable destinations and package identity. Owner: Story 30.5 release maintainer. Consequence: a raced HTTP 409 can be misreported as a successful package push. Reopen trigger: Story 30.5 reconciles immutable NuGet identities and removes false-success handling.
+  status: open
+  handoff: Story 30.6 (owner decision D3, 2026-11-15). Release-path `publish-nuget.ps1 --skip-duplicate` remains open. Recovery independently compares retained ZIP entries, omits `--skip-duplicate`, and fails on HTTP 409 (`test_409_push_refuses_without_release_completion_or_success_credit`); that is no release-path false-success fix.
 
 ## Deferred from: Story 30.3 review — Recovery publication approval (2026-11-02)
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-3-guarded-release-dispatch-and-shared-caller-adoption.md`
   summary: Put partial-release recovery publication behind an authorized production approval gate.
   evidence: Round 2 Blind 6 (high). `recover-partial-release.yml` can publish missing images and create a GitHub Release without `environment: production`; this route predates Story 30.3. Story 30.5 owns recovery authorization. Owner: Story 30.5 release maintainer. Consequence: recovery publication lacks the guarded release approval gate. Reopen trigger: Story 30.5 adds production approval to recovery.
+  status: resolved 2026-11-15
+  resolution: Story 30.5 — `recover-partial-release.yml` now has read-only `release-source` and `recover` under `environment: production`, with protection readback before/after approval. `CiTestInventoryTests.PartialReleaseRecovery_UsesTrustedTagAndCompletesWholeReleaseUnit` passes (141/141 class cases); no settings or live release were changed. Offline fixtures provide no live NuGet or registry proof.
 
 ## Deferred from: Story 30.3 review — Recovery exact-source CI proof (2026-11-02)
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-3-guarded-release-dispatch-and-shared-caller-adoption.md`
   summary: Bind recovery tooling to a reviewed source and exact successful push CI before it can publish.
   evidence: Round 2 Blind 7 (high). Recovery copies executable tools from its dispatched main checkout before proving that checkout is the live main tip or has successful exact-source push CI. Story 30.5 owns the recovery source/version proof. Owner: Story 30.5 release maintainer. Consequence: recovery tooling can run without exact-source CI proof. Reopen trigger: Story 30.5 binds and proves the recovery source.
+  status: resolved 2026-11-15
+  resolution: Story 30.5 — Both jobs call `check-release-source.py` against live main and exact push CI before staging/using tooling. Failed-run head, tag source, version, manifests, frozen set and approved helper hashes are then checked offline. Drift fixtures and CI inventory checks pass. Offline fixtures provide no live NuGet or registry proof.
 
 ## Deferred from: Story 30.3 review — Historical recovery registry scope (2026-11-02)
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-3-guarded-release-dispatch-and-shared-caller-adoption.md`
   summary: Scope registry write checks for historical recovery to repositories present in the tagged release.
   evidence: Round 2 Blind 8 (medium). `recover-partial-release.yml` checks the verifier's current five repositories before checkout of a historical two- or four-image tag, so lost access to an unused newer repository blocks old recovery. Story 30.5 owns the tagged-set contract. Owner: Story 30.5 release maintainer. Consequence: a historical recovery can be blocked by an unused current repository. Reopen trigger: Story 30.5 scopes registry checks to the tagged set.
+  status: resolved 2026-11-15
+  resolution: Story 30.5 — Historical inventory validation derives repositories from the tagged project set before `verify-container-registry.ps1 -Repositories`; current recovery probes only the frozen five-image identity. Historical two/four-image completion fixtures remain required. Offline fixtures provide no live NuGet or registry proof.
 
 ## Deferred from: Story 30.3 review — Five-image project mapping identity (2026-11-02)
 
@@ -6012,6 +6022,8 @@ decision: 2026-11-01 keep-open — parked. Reopens only on the trigger: any Prod
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-3-guarded-release-dispatch-and-shared-caller-adoption.md`
   summary: Require exactly the approved five image members when completing a ten-package current release.
   evidence: Round 2 Edge 1 (high). The existing recovery guard requires DomainService for ten packages but accepts a four-member summary omitting the telemetry clock, then can close the incident. Story 30.5 owns full current-set recovery. Owner: Story 30.5 release maintainer. Consequence: current-set completion is unsupported and remains fail-closed. Reopen trigger: Story 30.5 verifies all five images with the ten-package unit.
+  status: resolved 2026-11-15
+  resolution: Story 30.5 — The offline bundle verifier requires the exact frozen/tagged ten-package and five-image mappings and stores all fifteen classifications before writes. Complete-set, occupied-content and identity-drift fixtures pass. Offline fixtures provide no live NuGet or registry proof.
 
 ## Deferred from: code review of spec-30-3-guarded-release-dispatch-and-shared-caller-adoption.md (2026-11-02)
 
@@ -6022,6 +6034,8 @@ decision: 2026-11-01 keep-open — parked. Reopens only on the trigger: any Prod
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-3-guarded-release-dispatch-and-shared-caller-adoption.md`
   summary: The pinned NuGet absence probe is eventually consistent, and `--skip-duplicate` records HTTP 409 as pushed; together they leave a window where an occupied version reads as absent and then as successfully published.
   evidence: Review findings BH17 and AA10b (pre-existing). The pinned helper probes `api.nuget.org/v3-flatcontainer`, which returns 404 while a pushed package is still validating, and `test_post_probe_duplicate_response_does_not_create_failure_summary` formalizes the existing 409-as-pushed behaviour. This extends the Round 2 Blind 5 entry above rather than duplicating it. Owner: Jérôme Piquot. Reopen trigger: Story 30.5 implements immutable partial-release reconciliation.
+  status: open
+  handoff: Story 30.6 (owner decision D3, 2026-11-15). Release-path `publish-nuget.ps1 --skip-duplicate` remains open. Recovery independently compares retained ZIP entries, omits `--skip-duplicate`, and fails on HTTP 409 (`test_409_push_refuses_without_release_completion_or_success_credit`); that is no release-path false-success fix.
 
 ## Deferred from: Story 30.3 final review — External version floor (2026-11-02)
 
@@ -6035,13 +6049,15 @@ decision: 2026-11-01 keep-open — parked. Reopens only on the trigger: any Prod
   summary: Align the container child summary's recovery text with the current-release boundary.
   evidence: Round 2 Verification Gap finding (low). `tools/publish-containers.ps1:277` still writes `dispatch Recover Partial Release from main` into `artifacts/containers/release/publish-summary.json`. Since Story 30.3, `recover-partial-release.yml` refuses every current ten-package release, while the aggregate summary (`publish-release.ps1`) and the PARTIAL PUBLISH issue already give the current guidance. No `publish_containers` test asserts the container `recovery` text. Deferred because `tools/publish-containers.ps1` is a Story 30.4-owned path, and the original text becomes correct once Story 30.5 lands complete-set recovery. Owner: Jérôme Piquot. Consequence: after a failed current-release image push, the uploaded container summary contradicts the aggregate summary. Reopen trigger: Story 30.4 edits `publish-containers.ps1`, or Story 30.5 enables current-set recovery, whichever comes first.
   status: resolved 2026-11-03
-  resolution: `spec-30-4-five-image-publication-contract.md` — Story 30.4 edited `tools/publish-containers.ps1`, which fired this trigger. The current five-image path already wrote Story 30.5 guidance, but a deployment-render failure on a current tree still wrote the historical text. The script now picks its `recovery` text from whether `tools/release-containers.json` is present. Current trees get "Stop and reconcile immutable evidence with Jérôme Piquot; current missing-only recovery belongs to Story 30.5." Historical tagged trees keep the config-digest recovery dispatch. `test_render_failure_recovery_guidance_matches_the_source_tree_boundary` covers both trees. Reverting the fix fails only its current-tree case.
+  resolution: `spec-30-4-five-image-publication-contract.md` — Story 30.4 edited `tools/publish-containers.ps1`, which fired this trigger. The current five-image path already wrote Story 30.5 guidance, but a deployment-render failure on a current tree still wrote the historical text. The script now picks its `recovery` text from whether `tools/release-containers.json` is present. Current trees get "Stop and reconcile immutable evidence with Jérôme Piquot; current missing-only recovery belongs to Story 30.5." Historical tagged trees keep the config-digest recovery dispatch. `test_render_failure_recovery_guidance_matches_the_source_tree_boundary` covers both trees. Reverting the fix fails only its current-tree case. Follow-up 2026-11-15 (Story 30.5): current guidance now names Recover Partial Release with version/run ID and retained-byte/production prerequisites; the same boundary fixture is realigned.
 
 ## Deferred from: Story 30.3 resumed build review (2026-11-03)
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-3-guarded-release-dispatch-and-shared-caller-adoption.md`
   summary: Validate a tagged recovery set before the first registry mutation.
   evidence: Round 3 Blind 2 (high; pre-existing). The recovery workflow invokes staged publish-containers.ps1 with -Push before validating the supported historical image/package counts; baseline ordering is identical. Current-set completion refusal does not prevent earlier image pushes. Owner: Story 30.5 recovery maintainer. Consequence: a mistakenly dispatched current tag can mutate the registry before unsupported-set rejection. Reopen trigger: Story 30.5 introduces tagged-set authorization and pre-publication validation.
+  status: resolved 2026-11-15
+  resolution: Story 30.5 — The historical workflow validates nine package IDs and a two/four-image tagged set before registry write-scope probes or `-Push`; precontract five/ten sets refuse. Current sets require a complete zero-refusal fifteen-member plan before any mutation. The unsupported-historical fixture and no-write recovery fixtures cover both boundaries. Offline fixtures provide no live NuGet or registry proof.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-3-guarded-release-dispatch-and-shared-caller-adoption.md`
   summary: Recheck exact tag absence at the terminal preparation boundary or reconcile an identically bound concurrent tag explicitly.
@@ -6050,10 +6066,14 @@ decision: 2026-11-01 keep-open — parked. Reopens only on the trigger: any Prod
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-3-guarded-release-dispatch-and-shared-caller-adoption.md`
   summary: Retain exact prepared package bytes after partial publication failures.
   evidence: Round 3 Blind 7 (medium; pre-existing). Release package upload still requires overall success, as at baseline, while failure evidence uploads only summaries. Owner: Story 30.5 recovery maintainer. Consequence: missing/unpublished prepared package bytes can be lost when the runner disappears, complicating immutable reconciliation. Reopen trigger: Story 30.5 extends failed-release artifact retention.
+  status: resolved 2026-11-15
+  resolution: Story 30.5 — `pack-release.ps1` writes hash-bound `package-identity.json` before publication; release failure archives ten nupkgs and five OCI archives plus deployment/evidence into `release-recovery-bundle` (90 days, compression 0). Receipt/hash drift and missing-preparation fixtures pass; incomplete bundles record named unrecoverable reasons. Offline fixtures provide no live NuGet or registry proof.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-3-guarded-release-dispatch-and-shared-caller-adoption.md`
   summary: Include failed GitHub Release and asset completion in aggregate partial-release incident handling.
   evidence: Round 3 Blind 8 (medium; pre-existing). Both publisher families can succeed before the GitHub semantic-release plugin fails. The unchanged aggregate remains succeeded, and create-partial-publish-issue.ps1 skips statuses other than partial-publish. Owner: Story 30.5 recovery maintainer. Consequence: a release missing GitHub assets can fail without the expected partial-publish incident. Reopen trigger: Story 30.5 qualifies complete-unit publication and GitHub asset recovery.
+  status: open
+  handoff: Story 30.6 (owner decision D3, 2026-11-15). The publish-failed and GitHub-plugin incident alert remains open; Story 30.5 implements asset recovery but does not change alert eligibility.
 
 ## Deferred from: code review of spec-30-4-five-image-publication-contract.md (2026-11-03)
 
@@ -6079,7 +6099,7 @@ decision: 2026-11-01 keep-open — parked. Reopens only on the trigger: any Prod
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-4-five-image-publication-contract.md`
   summary: Establish whether skopeo can exit nonzero or time out after writing the release tag, which would leave an occupied tag recorded as `transported: false` (unverified medium).
   evidence: Review R2-E4. `publish_archives` sets `transported` only after `run([skopeo, "copy", ...])` returns 0. If the index PUT lands before a nonzero exit or the 1800 s timeout, the summary understates registry side effects. Owner: Jérôme Piquot. Consequence: partial-publish evidence could omit an occupied tag. Reopen trigger: a registry fixture that fails skopeo after the manifest PUT, or a post-failure tag re-probe, settles it before Story 30.5 relies on transport outcomes.
-  Follow-up 2026-11-10: every skopeo copy in authorized runs 42108808279 and 42134622308 exited 0, and all ten transports recorded `transported: true`. Neither a post-failure tag re-probe nor a failing-registry fixture exists, so this trigger has not fired. The entry stays open.
+  Follow-up 2026-11-10: every skopeo copy in authorized runs 42108808279 and 42134622308 exited 0, and all ten transports recorded `transported: true`. Neither a post-failure tag re-probe nor a failing-registry fixture exists, so this trigger has not fired. The entry stays open. Follow-up 2026-11-15 (Story 30.5): `PartialReleaseRecoveryTests.test_copy_failure_after_manifest_put_is_reconciled_by_read_only_graph_on_rerun` now proves recovery re-probes every member instead of trusting `transported`; a landed index is skipped on the next run. The original release-path summary finding remains open; this fixture supplies no live interruption or registry-policy proof.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-4-five-image-publication-contract.md`
   summary: Verify that a real multi-RID `PublishContainer` OCI archive carries the approved provenance labels on both children (unverified medium).
@@ -6194,3 +6214,21 @@ decision: 2026-11-01 keep-open — parked. Reopens only on the trigger: any Prod
 - source_spec: `spec-30-4-five-image-publication-contract.md`
   summary: Make tracked annotation scheduling retries repair an accepted schedule instead of attempting the same workflow again (R8-B8).
   evidence: Preserved external ingestion change c4addf98c6a4017d54e0c3aaeb3b57a52f82bffa makes AdmitSourceInventoryActivity accept an existing matching tracked workflow but return only IngestionInput. ScheduleAnnotationIngestionActivity then re-enters payload preparation, leaves Scheduling unchanged and calls ScheduleNewWorkflowAsync; DaprIngestionWorkflowScheduler instead repairs tracking/Scheduled state and returns for the accepted workflow. Owner: ingestion/workspace maintainer Jérôme Piquot. Consequence: an annotation activity retry after a lost scheduling acknowledgement can repeat a remote schedule and fail or reuse existing workflow authority; no annotation retry-safety credit is claimed. Reopen trigger: owning ingestion work adds an actual Dapr annotation lost-acknowledgement regression, demonstrates one accepted execution with repaired scheduling state and persisted source/output/history end-state, and verifies fence/identity refusals remain intact. This is outside the five-image publication intent and does not activate another story.
+
+## Deferred from: Story 30.5 owner scope decision D3 (2026-11-15)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-30-5-partial-release-recovery.md`
+  summary: Open a partial-release incident when a post-tag publication reports publish-failed, and when the GitHub plugin fails after package/image families succeed.
+  status: open
+  target: Story 30.6 release cutover maintainer (Jérôme Piquot).
+  evidence: Owner decision D3 explicitly leaves publish-failed and GitHub-plugin incident alerts out of Story 30.5. `create-partial-publish-issue.ps1` still skips statuses other than partial-publish; the existing all-fail fixture continues to pin that behavior. Recovery can complete the retained release set independently; incident eligibility has not changed. Reopen trigger: Story 30.6 implements release-path incident parity.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-30-5-partial-release-recovery.md`
+  summary: Verify whether an interrupted GitHub CLI release create can leave only the generated recovery packet receipt, then qualify resume from retained recovery-run packet bytes if reachable (unverified medium).
+  evidence: Review R1 BH3; current code refuses receipt-only recovery packets, but concurrent CLI upload ordering is not established from local source. An isolated actual CLI interruption fixture or authoritative implementation trace would settle reachability. Ordinary release packet/receipt subsets are handled in Story 30.5.
+  status: resolved 2026-11-15
+  resolution: R2 EC2 confirmed concurrent GitHub CLI uploads from its authoritative implementation. Recovery now creates an empty draft, uploads the packet before its receipt sequentially, and verifies all assets before publishing. Interrupted draft/packet/receipt and completed rerun fixtures pass; no live publication credit.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-30-5-partial-release-recovery.md`
+  summary: Require authoritative registry tag-immutability/race evidence for atomic protection against another writer between the terminal recovery probe and skopeo copy.
+  evidence: Review R2 EC1; Story 30.5 moves/repeats the probe after archive materialization, but client-side absence checks cannot provide atomic exclusion. The registry policy remains explicitly unverified from Story 30.4; no settings or live publication are authorized here. Owner Jérôme Piquot; authoritative policy readback or an isolated concurrent-writer registry fixture settles it.

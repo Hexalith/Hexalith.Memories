@@ -6,11 +6,15 @@ param(
     [Parameter(Mandatory)]
     [string]$SourceRoot,
 
-    [Parameter(Mandatory)]
     [string]$ContainerSummaryPath,
 
-    [Parameter(Mandatory)]
     [string]$DeploymentPath,
+
+    [string]$RecoveryBundle,
+
+    [string]$ReleaseRunId,
+
+    [string]$SharedDirectory = '.hexalith/builds-execution/Github/publish-containers',
 
     [string]$Repository = $env:GITHUB_REPOSITORY,
 
@@ -44,6 +48,25 @@ if ([string]::IsNullOrWhiteSpace($Registry) -or $Registry -match '[/\\\s]') {
 }
 
 $resolvedSourceRoot = (Resolve-Path -LiteralPath $SourceRoot).Path
+# Current sets are completed only from retained bytes by the offline verifier.
+# Keep the historical downloader isolated below; it can never rebuild a contract set.
+if (-not [string]::IsNullOrWhiteSpace($RecoveryBundle) -or
+    (Test-Path -LiteralPath (Join-Path $resolvedSourceRoot 'tools/release-containers.json'))) {
+    if ([string]::IsNullOrWhiteSpace($RecoveryBundle) -or [string]::IsNullOrWhiteSpace($ReleaseRunId)) {
+        throw 'Current-set recovery requires -RecoveryBundle and -ReleaseRunId; the failed run may predate retained recovery bytes.'
+    }
+    $phase = if ($Publish) { 'recover' } else { 'recovery-plan' }
+    $currentOutput = if ([IO.Path]::IsPathRooted($OutputDirectory)) { $OutputDirectory } else { Join-Path $resolvedSourceRoot $OutputDirectory }
+    $currentShared = if ([IO.Path]::IsPathRooted($SharedDirectory)) { $SharedDirectory } else { Join-Path $resolvedSourceRoot $SharedDirectory }
+    & python3 (Join-Path $PSScriptRoot 'container-publication-contract.py') `
+        --phase $phase --version $Version --registry $Registry --repository $Repository `
+        --source-root $resolvedSourceRoot --recovery-bundle $RecoveryBundle --release-run-id $ReleaseRunId `
+        --shared-directory $currentShared --evidence-directory $currentOutput --nuget-base-uri $NuGetBaseUri
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Current-set recovery refused; see recovery-plan.json and completion-summary.json.'
+    }
+    return
+}
 $resolvedContainerSummary = (Resolve-Path -LiteralPath $ContainerSummaryPath).Path
 $resolvedDeployment = (Resolve-Path -LiteralPath $DeploymentPath).Path
 $outputPath = if ([IO.Path]::IsPathRooted($OutputDirectory)) {
@@ -268,6 +291,9 @@ try {
     if ($catalogAdapter -cin $packageIds -and "$Registry/memories-domain-service:$Version" -cnotin $summaryImages) {
         throw 'Catalog adapter recovery requires the published DomainService image.'
     }
+    if ($packageIds.Count -ne 9 -or $summaryImages.Count -notin @(2, 4)) {
+        throw 'Unsupported historical release set: five-image/ten-package trees without the contract have no retained recovery identity.'
+    }
 
     foreach ($path in @($packagePath, $assetPath, $downloadPath)) {
         if (Test-Path -LiteralPath $path) {
@@ -355,6 +381,23 @@ try {
             $unexpectedAssets = @($existingAssetNames | Where-Object { $_ -notin $expectedAssetNames })
             if ($unexpectedAssets.Count -gt 0) {
                 throw "Existing GitHub Release '$tag' contains unexpected assets: $($unexpectedAssets -join ', ')."
+            }
+
+            # Validate every occupied asset before uploading even one absent asset.
+            if ($existingAssetNames.Count -gt 0) {
+                $beforeUpload = Invoke-NativeCommand -Command 'gh' -Arguments @(
+                    'release', 'download', $tag, '--repo', $Repository, '--dir', $downloadPath)
+                Assert-NativeSuccess -Result $beforeUpload -Action 'Verify occupied historical assets before mutation'
+                foreach ($name in $existingAssetNames) {
+                    $expectedFile = Join-Path $assetPath $name
+                    $remoteFile = Join-Path $downloadPath $name
+                    if (-not (Test-Path -LiteralPath $remoteFile) -or
+                        (Get-FileHash -LiteralPath $expectedFile -Algorithm SHA256).Hash -ne
+                        (Get-FileHash -LiteralPath $remoteFile -Algorithm SHA256).Hash) {
+                        throw "GitHub Release '$tag' asset '$name' did not match the verified source artifact."
+                    }
+                }
+                Get-ChildItem -LiteralPath $downloadPath -File | Remove-Item -Force
             }
 
             $missingAssetFiles = @($expectedAssetFiles | Where-Object { (Split-Path -Leaf $_) -notin $existingAssetNames })

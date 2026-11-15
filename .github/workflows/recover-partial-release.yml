@@ -1,5 +1,5 @@
 name: Recover Partial Release
-run-name: Complete partial release v${{ inputs.version }}
+run-name: Complete partial release v${{ inputs.version }} from run ${{ inputs.release-run-id }}
 
 on:
   workflow_dispatch:
@@ -8,57 +8,130 @@ on:
         description: Existing partial-release version without the leading v
         required: true
         type: string
+      release-run-id:
+        description: Failed release.yml run retaining the prepared release bytes
+        required: true
+        type: string
 
 concurrency:
   group: release
   cancel-in-progress: false
 
 permissions:
-  contents: write
-  issues: write
+  actions: read
+  contents: read
 
 env:
+  KUBECTL_VERSION: 'v1.35.0'
   RECOVERY_VERSION: ${{ inputs.version }}
+  RELEASE_RUN_ID: ${{ inputs.release-run-id }}
 
 jobs:
-  recover-partial-release:
+  release-source:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    steps:
+      - name: Checkout dispatched source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          submodules: false
+      - name: Checkout approved Builds source proof
+        uses: actions/checkout@v7
+        with:
+          repository: Hexalith/Hexalith.Builds
+          ref: ae77d5690a9411a2154fa4ed5231edc373942573
+          path: .hexalith/builds-source-proof
+          persist-credentials: false
+          submodules: false
+      - name: Prove current main and exact push CI before approval
+        run: python3 tools/check-release-source.py --shared-directory .hexalith/builds-source-proof/Github/publish-containers
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Require production environment approval rule
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/environments/production" --jq '(.protection_rules | any(.[]; .type == "required_reviewers" and (.reviewers | length > 0))) and .deployment_branch_policy != null' | grep -qx true
 
+  recover:
+    needs: release-source
+    environment: production
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      actions: read
+      contents: write
+      issues: write
+      id-token: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      HEXALITH_ZOT_REGISTRY: ${{ vars.HEXALITH_ZOT_REGISTRY || 'registry.hexalith.com' }}
+      HEXALITH_ZOT_USERNAME: ${{ secrets.HEXALITH_ZOT_USERNAME }}
+      HEXALITH_ZOT_API_KEY: ${{ secrets.HEXALITH_ZOT_API_KEY }}
     steps:
       - name: Checkout recovery workflow source
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
           submodules: false
-
-      - name: Resolve trusted release source
-        id: release-source
+      - name: Checkout approved Builds source proof
+        uses: actions/checkout@v7
+        with:
+          repository: Hexalith/Hexalith.Builds
+          ref: ae77d5690a9411a2154fa4ed5231edc373942573
+          path: .hexalith/builds-source-proof
+          persist-credentials: false
+          submodules: false
+      - name: Reprove live main and exact push CI after production approval
+        run: python3 tools/check-release-source.py --shared-directory .hexalith/builds-source-proof/Github/publish-containers
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Recheck production protection readback
         shell: bash
         run: |
-          if [[ ! "$RECOVERY_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "::error::Recovery version must be an image-taggable semantic version without a leading v."
-            exit 1
-          fi
-
-          tag_ref="refs/tags/v$RECOVERY_VERSION"
-          git show-ref --verify --quiet "$tag_ref" || {
-            echo "::error::Trusted release tag $tag_ref does not exist."
-            exit 1
-          }
-
-          tag_commit="$(git rev-list -n 1 "$tag_ref")"
-          git merge-base --is-ancestor "$tag_commit" origin/main || {
-            echo "::error::Release tag $tag_ref is not reachable from origin/main."
-            exit 1
-          }
-
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/environments/production" --jq '(.protection_rules | any(.[]; .type == "required_reviewers" and (.reviewers | length > 0))) and .deployment_branch_policy != null' | grep -qx true
+      - name: Resolve trusted release source and failed run
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RECOVERY_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
+          [[ "$RELEASE_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          git show-ref --verify --quiet "refs/tags/v$RECOVERY_VERSION"
+          tag_commit="$(git rev-list -n 1 "refs/tags/v$RECOVERY_VERSION")"
+          git merge-base --is-ancestor "$tag_commit" origin/main
+          mkdir -p artifacts/recovery
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RELEASE_RUN_ID" > artifacts/recovery/failed-run.json
+          python3 - "$tag_commit" <<'PY'
+          import json, os, sys
+          run = json.load(open('artifacts/recovery/failed-run.json'))
+          assert run['id'] == int(os.environ['RELEASE_RUN_ID'])
+          assert run['repository']['full_name'] == os.environ['GITHUB_REPOSITORY']
+          assert run['path'] == '.github/workflows/release.yml'
+          assert run['status'] == 'completed' and run['conclusion'] == 'failure'
+          assert run['head_sha'] == sys.argv[1]
+          assert isinstance(run.get('run_attempt'), int) and run['run_attempt'] > 0
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f"attempt={run['run_attempt']}\n")
+          PY
           echo "commit=$tag_commit" >> "$GITHUB_OUTPUT"
-
+          if git cat-file -e "$tag_commit:tools/release-containers.json" 2>/dev/null; then
+            echo 'current=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'current=false' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Initialize dispatched .NET for trusted fixtures
+        uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@main
+        with:
+          global-json-file: global.json
       - name: Validate trusted recovery tooling
-        run: python3 -m unittest discover -s tests/tooling/publish_containers -p "*_test.py"
-
+        run: python3 -B -m unittest discover -s tests/tooling/publish_containers -p '*_test.py'
+        env:
+          MEMORIES_BUILDS_FIXTURE_CHECKOUT: ${{ github.workspace }}/.hexalith/builds-source-proof
       - name: Stage trusted recovery tooling
         id: recovery-tooling
         shell: pwsh
@@ -69,138 +142,171 @@ jobs:
           Copy-Item ./tools/publish-containers.ps1 $toolingPath
           Copy-Item ./tools/complete-partial-release.ps1 $toolingPath
           Copy-Item ./tools/release-packages.json $toolingPath
+          Copy-Item ./tools/container-publication-contract.py $toolingPath
+          Copy-Item ./tools/verify-container-health.py $toolingPath
           "path=$toolingPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-
+      - name: Download hash-bound failed-run recovery artifact
+        if: steps.source.outputs.current == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RELEASE_RUN_ID/artifacts?per_page=100" > artifacts/recovery/artifacts.json
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess, hashlib, zipfile
+          artifacts = [a for a in json.load(open('artifacts/recovery/artifacts.json'))['artifacts'] if a['name'] == 'release-recovery-bundle' and not a['expired']]
+          if len(artifacts) != 1:
+              raise SystemExit('Recovery bundle missing/expired or ambiguous; only failures retaining pre-publication bytes can recover. Owner: Jérôme Piquot.')
+          artifact = artifacts[0]
+          path = pathlib.Path('artifacts/recovery/bundle.zip')
+          with path.open('wb') as target:
+              subprocess.run(['gh', 'api', f"repos/{os.environ['GITHUB_REPOSITORY']}/actions/artifacts/{artifact['id']}/zip"], stdout=target, check=True)
+          if artifact.get('digest') != 'sha256:' + hashlib.file_digest(path.open('rb'), 'sha256').hexdigest():
+              raise SystemExit('Failed-run artifact digest mismatch or missing digest.')
+          with zipfile.ZipFile(path) as archive:
+              names = archive.namelist()
+              expected = {'release-recovery-bundle.tar.gz', 'release-recovery-bundle.tar.gz.sha256.json'}
+              if len(names) != 2 or set(names) != expected:
+                  raise SystemExit('Unexpected recovery artifact inventory.')
+              archive.extractall('artifacts/recovery/bundle')
+          PY
+      - name: Reprove dispatched main immediately before recovery source switch
+        run: python3 tools/check-release-source.py --shared-directory .hexalith/builds-source-proof/Github/publish-containers
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Checkout tagged release source
         env:
-          RECOVERY_COMMIT: ${{ steps.release-source.outputs.commit }}
+          RECOVERY_COMMIT: ${{ steps.source.outputs.commit }}
         run: git checkout --detach "$RECOVERY_COMMIT"
-
-      - name: Initialize build submodules
-        uses: Hexalith/Hexalith.Builds/Github/initialize-build@main
-
-      - name: Initialize .NET
+      - name: Initialize tagged .NET for retained package recovery
+        if: steps.source.outputs.current == 'true'
         uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@main
         with:
           global-json-file: global.json
-
+      - name: Initialize kubectl
+        if: steps.source.outputs.current == 'true'
+        uses: azure/setup-kubectl@v4
+        with:
+          version: ${{ env.KUBECTL_VERSION }}
+      - name: Verify offline recovery bundle bindings
+        if: steps.source.outputs.current == 'true'
+        id: metadata
+        shell: bash
+        run: |
+          python3 '${{ steps.recovery-tooling.outputs.path }}/container-publication-contract.py' --phase recovery-metadata --version "$RECOVERY_VERSION" --registry "$HEXALITH_ZOT_REGISTRY" --source-root "$GITHUB_WORKSPACE" --release-run-id "$RELEASE_RUN_ID" --release-run-attempt '${{ steps.source.outputs.attempt }}' --recovery-bundle artifacts/recovery/bundle/release-recovery-bundle.tar.gz --evidence-directory artifacts/recovery/current
+      - name: Checkout recorded approved recovery helpers
+        if: steps.source.outputs.current == 'true'
+        uses: actions/checkout@v7
+        with:
+          repository: Hexalith/Hexalith.Builds
+          ref: ${{ steps.metadata.outputs.builds-sha }}
+          path: .hexalith/builds-execution
+          persist-credentials: false
+          submodules: false
+      - name: Initialize both container platforms
+        if: steps.source.outputs.current == 'true'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+          image: tonistiigi/binfmt@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
+      - name: Require archive transport and isolated health tools
+        if: steps.source.outputs.current == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v skopeo >/dev/null || { sudo apt-get update && sudo apt-get install -y skopeo; }
+          skopeo --version
+          command -v docker
+          command -v openssl
+          command -v curl
+          command -v kubectl
+          docker buildx inspect --bootstrap
+      - name: Write complete fifteen-member recovery plan
+        if: steps.source.outputs.current == 'true'
+        id: plan
+        shell: pwsh
+        run: |
+          & '${{ steps.recovery-tooling.outputs.path }}/complete-partial-release.ps1' -Version $env:RECOVERY_VERSION -SourceRoot $env:GITHUB_WORKSPACE -RecoveryBundle artifacts/recovery/bundle/release-recovery-bundle.tar.gz -ReleaseRunId $env:RELEASE_RUN_ID -OutputDirectory artifacts/recovery/current
+      - name: Recover retained missing images and verify health
+        if: steps.source.outputs.current == 'true'
+        shell: bash
+        run: |
+          python3 '${{ steps.recovery-tooling.outputs.path }}/container-publication-contract.py' --phase recover-images --version "$RECOVERY_VERSION" --registry "$HEXALITH_ZOT_REGISTRY" --source-root "$GITHUB_WORKSPACE" --release-run-id "$RELEASE_RUN_ID" --recovery-bundle artifacts/recovery/bundle/release-recovery-bundle.tar.gz --evidence-directory artifacts/recovery/current
+      - name: Exchange recovery OIDC token for a temporary NuGet key
+        if: steps.source.outputs.current == 'true' && steps.plan.outputs.absent-packages != '0'
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ vars.NUGET_USER }}
+      - name: Name missing NuGet recovery authorization blocker
+        if: failure() && steps.nuget-login.outcome == 'failure'
+        run: echo '::error::NuGet Trusted Publishing policy Hexalith/Hexalith.Memories/recover-partial-release.yml/production is required. Owner Jérôme Piquot must configure the policy; recovery fails closed at login.'
+      - name: Recover retained missing members and complete Release
+        if: steps.source.outputs.current == 'true'
+        shell: pwsh
+        run: |
+          & '${{ steps.recovery-tooling.outputs.path }}/complete-partial-release.ps1' -Version $env:RECOVERY_VERSION -SourceRoot $env:GITHUB_WORKSPACE -RecoveryBundle artifacts/recovery/bundle/release-recovery-bundle.tar.gz -ReleaseRunId $env:RELEASE_RUN_ID -OutputDirectory artifacts/recovery/current -Publish
+        env:
+          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
+      - name: Initialize historical build submodules
+        if: steps.source.outputs.current == 'false'
+        uses: Hexalith/Hexalith.Builds/Github/initialize-build@main
+      - name: Initialize historical .NET
+        if: steps.source.outputs.current == 'false'
+        uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@main
+        with:
+          global-json-file: global.json
+      - name: Validate historical inventory before any mutation
+        if: steps.source.outputs.current == 'false'
+        id: historical
+        shell: pwsh
+        run: |
+          $inventory = Get-Content tools/release-packages.json -Raw | ConvertFrom-Json
+          $shapes = @($inventory.packages | ForEach-Object {
+            $hasId = $null -ne $_.PSObject.Properties['id']
+            $hasPackageId = $null -ne $_.PSObject.Properties['packageId']
+            if ($hasId -eq $hasPackageId) { throw 'Historical package entries require exactly one ID field.' }
+            if ($hasId) { 'id' } else { 'packageId' }
+          } | Select-Object -Unique)
+          if ($shapes.Count -ne 1 -or $shapes[0] -cne 'packageId') { throw 'Unsupported historical manifest shape; refusing before -Push.' }
+          $ids = @($inventory.packages | ForEach-Object { if ($_.id) { $_.id } else { $_.packageId } })
+          $expected = @((Get-Content '${{ steps.recovery-tooling.outputs.path }}/release-packages.json' -Raw | ConvertFrom-Json).packages.id | Where-Object { $_ -ne 'Hexalith.Memories.EventStoreExtensions' })
+          if ($ids.Count -ne 9 -or (Compare-Object $expected $ids -CaseSensitive)) { throw 'Unsupported historical package set; refusing before -Push.' }
+          $projects = @(@{ project='Hexalith.Memories.Server'; repository='memories' }, @{ project='Hexalith.Memories.Mcp'; repository='memories-mcp' }, @{ project='Hexalith.Memories.AccessTelemetry'; repository='memories-access-telemetry' }, @{ project='Hexalith.Memories.AccessTelemetry.Clock'; repository='memories-access-telemetry-clock' }, @{ project='Hexalith.Memories.DomainService'; repository='memories-domain-service' })
+          $repositories = @($projects | Where-Object { Test-Path "src/$($_.project)/$($_.project).csproj" } | ForEach-Object { $_.repository })
+          if ($repositories.Count -notin @(2,4) -or 'memories' -notin $repositories -or 'memories-mcp' -notin $repositories -or 'memories-domain-service' -in $repositories) { throw 'Unsupported historical image set; refusing before -Push.' }
+          "repositories=$($repositories -join ',')" | Out-File $env:GITHUB_OUTPUT -Append
       - name: Verify container registry write scope
+        if: steps.source.outputs.current == 'false'
         shell: pwsh
-        run: '& "${{ steps.recovery-tooling.outputs.path }}/verify-container-registry.ps1"'
-        env:
-          HEXALITH_ZOT_REGISTRY: ${{ vars.HEXALITH_ZOT_REGISTRY || 'registry.hexalith.com' }}
-          HEXALITH_ZOT_USERNAME: ${{ secrets.HEXALITH_ZOT_USERNAME }}
-          HEXALITH_ZOT_API_KEY: ${{ secrets.HEXALITH_ZOT_API_KEY }}
-
+        run: |
+          & '${{ steps.recovery-tooling.outputs.path }}/verify-container-registry.ps1' -Repositories ('${{ steps.historical.outputs.repositories }}'.Split(','))
       - name: Restore tagged source
-        # Directory.Build.props keeps NU1901-1904 non-fatal (Hexalith ci-cd-standards.md,
-        # "Dependency Auditing"), but that only reaches this repo's own projects. Repeat it here
-        # via -p: so the same restore graph's Hexalith.FrontComposer submodule project (a separate
-        # Directory.Build.props chain) isn't fatally blocked by the AngleSharp/bunit NU1902 chain.
+        if: steps.source.outputs.current == 'false'
         run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904
-
       - name: Build tagged container archives
+        if: steps.source.outputs.current == 'false'
         shell: pwsh
         run: |
-          & "${{ steps.recovery-tooling.outputs.path }}/publish-containers.ps1" `
-            -RepositoryRoot $env:GITHUB_WORKSPACE `
-            -Version $env:RECOVERY_VERSION
-
+          & '${{ steps.recovery-tooling.outputs.path }}/publish-containers.ps1' -RepositoryRoot $env:GITHUB_WORKSPACE -Version $env:RECOVERY_VERSION
       - name: Reconcile immutable container tags
+        if: steps.source.outputs.current == 'false'
         shell: pwsh
         run: |
-          & "${{ steps.recovery-tooling.outputs.path }}/publish-containers.ps1" `
-            -RepositoryRoot $env:GITHUB_WORKSPACE `
-            -Version $env:RECOVERY_VERSION `
-            -Push
-        env:
-          HEXALITH_ZOT_REGISTRY: ${{ vars.HEXALITH_ZOT_REGISTRY || 'registry.hexalith.com' }}
-          HEXALITH_ZOT_USERNAME: ${{ secrets.HEXALITH_ZOT_USERNAME }}
-          HEXALITH_ZOT_API_KEY: ${{ secrets.HEXALITH_ZOT_API_KEY }}
-
-      - name: Validate recovery evidence
-        shell: pwsh
-        run: |
-          $summaryPath = 'artifacts/containers/release/publish-summary.json'
-          $deploymentPath = 'artifacts/containers/release/production-deployment.yaml'
-          if (-not (Test-Path -LiteralPath $summaryPath)) {
-            throw "Container recovery summary was not created."
-          }
-          if (-not (Test-Path -LiteralPath $deploymentPath)) {
-            throw "Versioned production deployment was not created."
-          }
-
-          $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json
-          if ($summary.status -ne 'succeeded' -or $summary.version -ne $env:RECOVERY_VERSION) {
-            throw "Container recovery summary did not report success for $env:RECOVERY_VERSION."
-          }
-
-          $images = @($summary.images)
-          $imageCount = $images.Count
-          if ($imageCount -notin @(2, 4)) {
-            throw "Container recovery must reconcile the tagged immutable image unit (2 or 4 members); found $imageCount."
-          }
-          $summaryImages = @($images.image)
-          $hasServer = @($summaryImages | Where-Object { $_ -match '/memories:' }).Count -eq 1
-          $hasMcp = @($summaryImages | Where-Object { $_ -match '/memories-mcp:' }).Count -eq 1
-          if (-not $hasServer -or -not $hasMcp) {
-            throw "Container recovery evidence is missing the required Server/MCP image unit."
-          }
-          $allowedPattern = '/memories(-mcp|-access-telemetry|-access-telemetry-clock)?:'
-          if (@($summaryImages | Where-Object { $_ -notmatch $allowedPattern }).Count -gt 0) {
-            throw "Container recovery evidence contains unexpected image repositories."
-          }
-          foreach ($image in $images) {
-            if ($image.status -ne 'succeeded' -or $image.disposition -notin @('pushed', 'already-present')) {
-              throw "Container recovery evidence contains an unverified image outcome."
-            }
-          }
-
+          & '${{ steps.recovery-tooling.outputs.path }}/publish-containers.ps1' -RepositoryRoot $env:GITHUB_WORKSPACE -Version $env:RECOVERY_VERSION -Push
       - name: Complete GitHub Release and incident recovery
+        if: steps.source.outputs.current == 'false'
         shell: pwsh
         run: |
-          & "${{ steps.recovery-tooling.outputs.path }}/complete-partial-release.ps1" `
-            -Version $env:RECOVERY_VERSION `
-            -SourceRoot $env:GITHUB_WORKSPACE `
-            -ContainerSummaryPath ./artifacts/containers/release/publish-summary.json `
-            -DeploymentPath ./artifacts/containers/release/production-deployment.yaml `
-            -OutputDirectory "./artifacts/recovery/v$env:RECOVERY_VERSION" `
-            -Publish
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HEXALITH_ZOT_REGISTRY: ${{ vars.HEXALITH_ZOT_REGISTRY || 'registry.hexalith.com' }}
-
-      - name: Validate release completion evidence
-        shell: pwsh
-        run: |
-          $summaryPath = "./artifacts/recovery/v$env:RECOVERY_VERSION/completion-summary.json"
-          if (-not (Test-Path -LiteralPath $summaryPath)) {
-            throw "Partial-release completion summary was not created."
-          }
-          $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json
-          if ($summary.status -ne 'succeeded' -or $summary.version -ne $env:RECOVERY_VERSION) {
-            throw "Partial-release completion evidence did not report success."
-          }
-          if (@($summary.packages).Count -ne 9 -or
-              @($summary.images).Count -notin @(2, 4) -or
-              @($summary.releaseAssets).Count -ne 10) {
-            throw "Partial-release completion evidence does not contain the complete release unit for this tagged source."
-          }
-          $completionImages = @($summary.images.image)
-          if (@($completionImages | Where-Object { $_ -match '/memories:' }).Count -ne 1 -or
-              @($completionImages | Where-Object { $_ -match '/memories-mcp:' }).Count -ne 1) {
-            throw "Partial-release completion evidence is missing the required Server/MCP image unit."
-          }
-
+          & '${{ steps.recovery-tooling.outputs.path }}/complete-partial-release.ps1' -Version $env:RECOVERY_VERSION -SourceRoot $env:GITHUB_WORKSPACE -ContainerSummaryPath artifacts/containers/release/publish-summary.json -DeploymentPath artifacts/containers/release/production-deployment.yaml -OutputDirectory artifacts/recovery/historical -Publish
       - name: Upload container recovery evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: partial-release-completion-v${{ inputs.version }}
           path: |
+            artifacts/recovery/**
             artifacts/containers/release/build-summary.json
             artifacts/containers/release/publish-summary.json
             artifacts/containers/release/production-deployment.yaml
-            artifacts/recovery/v${{ inputs.version }}/completion-summary.json
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 90

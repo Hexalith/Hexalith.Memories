@@ -51,10 +51,10 @@ else {
     (Resolve-Path -LiteralPath $RepositoryRoot).Path
 }
 # Current source trees carry the frozen five-image manifest and refuse every occupied tag;
-# Story 30.5 owns their missing-only recovery. Historical tagged trees keep reconciliation.
+# Recover Partial Release completes missing members from retained bytes. Historical tagged trees keep reconciliation.
 $currentContract = Test-Path -LiteralPath (Join-Path $repoRoot 'tools/release-containers.json')
 $recoveryGuidance = if ($currentContract) {
-    'Stop and reconcile immutable evidence with Jérôme Piquot; current missing-only recovery belongs to Story 30.5.'
+    "Dispatch Recover Partial Release from main with version $Version and release-run-id $env:GITHUB_RUN_ID; retained hash-bound recovery bytes and production approval are required."
 }
 else {
     'If the exact tag exists, repair registry authorization and dispatch Recover Partial Release from main. Matching immutable remote tags are reconciled by config digest; conflicting tags fail closed.'

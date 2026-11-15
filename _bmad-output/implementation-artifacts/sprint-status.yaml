@@ -523,7 +523,7 @@ development_status:
   30-2-pinned-builds-publication-and-recovery-qualification: done
   30-3-guarded-release-dispatch-and-shared-caller-adoption: done
   30-4-five-image-publication-contract: done
-  30-5-partial-release-recovery: backlog
+  30-5-partial-release-recovery: review
   30-6-release-cutover-parity-and-rollback: backlog
   epic-30-retrospective: optional
 

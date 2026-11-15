@@ -279,7 +279,7 @@ $bodyParts = @(
     "",
     "### Recovery",
     "",
-    "See `docs/dev/release-runbook.md`. Do not delete or republish NuGet packages. For current ten-package releases, manually reconcile NuGet publication and remaining artifacts with the release owner; **Recover Partial Release** refuses the current release set. Automated recovery is reserved for historical nine-package tagged releases. For those tags, repair the failed dependency and dispatch **Recover Partial Release** from `main` with the bare version only after confirming the exact tag is reachable from `main`."
+    "See `docs/dev/release-runbook.md`. Do not delete or republish NuGet packages. Dispatch **Recover Partial Release** from live `main` with version $version and release-run-id $env:GITHUB_RUN_ID. Current sets require the failed run's retained recovery bundle and production approval; missing or expired evidence refuses. Historical nine-package tags retain their tagged-set completion path."
 )
 $body = $bodyParts -join [Environment]::NewLine
 $comment = "Rerun detected for the same partial publish version." + [Environment]::NewLine + [Environment]::NewLine + $body

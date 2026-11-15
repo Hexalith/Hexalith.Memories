@@ -80,6 +80,13 @@ try {
         throw "Release container preparation failed."
     }
 
+    # The container build freezes setSha256. Record every already-packed byte against
+    # that identity before semantic-release can publish either family.
+    & python3 ./tools/container-publication-contract.py --phase package-identity --version $Version --package-directory $outputPath
+    if ($LASTEXITCODE -ne 0) {
+        throw "Pre-publication package identity could not be recorded."
+    }
+
     $containerOutput = if ([System.IO.Path]::IsPathRooted($ContainerOutputDirectory)) {
         $ContainerOutputDirectory
     }

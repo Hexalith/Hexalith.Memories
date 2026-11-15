@@ -920,8 +920,8 @@ class PublishContainersTests(unittest.TestCase):
                 self.assertEqual("publish-failed", summary["status"])
                 self.assertEqual([], copy_references(root))
                 if current:
-                    self.assertIn("current missing-only recovery belongs to Story 30.5", summary["recovery"])
-                    self.assertNotIn("dispatch Recover Partial Release from main", summary["recovery"])
+                    self.assertIn("retained hash-bound recovery bytes", summary["recovery"])
+                    self.assertIn("Recover Partial Release from main with version", summary["recovery"])
                 else:
                     self.assertIn("dispatch Recover Partial Release from main", summary["recovery"])
                     self.assertNotIn("Story 30.5", summary["recovery"])

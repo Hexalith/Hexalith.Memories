@@ -554,9 +554,9 @@ class PublishNuGetTests(unittest.TestCase):
             body = calls[1]["body"]
             self.assertIn("https://github.com/Hexalith/Hexalith.Memories/actions/runs/123456", body)
             self.assertIn("docs/dev/release-runbook.md", body)
-            self.assertIn("current ten-package releases, manually reconcile NuGet publication", body)
-            self.assertIn("Recover Partial Release** refuses the current release set", body)
-            self.assertIn("Automated recovery is reserved for historical nine-package tagged releases", body)
+            self.assertIn("Dispatch **Recover Partial Release** from live", body)
+            self.assertIn("release-run-id", body)
+            self.assertIn("retained recovery bundle and production approval", body)
             self.assertNotIn("Rerun the Release workflow", body)
 
     def test_issue_helper_comments_on_existing_partial_publish_issue(self) -> None:
@@ -879,7 +879,8 @@ class IssueHelperReliabilityTests(unittest.TestCase):
                 result, calls = self.run_helper()
                 self.assertNotEqual(0, result.returncode)
                 self.assertEqual([], calls)
-                self.assertIn("JSON summary object", " ".join(result.stderr.split()))
+                # PowerShell inserts diagnostic margin bars when a long TMPDIR wraps a line.
+                self.assertIn("JSON summary object", " ".join(result.stderr.replace("|", " ").split()))
 
     def test_create_recovery_adds_current_evidence_to_a_preexisting_incident(self):
         result, calls = self.run_helper(existing_title=self.title, gh_plan={

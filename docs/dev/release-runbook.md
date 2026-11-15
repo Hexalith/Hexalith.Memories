@@ -48,7 +48,7 @@ Story 30.1 adopts the shared CI core before guarded release work. The approved r
 30.2 shared CI and former 30.1 guarded release identifiers are historical aliases. The guarded 30.3 caller is now implemented; production environment approval remains an external setting and must be confirmed by API readback before any dispatch.
 
 The approved scope remains the ten packages in `tools/release-packages.json` and the five existing
-images (Server, MCP, DomainService, access-telemetry lifecycle and clock). Guarded release uses `prepare-domain-release@81c88b34d09d34260b92d7f0928dbbc1c7446baa` with the same `builds-execution-sha`, an explicit count of ten packages, and caller-owned NuGet Trusted Publishing. Historical recovery remains compatible with tagged `packageId` manifests; complete-set recovery parity is owned by Story 30.5.
+images (Server, MCP, DomainService, access-telemetry lifecycle and clock). Guarded release uses the exact reviewed `prepare-domain-release` SHA in `release.yml` with the same `builds-execution-sha`, an explicit count of ten packages, and caller-owned NuGet Trusted Publishing. Current-set recovery uses retained bytes for all ten packages and five images. Historical recovery remains compatible with tagged `packageId` manifests.
 
 Before adopting fresh publication qualification evidence, require the dedicated
 `Qualify Builds publication` workflow to succeed at the exact bound Memories source and selected
@@ -145,8 +145,8 @@ protection evidence below stays historical evidence; this story performs no remo
   The unchanged approved OCI validator checks the remote index, both child digests, configs and
   provenance against the prepared graph. Docker is never used to push.
 - Current publication refuses every occupied version tag. Matching config-digest reconciliation
-  remains solely on historical source trees without the current manifest; Story 30.5 owns
-  missing-only recovery for current ten-package releases.
+  remains solely on historical source trees without the current manifest; Recover Partial Release
+  completes current ten-package sets from retained, hash-bound bytes.
 - Semantic-release does not commit generated files back to `main`. It creates the release tag,
   GitHub Release, and package assets without using `@semantic-release/git`, so the release path is
   compatible with the protected-branch rule that requires pull requests for repository changes.
@@ -627,24 +627,56 @@ those actions can move the published state away from the CI-recorded audit ancho
   the summary path. Preserve the original release failure and all summary evidence, repair or
   regenerate the summary, then rerun the alert step. A failed alert does not reconcile a release
   or justify closing its incident.
-- Once a failed publish has created the exact version tag or published any NuGet package, do not
-  rerun normal semantic-release for that version and do not delete or republish packages. For a
-  current ten-package release, manual NuGet reconciliation means recording the exact pushed, failed
-  and not-attempted packages in the PARTIAL PUBLISH issue and escalating to the release owner. Until
-  Story 30.5 completes current-set recovery, nothing finishes it: the recovery workflow cannot push
-  NuGet, the destination preflight refuses a Release rerun for that version, and publishing stays
-  CI-only, so never push a package locally.
-  **Recover Partial Release** from `main` accepts a historical nine-package tag with the existing bare version (for example, `2.6.6`).
-  The workflow accepts only a semantic-version tag reachable from `origin/main` and never creates
-  or moves a tag. It stages the recovery scripts and their passing fixtures from current trusted
-  `main`, then checks out and builds the exact tagged source.
-- Recovery first proves Zot write scope against the fixed current five repositories, even for historical tags. It then rebuilds and reconciles the tagged Server, MCP, access-telemetry lifecycle and clock immutable tags using the remote image **config digest**. Current ten-package, five-image recovery remains fail-closed until Story 30.5. A matching tag is recorded
-  as already present, a missing tag is pushed, and any conflicting digest fails closed.
-- Recovery never invokes a NuGet push. Its completion script reads the tagged manifest unchanged: uniform historical `packageId` or current `id` entries are recognized; mixed shapes fail before package downloads. The workflow currently accepts only the historical nine-package, two-or-four-image unit. It validates nuspec id/version, hashes downloaded bytes, and creates or completes the GitHub Release with exactly those package assets plus `hexalith-memories-production.yaml`. Existing matching assets are retained; unexpected names or mismatched bytes fail closed.
-- Only after the tagged image unit, package unit, versioned deployment, and all corresponding GitHub Release assets verify does recovery attach the evidence artifact to the matching partial-publish incident and close it. A failed or interrupted run remains safely rerunnable and leaves the incident open.
-- Historical tagged source trees prebuild container members during prepare and accept an existing
-  immutable image tag only when its remote config digest matches the prebuilt archive. Current
-  five-image trees refuse every occupied or ambiguous tag; missing-only recovery belongs to Story 30.5.
+- Once a failed publish has created the exact version tag or published any member, dispatch
+  **Recover Partial Release** from live `main` with `version` (without `v`) and `release-run-id`
+  (the failed `release.yml` run). Preserve the incident and the `release-recovery-bundle` artifact.
+  Recovery never moves a tag or overwrites an occupied package, image or Release asset.
+- The read-only source job proves the live `main` tip and successful exact-source push CI, then
+  reads back the production reviewer and deployment-branch rules. The recovery job waits for
+  `environment: production` approval and repeats those proofs before staging executable tools.
+- Current tags with `tools/release-containers.json` require the failed run's unexpired
+  recovery artifact (90 days requested; the last recorded repository cap is 30 days, so inspect expiry). The workflow verifies GitHub's artifact SHA-256, the bundle receipt and every
+  file hash, recomputes `setSha256`, and binds the tag commit, failed-run head, version and tagged
+  ten-package/five-image manifests. Earlier failed current releases without a bundle refuse;
+  rebuilding cannot reproduce their prepared OCI/package identity.
+  Retention runs only on workflow failure: cancellation, runner loss or job timeout may leave no
+  recovery bundle. A missing/expired bundle is a blocker. Recovery also refuses any run whose
+  conclusion is not `failure`, including `cancelled` and `timed_out`, even if bytes were retained.
+- Recovery loads Builds helpers at the SHA and byte hashes recorded in the identity. Jérôme Piquot
+  approved only `81c88b34d09d34260b92d7f0928dbbc1c7446baa` and
+  `ae77d5690a9411a2154fa4ed5231edc373942573` for recovery on 2026-11-15. Another SHA requires a
+  recorded owner approval and an explicit allowlist edit before recovery can write.
+- Before the first destination write, `artifacts/recovery/current/recovery-plan.json` records all
+  fifteen members as present-identical (skip), absent (publish retained bytes), present-different
+  (refuse), or ambiguous (refuse). Authenticated registry manifests and the complete OCI graph
+  must match; NuGet compares every ZIP entry byte for byte, ignoring only `.signature.p7s` added
+  by repository signing. A flat-container 404 is absent, including NuGet's validation window;
+  a subsequent push conflict or 401/403/5xx/timeout fails closed and grants no success credit.
+  The original plan stays unchanged. `recovery-progress.json` records actual attempted writes and
+  their read-only rechecks, including verified side effects and uncertainty after a failed command.
+- Recovery rechecks each destination immediately before its write, copies missing images with
+  `--preserve-digests`, and runs digest-bound health for any image without a passing retained
+  health record. Only when packages are absent does the workflow invoke `NuGet/login@v1`, using
+  `vars.NUGET_USER`, immediately before retained-package publication. No stored NuGet key is used.
+  The owner must configure Trusted Publishing for
+  `Hexalith/Hexalith.Memories/recover-partial-release.yml/production`; until then, package recovery
+  fails at login with Jérôme Piquot as the named owner. Image- and asset-only recovery can proceed.
+- After all fifteen members verify, recovery creates or completes the Release with exactly thirteen
+  assets: ten retained nupkgs, the tagged renderer's four-workload `hexalith-memories-production.yaml`,
+  an evidence packet and its receipt. An already-uploaded valid ordinary packet or its matching receipt
+  is preserved from the retained bundle byte for byte; otherwise recovery emits a packet containing
+  hash-bound raw OCI validation, health records and logs. DomainService remains a publication member with health proof;
+  it is not invented as a hosted deployment. A draft may contain a hash-identical asset subset;
+  missing assets are uploaded and verified before publishing it. Unexpected or different assets refuse.
+  A completed rerun performs zero registry, NuGet or GitHub writes and reuses the verified immutable packet.
+- Historical trees without the contract retain their two- or four-image/nine-package completion.
+  Their inventory is validated before any registry mutation and authorization is scoped to the tagged
+  repositories. They rebuild historical archives and require all nine packages already on nuget.org.
+  The precontract five-image/ten-package tags (v3.0.12–v3.0.18) are unsupported and refuse before `-Push`.
+- Only after members, assets and packet verification does recovery close the matching incident.
+  The always-uploaded `partial-release-completion-v<version>` artifact retains plans, diagnostics,
+  health and the completion summary. Fixture success proves the refusal and orchestration logic;
+  it supplies no live NuGet, registry or production authorization proof.
 - Open registry follow-ups (owner: Jérôme Piquot): registry immutability/race policy remains unverified
   until authoritative policy readback or an isolated concurrent-writer fixture; an interrupted skopeo
   copy may leave an occupied tag until a manifest-PUT failure fixture or failure re-probe settles it.

@@ -1,4 +1,5 @@
 import json
+import hashlib
 import os
 import shutil
 import subprocess
@@ -85,6 +86,10 @@ def write_fake_pwsh(directory: Path) -> None:
                 if not output.is_absolute():
                     output = Path.cwd() / output
                 output.mkdir(parents=True, exist_ok=True)
+                if os.environ.get("FAKE_REAL_PACKAGE_IDENTITY"):
+                    identity = Path.cwd() / "artifacts/release/container-evidence/identity.json"
+                    identity.parent.mkdir(parents=True, exist_ok=True)
+                    identity.write_text(json.dumps({"version": os.environ["FAKE_RELEASE_VERSION"], "sourceSha": "a" * 40, "setSha256": "b" * 64}))
                 is_push = "-Push" in args
                 if is_push:
                     status = os.environ.get("FAKE_CONTAINER_STATUS", "succeeded")
@@ -127,6 +132,8 @@ def write_fake_dotnet(directory: Path) -> None:
             import json
             import os
             import sys
+            from pathlib import Path
+            import zipfile
 
             args = sys.argv[1:]
             if args and args[0].endswith("pwsh.dll"):
@@ -134,6 +141,14 @@ def write_fake_dotnet(directory: Path) -> None:
                 os.execv(real_dotnet, [real_dotnet] + args)
             with open(os.environ["FAKE_ORCHESTRATION_LOG"], "a", encoding="utf-8") as log:
                 log.write(json.dumps({"command": "dotnet", "args": args}) + "\\n")
+            if args[0] == "pack" and os.environ.get("FAKE_REAL_PACKAGE_IDENTITY"):
+                inventory = json.loads(Path("tools/release-packages.json").read_text())["packages"]
+                package = next(item for item in inventory if item["project"] == args[1])
+                package_id, version = package["id"], os.environ["FAKE_RELEASE_VERSION"]
+                path = Path(args[args.index("--output") + 1]) / f"{package_id}.{version}.nupkg"
+                with zipfile.ZipFile(path, "w") as output:
+                    output.writestr(package_id + ".nuspec", f"<package><metadata><id>{package_id}</id><version>{version}</version></metadata></package>")
+                    output.writestr("lib/net11.0/fixture.dll", package_id)
             sys.exit(0)
             """
         ).strip()
@@ -162,6 +177,9 @@ def make_environment(
         "import json, os, sys\n"
         "with open(os.environ['FAKE_ORCHESTRATION_LOG'], 'a') as log:\n"
         "    log.write(json.dumps({'command': 'python3', 'args': sys.argv[1:]}) + '\\n')\n"
+        "if '--phase' in sys.argv and sys.argv[sys.argv.index('--phase') + 1] == 'package-identity' and os.environ.get('FAKE_REAL_PACKAGE_IDENTITY'):\n"
+        "    if os.environ.get('FAKE_PACKAGE_IDENTITY_EXIT'): sys.exit(int(os.environ['FAKE_PACKAGE_IDENTITY_EXIT']))\n"
+        "    os.execv(sys.executable, [sys.executable, *sys.argv[1:]])\n"
         "sys.exit(int(os.environ.get('FAKE_AUTHORIZATION_EXIT' if '--phase' in sys.argv else 'FAKE_EVIDENCE_EXIT', '0')))\n",
         encoding="utf-8",
     )
@@ -268,9 +286,9 @@ class ReleaseOrchestrationTests(unittest.TestCase):
             self.assertEqual("partial-publish", summary["status"])
             self.assertEqual(["NuGet packages", "container images"], [family["name"] for family in summary["families"]])
             self.assertTrue(any("NuGet packages" in failure["package"] for failure in summary["failed"]))
-            self.assertIn("current ten-package releases, manually reconcile NuGet publication", summary["recovery"])
-            self.assertIn("reserved for historical nine-package tagged releases", summary["recovery"])
-            self.assertNotIn("dispatch Recover Partial Release from main", summary["recovery"])
+            self.assertIn("dispatch Recover Partial Release from main with version", summary["recovery"])
+            self.assertIn("release-run-id", summary["recovery"])
+            self.assertIn("production approval", summary["recovery"])
 
     def test_publish_release_requires_both_families_for_success(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -304,6 +322,13 @@ class ReleaseOrchestrationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             env, log_path = make_environment(root)
+            # Execute the real producer and identity CLI in an isolated source root;
+            # only SDK compilation/container generation are controlled boundaries.
+            tools = root / "source/tools"
+            tools.mkdir(parents=True)
+            for name in ("pack-release.ps1", "container-publication-contract.py", "release-packages.json"):
+                shutil.copyfile(REPO_ROOT / "tools" / name, tools / name)
+            env["FAKE_REAL_PACKAGE_IDENTITY"] = "1"
             package_output = root / "packages"
             container_output = root / "containers"
             deployment_output = root / "deployment" / "hexalith-memories-production.yaml"
@@ -314,7 +339,7 @@ class ReleaseOrchestrationTests(unittest.TestCase):
                     "-NoLogo",
                     "-NoProfile",
                     "-File",
-                    str(PACK_SCRIPT),
+                    str(tools / "pack-release.ps1"),
                     "-Version",
                     VERSION,
                     "-OutputDirectory",
@@ -349,6 +374,29 @@ class ReleaseOrchestrationTests(unittest.TestCase):
             # Release preparation always builds through the five-image publication contract.
             self.assertIn("-PublicationContract", publish_call["args"])
             self.assertEqual(str(container_output), publish_call["args"][publish_call["args"].index("-OutputDirectory") + 1])
+            identity = json.loads((root / "source/artifacts/release/package-identity.json").read_text())
+            self.assertEqual((VERSION, "a" * 40, "b" * 64), tuple(identity[key] for key in ("version", "sourceSha", "setSha256")))
+            expected = {item["id"] for item in json.loads((tools / "release-packages.json").read_text())["packages"]}
+            self.assertEqual(expected, {item["id"] for item in identity["packages"]})
+            self.assertEqual(10, len(identity["packages"]))
+            for record in identity["packages"]:
+                path = package_output / record["file"]
+                self.assertEqual(path.stat().st_size, record["size"])
+                self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), record["sha256"])
+
+    def test_pack_release_refuses_failed_real_identity_emission(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            env, _ = make_environment(root)
+            tools = root / "source/tools"
+            tools.mkdir(parents=True)
+            for name in ("pack-release.ps1", "container-publication-contract.py", "release-packages.json"):
+                shutil.copyfile(REPO_ROOT / "tools" / name, tools / name)
+            env.update(FAKE_REAL_PACKAGE_IDENTITY="1", FAKE_PACKAGE_IDENTITY_EXIT="49")
+            result = subprocess.run([shutil.which("pwsh"), "-NoLogo", "-NoProfile", "-File", str(tools / "pack-release.ps1"), "-Version", VERSION, "-PowerShellExecutable", env["FAKE_PWSH"]], env=env, capture_output=True, text=True, check=False)
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("Pre-publication package identity could not be recorded", result.stdout + result.stderr)
+            self.assertFalse((root / "source/artifacts/release/package-identity.json").exists())
 
     def test_pack_release_package_only_stops_after_real_package_validation(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

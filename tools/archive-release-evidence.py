@@ -23,7 +23,7 @@ def required_files(evidence, container_directory, package_directory, summary_dir
     paths = [evidence / name for name in ("identity.json", "authorization.json", "archive-compatibility.json", "preflight-verify.log", "preflight-publish.log", "preflight-container.log", "preflight/publication-identity.json", "preflight/publication-preflight.verify.json", "preflight/publication-preflight.publish.json", "preflight/publication-preflight.container.json")]
     for image in contract.CANONICAL_IMAGES:
         paths += [evidence / image["name"] / name for name in MEMBER_FILES]
-    paths += [Path("tools/release-containers.json"), Path("tools/release-packages.json"), container_directory / "build-summary.json", container_directory / "publish-summary.json", package_directory / "publish-summary.json", summary_directory / "publish-summary.json", deployment_path]
+    paths += [Path("tools/release-containers.json"), Path("tools/release-packages.json"), summary_directory / "package-identity.json", container_directory / "build-summary.json", container_directory / "publish-summary.json", package_directory / "publish-summary.json", summary_directory / "publish-summary.json", deployment_path]
     return paths
 
 
@@ -125,6 +125,7 @@ def verify(evidence, shared, container_directory=Path("artifacts/containers/rele
     contract.validate_manifest(Path.cwd(), manifest)
     current = contract.current_identity(Path.cwd(), manifest, identity["version"], identity["registry"], hashes)
     contract.freeze_identity(evidence / "identity.json", current)
+    contract.validate_package_identity(identity, Path("tools/release-packages.json"), summary_directory / "package-identity.json", package_directory)
     graphs = contract.validate_archives(container_directory, evidence, identity, validator)
     contract.validate_authorization(evidence, identity)
     preflight_identity = contract.read_json(evidence / "preflight/publication-identity.json")
@@ -181,6 +182,72 @@ def verify(evidence, shared, container_directory=Path("artifacts/containers/rele
     return identity, paths
 
 
+def archive_recovery_bundle(evidence, output, container_directory, package_directory, summary_directory, deployment_path):
+    """Keep pre-publication bytes even when preparation itself failed; never claim success."""
+    root = Path.cwd().resolve()
+    required = [evidence / "identity.json", evidence / "archive-compatibility.json", summary_directory / "package-identity.json",
+                root / "tools/release-containers.json", root / "tools/release-packages.json", deployment_path]
+    reasons = []
+    for label, actual, canonical in (
+        ("evidence", evidence, "artifacts/release/container-evidence"),
+        ("containers", container_directory, "artifacts/containers/release"),
+        ("packages", package_directory, "artifacts/packages/release"),
+        ("summaries", summary_directory, "artifacts/release"),
+        ("deployment", deployment_path, "artifacts/deployment/hexalith-memories-production.yaml"),
+    ):
+        if actual.resolve() != root / canonical:
+            reasons.append(f"Unsupported recovery source layout for {label}; required canonical path: {canonical}")
+    identity = {}
+    try:
+        identity = contract.verify_frozen_identity(contract.read_json(evidence / "identity.json"))
+        inventory = contract.read_json(root / "tools/release-packages.json")["packages"]
+        required += [package_directory / f"{item['id']}.{identity['version']}.nupkg" for item in inventory]
+        for image in contract.CANONICAL_IMAGES:
+            required += [container_directory / (image["name"] + suffix) for suffix in (".tar.gz", ".oci.tar.gz")]
+    except Exception as error:
+        reasons.append("Pre-publication identity/inventory is missing or invalid: " + contract.redact(error))
+    reasons += ["Missing pre-publication input: " + str(path) for path in required if not path.is_file()]
+    try:
+        contract.validate_preparation(root, evidence, container_directory, package_directory, summary_directory / "package-identity.json")
+    except Exception as error:
+        reasons.append("Invalid pre-publication preparation: " + contract.redact(error))
+    paths = [path for path in required if path.is_file()]
+    # Include every available evidence record, but never accidentally include a packet
+    # being built, private auth config, or downloaded registry/package bytes.
+    paths += [path for path in evidence.rglob("*") if path.is_file() or path.is_symlink()]
+    paths += [path for path in (summary_directory / "publish-summary.json", package_directory / "publish-summary.json", container_directory / "build-summary.json", container_directory / "publish-summary.json", container_directory / "production-deployment.yaml") if path.is_file()]
+    # A normal packet may already occupy an immutable Release asset name when the
+    # GitHub publisher fails. Preserve its exact bytes and receipt, including an
+    # invalid packet as diagnostic evidence (which is never granted pass credit).
+    paths += [path for path in (summary_directory / contract.PACKET_NAME, summary_directory / (contract.PACKET_NAME + ".sha256.json")) if path.is_file()]
+    sources = {}
+    for path in paths:
+        if path.is_symlink():
+            raise ValueError("Recovery evidence cannot contain symbolic links.")
+        resolved = path.resolve()
+        if resolved in (output.resolve(), output.with_suffix(output.suffix + ".sha256.json").resolve()):
+            continue
+        try:
+            relative = resolved.relative_to(root).as_posix()
+        except ValueError:
+            relative = "external/" + hashlib.sha256(str(resolved.parent).encode()).hexdigest()[:16] + "/" + resolved.name
+        sources[relative] = resolved
+    manifest = {"schemaVersion": "hexalith.memories.release-recovery.v1", "result": "unrecoverable" if reasons else "recoverable", "reasons": reasons,
+                **{key: identity.get(key) for key in ("version", "sourceSha", "setSha256")},
+                "files": [{"path": name, "sha256": contract.sha256(path), "size": path.stat().st_size} for name, path in sorted(sources.items())]}
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(output, "w:gz") as bundle:
+        data = contract.canonical(manifest) + b"\n"
+        header = tarfile.TarInfo("recovery-manifest.json")
+        header.size = len(data)
+        bundle.addfile(header, io.BytesIO(data))
+        for name, path in sorted(sources.items()):
+            bundle.add(path, arcname=name, recursive=False)
+    contract.write_json(output.with_suffix(output.suffix + ".sha256.json"), {"path": output.name, "sha256": contract.sha256(output), "result": manifest["result"]})
+    # An incomplete preparation is retained with a named blocker instead of losing diagnostics.
+    return manifest
+
+
 def archive(evidence, output, shared, diagnostics=False, **directories):
     identity_readable = True
     if diagnostics:
@@ -230,13 +297,18 @@ def main():
     parser.add_argument("--output", type=Path, default=Path("artifacts/release/hexalith-memories-release-evidence.tar.gz"))
     parser.add_argument("--shared-directory", type=Path, default=Path(".hexalith/builds-execution/Github/publish-containers"))
     parser.add_argument("--diagnostics", action="store_true")
+    parser.add_argument("--recovery-bundle", action="store_true")
     parser.add_argument("--container-directory", type=Path, default=Path("artifacts/containers/release"))
     parser.add_argument("--package-directory", type=Path, default=Path("artifacts/packages/release"))
     parser.add_argument("--summary-directory", type=Path, default=Path("artifacts/release"))
     parser.add_argument("--deployment-path", type=Path, default=Path("artifacts/deployment/hexalith-memories-production.yaml"))
     arguments = parser.parse_args()
     try:
-        archive(arguments.evidence_directory, arguments.output, arguments.shared_directory, arguments.diagnostics, container_directory=arguments.container_directory, package_directory=arguments.package_directory, summary_directory=arguments.summary_directory, deployment_path=arguments.deployment_path)
+        directories = dict(container_directory=arguments.container_directory, package_directory=arguments.package_directory, summary_directory=arguments.summary_directory, deployment_path=arguments.deployment_path)
+        if arguments.recovery_bundle:
+            archive_recovery_bundle(arguments.evidence_directory, arguments.output, **directories)
+        else:
+            archive(arguments.evidence_directory, arguments.output, arguments.shared_directory, arguments.diagnostics, **directories)
     except Exception as error:
         print(f"[release-evidence] refused: {contract.redact(error)}", file=sys.stderr)
         return 1

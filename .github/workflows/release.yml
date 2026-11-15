@@ -5,9 +5,9 @@ on:
 
 # cancel-in-progress: false is deliberate. A release run that is interrupted mid-publish
 # would leave NuGet in a partial-publish state. The trusted Recover Partial Release workflow
-# reconciles only historical nine-package tags; a current ten-package partial publish has no
-# completion path until Story 30.5 (see docs/dev/release-runbook.md). An in-flight release must
-# therefore run to completion rather than being cancelled by a later dispatch.
+# completes current ten-package/five-image sets from the failed run's retained, hash-bound
+# recovery bundle (see docs/dev/release-runbook.md). An in-flight release must run to
+# completion rather than being cancelled by a later dispatch.
 concurrency:
   group: release
   cancel-in-progress: false
@@ -221,6 +221,22 @@ jobs:
         if: failure()
         run: python3 tools/archive-release-evidence.py --diagnostics --output artifacts/release/hexalith-memories-release-diagnostics.tar.gz
 
+      - name: Retain prepared partial-release recovery bytes
+        if: failure()
+        run: python3 tools/archive-release-evidence.py --recovery-bundle --output artifacts/release/release-recovery-bundle.tar.gz
+
+      - name: Upload immutable recovery bundle
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-recovery-bundle
+          path: |
+            artifacts/release/release-recovery-bundle.tar.gz
+            artifacts/release/release-recovery-bundle.tar.gz.sha256.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+
       - name: Upload release publication evidence
         if: always()
         uses: actions/upload-artifact@v7
@@ -228,6 +244,8 @@ jobs:
           name: release-publication-evidence
           path: |
             artifacts/release/**
+            !artifacts/release/release-recovery-bundle.tar.gz
+            !artifacts/release/release-recovery-bundle.tar.gz.sha256.json
             artifacts/packages/release/publish-summary.json
             artifacts/containers/release/publish-summary.json
             artifacts/containers/release/build-summary.json

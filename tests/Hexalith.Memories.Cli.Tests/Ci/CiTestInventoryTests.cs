@@ -610,30 +610,43 @@ public sealed partial class CiTestInventoryTests
         workflow.ShouldContain("git merge-base --is-ancestor");
         workflow.ShouldContain("git checkout --detach");
         workflow.ShouldContain("Validate trusted recovery tooling");
+        workflow.ShouldContain("Initialize dispatched .NET for trusted fixtures");
+        workflow.ShouldContain("Initialize tagged .NET for retained package recovery");
+        workflow.IndexOf("Initialize dispatched .NET for trusted fixtures", StringComparison.Ordinal).ShouldBeLessThan(
+            workflow.IndexOf("Validate trusted recovery tooling", StringComparison.Ordinal));
+        workflow.IndexOf("Initialize tagged .NET for retained package recovery", StringComparison.Ordinal).ShouldBeLessThan(
+            workflow.IndexOf("Recover retained missing members and complete Release", StringComparison.Ordinal));
         workflow.ShouldContain("Stage trusted recovery tooling");
         workflow.ShouldContain("verify-container-registry.ps1");
         workflow.ShouldContain("-RepositoryRoot $env:GITHUB_WORKSPACE");
         workflow.ShouldContain("complete-partial-release.ps1");
         workflow.ShouldContain("GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}");
-        workflow.ShouldContain("@($summary.packages).Count -ne 9");
-        workflow.ShouldContain("@($summary.images).Count -notin @(2, 4)");
-        workflow.ShouldContain("@($summary.releaseAssets).Count -ne 10");
-        workflow.ShouldContain("tagged immutable image unit (2 or 4 members)");
-        workflow.ShouldContain("Copy-Item ./tools/release-packages.json $toolingPath");
-        workflow.ShouldContain("/memories-mcp:");
-        workflow.ShouldContain("unexpected image repositories");
-        workflow.ShouldContain("Partial-release completion evidence is missing the required Server/MCP image unit.");
-        workflow.ShouldContain("@('pushed', 'already-present')");
+        workflow.ShouldContain("release-run-id:");
+        workflow.ShouldContain("needs: release-source");
+        workflow.ShouldContain("environment: production");
+        workflow.ShouldContain("id-token: write");
+        workflow.ShouldContain("check-release-source.py");
+        workflow.ShouldContain("Write complete fifteen-member recovery plan");
+        workflow.ShouldContain("--phase recovery-metadata");
+        workflow.ShouldContain("-RecoveryBundle");
+        workflow.ShouldContain("release-recovery-bundle");
+        workflow.ShouldContain("artifact.get('digest')");
+        workflow.ShouldContain("Validate historical inventory before any mutation");
+        workflow.ShouldContain("-Repositories");
+        workflow.ShouldContain("NuGet/login@v1");
+        workflow.ShouldContain("steps.plan.outputs.absent-packages != '0'");
+        workflow.ShouldContain("NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}");
+        workflow.ShouldNotContain("secrets.NUGET_API_KEY");
+        workflow.ShouldNotContain("dotnet nuget push");
         workflow.ShouldContain("if: always()");
         workflow.IndexOf("Stage trusted recovery tooling", StringComparison.Ordinal).ShouldBeLessThan(
             workflow.IndexOf("Checkout tagged release source", StringComparison.Ordinal));
-        workflow.IndexOf("Verify container registry write scope", StringComparison.Ordinal).ShouldBeLessThan(
-            workflow.IndexOf("Restore tagged source", StringComparison.Ordinal));
-        workflow.IndexOf("Reconcile immutable container tags", StringComparison.Ordinal).ShouldBeLessThan(
-            workflow.IndexOf("Complete GitHub Release and incident recovery", StringComparison.Ordinal));
-        workflow.ShouldNotContain("NUGET_API_KEY");
-        workflow.ShouldNotContain("dotnet nuget push");
-        workflow.ShouldNotContain("semantic-release");
+        workflow.IndexOf("Validate historical inventory before any mutation", StringComparison.Ordinal).ShouldBeLessThan(
+            workflow.IndexOf("Verify container registry write scope", StringComparison.Ordinal));
+        workflow.IndexOf("Write complete fifteen-member recovery plan", StringComparison.Ordinal).ShouldBeLessThan(
+            workflow.IndexOf("Exchange recovery OIDC token", StringComparison.Ordinal));
+        workflow.IndexOf("Reprove live main and exact push CI", StringComparison.Ordinal).ShouldBeLessThan(
+            workflow.IndexOf("Stage trusted recovery tooling", StringComparison.Ordinal));
     }
 
     [Fact]

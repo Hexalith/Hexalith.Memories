@@ -22,6 +22,7 @@ import tarfile
 import tempfile
 from types import SimpleNamespace
 import unittest
+import zipfile
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -54,7 +55,7 @@ RUNTIME = {"Env": ["PATH=/app:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:
            "ExposedPorts": {"8080/tcp": {}}}
 
 
-BUILDS = ROOT / "references/Hexalith.Builds"
+BUILDS = Path(os.environ.get("MEMORIES_BUILDS_FIXTURE_CHECKOUT", ROOT / "references/Hexalith.Builds"))
 
 
 def approved_builds_checkout():
@@ -830,8 +831,9 @@ class PublicationContractTests(unittest.TestCase):
         self.assertEqual(1, len([command for command in self.commands if command[0] == "skopeo"]))
         self.assertEqual("partial-publish", CONTRACT.read_json(self.output / "publish-summary.json")["status"])
 
-    def evidence_packet(self):
-        self.prepare()
+    def evidence_packet(self, prepared=False):
+        if not prepared:
+            self.prepare()
         self.publish()
         CONTRACT.write_json(self.evidence / "authorization.json", {"result": "pass", "mode": "preemptive-basic", "pushProven": False, "cleanup": "pass", "registry": "registry.test", "repositories": [image["repository"] for image in CONTRACT.CANONICAL_IMAGES]})
         packages = {"schemaVersion": 1, "status": "succeeded", "version": VERSION, "source": "https://api.nuget.org/v3/index.json", "pushed": sorted(f"{package['id']}.{VERSION}.nupkg" for package in CONTRACT.read_json(self.manifest.with_name("release-packages.json"))["packages"]), "failed": [], "notAttempted": []}
@@ -846,10 +848,14 @@ class PublicationContractTests(unittest.TestCase):
             aggregate["families"].append({"name": name, "status": "succeeded", "exitCode": 0, "summaryPath": path.relative_to(self.root).as_posix(), "summary": summary})
             aggregate["pushed"] += [f"{name}: {item}" for item in summary["pushed"]]
         CONTRACT.write_json(self.root / "artifacts/release/publish-summary.json", aggregate)
+        for item in CONTRACT.read_json(self.manifest.with_name("release-packages.json"))["packages"]:
+            with zipfile.ZipFile(package_path.parent / f"{item['id']}.{VERSION}.nupkg", "w") as package:
+                package.writestr(item["id"] + ".nuspec", f"<package><metadata><id>{item['id']}</id><version>{VERSION}</version></metadata></package>")
+        CONTRACT.write_package_identity(self.root, package_path.parent, self.evidence / "identity.json")
         with working_directory(self.root):
             ARCHIVE.render_deployment(self.identity, self.output / "production-deployment.yaml")
         deployment = self.root / "artifacts/deployment/hexalith-memories-production.yaml"
-        deployment.parent.mkdir(parents=True)
+        deployment.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(self.output / "production-deployment.yaml", deployment)
 
     @contextmanager
@@ -859,7 +865,7 @@ class PublicationContractTests(unittest.TestCase):
             if str(args[0]) == "git":
                 return SOURCE_SHA if "rev-parse" in args else ""
             return original(args, **kwargs)
-        with working_directory(self.root), mock.patch.object(ARCHIVE.contract, "load_shared", return_value=(self.preflight, self.validator, None, {})), mock.patch.object(ARCHIVE.contract, "run", side_effect=controlled):
+        with working_directory(self.root), mock.patch.object(ARCHIVE.contract, "load_shared", return_value=(self.preflight, self.validator, None, self.identity["helpers"])), mock.patch.object(ARCHIVE.contract, "run", side_effect=controlled):
             yield
 
     def test_successful_evidence_asset_hashes_every_identity_auth_oci_and_health_record(self):
@@ -1015,6 +1021,7 @@ class PublicationContractTests(unittest.TestCase):
         package_summary["packageDirectory"] = str(packages)
         CONTRACT.write_json(packages / "publish-summary.json", package_summary)
         summaries.mkdir()
+        shutil.copyfile(self.root / "artifacts/release/package-identity.json", summaries / "package-identity.json")
         aggregate = CONTRACT.read_json(self.root / "artifacts/release/publish-summary.json")
         for family, directory in zip(aggregate["families"], (packages, containers)):
             family["summaryPath"] = str(directory / "publish-summary.json")
