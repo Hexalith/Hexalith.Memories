@@ -475,11 +475,19 @@ class OwnerDiscoveryTests(unittest.TestCase):
     def test_real_offline_timeout_kills_descendant_and_closes_owned_pipes(self):
         pid_path = self.root / "child.pid"
         children = []
-        program = ("import os,time; pid=os.fork(); "
-                   f"open({str(pid_path)!r},'w').write(str(pid)); time.sleep(10)")
+        pending_pid = self.root / "child.pid.pending"
+        program = ("import os,time\npid=os.fork()\nif pid:\n"
+                   f"    with open({str(pending_pid)!r},'w') as marker: marker.write(str(pid))\n"
+                   f"    os.replace({str(pending_pid)!r},{str(pid_path)!r})\n"
+                   "time.sleep(10)")
         def launch(*args, **kwargs):
             child = REAL_POPEN([sys.executable, "-I", "-c", program], **kwargs)
             children.append(child)
+            self.addCleanup(discovery._kill, child)
+            ready_until = time.monotonic() + 1
+            while not pid_path.exists() and child.poll() is None and time.monotonic() < ready_until:
+                time.sleep(0.005)
+            self.assertTrue(pid_path.exists(), "forked descendant did not publish its owned PID")
             return child
         with ExitStack() as stack, patch.object(discovery.subprocess, "Popen", side_effect=launch):
             credential_fd = discovery._sealed_credential(self.credential.read_bytes(), stack)
@@ -489,12 +497,22 @@ class OwnerDiscoveryTests(unittest.TestCase):
         self.assertIsNotNone(children[0].returncode)
         self.assertTrue(children[0].stdout.closed)
         self.assertTrue(children[0].stderr.closed)
-        # The immediate child and all descendants share the terminated group.
-        # A reparented zombie may briefly persist, but cannot execute or write.
-        if pid_path.exists():
-            child_pid = int(pid_path.read_text())
-            if child_pid > 0 and Path(f"/proc/{child_pid}/stat").exists():
-                self.assertEqual(Path(f"/proc/{child_pid}/stat").read_text().split()[2], "Z")
+        # SIGKILL targets the whole group, but wait() reaps only its leader.
+        # Observe the actual descendant's termination within a separate fixed bound.
+        child_pid = int(pid_path.read_text())
+        self.assertGreater(child_pid, 0)
+        stat = Path(f"/proc/{child_pid}/stat")
+        terminated_until = time.monotonic() + 1
+        while True:
+            try:
+                state = stat.read_text().split()[2]
+            except FileNotFoundError:
+                break
+            if state == "Z":
+                break
+            self.assertLess(time.monotonic(), terminated_until,
+                            f"descendant {child_pid} remained executable ({state}) after timeout")
+            time.sleep(0.005)
 
     def test_mutable_credential_replacement_cannot_redirect_spawned_child(self):
         # Replace the canonical pathname at the Popen boundary, after check().
