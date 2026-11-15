@@ -664,6 +664,7 @@ public sealed partial class CaseEndpointIntegrationTests
         (await redisDb.KeyExistsAsync($"{tenantId}:mu:{muId}")).ShouldBeTrue();
 
         // Delete MU
+        await OwnedSemanticInventory.ReconcileAsync(redisDb, tenantId, muId);
         using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync(
             $"/api/v1/tenants/{tenantId}/cases/{createdCase.Id}/memory-units/{muId}");
         deleteResponse.StatusCode.ShouldBe(HttpStatusCode.NoContent);
@@ -885,6 +886,7 @@ public sealed partial class CaseEndpointIntegrationTests
         await WaitForContainsEdgeAsync(tenantId, createdCase.Id);
         string muId = await GetFirstMemoryUnitIdAsync(tenantId, createdCase.Id);
 
+        await OwnedSemanticInventory.ReconcileAsync(_fixture.RedisConnection.GetDatabase(), tenantId, muId);
         using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync(
             $"/api/v1/tenants/{tenantId}/cases/{createdCase.Id}");
         deleteResponse.StatusCode.ShouldBe(HttpStatusCode.NoContent);

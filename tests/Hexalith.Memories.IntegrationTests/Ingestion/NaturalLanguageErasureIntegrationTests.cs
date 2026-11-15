@@ -215,7 +215,7 @@ public sealed class NaturalLanguageErasureIntegrationTests(RedisStackFixture red
         IDatabase db = redis.Connection.GetDatabase();
         string erased = reverse ? "nl:victim" : "victim";
         string survivor = reverse ? "victim" : "nl:victim";
-        await db.StringSetAsync(SourcePublicationVisibility.KeyProvenance(tenant, erased), "modern");
+        await OwnedSemanticInventory.ReconcileAsync(db, tenant, erased);
         string key = IndexSchemaDefinitions.BuildSemanticKey(tenant, "nl:victim");
         key.ShouldBe(IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey(tenant, "victim"));
         await db.HashSetAsync(key, Fields(survivor, "unrelated-private-content"));
@@ -381,7 +381,7 @@ public sealed class NaturalLanguageErasureIntegrationTests(RedisStackFixture red
             string unit = "unit-" + index;
             await db.HashSetAsync(IndexSchemaDefinitions.BuildSyntacticKey(tenant, unit), MigrationOwner(tenant, unit));
             await db.HashSetAsync(IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey(tenant, unit), Fields(unit, "private-content"));
-            await db.StringSetAsync(SourcePublicationVisibility.KeyProvenance(tenant, unit), "modern");
+            await OwnedSemanticInventory.ReconcileAsync(db, tenant, unit);
             Task migration = RedisNaturalLanguageNamespaceMigrator.MigrateOneAsync(db, tenant, unit, token);
             Task<bool> deletion = caseDeletion
                 ? new DeleteCaseProjectionActivity(redis.Connection, graph.Connection, new GraphQueryBuilder(), workflowClient: Substitute.For<IDaprWorkflowClient>())
@@ -472,7 +472,7 @@ public sealed class NaturalLanguageErasureIntegrationTests(RedisStackFixture red
         {
             await db.StringSetAsync(tenant + ":unrelated:" + index, "survivor");
         }
-        await db.StringSetAsync(SourcePublicationVisibility.KeyProvenance(tenant, "modern"), "modern");
+        await OwnedSemanticInventory.ReconcileAsync(db, tenant, "modern");
         string chunk = IndexSchemaDefinitions.BuildSemanticChunkKey(tenant, "modern", 7);
         await db.SetAddAsync(SourcePublicationVisibility.Keys(tenant, "modern"), chunk);
         (await SemanticKeyDiscovery.FindAsync(db, tenant, "modern", token)).ShouldContain((RedisKey)chunk);
@@ -509,7 +509,7 @@ public sealed class NaturalLanguageErasureIntegrationTests(RedisStackFixture red
         await db.SetAddAsync(SourcePublicationVisibility.Keys(tenant, "victim"), [(RedisValue)chunk,
             (RedisValue)IndexSchemaDefinitions.BuildSemanticKey(tenant, "victim"),
             (RedisValue)IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey(tenant, "victim")]);
-        await db.StringSetAsync(SourcePublicationVisibility.KeyProvenance(tenant, "victim"), "legacy-owner-reconciled-v1");
+        await OwnedSemanticInventory.ReconcileAsync(db, tenant, "victim");
         var discovered = await SemanticKeyDiscovery.FindAsync(db, tenant, "victim", token);
         discovered.ShouldContain((RedisKey)chunk);
         discovered.ShouldNotContain((RedisKey)survivor);

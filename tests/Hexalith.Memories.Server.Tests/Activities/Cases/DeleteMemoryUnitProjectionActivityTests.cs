@@ -10,6 +10,7 @@ using Dapr.Workflow;
 using Hexalith.Memories.Server.Activities.Cases;
 using Hexalith.Memories.Server.Graph;
 using Hexalith.Memories.Server.Infrastructure;
+using Hexalith.Memories.Server.Ingestion;
 
 using NSubstitute;
 
@@ -109,7 +110,15 @@ public class DeleteMemoryUnitProjectionActivityTests
     {
         IDatabase db = Substitute.For<IDatabase>();
         db.ScriptEvaluateAsync(Arg.Any<string>(), Arg.Any<RedisKey[]>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>()).Returns(RedisResult.Create(1L));
-        db.StringGetAsync(Arg.Is<RedisKey>(key => key.ToString().StartsWith("publication-key-provenance:", StringComparison.Ordinal)), Arg.Any<CommandFlags>()).Returns((RedisValue)"modern");
+        foreach (string unit in new[] { "mu-001", "ann-001" })
+        {
+            string authority = UnitOwnershipAuthority.Serialize(new UnitOwnershipRecord(
+                "historical-v2", "tenant-1", unit, Guid.NewGuid().ToString("N"),
+                UnitOwnershipAuthority.Producer("owned-fixture-workflow", unit, "case-001"),
+                "owned-unit-inventory:" + unit, "owned-disposable-fixture-writers-excluded"));
+            db.StringGetAsync((RedisKey)SourcePublicationVisibility.KeyProvenance("tenant-1", unit), Arg.Any<CommandFlags>()).Returns((RedisValue)authority);
+            db.StringGetAsync((RedisKey)UnitOwnershipAuthority.Key("tenant-1", unit), Arg.Any<CommandFlags>()).Returns((RedisValue)authority);
+        }
         db.SetMembersAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>()).Returns(Array.Empty<RedisValue>());
         db.SortedSetScanAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<int>(), Arg.Any<long>(), Arg.Any<int>(), Arg.Any<CommandFlags>()).Returns(EmptyQueue());
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();

@@ -95,6 +95,10 @@ public sealed class BackupRestoreFidelityIntegrationTests
         // an edge that is present in edges[] (CONTAINS edges are rebuilt from caseId, not exported).
         await SeedReferencesEdgeAsync(tenantId, firstCaseUnits[0], firstCaseUnits[1]);
 
+        IReadOnlyList<string> secondCaseUnits = await GetCaseMemoryUnitIdsAsync(tenantId, secondCaseId);
+        await OwnedSemanticInventory.ReconcileAsync(_fixture.RedisConnection.GetDatabase(), tenantId,
+            firstCaseUnits.Concat(secondCaseUnits).ToArray());
+
         // --- Snapshot the backing stores ---
         Dictionary<string, Dictionary<string, string>> muSnapshot = await SnapshotHashesAsync($"{tenantId}:mu:*");
         Dictionary<string, Dictionary<string, string>> caseSnapshot = await SnapshotHashesAsync($"{tenantId}:case:*");
