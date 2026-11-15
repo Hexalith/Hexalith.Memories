@@ -86,6 +86,33 @@ public sealed class IngestionEndpointE2ETests : IDisposable
             Arg.Any<CancellationToken>());
     }
 
+    /// <summary>Configured HTTP file and URL entry points return the exact generation-qualified identifier passed to scheduling.</summary>
+    /// <param name="url">Whether to call the URL entry point.</param>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ConfiguredHttpEntryPointsIssueGenerationQualifiedIdentifiers(bool url)
+    {
+        string generation = Guid.NewGuid().ToString("N");
+        _factory.ConfigurationOverrides["Ingestion:OwnershipGeneration"] = generation;
+        _factory.ConfigurationOverrides["Ingestion:OwnershipWriterExclusionEvidenceId"] = "owned-http-writers-excluded";
+        StubTenantActive();
+        _scheduler.ScheduleAsync(Arg.Any<string>(), Arg.Any<IngestionInput>(), Arg.Any<CancellationToken>())
+            .Returns(call => call.ArgAt<string>(0));
+        using HttpClient client = CreateAuthorizedClient();
+        using HttpResponseMessage response = url
+            ? await client.PostAsJsonAsync("/api/v1/ingest/url", new UrlIngestionRequest { TenantId = TenantId, CaseId = CaseId,
+                Url = "https://example.com/owned-qualification", IngestedBy = "owned-control" }, MemoriesJsonContext.Options, TestContext.Current.CancellationToken)
+            : await client.PostAsJsonAsync("/api/v1/ingest", IngestionInputFactory.Create(tenantId: TenantId, caseId: CaseId),
+                MemoriesJsonContext.Options, TestContext.Current.CancellationToken);
+        response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
+        string returnedId = await ReadInstanceIdAsync(response);
+        returnedId.ShouldStartWith("owned-" + generation + "-");
+        await _scheduler.Received(1).ScheduleAsync(returnedId,
+            Arg.Is<IngestionInput>(input => input.TenantId == TenantId && input.CaseId == CaseId && input.SourceType == (url ? SourceType.Url : SourceType.File)),
+            Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task PostIngest_ExplicitRefreshAcknowledgesTheProducerProtocolOnlyAfterScheduling()
     {

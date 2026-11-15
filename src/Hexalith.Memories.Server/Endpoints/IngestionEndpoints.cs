@@ -55,6 +55,7 @@ internal static class IngestionEndpoints
 
         app.MapPost(MemoriesRoutes.Ingest, async (
             IIngestionWorkflowScheduler workflowScheduler,
+            IngestionWorkflowConfigurationCapture ownershipConfiguration,
             TenantStatusGuard tenantGuard,
             IngestDedupReservation ingestReservation,
             SourceInventoryStore sourceInventory,
@@ -117,7 +118,7 @@ internal static class IngestionEndpoints
                 // REST path. The candidate id becomes the workflow instance id (and, for SourceType.File, the
                 // MemoryUnitId), so a losing concurrent ingest returns the winner's instance and observes the same
                 // MemoryUnitId without scheduling a second workflow.
-                string candidateInstanceId = Guid.NewGuid().ToString();
+                string candidateInstanceId = ownershipConfiguration.NewUnitId();
                 Hexalith.Memories.EventStore.TenantEventRoutingOptions routing = ingestRoutingOptions.CurrentValue;
                 bool reservationHeld = false;
 
@@ -351,7 +352,7 @@ internal static class IngestionEndpoints
 
                 input = workflowTraceContextCapture.Apply(workflowConfigurationCapture.Apply(input));
 
-                string instanceId = await workflowScheduler.ScheduleAsync(Guid.NewGuid().ToString(), input, cancellationToken);
+                string instanceId = await workflowScheduler.ScheduleAsync(workflowConfigurationCapture.NewUnitId(), input, cancellationToken);
 
                 IngestionEndpointLog.LogUrlIngestionScheduled(
                     urlLogger,

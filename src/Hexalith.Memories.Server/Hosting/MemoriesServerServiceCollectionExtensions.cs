@@ -241,7 +241,10 @@ internal static class MemoriesServerServiceCollectionExtensions
         builder.Services.AddSingleton<IOidcTokenProvider>(sp => sp.GetRequiredService<OidcTokenProvider>());
 
         // Story 6.1: URL and directory ingestion — settings, named HttpClient, and services.
-        builder.Services.Configure<IngestionSettings>(builder.Configuration.GetSection("Ingestion"));
+        builder.Services.AddOptions<IngestionSettings>()
+            .Bind(builder.Configuration.GetSection("Ingestion"))
+            .Validate(settings => { UnitOwnershipAuthority.ValidateConfiguration(settings); return true; })
+            .ValidateOnStart();
         builder.Services.Configure<WorkflowPayloadStoreOptions>(
             builder.Configuration.GetSection(WorkflowPayloadStoreOptions.SectionName));
         builder.Services.Configure<ContentChunkingOptions>(

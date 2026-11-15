@@ -37,6 +37,12 @@ internal sealed class IngestionWorkflowConfigurationCapture
         return input with { WorkflowConfiguration = Capture() };
     }
 
+    /// <summary>Issues a new identifier in the configured service generation; unconfigured hosts retain ordinary ingestion without completeness authority.</summary>
+    internal string NewUnitId() => UnitOwnershipAuthority.Qualify(Guid.NewGuid().ToString(), _ingestionSettings.Value.OwnershipGeneration);
+
+    /// <summary>Places a service-generated ULID in the configured generation namespace.</summary>
+    internal string QualifyUnitId(string identifier) => UnitOwnershipAuthority.Qualify(identifier, _ingestionSettings.Value.OwnershipGeneration);
+
     internal static IngestionWorkflowConfiguration Create(
         IngestionSettings ingestionSettings,
         NaturalLanguageDescriptionOptions naturalLanguageOptions)
@@ -50,6 +56,7 @@ internal sealed class IngestionWorkflowConfigurationCapture
             overrides[activityName] = ToWorkflowPolicy(retryPolicy, $"Ingestion:RetryPolicies:{activityName}");
         }
 
+        UnitOwnershipAuthority.ValidateConfiguration(ingestionSettings);
         return new IngestionWorkflowConfiguration
         {
             Retry = new IngestionActivityRetryConfiguration

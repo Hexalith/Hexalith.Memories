@@ -120,10 +120,15 @@ internal sealed partial class DaprIngestionWorkflowScheduler : IIngestionWorkflo
             if (_refreshPublication is null) { throw new InvalidOperationException("source-refresh-unavailable"); }
             input = input with { RefreshIdentityDigest = await _refreshPublication.PrepareAsync(input, cancellationToken).ConfigureAwait(false) };
         }
+        bool ownsAdmission = false;
         if (_sourceInventory is not null)
         {
-            if (input.FailedRetry is null) { await _sourceInventory.AdmitAsync(instanceId, input, cancellationToken, requireExistingAdmission).ConfigureAwait(false); }
-            else { await _sourceInventory.AdmitFailedRetryAsync(instanceId, input, previous, cancellationToken).ConfigureAwait(false); }
+            if (input.FailedRetry is null) { ownsAdmission = await _sourceInventory.AdmitWithOwnershipAsync(instanceId, input, cancellationToken, requireExistingAdmission).ConfigureAwait(false); }
+            else
+            {
+                await _sourceInventory.AdmitFailedRetryAsync(instanceId, input, previous, cancellationToken).ConfigureAwait(false);
+                ownsAdmission = true;
+            }
             input = input with { SourceInventoryTracked = true };
             if (requireExistingAdmission)
             {
@@ -150,20 +155,26 @@ internal sealed partial class DaprIngestionWorkflowScheduler : IIngestionWorkflo
             await _inFlightRegistry
                 .TrackAsync(trackedEntry, cancellationToken)
                 .ConfigureAwait(false);
-
+            if (_sourceInventory is not null)
+            {
+                await _sourceInventory.SetSchedulingAsync(input.TenantId, input.SourceUri, instanceId, "Scheduling", cancellationToken).ConfigureAwait(false);
+            }
         }
         catch
         {
-            if (_sourceInventory is not null)
+            if (_sourceInventory is not null && ownsAdmission)
             {
                 using var proofBudget = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-                await _sourceInventory.SetSchedulingAsync(input.TenantId, input.SourceUri, instanceId, "Unscheduled", proofBudget.Token).ConfigureAwait(false);
+                try
+                {
+                    await _sourceInventory.SetUnscheduledIfPreparingAsync(instanceId, input, proofBudget.Token).ConfigureAwait(false);
+                }
+                catch (Exception proofFailure)
+                {
+                    LogUnscheduledProofFailed(_logger, proofFailure, input.TenantId, instanceId);
+                }
             }
             throw;
-        }
-        if (_sourceInventory is not null)
-        {
-            await _sourceInventory.SetSchedulingAsync(input.TenantId, input.SourceUri, instanceId, "Scheduling", cancellationToken).ConfigureAwait(false);
         }
         try
         {
@@ -204,6 +215,9 @@ internal sealed partial class DaprIngestionWorkflowScheduler : IIngestionWorkflo
         IngestionInput configuredInput = workflowTraceContextCapture.Apply(workflowConfigurationCapture.Apply(input));
         return IngestionPayloadClaimCheck.PrepareAsync(payloadStore, instanceId, configuredInput, cancellationToken);
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to settle unscheduled ingestion workflow {InstanceId} for tenant {TenantId}; its durable obligation remains retained.")]
+    private static partial void LogUnscheduledProofFailed(ILogger logger, Exception exception, string tenantId, string instanceId);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to remove unscheduled ingestion workflow {InstanceId} for tenant {TenantId} from the in-flight registry after schedule failure.")]
     private static partial void LogInFlightTrackingCleanupFailed(ILogger logger, Exception exception, string tenantId, string instanceId);

@@ -20,7 +20,7 @@ using Microsoft.Extensions.Options;
 /// Batch-ingest a directory of files: validate path against the allow-list, enumerate, filter by
 /// extension/size, schedule one <see cref="IngestionWorkflow"/> per candidate, persist batch state.
 /// </summary>
-internal sealed class DirectoryIngestionService
+internal sealed partial class DirectoryIngestionService
 {
     internal const string BatchStateKeyPrefix = "ingestion-batch:";
     internal const string StateStoreName = "statestore";
@@ -36,8 +36,12 @@ internal sealed class DirectoryIngestionService
     private readonly IIngestionWorkflowScheduler _workflowScheduler;
     private readonly DaprClient _daprClient;
     private readonly IWorkflowPayloadStore? _payloadStore;
+    private readonly SourceInventoryStore? _sourceInventory;
     private readonly ILogger<DirectoryIngestionService> _logger;
     private readonly TimeProvider _timeProvider;
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to settle owned directory producer {WorkflowInstanceId} in batch {BatchId}; its durable admission remains retained.")]
+    private static partial void LogDirectorySettlementFailed(ILogger logger, Exception exception, string batchId, string workflowInstanceId);
 
     public DirectoryIngestionService(
         IOptions<IngestionSettings> settings,
@@ -45,7 +49,8 @@ internal sealed class DirectoryIngestionService
         DaprClient daprClient,
         ILogger<DirectoryIngestionService> logger,
         IWorkflowPayloadStore? payloadStore = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        SourceInventoryStore? sourceInventory = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(workflowScheduler);
@@ -56,6 +61,7 @@ internal sealed class DirectoryIngestionService
         _workflowScheduler = workflowScheduler;
         _daprClient = daprClient;
         _payloadStore = payloadStore;
+        _sourceInventory = sourceInventory;
         _logger = logger;
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
@@ -65,6 +71,9 @@ internal sealed class DirectoryIngestionService
     {
         ArgumentNullException.ThrowIfNull(request);
         IngestionSettings settings = _settings.Value;
+        UnitOwnershipAuthority.ValidateConfiguration(settings);
+        if (settings.OwnershipGeneration is not null && _sourceInventory is null)
+            throw new InvalidOperationException("unit-ownership-inventory-required");
         string batchId = BaUlid.New(UlidOptions).ToString();
         DateTimeOffset createdAt = _timeProvider.GetUtcNow();
         int ttlSeconds = Math.Max(1, settings.BatchStateTtlHours) * 3600;
@@ -244,7 +253,7 @@ internal sealed class DirectoryIngestionService
                 return;
             }
 
-            string requestedInstanceId = BaUlid.New(UlidOptions).ToString();
+            string requestedInstanceId = UnitOwnershipAuthority.Qualify(BaUlid.New(UlidOptions).ToString(), _settings.Value.OwnershipGeneration);
             IngestionInput input = new()
             {
                 TenantId = request.TenantId,
@@ -259,8 +268,13 @@ internal sealed class DirectoryIngestionService
                 CorrelationId = batchId,
             };
             WorkflowPayloadReference? createdPayloadReference = null;
+            bool ownsAdmission = false, schedulingAccepted = false;
             try
             {
+                if (_sourceInventory is not null && _settings.Value.OwnershipGeneration is not null)
+                {
+                    ownsAdmission = await _sourceInventory.AdmitWithOwnershipAsync(requestedInstanceId, input, schedulingCancellationToken).ConfigureAwait(false);
+                }
                 if (_payloadStore is not null)
                 {
                     input = await IngestionPayloadClaimCheck
@@ -272,6 +286,7 @@ internal sealed class DirectoryIngestionService
                 string instanceId = await _workflowScheduler
                     .ScheduleAsync(requestedInstanceId, input, schedulingCancellationToken)
                     .ConfigureAwait(false);
+                schedulingAccepted = true;
                 if (string.IsNullOrWhiteSpace(instanceId))
                 {
                     instanceId = requestedInstanceId;
@@ -317,6 +332,21 @@ internal sealed class DirectoryIngestionService
             {
                 await DeleteCreatedPayloadAsync(createdPayloadReference, CancellationToken.None).ConfigureAwait(false);
                 throw;
+            }
+            finally
+            {
+                if (ownsAdmission && !schedulingAccepted && _sourceInventory is not null)
+                {
+                    using var proofBudget = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                    try
+                    {
+                        await _sourceInventory.SetUnscheduledIfPreparingAsync(requestedInstanceId, input, proofBudget.Token).ConfigureAwait(false);
+                    }
+                    catch (Exception proofFailure)
+                    {
+                        LogDirectorySettlementFailed(_logger, proofFailure, batchId, requestedInstanceId);
+                    }
+                }
             }
         }
 

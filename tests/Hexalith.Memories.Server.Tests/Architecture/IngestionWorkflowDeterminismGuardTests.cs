@@ -20,7 +20,7 @@ public static partial class IngestionWorkflowDeterminismGuardTests
         (string RelativePath, int Line, string Method, string NameExpression)[] expected =
         [
             ("src/Hexalith.Memories.Server/Activities/Cases/ScheduleAnnotationIngestionActivity.cs", 77, "direct", "nameof(IngestionWorkflow)"),
-            ("src/Hexalith.Memories.Server/Ingestion/DaprIngestionWorkflowScheduler.cs", 170, "direct", "nameof(IngestionWorkflow)"),
+            ("src/Hexalith.Memories.Server/Ingestion/DaprIngestionWorkflowScheduler.cs", 181, "direct", "nameof(IngestionWorkflow)"),
             ("src/Hexalith.Memories.Server/Workflows/AnnotationProjectionWorkflow.cs", 47, "child", "nameof(IngestionWorkflow)"),
         ];
 
@@ -88,7 +88,7 @@ public static partial class IngestionWorkflowDeterminismGuardTests
             "SourceUri = request.Url, ContentBytes = null,");
         AssertContains(
             endpoints,
-            "await workflowScheduler.ScheduleAsync(Guid.NewGuid().ToString(), input, cancellationToken);");
+            "await workflowScheduler.ScheduleAsync(workflowConfigurationCapture.NewUnitId(), input, cancellationToken);");
 
         AssertOrdered(
             annotationActivity,
@@ -135,7 +135,7 @@ public static partial class IngestionWorkflowDeterminismGuardTests
         AssertContains(
             registration,
             "services.TryAddSingleton<IEventIngestionWorkflowScheduler, EventIngestionWorkflowSchedulerAdapter>();");
-        AssertContains(adapter, "=> _inner.ScheduleAsync(instanceId, input, cancellationToken);");
+        AssertContains(adapter, "=> _inner.ScheduleAsync(_configuration?.QualifyUnitId(instanceId) ?? instanceId, input, cancellationToken);");
     }
 
     [Fact]
@@ -187,8 +187,8 @@ public static partial class IngestionWorkflowDeterminismGuardTests
         string endpoints = LoadNormalizedSource(repoRoot, "src/Hexalith.Memories.Server/Endpoints/IngestionEndpoints.cs");
         string scheduler = LoadNormalizedSource(repoRoot, "src/Hexalith.Memories.Server/Ingestion/DaprIngestionWorkflowScheduler.cs");
         endpoints.ShouldNotContain("ScheduleNewWorkflowAsync(nameof(IngestionWorkflow)");
-        AssertContains(endpoints, "await workflowScheduler.ScheduleAsync(Guid.NewGuid().ToString(), input, cancellationToken);");
-        AssertOrdered(scheduler, "await _sourceInventory.AdmitAsync(instanceId, input, cancellationToken, requireExistingAdmission)",
+        AssertContains(endpoints, "await workflowScheduler.ScheduleAsync(workflowConfigurationCapture.NewUnitId(), input, cancellationToken);");
+        AssertOrdered(scheduler, "await _sourceInventory.AdmitWithOwnershipAsync(instanceId, input, cancellationToken, requireExistingAdmission)",
             "slimInput = await PrepareInputAsync(", "ScheduleNewWorkflowAsync(nameof(IngestionWorkflow)");
         AssertOrdered(scheduler, "workflowTraceContextCapture.Apply(workflowConfigurationCapture.Apply(input))",
             "IngestionPayloadClaimCheck.PrepareAsync(");

@@ -9,8 +9,11 @@ using Hexalith.EventStore.Client.Queries;
 using StackExchange.Redis;
 
 /// <summary>Durable bounded source inventory. Never derives completeness from a dedup pointer or the maintenance registry.</summary>
-internal sealed class SourceInventoryStore([FromKeyedServices("redis")] IConnectionMultiplexer redis, IQueryCursorCodec cursorCodec)
+internal sealed class SourceInventoryStore([FromKeyedServices("redis")] IConnectionMultiplexer redis, IQueryCursorCodec cursorCodec,
+    Microsoft.Extensions.Options.IOptions<IngestionSettings>? settings = null)
 {
+    private readonly IngestionSettings _ownershipSettings = settings?.Value ?? new();
+
     internal const int Capacity = 1024;
     internal const int MaximumPageBytes = 1024 * 1024;
     private const int MaximumDocumentCharacters = 4 * 1024 * 1024;
@@ -19,10 +22,16 @@ internal sealed class SourceInventoryStore([FromKeyedServices("redis")] IConnect
 
     /// <summary>Persists admission before scheduling; no failure or lost acknowledgement removes this obligation.</summary>
     internal Task AdmitAsync(string instanceId, IngestionInput input, CancellationToken cancellationToken, bool requireExistingAdmission = false)
+        => AdmitWithOwnershipAsync(instanceId, input, cancellationToken, requireExistingAdmission);
+
+    /// <summary>Reports only an acknowledged admission created by this call's successful CAS.</summary>
+    internal async Task<bool> AdmitWithOwnershipAsync(string instanceId, IngestionInput input, CancellationToken cancellationToken, bool requireExistingAdmission = false)
     {
         IngestionIdentityGuard.Input(input, instanceId);
-        return ChangeAsync(input.TenantId, input.SourceUri, current =>
+        bool created = false;
+        await ChangeAsync(input.TenantId, input.SourceUri, current =>
         {
+            created = false;
             if (current.AdmissionClosed) { throw new InvalidOperationException("source-inventory-admission-closed"); }
             SourceInventoryEntry? prior = (current.Entries ?? []).FirstOrDefault(entry => entry.WorkflowInstanceId == instanceId);
             if (prior is not null)
@@ -42,13 +51,15 @@ internal sealed class SourceInventoryStore([FromKeyedServices("redis")] IConnect
             }
             if (requireExistingAdmission) { throw new InvalidOperationException("source-inventory-existing-workflow-identity"); }
             if ((current.Entries?.Count ?? 0) >= Capacity) { throw new InvalidOperationException("source-inventory-capacity"); }
+            created = true;
             return current with { FreshCandidateWorkflows = [.. current.FreshCandidateWorkflows ?? [], instanceId],
                 Entries = [.. current.Entries ?? [], new(input.CaseId, instanceId, TokenHash(input.IdempotencyToken), SchedulingState: "Preparing",
                 SourcePayloadReference: IngestionPayloadClaimCheck.GetSourceReference(instanceId, input),
                 RefreshProtocolVersion: input.RefreshExistingSource && input.RefreshIdentityDigest is not null ? SourceRefreshProtocol.Version : null,
                 SourceRevisionNumber: input.RefreshExistingSource ? input.SourceRevisionNumber : null,
                 RefreshIdentityDigest: input.RefreshExistingSource ? input.RefreshIdentityDigest : null)] };
-        }, cancellationToken);
+        }, cancellationToken, freshAdmission: instanceId).ConfigureAwait(false);
+        return created;
     }
 
     /// <summary>Finds the newest potential failed producer; only conclusively never-scheduled retries can be skipped.</summary>
@@ -107,6 +118,35 @@ internal sealed class SourceInventoryStore([FromKeyedServices("redis")] IConnect
             if (!valid) { throw new InvalidOperationException("source-inventory-scheduling-conflict"); }
             return current with { Entries = [.. current.Entries!.Select(item => item == entry ? item with { SchedulingState = scheduling } : item)] };
         }, token);
+
+    /// <summary>Settles only an admission whose persisted state proves it never crossed the scheduling boundary.</summary>
+    internal Task SetUnscheduledIfPreparingAsync(string workflow, IngestionInput input, CancellationToken token)
+    {
+        IngestionIdentityGuard.Input(input, workflow);
+        if (input.SourceType == SourceType.Url && (input.ContentBytes is { Length: > 0 } || input.PayloadReference is not null)
+            || input.SourceType != SourceType.Url && input.ContentBytes is not { Length: > 0 } && input.PayloadReference is null)
+            return Task.CompletedTask;
+        WorkflowPayloadReference? sourceReference = IngestionPayloadClaimCheck.GetSourceReference(workflow, input);
+        if (input.PayloadReference is { } reference && input.ContentBytes is { Length: > 0 })
+        {
+            WorkflowPayloadReference? inline = IngestionPayloadClaimCheck.GetSourceReference(workflow, input with { PayloadReference = null });
+            if (inline is null || inline.ByteLength != reference.ByteLength || !string.Equals(inline.Sha256Hash, reference.Sha256Hash, StringComparison.OrdinalIgnoreCase))
+                return Task.CompletedTask;
+        }
+        return ChangeAsync(input.TenantId, input.SourceUri, current =>
+        {
+            SourceInventoryEntry? entry = (current.Entries ?? []).SingleOrDefault(item => item.WorkflowInstanceId == workflow);
+            if (entry is null || entry.SchedulingState != "Preparing" || entry.State != "Admitted"
+                || entry.CandidateMemoryUnitId is not null || entry.MemoryUnitId is not null || entry.TerminalVerified
+                || entry.CaseId != input.CaseId || entry.IdempotencyTokenHash != TokenHash(input.IdempotencyToken)
+                || entry.SourcePayloadReference != sourceReference
+                || entry.SourceRevisionNumber != (input.RefreshExistingSource ? input.SourceRevisionNumber : null)
+                || entry.RefreshIdentityDigest != (input.RefreshExistingSource ? input.RefreshIdentityDigest : null)
+                || entry.FailedRetryMemoryUnitId != input.FailedRetry?.MemoryUnitId)
+                return current;
+            return current with { Entries = [.. current.Entries!.Select(item => item == entry ? item with { SchedulingState = "Unscheduled" } : item)] };
+        }, token);
+    }
 
     /// <summary>Retains producer artifacts before any activity can materialize content.</summary>
     internal Task RecordCandidateAsync(string tenant, string source, string workflow, string candidate, CancellationToken token)
@@ -356,6 +396,60 @@ internal sealed class SourceInventoryStore([FromKeyedServices("redis")] IConnect
         }, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>Seals only an independently enumerated exact unit under the configured operator writer exclusion; source-wide coverage is insufficient.</summary>
+    internal async Task ReconcileUnitAsync(string tenant, string unit, IReadOnlyList<string> exactKeys,
+        string evidenceId, string? expectedAuthority, CancellationToken token)
+    {
+        IngestionIdentityGuard.Handle(tenant, 128);
+        IngestionIdentityGuard.Handle(unit);
+        IngestionIdentityGuard.Handle(evidenceId);
+        UnitOwnershipAuthority.ValidateConfiguration(_ownershipSettings);
+        if (_ownershipSettings.OwnershipGeneration is not { } generation)
+            throw new InvalidOperationException("unit-ownership-generation-and-writer-exclusion-required");
+        ArgumentNullException.ThrowIfNull(exactKeys);
+        if (exactKeys.Count > SourcePublicationVisibility.KeyCapacity)
+            throw new InvalidOperationException("source-publication-key-capacity");
+        string[] keys = exactKeys.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+        if (keys.Length != exactKeys.Count || keys.Length > SourcePublicationVisibility.KeyCapacity)
+            throw new InvalidOperationException("source-publication-key-capacity");
+        foreach (string key in keys) { SemanticKeyDiscovery.ValidateKey(tenant, unit, key); }
+        string authority = UnitOwnershipAuthority.Serialize(new UnitOwnershipRecord("historical-v2", tenant, unit, generation,
+            Hash(JsonSerializer.Serialize(keys)), evidenceId, _ownershipSettings.OwnershipWriterExclusionEvidenceId!));
+        const string reconcile = """
+            local current=redis.call('GET',KEYS[1]) or ''
+            if current~=ARGV[1] and current~=ARGV[2] then return redis.error_reply('unit-ownership-reconciliation-conflict') end
+            local generation=redis.call('GET',KEYS[4])
+            if generation and generation~=ARGV[5] then return redis.error_reply('unit-ownership-generation-conflict') end
+            local exact={}
+            for i=6,#ARGV do
+                local key=ARGV[i]
+                exact[key]=true
+                local kind=redis.call('TYPE',key).ok
+                local ownerField='memoryUnitId'
+                if key==KEYS[5] then ownerField='id' end
+                if kind~='none' and (kind~='hash' or redis.call('HGET',key,'tenantId')~=ARGV[3]
+                    or redis.call('HGET',key,ownerField)~=ARGV[4]) then
+                    return redis.error_reply('unit-ownership-reconciliation-scope')
+                end
+            end
+            if redis.call('SCARD',KEYS[3])>4096 then return redis.error_reply('source-publication-key-capacity') end
+            for _,key in ipairs(redis.call('SMEMBERS',KEYS[3])) do
+                if not exact[key] then return redis.error_reply('unit-ownership-reconciliation-incomplete') end
+            end
+            for i=6,#ARGV do redis.call('SADD',KEYS[3],ARGV[i]) end
+            redis.call('SET',KEYS[1],ARGV[2])
+            redis.call('SET',KEYS[2],ARGV[2])
+            redis.call('SET',KEYS[4],ARGV[5])
+            return 1
+            """;
+        await TenantIngestionOwnership.WriteAsync(redis.GetDatabase(), tenant, reconcile,
+            [UnitOwnershipAuthority.Key(tenant, unit), SourcePublicationVisibility.KeyProvenance(tenant, unit),
+                SourcePublicationVisibility.Keys(tenant, unit), UnitOwnershipAuthority.GenerationKey(generation),
+                Infrastructure.IndexSchemaDefinitions.BuildSyntacticKey(tenant, unit)],
+            [expectedAuthority ?? string.Empty, authority, tenant, unit, _ownershipSettings.OwnershipWriterExclusionEvidenceId!,
+                .. keys.Select(key => (RedisValue)key)], token).ConfigureAwait(false);
+    }
+
     private async Task<SourceInventorySnapshot> ReadSnapshotAsync(string tenantId, string sourceUri, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -364,7 +458,7 @@ internal sealed class SourceInventoryStore([FromKeyedServices("redis")] IConnect
     }
 
     private async Task ChangeAsync(string tenantId, string sourceUri, Func<SourceInventorySnapshot, SourceInventorySnapshot> change, CancellationToken cancellationToken,
-        string? liveMemoryUnitId = null, (string Workflow, string Candidate)? freshCandidate = null)
+        string? liveMemoryUnitId = null, (string Workflow, string Candidate)? freshCandidate = null, string? freshAdmission = null)
     {
         string key = BuildKey(tenantId, sourceUri);
         IDatabase db = redis.GetDatabase();
@@ -398,28 +492,66 @@ internal sealed class SourceInventoryStore([FromKeyedServices("redis")] IConnect
             RedisKey[] keys = liveMemoryUnitId is null ? [(RedisKey)key]
                 : [(RedisKey)key, (RedisKey)SourcePublicationVisibility.Tombstone(tenantId, liveMemoryUnitId)];
             string script = raw.HasValue ? CompareExchange : insert;
-            if (initializeCandidate is not null)
+            string? issuedUnit = initializeCandidate ?? (freshAdmission is not null
+                && !(current.Entries ?? []).Any(entry => entry.WorkflowInstanceId == freshAdmission) ? freshAdmission : null);
+            if (issuedUnit is not null)
             {
-                // The first fresh producer retains its empty exact-key coverage in the same
-                // CAS as its candidate identity, before extraction can fail. Redelivery and
-                // failed retries cannot grant authority to an already retained legacy output.
-                keys = [(RedisKey)key, (RedisKey)SourcePublicationVisibility.KeyProvenance(tenantId, initializeCandidate),
-                    (RedisKey)SourcePublicationVisibility.Keys(tenantId, initializeCandidate),
-                    Infrastructure.IndexSchemaDefinitions.BuildSyntacticKey(tenantId, initializeCandidate),
-                    Infrastructure.IndexSchemaDefinitions.BuildSemanticKey(tenantId, initializeCandidate),
-                    Infrastructure.IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenantId, initializeCandidate),
-                    (RedisKey)SourcePublicationVisibility.Tombstone(tenantId, initializeCandidate),
-                    Infrastructure.IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey(tenantId, initializeCandidate)];
+                // Only the configured issuer's reserved namespace can establish virgin ownership.
+                // Absence of workflow/base keys and old bare modern markers grant no authority.
+                UnitOwnershipAuthority.ValidateConfiguration(_ownershipSettings);
+                bool issued = UnitOwnershipAuthority.IsIssuedNamespace(issuedUnit, _ownershipSettings.OwnershipGeneration);
+                SourceInventoryEntry producer = entries.Single(entry => entry.WorkflowInstanceId == (freshCandidate?.Workflow ?? freshAdmission));
+                string authority = issued ? UnitOwnershipAuthority.Serialize(new UnitOwnershipRecord("issued-v2", tenantId, issuedUnit,
+                    _ownershipSettings.OwnershipGeneration!, UnitOwnershipAuthority.Producer(producer.WorkflowInstanceId!, sourceUri, producer.CaseId),
+                    "service-issuance:" + _ownershipSettings.OwnershipGeneration, _ownershipSettings.OwnershipWriterExclusionEvidenceId!)) : string.Empty;
+                keys = [(RedisKey)key, (RedisKey)SourcePublicationVisibility.KeyProvenance(tenantId, issuedUnit),
+                    (RedisKey)SourcePublicationVisibility.Keys(tenantId, issuedUnit),
+                    Infrastructure.IndexSchemaDefinitions.BuildSyntacticKey(tenantId, issuedUnit),
+                    Infrastructure.IndexSchemaDefinitions.BuildSemanticKey(tenantId, issuedUnit),
+                    Infrastructure.IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenantId, issuedUnit),
+                    (RedisKey)SourcePublicationVisibility.Tombstone(tenantId, issuedUnit),
+                    Infrastructure.IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey(tenantId, issuedUnit),
+                    UnitOwnershipAuthority.Key(tenantId, issuedUnit),
+                    issued ? UnitOwnershipAuthority.GenerationKey(_ownershipSettings.OwnershipGeneration!) : "__unused-ownership-generation"];
+                RedisValue[] authorityArguments = [(RedisValue)(raw.HasValue ? raw.ToString() : string.Empty), (RedisValue)serialized,
+                    authority, _ownershipSettings.OwnershipWriterExclusionEvidenceId ?? string.Empty, initializeCandidate is null ? "0" : "1",
+                    UnitOwnershipAuthority.Producer(producer.WorkflowInstanceId!, sourceUri, producer.CaseId)];
+
                 script = """
-                    if redis.call('GET',KEYS[1])~=ARGV[1] then return 0 end
-                    if redis.call('EXISTS',KEYS[2])==0 then
+                    local current=redis.call('GET',KEYS[1]) or ''
+                    if current~=ARGV[1] then return 0 end
+                    local retained=redis.call('GET',KEYS[9])
+                    if retained then
+                        local ok,owner=pcall(cjson.decode,retained)
+                        if not ok or (owner.Kind~='issued-v2' and owner.Kind~='historical-v2')
+                            or (owner.Kind=='issued-v2' and owner.ProducerBinding~=ARGV[6]) then
+                            return redis.error_reply('unit-ownership-producer-conflict')
+                        end
+                    end
+                    if ARGV[3]~='' then
+                        local generation=redis.call('GET',KEYS[10])
+                        if generation and generation~=ARGV[4] then return redis.error_reply('unit-ownership-generation-conflict') end
+                        local owner=redis.call('GET',KEYS[9])
+                        if owner and owner~=ARGV[3] then return redis.error_reply('unit-ownership-producer-conflict') end
+                        if not owner then
+                            for i=2,8 do
+                                if redis.call('EXISTS',KEYS[i])==1 then return redis.error_reply('source-publication-existing-candidate') end
+                            end
+                        elseif redis.call('EXISTS',KEYS[7])==1 then return redis.error_reply('source-publication-existing-candidate') end
+                        redis.call('SET',KEYS[9],ARGV[3])
+                        redis.call('SET',KEYS[10],ARGV[4])
+                        if ARGV[5]=='1' then redis.call('SET',KEYS[2],ARGV[3]) end
+                    elseif ARGV[5]=='1' and redis.call('EXISTS',KEYS[2])==0 then
                         for i=3,8 do
                             if redis.call('EXISTS',KEYS[i])==1 then return redis.error_reply('source-publication-existing-candidate') end
                         end
-                        redis.call('SET',KEYS[2],'modern')
                     end
                     redis.call('SET',KEYS[1],ARGV[2]); return 1
                     """;
+                bool issuedSaved = (long)await TenantIngestionOwnership.WriteAsync(db, tenantId, script, keys, authorityArguments,
+                    cancellationToken).ConfigureAwait(false) == 1;
+                if (issuedSaved) { return; }
+                continue;
             }
             bool saved = (long)await TenantIngestionOwnership.WriteAsync(db, tenantId, script,
                 keys, [(RedisValue)(raw.HasValue ? raw.ToString() : string.Empty), (RedisValue)serialized], cancellationToken,

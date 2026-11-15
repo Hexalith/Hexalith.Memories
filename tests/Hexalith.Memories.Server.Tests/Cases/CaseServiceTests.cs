@@ -133,9 +133,12 @@ public class CaseServiceTests
             Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<DateTimeOffset>());
     }
 
-    [Fact]
-    public async Task CreateAnnotationAsync_ShouldAcceptCommandBeforeSchedulingProjectionWorkflow()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CreateAnnotationAsync_ShouldAcceptCommandBeforeSchedulingProjectionWorkflow(bool configuredGeneration)
     {
+        string? generation = configuredGeneration ? Guid.NewGuid().ToString("N") : null;
         // Arrange
         (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
         (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDbWithMuIds("mu-001");
@@ -148,6 +151,8 @@ public class CaseServiceTests
         IngestionWorkflowConfigurationCapture workflowConfigurationCapture = new(
             Options.Create(new IngestionSettings
             {
+                OwnershipGeneration = generation,
+                OwnershipWriterExclusionEvidenceId = generation is null ? null : "owned-case-writers-excluded",
                 RetryPolicies = new Dictionary<string, ActivityRetryPolicy>(StringComparer.Ordinal)
                 {
                     ["ExtractContentActivity"] = new ActivityRetryPolicy
@@ -202,6 +207,8 @@ public class CaseServiceTests
         // Assert
         result.ShouldNotBeNull();
         result.Value.Annotation.Status.ShouldBe(MemoryUnitStatus.Queued);
+        if (generation is not null) { result.Value.Annotation.Id.ShouldStartWith("owned-" + generation + "-"); }
+        else { result.Value.Annotation.Id.ShouldNotStartWith("owned-"); }
 
         RequestAnnotationCommand command = commandStore.AcceptedCommands.ShouldHaveSingleItem().ShouldBeOfType<RequestAnnotationCommand>();
         command.TenantId.ShouldBe("tenant-1");

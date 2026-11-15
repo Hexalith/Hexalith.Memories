@@ -16,13 +16,15 @@ using Hexalith.Memories.Server.Ingestion;
 internal sealed class EventIngestionWorkflowSchedulerAdapter : IEventIngestionWorkflowScheduler
 {
     private readonly IIngestionWorkflowScheduler _inner;
+    private readonly IngestionWorkflowConfigurationCapture? _configuration;
 
-    public EventIngestionWorkflowSchedulerAdapter(IIngestionWorkflowScheduler inner)
+    public EventIngestionWorkflowSchedulerAdapter(IIngestionWorkflowScheduler inner, IngestionWorkflowConfigurationCapture? configuration = null)
     {
         ArgumentNullException.ThrowIfNull(inner);
         _inner = inner;
+        _configuration = configuration;
     }
 
     public Task<string> ScheduleAsync(string instanceId, IngestionInput input, CancellationToken cancellationToken)
-        => _inner.ScheduleAsync(instanceId, input, cancellationToken);
+        => _inner.ScheduleAsync(_configuration?.QualifyUnitId(instanceId) ?? instanceId, input, cancellationToken);
 }

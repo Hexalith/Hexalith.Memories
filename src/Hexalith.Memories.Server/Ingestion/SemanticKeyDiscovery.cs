@@ -40,7 +40,9 @@ internal static class SemanticKeyDiscovery
             throw new InvalidOperationException("source-publication-key-capacity");
         }
         RedisValue provenance = await db.StringGetAsync(SourcePublicationVisibility.KeyProvenance(tenant, unit)).WaitAsync(cancellationToken).ConfigureAwait(false);
-        if (provenance.HasValue && provenance != "modern" && provenance != "legacy-owner-reconciled-v1")
+        RedisValue authority = await db.StringGetAsync(UnitOwnershipAuthority.Key(tenant, unit)).WaitAsync(cancellationToken).ConfigureAwait(false);
+        bool complete = UnitOwnershipAuthority.IsComplete(provenance, authority, tenant, unit);
+        if (provenance.HasValue && !complete)
         {
             throw new InvalidOperationException("source-publication-legacy-owner-reconciliation-required");
         }
@@ -53,7 +55,7 @@ internal static class SemanticKeyDiscovery
         {
             ValidateKey(tenant, unit, value.ToString());
         }
-        if (provenance.HasValue)
+        if (complete)
         {
             // Modern writers retain every exact output key before materialization.
             // Refresh must never rediscover those keys through a database scan.
@@ -149,7 +151,6 @@ internal static class SemanticKeyDiscovery
             for key,_ in pairs(merged) do
                 if redis.call('EXISTS',key)==1 and redis.call('HGET',key,'tenantId')==ARGV[1]
                     and redis.call('HGET',key,'memoryUnitId')==ARGV[2] then
-                    redis.call('HSETNX',key,'publicationVisible','1')
                     redis.call('SADD',KEYS[1],key)
                 end
             end
@@ -163,7 +164,7 @@ internal static class SemanticKeyDiscovery
         throw new InvalidOperationException("source-publication-legacy-owner-reconciliation-required");
     }
 
-    private static void ValidateKey(string tenant, string unit, string key)
+    internal static void ValidateKey(string tenant, string unit, string key)
     {
         bool exact = key == IndexSchemaDefinitions.BuildSyntacticKey(tenant, unit)
             || key == IndexSchemaDefinitions.BuildSemanticKey(tenant, unit)

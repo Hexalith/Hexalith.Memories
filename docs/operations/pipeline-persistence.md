@@ -228,3 +228,61 @@ only exact identifiers, revisions, counts, digests and dispositions.
 - If you want isolated test runs, set a unique `MEMORIES_REDIS_VOLUME_NAME`.
 - Integration tests also set a unique `MEMORIES_DAPR_APP_ID` so reminder and actor namespaces do not bleed across runs.
 - A failed-unit record surviving restart is expected; clear it by successful re-ingestion, not by assuming restart will wipe it.
+
+## Unit issuance authority and one controlled writer cutover
+
+Unit completeness is independent of source coverage and Dapr workflow retention.
+An absent workflow, missing syntactic/base hashes, a reconciled empty source, or
+an older bare `modern`/`legacy-owner-reconciled-v1` marker cannot certify that
+historical chunks or natural-language hashes are absent. Ordinary ingestion and
+tracked acknowledgement recovery remain available without issuance configuration;
+cleanup refuses a complete-erasure claim when exact-unit authority is missing.
+
+The trusted issuer is the configured Memories service and its controlled Redis
+write identity. Configure both `Ingestion:OwnershipGeneration` (a never reused
+lowercase 32-hex identifier) and `Ingestion:OwnershipWriterExclusionEvidenceId`
+(the operator's custody reference). These settings are absent by default. They
+are an external owner attestation, not a mechanism that detects or proves writer
+exclusion. No production deployment or attestation is enabled by this change.
+
+A controlled cutover must exclude every older replica, queued/out-of-band
+producer, replay/import writer and holder of the old write credentials before
+reserving the new generation namespace. Record exact deployment/backend
+identities and completed writer drain in the exclusion evidence. Allocate a
+fresh generation that was never used in that backend or any restored ancestor;
+retain its custody record independently of Redis backups. An empty database,
+process restart, elapsed time or a code upgrade supplies none of this proof.
+
+HTTP, directory, annotation and EventStore-adapter producers qualify their new
+identifiers as `owned-<generation>-<service identifier>`. Directory batches
+reserve admission before early source-payload saves. Annotation admission
+reserves the same authority before graph writes; the existing candidate activity
+seals exact-key provenance before other derived content writes. Issuance binds
+tenant, unit, generation, original producer digest and exclusion evidence in the
+same Redis CAS as admission/candidate retention. Its immutable generation
+reservation and minimal content-free unit record survive workflow purge, unit
+deletion and tenant ownership cleanup. Permanent tenant/unit fences remain
+operative. Removing configuration or changing a source cannot let a new producer
+borrow an existing issued record. Registered failed retries retain their original
+verified unit and never create new coverage authority.
+
+Historical units use only the internal `SourceInventoryStore.ReconcileUnitAsync`
+owner seam: independently enumerate every exact owned key, bind an evidence ID to
+that tenant/unit and complete inventory, and supply the expected previous unit
+authority for any replacement. The service requires configured writer-exclusion
+custody, validates key scope and persisted hash ownership, preserves retained
+obligations, and atomically seals that exact evidence. `ReconcileAsync` for a
+source cannot supply this proof. There is no public attestation endpoint or new
+module CLI. Unknown history or an undrained writer keeps completeness refused.
+The disposable fixtures attest only the exact units and writers they own.
+
+For restart, retain the same generation, complete issuance records, provenance,
+key inventories and tombstones. A restored snapshot missing any issuance or
+writer history cannot reuse the old generation or infer freshness: hold writers,
+establish a new exclusion record and a new generation for future units, and
+reconcile affected historical units independently. Old units keep their original
+unit authority; source changes never move it to the new generation. For rollback,
+freeze ingestion and drain the generation's workflows before changing binaries;
+retain all authority/tombstone records and do not reactivate older writers in its
+namespace. Running without issuer configuration grants no new completeness.
+Publication/adoption and a real operator cutover remain separate external gates.

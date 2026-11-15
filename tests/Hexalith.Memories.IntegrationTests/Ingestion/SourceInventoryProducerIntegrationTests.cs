@@ -78,13 +78,17 @@ public sealed class SourceInventoryProducerIntegrationTests(RedisStackFixture re
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         string tenant = "annotation-fresh-" + Guid.NewGuid().ToString("N");
+        var authoritySettings = Options.Create(new IngestionSettings { OwnershipGeneration = Guid.NewGuid().ToString("N"),
+            OwnershipWriterExclusionEvidenceId = "owned-disposable-fixture-writers-excluded" });
+        string issuedUnit = UnitOwnershipAuthority.Qualify("annotation", authoritySettings.Value.OwnershipGeneration);
         IngestionInput input = Input(tenant) with { SourceType = SourceType.Annotation };
-        var inventory = new SourceInventoryStore(redis.Connection, new QueryCursorCodec(new EphemeralDataProtectionProvider(), "AnnotationFreshTests"));
-        IngestionInput admitted = await new AdmitSourceInventoryActivity(inventory, Substitute.For<IDaprWorkflowClient>()).RunAsync(null!, new("annotation", input));
+        var inventory = new SourceInventoryStore(redis.Connection, new QueryCursorCodec(new EphemeralDataProtectionProvider(), "AnnotationFreshTests"), authoritySettings);
+        IngestionInput admitted = await new AdmitSourceInventoryActivity(inventory, Substitute.For<IDaprWorkflowClient>()).RunAsync(null!, new(issuedUnit, input));
         admitted.SourceInventoryTracked.ShouldBeTrue();
-        await new RecordSourceInventoryCandidateActivity(inventory).RunAsync(null!, new(tenant, input.SourceUri, "annotation", input.CaseId, "annotation"));
-        (await redis.Connection.GetDatabase().StringGetAsync(SourcePublicationVisibility.KeyProvenance(tenant, "annotation"))).ToString().ShouldBe("modern");
-        (await SemanticKeyDiscovery.FindAsync(redis.Connection.GetDatabase(), tenant, "annotation", token)).ShouldBe([IndexSchemaDefinitions.BuildSemanticKey(tenant, "annotation")]);
+        await new RecordSourceInventoryCandidateActivity(inventory).RunAsync(null!, new(tenant, input.SourceUri, issuedUnit, input.CaseId, issuedUnit));
+        RedisValue witness = await redis.Connection.GetDatabase().StringGetAsync(UnitOwnershipAuthority.Key(tenant, issuedUnit));
+        UnitOwnershipAuthority.IsComplete(await redis.Connection.GetDatabase().StringGetAsync(SourcePublicationVisibility.KeyProvenance(tenant, issuedUnit)), witness, tenant, issuedUnit).ShouldBeTrue();
+        (await SemanticKeyDiscovery.FindAsync(redis.Connection.GetDatabase(), tenant, issuedUnit, token)).ShouldBe([IndexSchemaDefinitions.BuildSemanticKey(tenant, issuedUnit)]);
     }
 
     [Theory]
@@ -147,7 +151,8 @@ public sealed class SourceInventoryProducerIntegrationTests(RedisStackFixture re
         {
             await inventory.AdmitAsync("producer", input, token);
             await inventory.RecordCandidateAsync(tenant, input.SourceUri, "producer", "producer", token);
-            (await database.StringGetAsync(SourcePublicationVisibility.KeyProvenance(tenant, "producer"))).ToString().ShouldBe("modern");
+            (await database.KeyExistsAsync(SourcePublicationVisibility.KeyProvenance(tenant, "producer"))).ShouldBeFalse();
+            await database.StringSetAsync(SourcePublicationVisibility.KeyProvenance(tenant, "producer"), "modern");
             // An old retained candidate without coverage cannot regain it through activity redelivery.
             await database.KeyDeleteAsync(SourcePublicationVisibility.KeyProvenance(tenant, "producer"));
             await inventory.RecordCandidateAsync(tenant, input.SourceUri, "producer", "producer", token);
@@ -159,6 +164,93 @@ public sealed class SourceInventoryProducerIntegrationTests(RedisStackFixture re
         await Should.ThrowAsync<InvalidOperationException>(() => SemanticKeyDiscovery.FindAsync(database, tenant, "producer", token));
     }
 
+    /// <summary>Configured directory failures settle only persisted pre-scheduling admissions, including cancellation and lost payload acknowledgement.</summary>
+    /// <param name="stage">The exact failing boundary.</param>
+    /// <param name="canceled">Whether the caller cancels at that boundary.</param>
+    [Theory]
+    [InlineData("payload", false)]
+    [InlineData("payload", true)]
+    [InlineData("lookup", false)]
+    [InlineData("lookup", true)]
+    [InlineData("normalize", false)]
+    [InlineData("normalize", true)]
+    [InlineData("scheduling", false)]
+    [InlineData("scheduling", true)]
+    public async Task ConfiguredDirectoryEarlyFailuresSettleOnlyProvablyNeverScheduledAdmissions(string stage, bool canceled)
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        using var caller = CancellationTokenSource.CreateLinkedTokenSource(token);
+        string tenant = "directory-failure-" + Guid.NewGuid().ToString("N");
+        string directory = Directory.CreateTempSubdirectory("owned-directory-failure-").FullName;
+        string source = Path.Combine(directory, "source.txt");
+        try
+        {
+            await File.WriteAllTextAsync(source, "owned directory failure bytes", token);
+            var settings = Options.Create(new IngestionSettings { OwnershipGeneration = Guid.NewGuid().ToString("N"),
+                OwnershipWriterExclusionEvidenceId = "owned-disposable-writers-excluded", AllowedDirectoryRoots = [directory] });
+            var codec = new QueryCursorCodec(new EphemeralDataProtectionProvider(), "DirectoryFailureProof");
+            var inventory = new SourceInventoryStore(redis.Connection, codec, settings);
+            Dictionary<string, string> bytes = new(StringComparer.Ordinal);
+            IWorkflowPayloadStore payloads = Payloads(bytes);
+            Exception Failure()
+            {
+                if (!canceled) { return new IOException("owned injected " + stage + " failure"); }
+                caller.Cancel();
+                return new OperationCanceledException(caller.Token);
+            }
+            payloads.SaveAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<WorkflowPayloadKind>(), Arg.Any<ReadOnlyMemory<byte>>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+                .Returns(call =>
+                {
+                    byte[] content = call.Arg<ReadOnlyMemory<byte>>().ToArray();
+                    WorkflowPayloadReference reference = IngestionPayloadClaimCheck.GetSourceReference(call.ArgAt<string>(1), Input(tenant) with { ContentBytes = content })!;
+                    bytes[reference.Id] = JsonSerializer.Serialize(content);
+                    if (stage == "payload") { throw Failure(); }
+                    return reference;
+                });
+            if (stage == "normalize")
+            {
+                bool firstRead = true;
+                payloads.ReadAsync(Arg.Any<WorkflowPayloadReference>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<WorkflowPayloadKind>(), Arg.Any<CancellationToken>())
+                    .Returns(call =>
+                    {
+                        if (firstRead) { firstRead = false; throw Failure(); }
+                        return bytes.TryGetValue(call.Arg<WorkflowPayloadReference>().Id, out string? raw)
+                            ? JsonSerializer.Deserialize<byte[]>(raw)! : throw new WorkflowPayloadException("PAYLOAD_NOT_FOUND", call.Arg<WorkflowPayloadReference>().Id);
+                    });
+            }
+            var client = Substitute.For<IDaprWorkflowClient>();
+            if (stage == "lookup") { client.GetWorkflowStateAsync(Arg.Any<string>(), true, Arg.Any<CancellationToken>()).Returns(_ => Task.FromException<WorkflowState>(Failure())); }
+            client.ScheduleNewWorkflowAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IngestionInput>(), null, Arg.Any<CancellationToken>())
+                .Returns(_ => Task.FromException<string>(Failure()));
+            var scheduler = new DaprIngestionWorkflowScheduler(client, payloads,
+                new IngestionWorkflowConfigurationCapture(settings, Options.Create(new NaturalLanguageDescriptionOptions())),
+                new WorkflowTraceContextCapture(), Substitute.For<IIngestionWorkflowInFlightRegistry>(), TimeProvider.System,
+                NullLogger<DaprIngestionWorkflowScheduler>.Instance, inventory);
+            var service = new DirectoryIngestionService(settings, scheduler, Substitute.For<Dapr.Client.DaprClient>(),
+                NullLogger<DirectoryIngestionService>.Instance, payloads, sourceInventory: inventory);
+            var request = new DirectoryIngestionRequest { TenantId = tenant, CaseId = "case", DirectoryPath = directory, IngestedBy = "owned-control" };
+            if (canceled) { await Should.ThrowAsync<OperationCanceledException>(() => service.IngestAsync(request, caller.Token)); }
+            else { (await service.IngestAsync(request, caller.Token)).ErrorCode.ShouldBe("BATCH_SCHEDULING_FAILED"); }
+            using IConnectionMultiplexer recreated = await ConnectionMultiplexer.ConnectAsync(redis.ConnectionString);
+            var recovered = new SourceInventoryStore(recreated, codec, settings);
+            SourceInventoryEntry retained = (await recovered.ReadAsync(tenant, source, null, 100, token)).Entries.ShouldHaveSingleItem();
+            retained.SchedulingState.ShouldBe(stage == "scheduling" ? "Scheduling" : "Unscheduled");
+            if (stage != "scheduling") { await client.DidNotReceiveWithAnyArgs().ScheduleNewWorkflowAsync(default!, default!, default!, default, default); }
+            await recovered.FenceAsync(tenant, source, true, token);
+            var (app, observer) = await StartAsync(tenant, recovered, payloads, Substitute.For<IIngestionWorkflowStateReader>(), token);
+            await using (app)
+            using (observer)
+            {
+                SourceInventoryPage page = (await observer.GetFromJsonAsync<SourceInventoryPage>(Route(tenant, source), token))!;
+                SourceInventoryEntry observed = page.Entries.ShouldHaveSingleItem();
+                observed.State.ShouldBe(stage == "scheduling" ? "Admitted" : "Deleted");
+                observed.TerminalVerified.ShouldBe(stage != "scheduling");
+                if (stage != "scheduling") { bytes.ShouldBeEmpty(); }
+            }
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
     [Theory]
     [InlineData("prepare")]
     [InlineData("track")]
@@ -167,9 +259,12 @@ public sealed class SourceInventoryProducerIntegrationTests(RedisStackFixture re
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         string tenant = "producer-" + Guid.NewGuid().ToString("N");
+        var authoritySettings = Options.Create(new IngestionSettings { OwnershipGeneration = Guid.NewGuid().ToString("N"),
+            OwnershipWriterExclusionEvidenceId = "owned-disposable-fixture-writers-excluded" });
+        string issuedUnit = UnitOwnershipAuthority.Qualify("producer", authoritySettings.Value.OwnershipGeneration);
         IngestionInput input = Input(tenant);
         var codec = new QueryCursorCodec(new EphemeralDataProtectionProvider(), "ProducerTests");
-        var inventory = new SourceInventoryStore(redis.Connection, codec);
+        var inventory = new SourceInventoryStore(redis.Connection, codec, authoritySettings);
         Dictionary<string, string> bytes = new(StringComparer.Ordinal);
         IWorkflowPayloadStore payloads = Payloads(bytes, stage == "prepare");
         var registry = Substitute.For<IIngestionWorkflowInFlightRegistry>();
@@ -178,15 +273,15 @@ public sealed class SourceInventoryProducerIntegrationTests(RedisStackFixture re
         schedulerClient.ScheduleNewWorkflowAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IngestionInput>(), null, Arg.Any<CancellationToken>())
             .Returns(Task.FromException<string>(new InvalidOperationException("ambiguous remote scheduling")));
         var scheduler = new DaprIngestionWorkflowScheduler(schedulerClient, payloads,
-            new IngestionWorkflowConfigurationCapture(Options.Create(new IngestionSettings()), Options.Create(new NaturalLanguageDescriptionOptions())),
+            new IngestionWorkflowConfigurationCapture(authoritySettings, Options.Create(new NaturalLanguageDescriptionOptions())),
             new WorkflowTraceContextCapture(), registry, TimeProvider.System, NullLogger<DaprIngestionWorkflowScheduler>.Instance, inventory);
-        await Should.ThrowAsync<InvalidOperationException>(() => scheduler.ScheduleAsync("producer", input, token));
+        await Should.ThrowAsync<InvalidOperationException>(() => scheduler.ScheduleAsync(issuedUnit, input, token));
         SourceInventoryEntry admitted = (await inventory.ReadAsync(tenant, input.SourceUri, null, 100, token)).Entries.ShouldHaveSingleItem();
         admitted.SchedulingState.ShouldBe(stage == "schedule" ? "Scheduling" : "Unscheduled");
         admitted.SourcePayloadReference.ShouldNotBeNull();
         admitted.TerminalVerified.ShouldBeFalse();
         using IConnectionMultiplexer restartedConnection = await ConnectionMultiplexer.ConnectAsync(redis.ConnectionString);
-        var restarted = new SourceInventoryStore(restartedConnection, codec);
+        var restarted = new SourceInventoryStore(restartedConnection, codec, authoritySettings);
         await restarted.FenceAsync(tenant, input.SourceUri, true, token);
         var (app, client) = await StartAsync(tenant, restarted, payloads, Substitute.For<IIngestionWorkflowStateReader>(), token);
         await using (app)
@@ -209,34 +304,37 @@ public sealed class SourceInventoryProducerIntegrationTests(RedisStackFixture re
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         string tenant = "failed-" + Guid.NewGuid().ToString("N");
+        var authoritySettings = Options.Create(new IngestionSettings { OwnershipGeneration = Guid.NewGuid().ToString("N"),
+            OwnershipWriterExclusionEvidenceId = "owned-disposable-fixture-writers-excluded" });
+        string issuedUnit = UnitOwnershipAuthority.Qualify("producer", authoritySettings.Value.OwnershipGeneration);
         IngestionInput input = Input(tenant);
         var codec = new QueryCursorCodec(new EphemeralDataProtectionProvider(), "FailedProducerTests");
-        var inventory = new SourceInventoryStore(redis.Connection, codec);
+        var inventory = new SourceInventoryStore(redis.Connection, codec, authoritySettings);
         Dictionary<string, string> bytes = new(StringComparer.Ordinal);
         IWorkflowPayloadStore payloads = Payloads(bytes);
         var schedulerClient = Substitute.For<IDaprWorkflowClient>();
         IngestionInput? captured = null;
-        schedulerClient.ScheduleNewWorkflowAsync(Arg.Any<string>(), "producer", Arg.Any<IngestionInput>(), null, Arg.Any<CancellationToken>())
-            .Returns(call => { captured = call.Arg<IngestionInput>(); return "producer"; });
+        schedulerClient.ScheduleNewWorkflowAsync(Arg.Any<string>(), issuedUnit, Arg.Any<IngestionInput>(), null, Arg.Any<CancellationToken>())
+            .Returns(call => { captured = call.Arg<IngestionInput>(); return issuedUnit; });
         var scheduler = new DaprIngestionWorkflowScheduler(schedulerClient, payloads,
-            new IngestionWorkflowConfigurationCapture(Options.Create(new IngestionSettings()), Options.Create(new NaturalLanguageDescriptionOptions())),
+            new IngestionWorkflowConfigurationCapture(authoritySettings, Options.Create(new NaturalLanguageDescriptionOptions())),
             new WorkflowTraceContextCapture(), Substitute.For<IIngestionWorkflowInFlightRegistry>(), TimeProvider.System,
             NullLogger<DaprIngestionWorkflowScheduler>.Instance, inventory);
-        await scheduler.ScheduleAsync("producer", input, token);
-        await new RecordSourceInventoryCandidateActivity(inventory).RunAsync(null!, new(tenant, input.SourceUri, "producer", "case", "producer"));
+        await scheduler.ScheduleAsync(issuedUnit, input, token);
+        await new RecordSourceInventoryCandidateActivity(inventory).RunAsync(null!, new(tenant, input.SourceUri, issuedUnit, "case", issuedUnit));
         if (materialized)
         {
-            await redis.Connection.GetDatabase().HashSetAsync(tenant + ":mu:producer", [new HashEntry("content", "synthetic failed content")]);
-            await new NFalkorDB.FalkorDB(graph.Connection.GetDatabase()).SelectGraph(tenant).QueryAsync("CREATE (:MemoryUnit {id:'producer',content:'synthetic failed content'})");
+            await redis.Connection.GetDatabase().HashSetAsync(IndexSchemaDefinitions.BuildSyntacticKey(tenant, issuedUnit), [new HashEntry("content", "synthetic failed content")]);
+            await new NFalkorDB.FalkorDB(graph.Connection.GetDatabase()).SelectGraph(tenant).QueryAsync("CREATE (:MemoryUnit {id:$id,content:'synthetic failed content'})", new Dictionary<string, object> { ["id"] = issuedUnit });
         }
         await new PersistFailedUnitActivity(redis.Connection, NullLogger<PersistFailedUnitActivity>.Instance).RunAsync(null!,
-            new(tenant, "case", "producer", input.SourceUri, SourceType.File, "test", "text/plain", "extracting", "synthetic", "synthetic failure", 1,
+            new(tenant, "case", issuedUnit, input.SourceUri, SourceType.File, "test", "text/plain", "extracting", "synthetic", "synthetic failure", 1,
                 DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, captured!.PayloadReference));
         var workflows = Substitute.For<IIngestionWorkflowStateReader>();
-        workflows.GetWorkflowStateAsync("producer", true, Arg.Any<CancellationToken>()).Returns(State(captured, status));
+        workflows.GetWorkflowStateAsync(issuedUnit, true, Arg.Any<CancellationToken>()).Returns(State(captured, status));
         await inventory.FenceAsync(tenant, input.SourceUri, true, token);
         using IConnectionMultiplexer restartedConnection = await ConnectionMultiplexer.ConnectAsync(redis.ConnectionString);
-        var restarted = new SourceInventoryStore(restartedConnection, codec);
+        var restarted = new SourceInventoryStore(restartedConnection, codec, authoritySettings);
         var (app, client) = await StartAsync(tenant, restarted, payloads, workflows, token);
         await using (app)
         using (client)
@@ -244,19 +342,19 @@ public sealed class SourceInventoryProducerIntegrationTests(RedisStackFixture re
             SourceInventoryPage observed = await client.GetFromJsonAsync<SourceInventoryPage>(Route(tenant, input.SourceUri), token) ?? throw new InvalidOperationException();
             bool terminal = status == WorkflowRuntimeStatus.Failed;
             observed.Entries.ShouldHaveSingleItem().TerminalVerified.ShouldBe(terminal);
-            (await redis.Connection.GetDatabase().KeyExistsAsync(PersistFailedUnitActivity.BuildHashKey(tenant, "producer"))).ShouldBe(!terminal);
-            (await redis.Connection.GetDatabase().SortedSetScoreAsync(PersistFailedUnitActivity.BuildSortedSetKey(tenant, "case"), "producer")).HasValue.ShouldBe(!terminal);
+            (await redis.Connection.GetDatabase().KeyExistsAsync(PersistFailedUnitActivity.BuildHashKey(tenant, issuedUnit))).ShouldBe(!terminal);
+            (await redis.Connection.GetDatabase().SortedSetScoreAsync(PersistFailedUnitActivity.BuildSortedSetKey(tenant, "case"), issuedUnit)).HasValue.ShouldBe(!terminal);
             bytes.Count.ShouldBe(terminal ? 0 : 1);
             if (terminal)
             {
-                (await redis.Connection.GetDatabase().KeyExistsAsync(tenant + ":mu:producer")).ShouldBeFalse();
-                (await new NFalkorDB.FalkorDB(graph.Connection.GetDatabase()).SelectGraph(tenant).QueryAsync("MATCH (m:MemoryUnit {id:'producer'}) RETURN m.id")).ShouldBeEmpty();
+                (await redis.Connection.GetDatabase().KeyExistsAsync(IndexSchemaDefinitions.BuildSyntacticKey(tenant, issuedUnit))).ShouldBeFalse();
+                (await new NFalkorDB.FalkorDB(graph.Connection.GetDatabase()).SelectGraph(tenant).QueryAsync("MATCH (m:MemoryUnit {id:$id}) RETURN m.id", new Dictionary<string, object> { ["id"] = issuedUnit })).ShouldBeEmpty();
                 observed.Entries.Single().State.ShouldBe("Deleted");
                 (await new PersistFailedUnitActivity(redis.Connection, NullLogger<PersistFailedUnitActivity>.Instance).RunAsync(null!,
-                    new(tenant, "case", "producer", input.SourceUri, SourceType.File, "late personal actor", "text/plain", "extracting", "late", "late personal failure", 1,
+                    new(tenant, "case", issuedUnit, input.SourceUri, SourceType.File, "late personal actor", "text/plain", "extracting", "late", "late personal failure", 1,
                         DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, captured!.PayloadReference))).ShouldBeFalse();
-                (await redis.Connection.GetDatabase().KeyExistsAsync(PersistFailedUnitActivity.BuildHashKey(tenant, "producer"))).ShouldBeFalse();
-                (await redis.Connection.GetDatabase().SortedSetScoreAsync(PersistFailedUnitActivity.BuildSortedSetKey(tenant, "case"), "producer")).ShouldBeNull();
+                (await redis.Connection.GetDatabase().KeyExistsAsync(PersistFailedUnitActivity.BuildHashKey(tenant, issuedUnit))).ShouldBeFalse();
+                (await redis.Connection.GetDatabase().SortedSetScoreAsync(PersistFailedUnitActivity.BuildSortedSetKey(tenant, "case"), issuedUnit)).ShouldBeNull();
             }
         }
     }
@@ -655,9 +753,12 @@ public sealed class SourceInventoryProducerIntegrationTests(RedisStackFixture re
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         string tenant = "annotation-proof-" + Guid.NewGuid().ToString("N");
+        var authoritySettings = Options.Create(new IngestionSettings { OwnershipGeneration = Guid.NewGuid().ToString("N"),
+            OwnershipWriterExclusionEvidenceId = "owned-disposable-fixture-writers-excluded" });
+        string issuedUnit = UnitOwnershipAuthority.Qualify("annotation", authoritySettings.Value.OwnershipGeneration);
         var codec = new QueryCursorCodec(new EphemeralDataProtectionProvider(), "AnnotationProofTests");
-        var inventory = new SourceInventoryStore(redis.Connection, codec);
-        var input = new Hexalith.Memories.Server.Activities.Cases.AnnotationProjectionInput(tenant, "case", "annotation", "target", "urn:annotation",
+        var inventory = new SourceInventoryStore(redis.Connection, codec, authoritySettings);
+        var input = new Hexalith.Memories.Server.Activities.Cases.AnnotationProjectionInput(tenant, "case", issuedUnit, "target", "urn:annotation",
             "synthetic annotation", "correction", "test", new Dictionary<string, MetadataField>(), new IngestionWorkflowConfiguration())
             { TrackSourceInventory = true };
         WorkflowContext context = Substitute.For<WorkflowContext>();
@@ -672,7 +773,7 @@ public sealed class SourceInventoryProducerIntegrationTests(RedisStackFixture re
             .Returns(Task.FromException<IngestionResult>(failure));
         if (boundary == "preparing")
         {
-            await new AdmitSourceInventoryActivity(inventory, Substitute.For<IDaprWorkflowClient>()).RunAsync(null!, new("annotation", Input(tenant) with { SourceUri = input.SourceUri }));
+            await new AdmitSourceInventoryActivity(inventory, Substitute.For<IDaprWorkflowClient>()).RunAsync(null!, new(issuedUnit, Input(tenant) with { SourceUri = input.SourceUri }));
         }
         else
         {
@@ -683,7 +784,7 @@ public sealed class SourceInventoryProducerIntegrationTests(RedisStackFixture re
         if (boundary == "graph")
         { await context.DidNotReceiveWithAnyArgs().CallChildWorkflowAsync<IngestionResult>(default!, default!, default); }
         using IConnectionMultiplexer restartedConnection = await ConnectionMultiplexer.ConnectAsync(redis.ConnectionString);
-        var restarted = new SourceInventoryStore(restartedConnection, codec);
+        var restarted = new SourceInventoryStore(restartedConnection, codec, authoritySettings);
         await restarted.FenceAsync(tenant, input.SourceUri, true, token);
         var (app, client) = await StartAsync(tenant, restarted, Payloads(new Dictionary<string, string>()), Substitute.For<IIngestionWorkflowStateReader>(), token);
         await using (app)
@@ -807,6 +908,87 @@ public sealed class SourceInventoryProducerIntegrationTests(RedisStackFixture re
             (await connection.GetDatabase().KeyExistsAsync(tenant + ":mu:loser")).ShouldBeFalse();
             (await connection.GetDatabase().KeyExistsAsync(tenant + ":mu:unrelated")).ShouldBeTrue();
         }
+    }
+
+    /// <summary>Executes the actual event workflow identity branch with native persisted indexes, a verified failed retry and duplicate delivery.</summary>
+    [Fact]
+    public async Task ConfiguredEventWorkflowKeepsIssuedIdentityThroughFailedRetryAndDuplicateDelivery()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string tenant = "event-workflow-" + Guid.NewGuid().ToString("N");
+        var settings = Options.Create(new IngestionSettings { OwnershipGeneration = Guid.NewGuid().ToString("N"), OwnershipWriterExclusionEvidenceId = "owned-event-writers-excluded" });
+        var inventory = new SourceInventoryStore(redis.Connection, new QueryCursorCodec(new EphemeralDataProtectionProvider(), "ConfiguredEventWorkflow"), settings);
+        IngestionInput original = Input(tenant) with { SourceType = SourceType.Event, ContentBytes = System.Text.Encoding.UTF8.GetBytes("{\"kind\":\"owned\"}") };
+        IDatabase db = redis.Connection.GetDatabase();
+        db.FT().Create(IndexSchemaDefinitions.GetSyntacticIndexName(tenant), IndexSchemaDefinitions.CreateSyntacticParams(tenant), IndexSchemaDefinitions.CreateSyntacticSchema());
+        db.FT().Create(IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName(tenant), IndexSchemaDefinitions.CreateNaturalLanguageSemanticParams(tenant), IndexSchemaDefinitions.CreateNaturalLanguageSemanticSchema(3));
+        IWorkflowPayloadStore payloads = Payloads(new Dictionary<string, string>(StringComparer.Ordinal));
+        var client = Substitute.For<IDaprWorkflowClient>();
+        IngestionInput? captured = null;
+        client.ScheduleNewWorkflowAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IngestionInput>(), null, Arg.Any<CancellationToken>())
+            .Returns(call => { captured = call.Arg<IngestionInput>(); return call.ArgAt<string>(1); });
+        var capture = new IngestionWorkflowConfigurationCapture(settings, Options.Create(new NaturalLanguageDescriptionOptions()));
+        var scheduler = new DaprIngestionWorkflowScheduler(client, payloads, capture, new WorkflowTraceContextCapture(),
+            Substitute.For<IIngestionWorkflowInFlightRegistry>(), TimeProvider.System, NullLogger<DaprIngestionWorkflowScheduler>.Instance, inventory);
+        var adapter = new Hexalith.Memories.Server.EventStoreIntegration.EventIngestionWorkflowSchedulerAdapter(scheduler, capture);
+        string unit = await adapter.ScheduleAsync(DedupKeyBuilder.BuildKey(tenant, original.CaseId, original.SourceUri), original, token);
+        unit.ShouldStartWith("owned-" + settings.Value.OwnershipGeneration + "-dedup:");
+        IngestionInput firstInput = captured!;
+        int nativeWrites = 0;
+        WorkflowContext Context(string workflow, bool failExtraction)
+        {
+            var context = Substitute.For<WorkflowContext>();
+            context.InstanceId.Returns(workflow); context.CurrentUtcDateTime.Returns(DateTime.UtcNow);
+            context.NewGuid().Returns(Guid.NewGuid());
+            context.CreateReplaySafeLogger<IngestionWorkflow>().Returns(NullLogger.Instance);
+            context.CallActivityAsync<bool>(nameof(RecordSourceInventoryCandidateActivity), Arg.Any<SourceInventoryOutputInput>(), Arg.Any<WorkflowTaskOptions>())
+                .Returns(call => new RecordSourceInventoryCandidateActivity(inventory).RunAsync(null!, call.Arg<SourceInventoryOutputInput>()));
+            context.CallActivityAsync<IdempotencyResult>(nameof(CheckIdempotencyActivity), Arg.Any<IdempotencyInput>(), Arg.Any<WorkflowTaskOptions>())
+                .Returns(call => new CheckIdempotencyActivity(redis.Connection).RunAsync(null!, call.Arg<IdempotencyInput>()));
+            context.CallActivityAsync<ValidateResult>(nameof(ValidateContentActivity), Arg.Any<IngestionInput>()).Returns(new ValidateResult(true, null));
+            context.CallActivityAsync<ExtractionResult>(nameof(ExtractContentActivity), Arg.Any<ExtractionInput>(), Arg.Any<WorkflowTaskOptions>())
+                .Returns(_ => failExtraction ? Task.FromException<ExtractionResult>(new InvalidOperationException("owned extraction failure"))
+                    : Task.FromResult(new ExtractionResult("owned event content", "owned-hash", DateTimeOffset.UtcNow)));
+            context.CallActivityAsync<bool>(nameof(PersistFailedUnitActivity), Arg.Any<FailedUnitInput>(), Arg.Any<WorkflowTaskOptions>())
+                .Returns(call => new PersistFailedUnitActivity(redis.Connection, NullLogger<PersistFailedUnitActivity>.Instance).RunAsync(null!, call.Arg<FailedUnitInput>()));
+            context.CallActivityAsync<ChunkEmbeddingBatchResult>(nameof(GenerateChunkEmbeddingsActivity), Arg.Any<EmbeddingInput>(), Arg.Any<WorkflowTaskOptions>())
+                .Returns(new ChunkEmbeddingBatchResult { Provider = "google", Model = "synthetic", Dimensions = 3,
+                    Chunks = [new ChunkEmbeddingResult { Sequence = 0, Text = "owned event content", StartOffset = 0, EndOffset = 19, EstimatedTokens = 3, Vector = [1, 0, 0] }] });
+            context.CallActivityAsync<NaturalLanguageDescriptionResult>(nameof(GenerateNaturalLanguageDescriptionActivity), Arg.Any<NaturalLanguageDescriptionInput>(), Arg.Any<WorkflowTaskOptions>())
+                .Returns(new NaturalLanguageDescriptionResult("owned event description", null, ConfidenceSource.Constant, "owned", "owned"));
+            context.CallActivityAsync<EmbeddingResult>(nameof(GenerateEmbeddingActivity), Arg.Any<EmbeddingInput>(), Arg.Any<WorkflowTaskOptions>())
+                .Returns(new EmbeddingResult([1, 0, 0], "google", 3) { Model = "synthetic" });
+            context.CallActivityAsync<IndexResult>(nameof(IndexSyntacticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+                .Returns(call => { nativeWrites++; return new IndexSyntacticActivity(redis.Connection, NullLogger<IndexSyntacticActivity>.Instance).RunAsync(null!, call.Arg<IndexInput>()); });
+            context.CallActivityAsync<IndexResult>(nameof(IndexSemanticChunksActivity), Arg.Any<SemanticChunkIndexInput>(), Arg.Any<WorkflowTaskOptions>())
+                .Returns(call => new IndexSemanticChunksActivity(redis.Connection, NullLogger<IndexSemanticChunksActivity>.Instance).RunAsync(null!, call.Arg<SemanticChunkIndexInput>()));
+            context.CallActivityAsync<IndexResult>(nameof(IndexNaturalLanguageSemanticActivity), Arg.Any<NaturalLanguageIndexInput>(), Arg.Any<WorkflowTaskOptions>())
+                .Returns(call => new IndexNaturalLanguageSemanticActivity(redis.Connection, NullLogger<IndexNaturalLanguageSemanticActivity>.Instance).RunAsync(null!, call.Arg<NaturalLanguageIndexInput>()));
+            context.CallActivityAsync<IndexResult>(nameof(IndexGraphActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+                .Returns(call => new IndexGraphActivity(graph.Connection, new GraphQueryBuilder(), NullLogger<IndexGraphActivity>.Instance).RunAsync(null!, call.Arg<IndexInput>()));
+            context.CallActivityAsync<ConsistencyResult>(nameof(VerifyConsistencyActivity), Arg.Any<ConsistencyInput>(), Arg.Any<WorkflowTaskOptions>()).Returns(new ConsistencyResult(true, true, true));
+            context.CallActivityAsync<DedupKeySaveResult>(nameof(SaveDedupKeyActivity), Arg.Any<DedupKeyInput>(), Arg.Any<WorkflowTaskOptions>())
+                .Returns(call => new SaveDedupKeyActivity(redis.Connection).RunAsync(null!, call.Arg<DedupKeyInput>()));
+            context.CallActivityAsync<bool>(nameof(RecordSourceInventoryOutputActivity), Arg.Any<SourceInventoryOutputInput>(), Arg.Any<WorkflowTaskOptions>())
+                .Returns(call => new RecordSourceInventoryOutputActivity(inventory, new RefreshPublicationStore(redis.Connection, inventory, graph.Connection)).RunAsync(null!, call.Arg<SourceInventoryOutputInput>()));
+            return context;
+        }
+        await Should.ThrowAsync<InvalidOperationException>(() => new IngestionWorkflow().RunAsync(Context(unit, true), firstInput));
+        FailedUnitRecord failed = (await new FailedUnitsRegistry(redis.Connection, NullLogger<FailedUnitsRegistry>.Instance).GetAsync(tenant, unit, token)).ShouldNotBeNull();
+        failed.MemoryUnitId.ShouldBe(unit);
+        client.GetWorkflowStateAsync(unit, true, Arg.Any<CancellationToken>()).Returns(State(firstInput, WorkflowRuntimeStatus.Failed, instanceId: unit));
+        string retry = await scheduler.ScheduleFailedRetryAsync(failed, original with { ContentBytes = null, PayloadReference = failed.SourcePayloadReference }, token);
+        retry.ShouldNotBe(unit);
+        captured!.FailedRetry!.MemoryUnitId.ShouldBe(unit);
+        IngestionResult retried = await new IngestionWorkflow().RunAsync(Context(retry, false), captured);
+        retried.MemoryUnitId.ShouldBe(unit); retried.Status.ShouldBe(MemoryUnitStatus.Indexed);
+        using IConnectionMultiplexer recreated = await ConnectionMultiplexer.ConnectAsync(redis.ConnectionString);
+        (await recreated.GetDatabase().HashGetAsync(IndexSchemaDefinitions.BuildSyntacticKey(tenant, unit), "id")).ToString().ShouldBe(unit);
+        (await recreated.GetDatabase().HashGetAsync(IndexSchemaDefinitions.BuildSemanticChunkKey(tenant, unit, 0), "memoryUnitId")).ToString().ShouldBe(unit);
+        IngestionResult duplicate = await new IngestionWorkflow().RunAsync(Context(unit, false), firstInput);
+        duplicate.WasDuplicate.ShouldBeTrue(); duplicate.MemoryUnitId.ShouldBe(unit); nativeWrites.ShouldBe(1);
+        (await recreated.GetDatabase().StringGetAsync(DedupKeyBuilder.BuildKey(tenant, original.CaseId, original.SourceUri))).ToString().ShouldBe(unit);
+        (await inventory.ReadAsync(tenant, original.SourceUri, null, 100, token)).Entries.ShouldAllBe(entry => entry.CandidateMemoryUnitId == unit && entry.MemoryUnitId == unit);
     }
 
     private async Task<(WebApplication App, HttpClient Client)> StartAsync(string tenant, SourceInventoryStore inventory, IWorkflowPayloadStore payloads,

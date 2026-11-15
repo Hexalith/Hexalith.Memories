@@ -18,6 +18,7 @@ using Hexalith.Memories.Server.Search;
 using Hexalith.Memories.TestHelpers.Factories;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using NRedisStack.RedisStackCommands;
 using NSubstitute;
 using Shouldly;
@@ -69,37 +70,41 @@ public sealed class RefreshPublicationIntegrationTests(RedisStackFixture redis, 
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         string tenant = "maintenance-" + Guid.NewGuid().ToString("N");
+        var authoritySettings = Options.Create(new IngestionSettings { OwnershipGeneration = Guid.NewGuid().ToString("N"),
+            OwnershipWriterExclusionEvidenceId = "owned-disposable-fixture-writers-excluded" });
+        string issuedUnit = UnitOwnershipAuthority.Qualify("modern", authoritySettings.Value.OwnershipGeneration);
+        string successorUnit = UnitOwnershipAuthority.Qualify("successor", authoritySettings.Value.OwnershipGeneration);
         const string source = "urn:synthetic:maintenance", caseId = "captured-case";
         var inventory = new SourceInventoryStore(redis.Connection, new QueryCursorCodec(new EphemeralDataProtectionProvider(), "MaintenanceTests"));
         var publication = new RefreshPublicationStore(redis.Connection, inventory, graph.Connection);
         var first = Input(tenant, caseId, source, "initial modern content", "initial", 1, null);
         first = first with { RefreshIdentityDigest = await publication.PrepareAsync(first, token) };
-        await IndexAsync(tenant, "modern", source, first.ContentBytes!);
-        (await publication.PublishAsync(first, "modern", token)).ShouldBeTrue();
+        await IndexAsync(tenant, issuedUnit, source, first.ContentBytes!, authoritySettings);
+        (await publication.PublishAsync(first, issuedUnit, token)).ShouldBeTrue();
         IDatabase db = redis.Connection.GetDatabase();
         db.FT().Create(IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName(tenant),
             IndexSchemaDefinitions.CreateNaturalLanguageSemanticParams(tenant), IndexSchemaDefinitions.CreateNaturalLanguageSemanticSchema(3));
         var context = Substitute.For<WorkflowActivityContext>();
         var nl = new IndexNaturalLanguageSemanticActivity(redis.Connection, NullLogger<IndexNaturalLanguageSemanticActivity>.Instance);
-        await nl.RunAsync(context, new NaturalLanguageIndexInput { TenantId = tenant, CaseId = caseId, MemoryUnitId = "modern",
+        await nl.RunAsync(context, new NaturalLanguageIndexInput { TenantId = tenant, CaseId = caseId, MemoryUnitId = issuedUnit,
             EmbeddingProvider = "google", EmbeddingModel = "synthetic", EmbeddingDimensions = 3, EmbeddingVector = [1, 0, 0],
             NaturalLanguageDescription = "late NL retry", ConfidenceSource = ConfidenceSource.Constant });
-        string lateNl = IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenant, "modern");
-        (await db.SetContainsAsync(SourcePublicationVisibility.Keys(tenant, "modern"), lateNl)).ShouldBeTrue();
+        string lateNl = IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenant, issuedUnit);
+        (await db.SetContainsAsync(SourcePublicationVisibility.Keys(tenant, issuedUnit), lateNl)).ShouldBeTrue();
         (await db.HashGetAsync(lateNl, SourcePublicationVisibility.Field)).ToString().ShouldBe("1");
         await new IndexSemanticChunksActivity(redis.Connection, NullLogger<IndexSemanticChunksActivity>.Instance).RunAsync(context,
-            new SemanticChunkIndexInput { TenantId = tenant, CaseId = caseId, MemoryUnitId = "modern", EmbeddingProvider = "google",
+            new SemanticChunkIndexInput { TenantId = tenant, CaseId = caseId, MemoryUnitId = issuedUnit, EmbeddingProvider = "google",
                 EmbeddingModel = "synthetic", EmbeddingDimensions = 3, Chunks = [new ChunkEmbeddingResult { Sequence = 7, Text = "late restore chunk",
                     StartOffset = 0, EndOffset = 18, EstimatedTokens = 4, Vector = [1, 0, 0] }] });
-        string lateChunk = IndexSchemaDefinitions.BuildSemanticChunkKey(tenant, "modern", 7);
-        (await db.SetContainsAsync(SourcePublicationVisibility.Keys(tenant, "modern"), lateChunk)).ShouldBeTrue();
-        var next = Input(tenant, caseId, source, "successor modern content", "next", 2, "modern");
+        string lateChunk = IndexSchemaDefinitions.BuildSemanticChunkKey(tenant, issuedUnit, 7);
+        (await db.SetContainsAsync(SourcePublicationVisibility.Keys(tenant, issuedUnit), lateChunk)).ShouldBeTrue();
+        var next = Input(tenant, caseId, source, "successor modern content", "next", 2, issuedUnit);
         next = next with { RefreshIdentityDigest = await publication.PrepareAsync(next, token) };
-        await IndexAsync(tenant, "successor", source, next.ContentBytes!);
-        await nl.RunAsync(context, new NaturalLanguageIndexInput { TenantId = tenant, CaseId = caseId, MemoryUnitId = "successor",
+        await IndexAsync(tenant, successorUnit, source, next.ContentBytes!, authoritySettings);
+        await nl.RunAsync(context, new NaturalLanguageIndexInput { TenantId = tenant, CaseId = caseId, MemoryUnitId = successorUnit,
             EmbeddingProvider = "google", EmbeddingModel = "synthetic", EmbeddingDimensions = 3, EmbeddingVector = [0.8f, 0.2f, 0],
             NaturalLanguageDescription = "current NL", ConfidenceSource = ConfidenceSource.Constant });
-        (await publication.PublishAsync(next, "successor", token)).ShouldBeTrue();
+        (await publication.PublishAsync(next, successorUnit, token)).ShouldBeTrue();
         (await db.HashGetAsync(lateNl, SourcePublicationVisibility.Field)).ToString().ShouldBe("0");
         (await db.HashGetAsync(lateChunk, SourcePublicationVisibility.Field)).ToString().ShouldBe("0");
         var embedding = Substitute.For<EmbeddingClient>(Substitute.For<IHttpClientFactory>(), Substitute.For<Dapr.Client.DaprClient>(),
@@ -107,9 +112,9 @@ public sealed class RefreshPublicationIntegrationTests(RedisStackFixture redis, 
         embedding.GenerateAsync(Arg.Any<string>(), tenant, Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult(new float[] { 1, 0, 0 }));
         var search = new NaturalLanguageSemanticSearchService(redis.Connection, embedding, NullLogger<NaturalLanguageSemanticSearchService>.Instance);
         (await search.SearchAsync(new SearchQuery { TenantId = tenant, CaseId = caseId, Query = "late NL", MaxResults = 1 },
-            new TenantEmbeddingConfig("google", "synthetic", 3, 60, "unused"), token)).Results.ShouldHaveSingleItem().MemoryUnitId.ShouldBe("successor");
+            new TenantEmbeddingConfig("google", "synthetic", 3, 60, "unused"), token)).Results.ShouldHaveSingleItem().MemoryUnitId.ShouldBe(successorUnit);
         using IConnectionMultiplexer restarted = await ConnectionMultiplexer.ConnectAsync(redis.ConnectionString);
-        (await restarted.GetDatabase().SetContainsAsync(SourcePublicationVisibility.Keys(tenant, "modern"), lateNl)).ShouldBeTrue();
+        (await restarted.GetDatabase().SetContainsAsync(SourcePublicationVisibility.Keys(tenant, issuedUnit), lateNl)).ShouldBeTrue();
     }
 
     [Theory]
@@ -173,9 +178,10 @@ public sealed class RefreshPublicationIntegrationTests(RedisStackFixture redis, 
         await redis.Connection.GetDatabase().SetAddAsync(SourcePublicationVisibility.Keys(tenant, "old"),
             [(RedisValue)IndexSchemaDefinitions.BuildSyntacticKey(tenant, "old"), (RedisValue)IndexSchemaDefinitions.BuildSemanticKey(tenant, "old"),
                 (RedisValue)IndexSchemaDefinitions.BuildSemanticChunkKey(tenant, "old", 0)]);
-        await redis.Connection.GetDatabase().StringSetAsync(SourcePublicationVisibility.KeyProvenance(tenant, "old"), "legacy-owner-reconciled-v1");
+        await OwnedSemanticInventory.ReconcileAsync(redis.Connection.GetDatabase(), tenant, "old");
         older = older with { RefreshIdentityDigest = await publication.PrepareAsync(older, token) };
-        (await redis.Connection.GetDatabase().StringGetAsync(SourcePublicationVisibility.KeyProvenance(tenant, "old"))).ToString().ShouldBe("legacy-owner-reconciled-v1");
+        UnitOwnershipAuthority.IsComplete(await redis.Connection.GetDatabase().StringGetAsync(SourcePublicationVisibility.KeyProvenance(tenant, "old")),
+            await redis.Connection.GetDatabase().StringGetAsync(UnitOwnershipAuthority.Key(tenant, "old")), tenant, "old").ShouldBeTrue();
         (await redis.Connection.GetDatabase().SetContainsAsync(SourcePublicationVisibility.Keys(tenant, "old"),
             IndexSchemaDefinitions.BuildSemanticChunkKey(tenant, "old", 0))).ShouldBeTrue();
         newer = newer with { RefreshIdentityDigest = await publication.PrepareAsync(newer, token) };
@@ -473,7 +479,7 @@ public sealed class RefreshPublicationIntegrationTests(RedisStackFixture redis, 
         }
     }
 
-    private async Task IndexAsync(string tenant, string id, string source, byte[] content)
+    private async Task IndexAsync(string tenant, string id, string source, byte[] content, IOptions<IngestionSettings>? authoritySettings = null)
     {
         IDatabase db = redis.Connection.GetDatabase();
         try { db.FT().Create(IndexSchemaDefinitions.GetSyntacticIndexName(tenant), IndexSchemaDefinitions.CreateSyntacticParams(tenant), IndexSchemaDefinitions.CreateSyntacticSchema()); }
@@ -487,9 +493,9 @@ public sealed class RefreshPublicationIntegrationTests(RedisStackFixture redis, 
             content: Encoding.UTF8.GetString(content)) with { SourceInventoryTracked = id != "old" && id != "unrelated" };
         if (input.SourceInventoryTracked && !await db.KeyExistsAsync(SourcePublicationVisibility.KeyProvenance(tenant, id)))
         {
-            // Exercise the real fresh producer protocol before indexing. Merely setting
-            // the tracked flag cannot certify an unknown legacy output.
-            var inventory = new SourceInventoryStore(redis.Connection, new QueryCursorCodec(new EphemeralDataProtectionProvider(), "FreshRefreshAdapterTests"));
+            // Exercise admission/candidate retention before indexing. Unconfigured fixture
+            // units receive exact historical reconciliation only after all known writes.
+            var inventory = new SourceInventoryStore(redis.Connection, new QueryCursorCodec(new EphemeralDataProtectionProvider(), "FreshRefreshAdapterTests"), authoritySettings);
             var producer = new IngestionInput { TenantId = tenant, CaseId = input.CaseId, SourceUri = source,
                 SourceType = SourceType.File, ContentType = "text/plain", ContentBytes = content, IngestedBy = input.IngestedBy };
             await inventory.AdmitAsync("adapter-" + id, producer, TestContext.Current.CancellationToken);
@@ -519,6 +525,16 @@ public sealed class RefreshPublicationIntegrationTests(RedisStackFixture redis, 
         NFalkorDB.ResultSet populated = await new NFalkorDB.FalkorDB(graph.Connection.GetDatabase()).SelectGraph(tenant)
             .QueryAsync("MATCH (m:MemoryUnit {id:$id}) RETURN m.content", new Dictionary<string, object> { ["id"] = id });
         populated.ShouldHaveSingleItem().Values[0]?.ToString().ShouldBe(input.Content);
+        if (input.SourceInventoryTracked && authoritySettings is null)
+        {
+            var historicalSettings = Options.Create(new IngestionSettings { OwnershipGeneration = Guid.NewGuid().ToString("N"),
+                OwnershipWriterExclusionEvidenceId = "owned-disposable-fixture-writers-excluded" });
+            var reconciler = new SourceInventoryStore(redis.Connection, new QueryCursorCodec(new EphemeralDataProtectionProvider(), "KnownRefreshFixture"), historicalSettings);
+            string[] exactKeys = (await db.SetMembersAsync(SourcePublicationVisibility.Keys(tenant, id))).Select(key => key.ToString()).ToArray();
+            RedisValue previousAuthority = await db.StringGetAsync(UnitOwnershipAuthority.Key(tenant, id));
+            await reconciler.ReconcileUnitAsync(tenant, id, exactKeys, "owned-exact-refresh-fixture:" + id,
+                previousAuthority.HasValue ? previousAuthority.ToString() : null, TestContext.Current.CancellationToken);
+        }
     }
 
     [Fact]

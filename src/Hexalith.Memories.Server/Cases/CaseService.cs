@@ -149,7 +149,7 @@ internal sealed class CaseService
         }
 
         // Generate annotation MU ID
-        string annotationMuId = BaUlid.New(UlidOptions).ToString();
+        string annotationMuId = _workflowConfigurationCapture?.QualifyUnitId(BaUlid.New(UlidOptions).ToString()) ?? BaUlid.New(UlidOptions).ToString();
         DateTimeOffset now = DateTimeOffset.UtcNow;
         string sourceUri = BuildAnnotationSourceUri(input.TargetMemoryUnitId, annotationMuId);
 

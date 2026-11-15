@@ -24,11 +24,11 @@ internal static class TenantIngestionOwnership
             if redis.call('EXISTS',KEYS[{{fence}}])==1 then return redis.error_reply('tenant-ingestion-erased') end
             local missing=0
             for i=1,{{keys.Length}} do
-                if string.sub(KEYS[i],1,9)~='__unused-' and redis.call('SISMEMBER',KEYS[{{registry}}],KEYS[i])==0 then missing=missing+1 end
+                if string.sub(KEYS[i],1,9)~='__unused-' and string.sub(KEYS[i],1,25)~='ingestion-unit-authority:' and string.sub(KEYS[i],1,31)~='ingestion-ownership-generation:' and redis.call('SISMEMBER',KEYS[{{registry}}],KEYS[i])==0 then missing=missing+1 end
             end
             if redis.call('SCARD',KEYS[{{registry}}])+missing>{{Capacity}} then return redis.error_reply('tenant-ingestion-ownership-capacity') end
             for i=1,{{keys.Length}} do
-                if string.sub(KEYS[i],1,9)~='__unused-' then redis.call('SADD',KEYS[{{registry}}],KEYS[i]) end
+                if string.sub(KEYS[i],1,9)~='__unused-' and string.sub(KEYS[i],1,25)~='ingestion-unit-authority:' and string.sub(KEYS[i],1,31)~='ingestion-ownership-generation:' then redis.call('SADD',KEYS[{{registry}}],KEYS[i]) end
             end
             """;
         try

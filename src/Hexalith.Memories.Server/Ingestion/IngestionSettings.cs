@@ -8,6 +8,12 @@ namespace Hexalith.Memories.Server.Ingestion;
 /// <summary>Ingestion-wide settings bound from the "Ingestion" configuration section.</summary>
 public sealed class IngestionSettings
 {
+    /// <summary>Gets or sets the operator-reserved, never reused lowercase 32-hex issuance generation. Absent configuration grants no new completeness authority.</summary>
+    public string? OwnershipGeneration { get; set; }
+
+    /// <summary>Gets or sets the custody identifier proving exclusion of older and out-of-band writers from this generation's namespace.</summary>
+    public string? OwnershipWriterExclusionEvidenceId { get; set; }
+
     /// <summary>Gets or sets the allow-list of absolute directory roots that POST /api/v1/ingest/directory may traverse. Empty by default — endpoint is disabled until an operator opts in.</summary>
     public string[] AllowedDirectoryRoots { get; set; } = [];
 

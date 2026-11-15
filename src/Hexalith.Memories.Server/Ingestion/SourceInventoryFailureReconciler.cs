@@ -51,6 +51,10 @@ internal sealed class SourceInventoryFailureReconciler(
             // This admission crossed no remote scheduling boundary. Preserve unknown/historical
             // output obligations if any producer evidence contradicts that persisted proof.
             IDatabase database = redis.GetDatabase();
+            RedisValue authority = await database.StringGetAsync(UnitOwnershipAuthority.Key(tenant, candidate)).WaitAsync(token).ConfigureAwait(false);
+            if (!UnitOwnershipAuthority.IsComplete(authority, authority, tenant, candidate)
+                || !UnitOwnershipAuthority.IsProducer(authority, entry.WorkflowInstanceId!, source, entry.CaseId))
+                throw new InvalidOperationException("source-inventory-unscheduled-output-reconciliation-required");
             RedisKey[] outputs = [Infrastructure.IndexSchemaDefinitions.BuildSyntacticKey(tenant, candidate),
                 Infrastructure.IndexSchemaDefinitions.BuildSemanticKey(tenant, candidate),
                 Infrastructure.IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenant, candidate),
