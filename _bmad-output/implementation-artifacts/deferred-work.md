@@ -6232,3 +6232,15 @@ decision: 2026-11-01 keep-open — parked. Reopens only on the trigger: any Prod
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-5-partial-release-recovery.md`
   summary: Require authoritative registry tag-immutability/race evidence for atomic protection against another writer between the terminal recovery probe and skopeo copy.
   evidence: Review R2 EC1; Story 30.5 moves/repeats the probe after archive materialization, but client-side absence checks cannot provide atomic exclusion. The registry policy remains explicitly unverified from Story 30.4; no settings or live publication are authorized here. Owner Jérôme Piquot; authoritative policy readback or an isolated concurrent-writer registry fixture settles it.
+
+## Deferred from: code review of spec-30-5-partial-release-recovery.md (2026-11-15)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-30-5-partial-release-recovery.md`
+  summary: Record dated planning corrections in `epics.md` Story 30.5 for the two `corrected` Epic AC claims. The owned paths were widened from two files to the 19 implementation/test/doc paths in the story File Scope, and the activation gate's Builds evidence is now owner-approved for `81c88b34` and `ae77d569` (D2).
+  evidence: Code review 2026-11-15 (Historical Slice Guard F6). `_bmad/custom/epic-ac-verification.md` requires a planning-artifact correction or a dated note at the claim. `_bmad-output/planning-artifacts/epics.md:5832` (activation gate) and `:5847` (owned paths) still carry the pre-story text, and `:5830` still reads `Status: backlog`. Editing `epics.md` is outside the Story 30.5 File Scope. Owner: Jérôme Piquot. Consequence: the next reader of `epics.md` sees a two-file ownership claim and an unqualified activation gate that the code no longer matches. Reopen trigger: the next correct-course or epic-planning pass that touches Epic 30, or Story 30.6 creation, whichever comes first.
+  status: open
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-30-5-partial-release-recovery.md`
+  summary: Align the `publish-nuget.ps1` child-summary, `::error` and step-summary guidance with the current Recover Partial Release path.
+  evidence: Code review 2026-11-15 (Verification Gap). `tools/publish-nuget.ps1:45-47`, `:91` and `:106` still say "manually reconcile NuGet publication", and `publish_nuget_test.py:472-482` pins that text and asserts "Recover Partial Release" is absent. Story 30.5 changed the aggregate (`publish-release.ps1:196`) and incident guidance, so a current partial publish now carries contradictory guidance in one aggregate summary. `publish-nuget.ps1` is outside the Story 30.5 File Scope. Owner: Jérôme Piquot (Story 30.6 release cutover maintainer). Consequence: operators read contradictory recovery instructions inside one release evidence summary. Reopen trigger: Story 30.6 edits `publish-nuget.ps1` for the D3 `--skip-duplicate` hand-off.
+  status: open

@@ -2,7 +2,7 @@
 title: 'Partial-release recovery'
 type: 'feature'
 created: '2026-11-15'
-status: 'done'
+status: 'in-progress'
 route: 'dispatch'
 review_loop_iteration: 1
 story_key: '30-5-partial-release-recovery'
@@ -85,6 +85,62 @@ context: ['{project-root}/_bmad-output/implementation-artifacts/epic-30-context.
 - Given a dispatch, when it is not the live `main` tip with green exact-source CI, or production approval is absent, then nothing runs past the source job.
 - Given a recovery that writes its missing members, when it finishes, then all 15 members, the 13 assets and the packet share one source, version and `setSha256`, and historical fixtures keep passing.
 
+### Review Findings
+
+Code review 2026-11-15 (Claude Opus 5.5, full mode) of `b468a8eb..2e5e71ad` across six layers: Blind Hunter, Edge Case Hunter, Verification Gap, Acceptance Auditor, Historical Slice Guard and Story Phase Ledger. No layer failed. During the review a concurrent `/pushall` rebased `main` onto `origin/main` (16:20:58). The story commits became `56d93d6f`/`e201f169` on top of `7a5c8925` (an unrelated ingestion-erasure commit), and `git diff 2d0acd71..e201f169` is byte-identical to the reviewed snapshot. The gitlink-only `/pushall` sync (`e542613c`, now `10e8cbee`) is outside the story range. Severity is the triage verdict, not the layer's grade.
+
+- [ ] [Review][Patch] Historical tag-set detection uses project existence, not the tagged published set (high; decision resolved 2026-11-15 by Administrator: option (a), derive the tagged set) [.github/workflows/recover-partial-release.yml:258] — The `Validate historical inventory before any mutation` step and the staged `publish-containers.ps1:109-110` count an image for every `src/<project>/<project>.csproj` that exists. Re-derived per tag with `git show <tag>:…`: v2.11.0–v2.15.x contain the AccessTelemetry projects, but their tagged publisher shipped only server/mcp. The gate passes 4, write-scope covers 4, and `-Push` would create AccessTelemetry tags those releases never had. Those immutable writes cannot be removed, and completion then refuses. v3.0.0–v3.0.11 contain a DomainService project, but the tag shipped 4, so the gate refuses every one of them. Both contradict the Code Map ranges (up to v2.15 2/9; v2.16.0–v3.0.11 4/9). They also make two Story 30.5 deferred-work resolutions and the runbook historical bullet overstate the scope. Options: (a) derive the tagged set from the tagged publisher's image candidates, read as data and never executed, and restrict the staged publisher to it with an explicit repository filter, with executed v2.11-, v2.16- and v3.0-shaped gate fixtures; (b) refuse before any mutation every historical tree whose project-derived set differs from its tagged publisher's set, with a named reason, narrow the runbook/DW claims to the supported ranges, and defer full support.
+- [ ] [Review][Patch] Registry and GitHub write credentials are job-wide and the write token persists in `.git/config` (high) [.github/workflows/recover-partial-release.yml:69]
+- [ ] [Review][Patch] Workflow-only `recovery-metadata` and `recover-images` phases are never executed by a test (medium) [tools/container-publication-contract.py:972]
+- [ ] [Review][Patch] Producer path is never executed: `--recovery-bundle` CLI, `release.yml` retention/upload steps and the workflow download script; "Exercised partial failure" has no publish-run-failure→bundle→recovery fixture (medium) [tools/archive-release-evidence.py:305]
+- [ ] [Review][Patch] Inline workflow gates are pinned only as text and fail without named reasons: production readback, failed-run check, artifact selection/digest (medium) [.github/workflows/recover-partial-release.yml:98]
+- [ ] [Review][Patch] Identity-drift fixture never reaches `verify_bundle` bindings: all five mutations stop at the producer's unrecoverable receipt (probe-confirmed) (medium) [tests/tooling/publish_containers/partial_release_recovery_test.py:678]
+- [ ] [Review][Patch] Current-mode incident comment/close, multiple-match and limit refusals have no assertion (medium) [tools/container-publication-contract.py:1107]
+- [ ] [Review][Patch] Fake flat-container routes only on the first path segment, so URL regressions pass (medium) [tests/tooling/publish_containers/partial_release_recovery_test.py:43]
+- [ ] [Review][Patch] PARTIAL PUBLISH incident body renders a blank version: `$version` is never assigned (pwsh probe-confirmed) (medium) [tools/create-partial-publish-issue.ps1:282]
+- [ ] [Review][Patch] Recovery guidance tests never assert the rendered version and run ID (medium) [tests/tooling/publish_nuget/publish_nuget_test.py:557]
+- [ ] [Review][Patch] Every package recovery fails its first run: post-push flat-container 404 during NuGet validation refuses final verification, and a rerun inside the window gets 409 (medium) [tools/container-publication-contract.py:1053]
+- [ ] [Review][Patch] Re-running a failed `release.yml` run permanently refuses its bundle (frozen attempt binding), and no guidance warns against it (medium) [docs/dev/release-runbook.md:630]
+- [ ] [Review][Patch] Recovery evidence upload re-uploads `bundle.zip` and the extracted bundle (multi-GB, 90 days) (medium) [.github/workflows/recover-partial-release.yml:301]
+- [ ] [Review][Patch] Publishing a recovered draft can mark an older version as the repository's Latest release (medium) [tools/container-publication-contract.py:1103]
+- [ ] [Review][Patch] Renderer byte comparison runs the dispatching `main` kubectl pin, not the failed run's (medium) [.github/workflows/recover-partial-release.yml:25]
+- [ ] [Review][Patch] CI inventory pins dropped while still true: `ShouldNotContain("semantic-release")`, scope-before-restore, reconcile-before-complete; plan-before-image-write is unpinned (low) [tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:610]
+- [ ] [Review][Patch] `release-source` job has no `timeout-minutes` while holding the `release` concurrency group (low) [.github/workflows/recover-partial-release.yml:30]
+- [ ] [Review][Patch] An unobservable draft after `release create` proceeds to uploads, then fails with `TypeError` (low) [tools/container-publication-contract.py:1090]
+- [ ] [Review][Patch] Runbook: dangling "manual NuGet reconciliation, defined below"; removed do-not-rerun/never-push-locally warnings; no next action per blocker (medium) [docs/dev/release-runbook.md:595]
+- [ ] [Review][Patch] Deferred-work inaccuracies: "90 days" ignores the recorded 30-day cap; the atomicity entry lacks status, consequence and reopen trigger; the D3 alert entry duplicates Round 3 Blind 8 (medium) [_bmad-output/implementation-artifacts/deferred-work.md:6070]
+- [ ] [Review][Patch] No blocker record for the D1 Trusted Publishing prerequisite or the unverified nuget.org signing-entry rule the fixtures encode (medium) [_bmad-output/implementation-artifacts/deferred-work.md:6233]
+- [ ] [Review][Patch] Story reads `done` while sprint-status reads `review`; `check-story-review-readiness.py --story-key 30-5-partial-release-recovery` exits 1 (C4) and no invocation is recorded (high) [_bmad-output/implementation-artifacts/spec-30-5-partial-release-recovery.md:5]
+- [ ] [Review][Patch] `create-story` ledger row was rewritten in place (Change cell, unit and separator differ from `1a70448b`) (medium) [_bmad-output/implementation-artifacts/spec-30-5-partial-release-recovery.md:155]
+- [ ] [Review][Patch] One `code-review` row folds review R1, the dev re-derivation (PC 130→140) and review R2 (140→149) (medium) [_bmad-output/implementation-artifacts/spec-30-5-partial-release-recovery.md:157]
+- [ ] [Review][Patch] Test-count cells lack before/after, cumulative, +0 lanes and commands; the replaced `test_new_catalog_unit_completes_with_ten_packages_and_domain_service` (+39/−1) is unrecorded (medium) [_bmad-output/implementation-artifacts/spec-30-5-partial-release-recovery.md:156]
+- [ ] [Review][Patch] File List reconciliation cells name "allowed paths" without the compared baseline or name-status command (low) [_bmad-output/implementation-artifacts/spec-30-5-partial-release-recovery.md:156]
+- [ ] [Review][Patch] Verification still calls revision-1 totals (28/28, PC 140) "final" (low) [_bmad-output/implementation-artifacts/spec-30-5-partial-release-recovery.md:268]
+- [ ] [Review][Patch] Checkpoint/Verification cite git-ignored `artifacts/30-5-recovery-fixture/`, whose packet lacks the identity records the final code requires (medium) [_bmad-output/implementation-artifacts/spec-30-5-partial-release-recovery.md:92]
+- [ ] [Review][Patch] Checkpoint table lacks rows for the other independently verifiable gates (AC2 source/production, AC3 assets and incident, historical pre-mutation, zero-write rerun, D1, D2, producer) (medium) [_bmad-output/implementation-artifacts/spec-30-5-partial-release-recovery.md:90]
+- [ ] [Review][Patch] Historical Context Classification omits the pre-split umbrella anti-template and the 30.3/30.4 hand-offs, and mislabels the historical commits (low) [_bmad-output/implementation-artifacts/spec-30-5-partial-release-recovery.md:124]
+- [ ] [Review][Patch] Epic AC verdict "refuted (implementation target)" is outside the policy vocabulary; an unmet end state is a `confirmed` gap (low) [_bmad-output/implementation-artifacts/spec-30-5-partial-release-recovery.md:143]
+- [ ] [Review][Patch] Remediation runtime checklist applicability is unstated; Category 3 (owner-checked compensation/dedup of shared registry, NuGet and Release state) applies (medium) [_bmad-output/implementation-artifacts/spec-30-5-partial-release-recovery.md:137]
+- [ ] [Review][Patch] `baseline_commit` `b468a8eb` is no longer reachable from `main` after the concurrent rebase; rebind it to the rebased equivalent `2d0acd71` (the story range is proven byte-identical), or every `baseline..HEAD` gate absorbs `7a5c8925` (medium) [_bmad-output/implementation-artifacts/spec-30-5-partial-release-recovery.md:9]
+- [ ] [Review][Patch] `test_summary_root_must_be_an_object` fails in a colour terminal (pwsh ANSI codes split the message; also at baseline) (low) [tests/tooling/publish_nuget/publish_nuget_test.py:883]
+- [x] [Review][Defer] `epics.md` Story 30.5 carries no dated correction for its `corrected` owned-paths and activation-gate claims [_bmad-output/planning-artifacts/epics.md:5832] — deferred: the fix edits another planning artifact outside File Scope; recorded in deferred-work.md with owner and trigger.
+- [x] [Review][Defer] `publish-nuget.ps1` still prints manual-reconciliation guidance and `publish_nuget_test.py:472-482` pins it, contradicting the new aggregate guidance [tools/publish-nuget.ps1:45] — deferred: outside Story 30.5 File Scope; joins the D3 Story 30.6 `publish-nuget.ps1` hand-off.
+
+#### Rejected
+
+- `false` — Producer edits are a hidden second slice (Historical Slice Guard F1): Tasks L71-73 name them explicitly, and owner decision D3 keeps the full spec as one goal. The missing checkpoint row is the separate checkpoint-table patch.
+- `false` — Bundle may include private auth config, and a symlink loses the bundle (Blind Hunter, Edge Case Hunter): registry auth is written only to private temp directories (`container-publication-contract.py:425`, `:739`), and no producer writes symlinks into the evidence directory.
+- `low` — Historical recovery now needs a failed `release.yml` run: Task L76 mandates the failed-run check before branching; cancelled historical runs are rare, and a fix adds branching.
+- `low` — Mixed recovery writes images before NuGet login can fail: D1 places login "immediately before the push"; reruns are idempotent.
+- `low` — `--generate-notes` notes differ from semantic-release notes: cosmetic.
+- `low` — Bundle re-extracted and re-hashed in each of four phases: efficiency only; a cache adds state.
+- `low` — `calls == 6` magic in the immediate-recheck test: developer-only fragility.
+- `low` — Bundle retained on failures before a tag exists: diagnostic value; gating adds conditions.
+- `low` — Catalog-adapter DomainService guard unreachable in historical mode: dead defensive code, no user harm.
+- `low` — Non-default `-SummaryDirectory` misplaces `package-identity.json`: `release.yml` uses the default; the fix needs parameter plumbing.
+- `low` — `--nuget-base-uri` override probes one feed and pushes to nuget.org: a test-only override.
+- `low` — Changes to main's inventory or `CANONICAL_IMAGES` refuse older bundles: a deliberate trusted-tooling pin; it fails closed and needs an inventory change first.
+
 ## Checkpoint Evidence
 
 | Checkpoint | Owner | Evidence command or artifact | Review state | Completion state |
@@ -155,6 +211,7 @@ PC: `python3 -B -m unittest discover -s tests/tooling/publish_containers -p '*_t
 | 2026-11-15 | create-story | Drafted approved recovery intent, inventory and owner decisions. | Baseline PC 111, PN 32, BQ 70; CT 69 methods / 141 cases; story +0, external +0. | Matched 1/1: initial spec. |
 | 2026-11-15 | dev-story | Implemented retained-byte recovery, gated workflow, package identity, complete plans, missing-only publication and evidence. | PC 130 (+19 recovery); PN 32, BQ 70, CT 141 cases; no external test additions. | Matched 21/21 allowed paths. |
 | 2026-11-15 | code-review | Two rounds across three independent layers; logged 29 findings individually, re-derived non-frozen implementation once and applied final local corrections. Registry atomicity remains an accountable external-evidence deferral. | Final inventory PC 149 (+38 from baseline: 37 recovery and 1 producer), PN 32, BQ 70, dispatch 17, alignment 15; CT 141 cases. Final results recorded under Verification. | Matched 21/21 allowed paths, including tracking, runbook and deferred ledger. |
+| 2026-11-15 | code-review | Round 3, an independent re-review by Claude Opus 5.5: six layers over the full `b468a8eb..2e5e71ad` diff, unchunked (single invocation; snapshot byte-identical to that range). Raised 1 decision, resolved by Administrator as option (a) and converted to a patch. A concurrent rebase found after triage added 1 more patch: 34 patch action items left open by owner choice, 2 deferred to deferred-work.md, 12 rejected. No code patch applied; only Review Findings, this row, status and two deferred entries were written. Readiness gate before the status sync: `python3 tools/check-story-review-readiness.py --story-key 30-5-partial-release-recovery --changed-files-file <21 story paths>` exited 1, `C4: story declares status 'done' but sprint-status records 'review'`. | Review-patch phase delta +0 in every lane; cumulative story delta from the create baseline; external +0. PC (`python3 -B -m unittest discover -s tests/tooling/publish_containers -p '*_test.py' -v`, unittest methods): 149 → 149, cumulative +38 (+39/−1 vs baseline 111), 149/149 passed. PN (same, `-s tests/tooling/publish_nuget`): 32 → 32, cumulative +0, 32/32 passed with `TERM=dumb` (6 subtests fail in a colour terminal, also at baseline; patch item). BQ: 70 → 70, cumulative +0, passed. release_dispatch: 17 → 17, cumulative +0, passed. ci_alignment: 15 → 15, cumulative +0, passed. CT (isolated `dotnet build … --artifacts-path "$TMPDIR/build" -p:UseHexalithProjectReferences=true -p:NuGetAudit=false -p:MinVerVersionOverride=1.0.0 -m:1`, then `DiffEngine_Disabled=true dotnet exec … -class Hexalith.Memories.Cli.Tests.Ci.CiTestInventoryTests`, xUnit cases): 141 → 141, cumulative +0, 141/141 passed, 0 warnings/errors. All runs under `run-with-temp` with `~/.dotnet/tools` (pwsh 7.6.2) on PATH. | Matched 21/21 changed paths vs `git diff --name-status b468a8eb..2e5e71ad` (2 A, 19 M); no exclusions. After the concurrent 16:20:58 rebase, the same 21 paths and the byte-identical diff are `2d0acd71..e201f169`. `7a5c8925` (ingestion erasure) and `10e8cbee` (gitlink-only `/pushall` sync, Jérôme Piquot) are outside the story range and not absorbed. |
 
 ## File List
 
