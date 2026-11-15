@@ -592,7 +592,7 @@ those actions can move the published state away from the CI-recorded audit ancho
   commit.
 - If NuGet publishing partially succeeds, do not delete published packages from nuget.org. There
   are two failure shapes to keep separate:
-  - **HTTP 409 (already published).** The destination preflight refuses an occupied version before tag creation. `dotnet nuget push --skip-duplicate` remains in the publisher for a race after the probe; it does not authorize rerunning a partially published release. Record the exact package state for manual NuGet reconciliation, defined below.
+  - **HTTP 409 (already published).** The destination preflight refuses an occupied version before tag creation. `dotnet nuget push --skip-duplicate` remains in the publisher for a race after the probe; it does not authorize rerunning a partially published release. Preserve the package summary and follow the retained-byte Recover Partial Release procedure below. The child publisher still emits legacy manual-reconciliation guidance; aligning that guidance belongs to Story 30.6.
   - **Non-409 failures (auth, network, server error).** `dotnet nuget push` exits non-zero.
     `publish-nuget.ps1` records the failed package, exit code, and sanitized output, then continues
     to later packages where it can still safely invoke `dotnet nuget push`. If a preflight or
@@ -631,9 +631,16 @@ those actions can move the published state away from the CI-recorded audit ancho
   **Recover Partial Release** from live `main` with `version` (without `v`) and `release-run-id`
   (the failed `release.yml` run). Preserve the incident and the `release-recovery-bundle` artifact.
   Recovery never moves a tag or overwrites an occupied package, image or Release asset.
+  Do not rerun the failed `release.yml` run: a rerun increments `run_attempt`, while the frozen
+  bundle remains bound to its original attempt. An attempt mismatch refuses recovery; preserve
+  the original run and escalate it to Jérôme Piquot rather than editing its identity.
+  Never push packages or images locally to complete a partially published version. Use the
+  production-approved recovery workflow so the full plan, provenance and destination checks run.
 - The read-only source job proves the live `main` tip and successful exact-source push CI, then
   reads back the production reviewer and deployment-branch rules. The recovery job waits for
   `environment: production` approval and repeats those proofs before staging executable tools.
+  A source-job protection refusal retains its generated readback in
+  `partial-release-source-evidence-v<version>` even when the recovery job is skipped.
 - Current tags with `tools/release-containers.json` require the failed run's unexpired
   recovery artifact (90 days requested; the last recorded repository cap is 30 days, so inspect expiry). The workflow verifies GitHub's artifact SHA-256, the bundle receipt and every
   file hash, recomputes `setSha256`, and binds the tag commit, failed-run head, version and tagged
@@ -651,7 +658,12 @@ those actions can move the published state away from the CI-recorded audit ancho
   (refuse), or ambiguous (refuse). Authenticated registry manifests and the complete OCI graph
   must match; NuGet compares every ZIP entry byte for byte, ignoring only `.signature.p7s` added
   by repository signing. A flat-container 404 is absent, including NuGet's validation window;
-  a subsequent push conflict or 401/403/5xx/timeout fails closed and grants no success credit.
+  after a successful push, recovery polls that package read-only for up to 600 seconds and never
+  repeats the push. Only an identical package clears uncertainty. A validation timeout, subsequent
+  push conflict or 401/403/5xx response fails closed and grants no completion credit. Preserve the
+  progress evidence, allow NuGet validation to finish, then rerun **recovery**, not the failed release.
+  An unverified push stops subsequent writes. When the same saved progress records an unresolved
+  earlier push, another 404 does not authorize a retry; positive identical readback must settle it.
   The original plan stays unchanged. `recovery-progress.json` records actual attempted writes and
   their read-only rechecks, including verified side effects and uncertainty after a failed command.
 - Recovery rechecks each destination immediately before its write, copies missing images with
@@ -667,21 +679,40 @@ those actions can move the published state away from the CI-recorded audit ancho
   is preserved from the retained bundle byte for byte; otherwise recovery emits a packet containing
   hash-bound raw OCI validation, health records and logs. DomainService remains a publication member with health proof;
   it is not invented as a hosted deployment. A draft may contain a hash-identical asset subset;
-  missing assets are uploaded and verified before publishing it. Unexpected or different assets refuse.
+  missing assets are uploaded and verified before publishing it with `--latest=false`, preserving the
+  repository's existing Latest release. Unexpected or different assets refuse.
   A completed rerun performs zero registry, NuGet or GitHub writes and reuses the verified immutable packet.
 - Historical trees without the contract retain their two- or four-image/nine-package completion.
-  Their inventory is validated before any registry mutation and authorization is scoped to the tagged
-  repositories. They rebuild historical archives and require all nine packages already on nuget.org.
+  Their inventory is derived from the tagged publisher's literal candidate table, parsed as data
+  without executing tagged code, and validated before any registry mutation. Authorization and both
+  staged build/push calls are restricted to that derived repository filter. Projects merely present
+  in the tree do not enlarge the published set: v2.11.0–v2.15.x retain two images, while v2.16.0
+  through v3.0.11 retain four. They rebuild historical archives and require all nine packages already on nuget.org.
   The precontract five-image/ten-package tags (v3.0.12–v3.0.18) are unsupported and refuse before `-Push`.
 - Only after members, assets and packet verification does recovery close the matching incident.
   The always-uploaded `partial-release-completion-v<version>` artifact retains plans, diagnostics,
   health and the completion summary. Fixture success proves the refusal and orchestration logic;
   it supplies no live NuGet, registry or production authorization proof.
 - Open registry follow-ups (owner: Jérôme Piquot): registry immutability/race policy remains unverified
-  until authoritative policy readback or an isolated concurrent-writer fixture; an interrupted skopeo
-  copy may leave an occupied tag until a manifest-PUT failure fixture or failure re-probe settles it.
-  These unresolved conditions grant no race-free or interrupted-transport reconciliation credit;
-  preserve the packet and escalate to the owner before retrying an affected version.
+  until authoritative policy readback or an isolated concurrent-writer registry fixture. The offline
+  manifest-PUT failure fixture now proves recovery re-probes a landed tag and skips it on rerun;
+  the original release-path transport summary and live interruption behavior remain unqualified.
+  Preserve the packet and escalate an uncertain or conflicting tag to the owner before retrying.
+- Recovery blockers and next actions (owner: Jérôme Piquot):
+  - Missing/expired recovery bundle, unsupported run conclusion or attempt drift: preserve the failed
+    run and incident; the owner must select an intact supported run or approve a separate release.
+    Never rebuild or rebind the immutable current set to bypass the refusal.
+  - Missing Trusted Publishing policy: the owner configures the named recovery policy, then reruns
+    recovery. Image- and asset-only recovery does not need NuGet login.
+  - Unapproved Builds SHA/helper hash, source/version/inventory or artifact digest mismatch: retain
+    diagnostics; the owner reviews the recorded identity and approved helper bytes before retrying.
+  - Present-different package/image/asset or ambiguous destination response: preserve plan/progress
+    and the incident; the owner investigates the destination. Never overwrite or delete the member.
+  - Registry immutability/race policy: obtain authoritative server-policy evidence before claiming
+    protection against a concurrent writer; the terminal client probe cannot prove atomic exclusion.
+  - NuGet ZIP-entry/signing compatibility: fixtures exercise the signing-entry rule; a real signed
+    package-to-retained-asset comparison remains unverified. The owner retains that read-only proof
+    before claiming live compatibility. These fixtures supply no live publication qualification.
 - `tools/publish-release.ps1` writes the cross-family audit record to
   `artifacts/release/publish-summary.json`. The release workflow uploads that aggregate summary and
   its child summaries even on failure, and creates one reconciliation issue for an aggregate

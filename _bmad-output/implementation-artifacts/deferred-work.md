@@ -6067,7 +6067,7 @@ decision: 2026-11-01 keep-open — parked. Reopens only on the trigger: any Prod
   summary: Retain exact prepared package bytes after partial publication failures.
   evidence: Round 3 Blind 7 (medium; pre-existing). Release package upload still requires overall success, as at baseline, while failure evidence uploads only summaries. Owner: Story 30.5 recovery maintainer. Consequence: missing/unpublished prepared package bytes can be lost when the runner disappears, complicating immutable reconciliation. Reopen trigger: Story 30.5 extends failed-release artifact retention.
   status: resolved 2026-11-15
-  resolution: Story 30.5 — `pack-release.ps1` writes hash-bound `package-identity.json` before publication; release failure archives ten nupkgs and five OCI archives plus deployment/evidence into `release-recovery-bundle` (90 days, compression 0). Receipt/hash drift and missing-preparation fixtures pass; incomplete bundles record named unrecoverable reasons. Offline fixtures provide no live NuGet or registry proof.
+  resolution: Story 30.5 — `pack-release.ps1` writes hash-bound `package-identity.json` before publication; release failure archives ten nupkgs and five OCI archives plus deployment/evidence into `release-recovery-bundle` (90 days requested, last recorded repository cap 30 days, compression 0; actual expiry is authoritative). Receipt/hash drift and missing-preparation fixtures pass; incomplete bundles record named unrecoverable reasons. Offline fixtures provide no live NuGet or registry proof.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-3-guarded-release-dispatch-and-shared-caller-adoption.md`
   summary: Include failed GitHub Release and asset completion in aggregate partial-release incident handling.
@@ -6218,10 +6218,10 @@ decision: 2026-11-01 keep-open — parked. Reopens only on the trigger: any Prod
 ## Deferred from: Story 30.5 owner scope decision D3 (2026-11-15)
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-5-partial-release-recovery.md`
-  summary: Open a partial-release incident when a post-tag publication reports publish-failed, and when the GitHub plugin fails after package/image families succeed.
+  summary: Owner decision D3 hands release-path publish-failed incident eligibility to Story 30.6; GitHub-plugin failure is tracked by the existing Story 30.3 Round 3 Blind 8 entry.
   status: open
   target: Story 30.6 release cutover maintainer (Jérôme Piquot).
-  evidence: Owner decision D3 explicitly leaves publish-failed and GitHub-plugin incident alerts out of Story 30.5. `create-partial-publish-issue.ps1` still skips statuses other than partial-publish; the existing all-fail fixture continues to pin that behavior. Recovery can complete the retained release set independently; incident eligibility has not changed. Reopen trigger: Story 30.6 implements release-path incident parity.
+  evidence: Owner decision D3 leaves publish-failed incident alerts out of Story 30.5. `create-partial-publish-issue.ps1` still skips statuses other than partial-publish; the existing all-fail fixture pins that behavior. Consequence: an all-fail post-tag publication may have no incident. Reopen trigger: Story 30.6 implements release-path incident parity. Do not duplicate the separately owned GitHub-plugin failure entry.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-5-partial-release-recovery.md`
   summary: Verify whether an interrupted GitHub CLI release create can leave only the generated recovery packet receipt, then qualify resume from retained recovery-run packet bytes if reachable (unverified medium).
@@ -6231,7 +6231,8 @@ decision: 2026-11-01 keep-open — parked. Reopens only on the trigger: any Prod
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-5-partial-release-recovery.md`
   summary: Require authoritative registry tag-immutability/race evidence for atomic protection against another writer between the terminal recovery probe and skopeo copy.
-  evidence: Review R2 EC1; Story 30.5 moves/repeats the probe after archive materialization, but client-side absence checks cannot provide atomic exclusion. The registry policy remains explicitly unverified from Story 30.4; no settings or live publication are authorized here. Owner Jérôme Piquot; authoritative policy readback or an isolated concurrent-writer registry fixture settles it.
+  status: open
+  evidence: Review R2 EC1; Story 30.5 repeats the authenticated probe after archive materialization, but client-side absence checks cannot provide atomic exclusion. Owner: Jérôme Piquot. Consequence: no server-side race-free no-overwrite guarantee or live registry policy credit is claimed. Reopen trigger: authoritative registry tag-immutability policy readback or an isolated concurrent-writer registry fixture establishes atomic refusal. No settings or live publication are authorized by this story.
 
 ## Deferred from: code review of spec-30-5-partial-release-recovery.md (2026-11-15)
 
@@ -6243,4 +6244,39 @@ decision: 2026-11-01 keep-open — parked. Reopens only on the trigger: any Prod
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-5-partial-release-recovery.md`
   summary: Align the `publish-nuget.ps1` child-summary, `::error` and step-summary guidance with the current Recover Partial Release path.
   evidence: Code review 2026-11-15 (Verification Gap). `tools/publish-nuget.ps1:45-47`, `:91` and `:106` still say "manually reconcile NuGet publication", and `publish_nuget_test.py:472-482` pins that text and asserts "Recover Partial Release" is absent. Story 30.5 changed the aggregate (`publish-release.ps1:196`) and incident guidance, so a current partial publish now carries contradictory guidance in one aggregate summary. `publish-nuget.ps1` is outside the Story 30.5 File Scope. Owner: Jérôme Piquot (Story 30.6 release cutover maintainer). Consequence: operators read contradictory recovery instructions inside one release evidence summary. Reopen trigger: Story 30.6 edits `publish-nuget.ps1` for the D3 `--skip-duplicate` hand-off.
+  status: open
+
+## Deferred from: Story 30.5 remaining prerequisites and validation (2026-11-15)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-30-5-partial-release-recovery.md`
+  summary: Configure the owner-required NuGet recovery Trusted Publishing policy (D1).
+  status: open
+  evidence: Frozen D1 requires policy `Hexalith/Hexalith.Memories/recover-partial-release.yml/production`, with `vars.NUGET_USER`. Owner: Jérôme Piquot. Consequence: absent-package recovery refuses at NuGet/login until the policy exists; image/asset-only recovery can proceed. Reopen trigger: owner configures the policy and an explicitly authorized exact-source recovery login retains successful policy-bound proof. No policy setting or live login was attempted during implementation.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-30-5-partial-release-recovery.md`
+  summary: Verify the NuGet repository-signing ZIP-entry identity rule against real retained and nuget.org-served bytes.
+  status: open
+  evidence: Offline fixtures compare every original ZIP entry and permit only repository `.signature.p7s` addition; they are no live NuGet compatibility proof. Owner: Jérôme Piquot. Consequence: live signing compatibility remains unverified and no live recovery credit is claimed. Reopen trigger: an authorized read-only download comparison of a real retained nupkg with its nuget.org-served counterpart retains exact hashes and entry differences proving the rule; any mismatch requires an owner-reviewed identity decision.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-30-5-partial-release-recovery.md`
+  summary: Reconcile the existing committed Builds gitlink and qualification profile before broad release qualification can pass.
+  status: open
+  evidence: At HEAD 1306a0f84cf78160a192be6bc341798fe32427d4, `git ls-tree HEAD references/Hexalith.Builds` selects e2bbbd0893f586e4d447ef8358ff747ea3d34435; `tools/builds-publication-qualification.json` declares 73e60af8a1fcdf3f06726d5d1b6e1199cce778ee. Neither changed in this run. Exact commands: `run-with-temp python3 -B -m unittest discover -s tests/tooling/release_dispatch -p '*_test.py' -v` reports 16/17 passing, with the pin agreement failure; the same discovery command for `builds_publication_qualification` executes 60 tests with 3 failures/9 errors after the prerequisite failure (70 discoverable). Focused unaffected fallbacks pass 16/16 and 48/48 respectively. Owner: Jérôme Piquot / workspace-release maintainer. Consequence: broad qualification and story completion remain blocked; fixture passes do not authorize publication. Reopen trigger: explicitly authorized identity reconciliation followed by both exact full commands passing and exact-source push CI. The spec at that checkpoint forbade dependency/Builds pin changes in this implementation.
+  local_resolution: 2026-11-15 — Owner decision D4 explicitly authorized reconciling only the qualification profile and current test expectation with existing committed/index/checkout Builds e2bbbd0893f586e4d447ef8358ff747ea3d34435. The two exact full commands now pass under run-with-temp: release_dispatch 17/17 (0.342 seconds), builds_publication_qualification 70/70 (28.896 seconds), both zero skips. Logs: artifacts/partial-release-d4-dispatch.log and artifacts/partial-release-d4-builds.log. Malformed/staged/checkout/helper drift refusals and immutable capture checks all executed. The local mismatch is resolved; this entry stays open for successful exact-source push CI. Owner: Jérôme Piquot / workspace-release maintainer. Consequence: no current clean-source CI qualification or live publication credit until that remaining trigger fires. No gitlink, release execution pin, D2 recovery allowlist, historical capture, setting, commit, push or release changed.
+
+## Deferred from: Story 30.5 independent workflow review R4 (2026-11-15)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-30-5-partial-release-recovery.md`
+  summary: Qualify the recovery temporary NuGet key lifetime against several slow package-validation waits (unverified medium).
+  evidence: R4 BH4. A single NuGet/login precedes recover, and each successful push may wait read-only for up to 600 seconds. Ten near-deadline successful validations could consume about 100 minutes, but no delayed multi-package key-expiry run was supplied. Owner: Jérôme Piquot / release maintainer. Consequence: no slow-validation credential-budget qualification. Reopen trigger: controlled elapsed-time/key-expiry evidence or an explicitly authorized delayed multi-package fixture demonstrates the boundary and selects the appropriate credential/order response. This is separate from the pre-existing release-path preparation lifetime entry; no login policy or credential surface is changed here.
+  status: open
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-30-5-partial-release-recovery.md`
+  summary: Decide and qualify whether live-main validity must be rechecked after switching to the tagged recovery source (unverified medium).
+  evidence: R4 BH7. Current source proofs run before/after production approval and immediately before source switching. No main-advancement-after-switch fixture or continuous-validity policy decision was supplied. Owner: Jérôme Piquot / release maintainer. Consequence: no continuous tip-validity guarantee across later initialization/publication; the exact green dispatched source is still proven at the existing boundaries. Reopen trigger: owner defines the required final boundary and an isolated advance-after-switch fixture demonstrates the expected refusal. No stronger continuous invariant or publication credit is inferred.
+  status: open
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-30-5-partial-release-recovery.md`
+  summary: Measure the supported recovery bundle's peak disk footprint on the GitHub runner (unverified medium).
+  evidence: R4 BH9. Downloaded ZIP, retained bundle, extraction and materialized OCI layouts coexist; the review supplied no supported-size/free-space or ENOSPC execution. Owner: Jérôme Piquot / platform operations. Consequence: runner capacity for a full live release bundle is unqualified. Reopen trigger: measure a supported bundle's peak filesystem usage and runner free space, or reproduce a controlled capacity failure, before selecting cleanup/capacity changes. Offline tiny fixtures are not capacity evidence.
   status: open

@@ -43,6 +43,12 @@ class RegistryState:
 
 def make_handler(state: RegistryState) -> type[BaseHTTPRequestHandler]:
     class RegistryHandler(BaseHTTPRequestHandler):
+        def end_headers(self) -> None:
+            # Advertise this HTTP/1.0 fixture's socket teardown explicitly; a
+            # bodyless 204 can otherwise race the next synchronous DELETE.
+            self.send_header("Connection", "close")
+            super().end_headers()
+
         def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler contract
             state.gets.append(self.path)
             state.get_authorizations.append(self.headers.get("Authorization"))

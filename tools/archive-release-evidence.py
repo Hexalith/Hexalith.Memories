@@ -16,15 +16,7 @@ specification = importlib.util.spec_from_file_location("memories_contract_archiv
 contract = importlib.util.module_from_spec(specification)
 specification.loader.exec_module(contract)
 
-MEMBER_FILES = ("index.raw", "child-linux-amd64.manifest.raw", "child-linux-amd64.config.raw", "child-linux-arm64.manifest.raw", "child-linux-arm64.config.raw", "oci-validation.json", "health.json", "health-amd64.log", "health-arm64.log", "health-run.log", "transport.log", "destination-before-copy.json", "build-deployment.log", "build-oci.log", "runtime-config-parity.json", "smoke-preflight.log", "local/oci-validation.json", "local/index.raw", "local/child-linux-amd64.manifest.raw", "local/child-linux-amd64.config.raw", "local/child-linux-arm64.manifest.raw", "local/child-linux-arm64.config.raw")
-
-
-def required_files(evidence, container_directory, package_directory, summary_directory, deployment_path):
-    paths = [evidence / name for name in ("identity.json", "authorization.json", "archive-compatibility.json", "preflight-verify.log", "preflight-publish.log", "preflight-container.log", "preflight/publication-identity.json", "preflight/publication-preflight.verify.json", "preflight/publication-preflight.publish.json", "preflight/publication-preflight.container.json")]
-    for image in contract.CANONICAL_IMAGES:
-        paths += [evidence / image["name"] / name for name in MEMBER_FILES]
-    paths += [Path("tools/release-containers.json"), Path("tools/release-packages.json"), summary_directory / "package-identity.json", container_directory / "build-summary.json", container_directory / "publish-summary.json", package_directory / "publish-summary.json", summary_directory / "publish-summary.json", deployment_path]
-    return paths
+required_files = contract.ordinary_evidence_files
 
 
 ISO_TIMESTAMP = re.compile(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})")
@@ -294,7 +286,7 @@ def archive(evidence, output, shared, diagnostics=False, **directories):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--evidence-directory", type=Path, default=contract.DEFAULT_EVIDENCE_DIRECTORY)
-    parser.add_argument("--output", type=Path, default=Path("artifacts/release/hexalith-memories-release-evidence.tar.gz"))
+    parser.add_argument("--output", type=Path)
     parser.add_argument("--shared-directory", type=Path, default=Path(".hexalith/builds-execution/Github/publish-containers"))
     parser.add_argument("--diagnostics", action="store_true")
     parser.add_argument("--recovery-bundle", action="store_true")
@@ -303,6 +295,8 @@ def main():
     parser.add_argument("--summary-directory", type=Path, default=Path("artifacts/release"))
     parser.add_argument("--deployment-path", type=Path, default=Path("artifacts/deployment/hexalith-memories-production.yaml"))
     arguments = parser.parse_args()
+    if arguments.output is None:
+        arguments.output = Path("artifacts/release") / ("release-recovery-bundle.tar.gz" if arguments.recovery_bundle else contract.PACKET_NAME)
     try:
         directories = dict(container_directory=arguments.container_directory, package_directory=arguments.package_directory, summary_directory=arguments.summary_directory, deployment_path=arguments.deployment_path)
         if arguments.recovery_bundle:

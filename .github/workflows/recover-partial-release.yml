@@ -22,7 +22,6 @@ permissions:
   contents: read
 
 env:
-  KUBECTL_VERSION: 'v1.35.0'
   RECOVERY_VERSION: ${{ inputs.version }}
   RELEASE_RUN_ID: ${{ inputs.release-run-id }}
 
@@ -30,6 +29,7 @@ jobs:
   release-source:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout dispatched source
         uses: actions/checkout@v7
@@ -49,12 +49,17 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Require production environment approval rule
-        shell: bash
+        run: python3 tools/container-publication-contract.py --phase production-gate --version "$RECOVERY_VERSION" --repository "$GITHUB_REPOSITORY" --evidence-directory artifacts/recovery/protection
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          gh api "repos/${GITHUB_REPOSITORY}/environments/production" --jq '(.protection_rules | any(.[]; .type == "required_reviewers" and (.reviewers | length > 0))) and .deployment_branch_policy != null' | grep -qx true
+      - name: Upload release source refusal evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: partial-release-source-evidence-v${{ inputs.version }}
+          path: artifacts/recovery/protection/**
+          if-no-files-found: warn
+          retention-days: 90
 
   recover:
     needs: release-source
@@ -67,15 +72,13 @@ jobs:
       issues: write
       id-token: write
     env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       HEXALITH_ZOT_REGISTRY: ${{ vars.HEXALITH_ZOT_REGISTRY || 'registry.hexalith.com' }}
-      HEXALITH_ZOT_USERNAME: ${{ secrets.HEXALITH_ZOT_USERNAME }}
-      HEXALITH_ZOT_API_KEY: ${{ secrets.HEXALITH_ZOT_API_KEY }}
     steps:
       - name: Checkout recovery workflow source
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
           submodules: false
       - name: Checkout approved Builds source proof
         uses: actions/checkout@v7
@@ -90,48 +93,49 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Recheck production protection readback
-        shell: bash
-        run: |
-          set -euo pipefail
-          gh api "repos/${GITHUB_REPOSITORY}/environments/production" --jq '(.protection_rules | any(.[]; .type == "required_reviewers" and (.reviewers | length > 0))) and .deployment_branch_policy != null' | grep -qx true
+        run: python3 tools/container-publication-contract.py --phase production-gate --version "$RECOVERY_VERSION" --repository "$GITHUB_REPOSITORY" --evidence-directory artifacts/recovery/protection
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Resolve trusted release source and failed run
         id: source
         shell: bash
         run: |
           set -euo pipefail
-          [[ "$RECOVERY_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
-          [[ "$RELEASE_RUN_ID" =~ ^[1-9][0-9]*$ ]]
-          git show-ref --verify --quiet "refs/tags/v$RECOVERY_VERSION"
+          [[ "$RECOVERY_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "::error::Invalid recovery version."; exit 1; }
+          [[ "$RELEASE_RUN_ID" =~ ^[1-9][0-9]*$ ]] || { echo "::error::Invalid failed release run ID."; exit 1; }
+          git show-ref --verify --quiet "refs/tags/v$RECOVERY_VERSION" || { echo "::error::Recovery tag is missing."; exit 1; }
           tag_commit="$(git rev-list -n 1 "refs/tags/v$RECOVERY_VERSION")"
-          git merge-base --is-ancestor "$tag_commit" origin/main
+          git merge-base --is-ancestor "$tag_commit" origin/main || { echo "::error::Recovery tag is outside main history."; exit 1; }
           mkdir -p artifacts/recovery
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RELEASE_RUN_ID" > artifacts/recovery/failed-run.json
-          python3 - "$tag_commit" <<'PY'
-          import json, os, sys
-          run = json.load(open('artifacts/recovery/failed-run.json'))
-          assert run['id'] == int(os.environ['RELEASE_RUN_ID'])
-          assert run['repository']['full_name'] == os.environ['GITHUB_REPOSITORY']
-          assert run['path'] == '.github/workflows/release.yml'
-          assert run['status'] == 'completed' and run['conclusion'] == 'failure'
-          assert run['head_sha'] == sys.argv[1]
-          assert isinstance(run.get('run_attempt'), int) and run['run_attempt'] > 0
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-              output.write(f"attempt={run['run_attempt']}\n")
-          PY
+          python3 tools/container-publication-contract.py --phase failed-run-gate --version "$RECOVERY_VERSION" --release-run-id "$RELEASE_RUN_ID" --tag-commit "$tag_commit" --repository "$GITHUB_REPOSITORY" --evidence-directory artifacts/recovery
           echo "commit=$tag_commit" >> "$GITHUB_OUTPUT"
           if git cat-file -e "$tag_commit:tools/release-containers.json" 2>/dev/null; then
             echo 'current=true' >> "$GITHUB_OUTPUT"
           else
             echo 'current=false' >> "$GITHUB_OUTPUT"
           fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Initialize dispatched .NET for trusted fixtures
         uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@main
         with:
           global-json-file: global.json
+      - name: Expose approved Builds catalog for trusted fixtures
+        id: fixture-catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p references
+          if [[ -d references/Hexalith.Builds ]]; then rmdir references/Hexalith.Builds; fi
+          ln -s "$GITHUB_WORKSPACE/.hexalith/builds-source-proof" references/Hexalith.Builds
       - name: Validate trusted recovery tooling
         run: python3 -B -m unittest discover -s tests/tooling/publish_containers -p '*_test.py'
         env:
           MEMORIES_BUILDS_FIXTURE_CHECKOUT: ${{ github.workspace }}/.hexalith/builds-source-proof
+      - name: Remove trusted fixture catalog alias
+        if: always() && steps.fixture-catalog.outcome == 'success'
+        shell: bash
+        run: unlink references/Hexalith.Builds
       - name: Stage trusted recovery tooling
         id: recovery-tooling
         shell: pwsh
@@ -147,28 +151,9 @@ jobs:
           "path=$toolingPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
       - name: Download hash-bound failed-run recovery artifact
         if: steps.source.outputs.current == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RELEASE_RUN_ID/artifacts?per_page=100" > artifacts/recovery/artifacts.json
-          python3 - <<'PY'
-          import json, os, pathlib, subprocess, hashlib, zipfile
-          artifacts = [a for a in json.load(open('artifacts/recovery/artifacts.json'))['artifacts'] if a['name'] == 'release-recovery-bundle' and not a['expired']]
-          if len(artifacts) != 1:
-              raise SystemExit('Recovery bundle missing/expired or ambiguous; only failures retaining pre-publication bytes can recover. Owner: Jérôme Piquot.')
-          artifact = artifacts[0]
-          path = pathlib.Path('artifacts/recovery/bundle.zip')
-          with path.open('wb') as target:
-              subprocess.run(['gh', 'api', f"repos/{os.environ['GITHUB_REPOSITORY']}/actions/artifacts/{artifact['id']}/zip"], stdout=target, check=True)
-          if artifact.get('digest') != 'sha256:' + hashlib.file_digest(path.open('rb'), 'sha256').hexdigest():
-              raise SystemExit('Failed-run artifact digest mismatch or missing digest.')
-          with zipfile.ZipFile(path) as archive:
-              names = archive.namelist()
-              expected = {'release-recovery-bundle.tar.gz', 'release-recovery-bundle.tar.gz.sha256.json'}
-              if len(names) != 2 or set(names) != expected:
-                  raise SystemExit('Unexpected recovery artifact inventory.')
-              archive.extractall('artifacts/recovery/bundle')
-          PY
+        run: python3 '${{ steps.recovery-tooling.outputs.path }}/container-publication-contract.py' --phase download-bundle --version "$RECOVERY_VERSION" --release-run-id "$RELEASE_RUN_ID" --repository "$GITHUB_REPOSITORY" --evidence-directory artifacts/recovery
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Reprove dispatched main immediately before recovery source switch
         run: python3 tools/check-release-source.py --shared-directory .hexalith/builds-source-proof/Github/publish-containers
         env:
@@ -186,13 +171,15 @@ jobs:
         if: steps.source.outputs.current == 'true'
         uses: azure/setup-kubectl@v4
         with:
-          version: ${{ env.KUBECTL_VERSION }}
+          version: ${{ steps.source.outputs.kubectl-version }}
       - name: Verify offline recovery bundle bindings
         if: steps.source.outputs.current == 'true'
         id: metadata
         shell: bash
         run: |
           python3 '${{ steps.recovery-tooling.outputs.path }}/container-publication-contract.py' --phase recovery-metadata --version "$RECOVERY_VERSION" --registry "$HEXALITH_ZOT_REGISTRY" --source-root "$GITHUB_WORKSPACE" --release-run-id "$RELEASE_RUN_ID" --release-run-attempt '${{ steps.source.outputs.attempt }}' --recovery-bundle artifacts/recovery/bundle/release-recovery-bundle.tar.gz --evidence-directory artifacts/recovery/current
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Checkout recorded approved recovery helpers
         if: steps.source.outputs.current == 'true'
         uses: actions/checkout@v7
@@ -226,11 +213,19 @@ jobs:
         shell: pwsh
         run: |
           & '${{ steps.recovery-tooling.outputs.path }}/complete-partial-release.ps1' -Version $env:RECOVERY_VERSION -SourceRoot $env:GITHUB_WORKSPACE -RecoveryBundle artifacts/recovery/bundle/release-recovery-bundle.tar.gz -ReleaseRunId $env:RELEASE_RUN_ID -OutputDirectory artifacts/recovery/current
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEXALITH_ZOT_USERNAME: ${{ secrets.HEXALITH_ZOT_USERNAME }}
+          HEXALITH_ZOT_API_KEY: ${{ secrets.HEXALITH_ZOT_API_KEY }}
       - name: Recover retained missing images and verify health
         if: steps.source.outputs.current == 'true'
         shell: bash
         run: |
           python3 '${{ steps.recovery-tooling.outputs.path }}/container-publication-contract.py' --phase recover-images --version "$RECOVERY_VERSION" --registry "$HEXALITH_ZOT_REGISTRY" --source-root "$GITHUB_WORKSPACE" --release-run-id "$RELEASE_RUN_ID" --recovery-bundle artifacts/recovery/bundle/release-recovery-bundle.tar.gz --evidence-directory artifacts/recovery/current
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEXALITH_ZOT_USERNAME: ${{ secrets.HEXALITH_ZOT_USERNAME }}
+          HEXALITH_ZOT_API_KEY: ${{ secrets.HEXALITH_ZOT_API_KEY }}
       - name: Exchange recovery OIDC token for a temporary NuGet key
         if: steps.source.outputs.current == 'true' && steps.plan.outputs.absent-packages != '0'
         id: nuget-login
@@ -247,6 +242,9 @@ jobs:
           & '${{ steps.recovery-tooling.outputs.path }}/complete-partial-release.ps1' -Version $env:RECOVERY_VERSION -SourceRoot $env:GITHUB_WORKSPACE -RecoveryBundle artifacts/recovery/bundle/release-recovery-bundle.tar.gz -ReleaseRunId $env:RELEASE_RUN_ID -OutputDirectory artifacts/recovery/current -Publish
         env:
           NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEXALITH_ZOT_USERNAME: ${{ secrets.HEXALITH_ZOT_USERNAME }}
+          HEXALITH_ZOT_API_KEY: ${{ secrets.HEXALITH_ZOT_API_KEY }}
       - name: Initialize historical build submodules
         if: steps.source.outputs.current == 'false'
         uses: Hexalith/Hexalith.Builds/Github/initialize-build@main
@@ -260,26 +258,15 @@ jobs:
         id: historical
         shell: pwsh
         run: |
-          $inventory = Get-Content tools/release-packages.json -Raw | ConvertFrom-Json
-          $shapes = @($inventory.packages | ForEach-Object {
-            $hasId = $null -ne $_.PSObject.Properties['id']
-            $hasPackageId = $null -ne $_.PSObject.Properties['packageId']
-            if ($hasId -eq $hasPackageId) { throw 'Historical package entries require exactly one ID field.' }
-            if ($hasId) { 'id' } else { 'packageId' }
-          } | Select-Object -Unique)
-          if ($shapes.Count -ne 1 -or $shapes[0] -cne 'packageId') { throw 'Unsupported historical manifest shape; refusing before -Push.' }
-          $ids = @($inventory.packages | ForEach-Object { if ($_.id) { $_.id } else { $_.packageId } })
-          $expected = @((Get-Content '${{ steps.recovery-tooling.outputs.path }}/release-packages.json' -Raw | ConvertFrom-Json).packages.id | Where-Object { $_ -ne 'Hexalith.Memories.EventStoreExtensions' })
-          if ($ids.Count -ne 9 -or (Compare-Object $expected $ids -CaseSensitive)) { throw 'Unsupported historical package set; refusing before -Push.' }
-          $projects = @(@{ project='Hexalith.Memories.Server'; repository='memories' }, @{ project='Hexalith.Memories.Mcp'; repository='memories-mcp' }, @{ project='Hexalith.Memories.AccessTelemetry'; repository='memories-access-telemetry' }, @{ project='Hexalith.Memories.AccessTelemetry.Clock'; repository='memories-access-telemetry-clock' }, @{ project='Hexalith.Memories.DomainService'; repository='memories-domain-service' })
-          $repositories = @($projects | Where-Object { Test-Path "src/$($_.project)/$($_.project).csproj" } | ForEach-Object { $_.repository })
-          if ($repositories.Count -notin @(2,4) -or 'memories' -notin $repositories -or 'memories-mcp' -notin $repositories -or 'memories-domain-service' -in $repositories) { throw 'Unsupported historical image set; refusing before -Push.' }
-          "repositories=$($repositories -join ',')" | Out-File $env:GITHUB_OUTPUT -Append
+          & '${{ steps.recovery-tooling.outputs.path }}/publish-containers.ps1' -RepositoryRoot $env:GITHUB_WORKSPACE -Version $env:RECOVERY_VERSION -HistoricalInventory
       - name: Verify container registry write scope
         if: steps.source.outputs.current == 'false'
         shell: pwsh
         run: |
           & '${{ steps.recovery-tooling.outputs.path }}/verify-container-registry.ps1' -Repositories ('${{ steps.historical.outputs.repositories }}'.Split(','))
+        env:
+          HEXALITH_ZOT_USERNAME: ${{ secrets.HEXALITH_ZOT_USERNAME }}
+          HEXALITH_ZOT_API_KEY: ${{ secrets.HEXALITH_ZOT_API_KEY }}
       - name: Restore tagged source
         if: steps.source.outputs.current == 'false'
         run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904
@@ -287,17 +274,22 @@ jobs:
         if: steps.source.outputs.current == 'false'
         shell: pwsh
         run: |
-          & '${{ steps.recovery-tooling.outputs.path }}/publish-containers.ps1' -RepositoryRoot $env:GITHUB_WORKSPACE -Version $env:RECOVERY_VERSION
+          & '${{ steps.recovery-tooling.outputs.path }}/publish-containers.ps1' -RepositoryRoot $env:GITHUB_WORKSPACE -Version $env:RECOVERY_VERSION -Repositories ('${{ steps.historical.outputs.repositories }}'.Split(','))
       - name: Reconcile immutable container tags
         if: steps.source.outputs.current == 'false'
         shell: pwsh
         run: |
-          & '${{ steps.recovery-tooling.outputs.path }}/publish-containers.ps1' -RepositoryRoot $env:GITHUB_WORKSPACE -Version $env:RECOVERY_VERSION -Push
+          & '${{ steps.recovery-tooling.outputs.path }}/publish-containers.ps1' -RepositoryRoot $env:GITHUB_WORKSPACE -Version $env:RECOVERY_VERSION -Repositories ('${{ steps.historical.outputs.repositories }}'.Split(',')) -Push
+        env:
+          HEXALITH_ZOT_USERNAME: ${{ secrets.HEXALITH_ZOT_USERNAME }}
+          HEXALITH_ZOT_API_KEY: ${{ secrets.HEXALITH_ZOT_API_KEY }}
       - name: Complete GitHub Release and incident recovery
         if: steps.source.outputs.current == 'false'
         shell: pwsh
         run: |
           & '${{ steps.recovery-tooling.outputs.path }}/complete-partial-release.ps1' -Version $env:RECOVERY_VERSION -SourceRoot $env:GITHUB_WORKSPACE -ContainerSummaryPath artifacts/containers/release/publish-summary.json -DeploymentPath artifacts/containers/release/production-deployment.yaml -OutputDirectory artifacts/recovery/historical -Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload container recovery evidence
         if: always()
         uses: actions/upload-artifact@v7
@@ -305,6 +297,8 @@ jobs:
           name: partial-release-completion-v${{ inputs.version }}
           path: |
             artifacts/recovery/**
+            !artifacts/recovery/bundle.zip
+            !artifacts/recovery/bundle/**
             artifacts/containers/release/build-summary.json
             artifacts/containers/release/publish-summary.json
             artifacts/containers/release/production-deployment.yaml

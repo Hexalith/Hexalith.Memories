@@ -258,6 +258,7 @@ class ReleaseOrchestrationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             env, log_path = make_environment(root, nuget_status="publish-failed", container_status="succeeded")
+            env["GITHUB_RUN_ID"] = "304"
             package_directory = root / "packages"
             container_directory = root / "containers"
             summary_directory = root / "release"
@@ -288,6 +289,7 @@ class ReleaseOrchestrationTests(unittest.TestCase):
             self.assertTrue(any("NuGet packages" in failure["package"] for failure in summary["failed"]))
             self.assertIn("dispatch Recover Partial Release from main with version", summary["recovery"])
             self.assertIn("release-run-id", summary["recovery"])
+            self.assertIn(f"version {VERSION} and release-run-id 304", summary["recovery"])
             self.assertIn("production approval", summary["recovery"])
 
     def test_publish_release_requires_both_families_for_success(self) -> None:

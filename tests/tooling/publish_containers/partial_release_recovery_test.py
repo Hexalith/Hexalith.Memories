@@ -7,6 +7,8 @@ import io
 import json
 import os
 from pathlib import Path
+import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -16,6 +18,7 @@ import threading
 import unittest
 from unittest import mock
 import urllib.error
+import urllib.request
 import zipfile
 
 import publication_contract_test as fixtures
@@ -36,13 +39,27 @@ def package_bytes(package_id, signed=False, content='retained'):
 
 class NuGet:
     def __init__(self):
-        self.packages, self.statuses = {}, {}
+        self.packages, self.statuses, self.requests, self.pending, self.redirects = {}, {}, [], {}, {}
         owner = self
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):
+                owner.requests.append(self.path)
                 package_id = self.path.split('/')[1]
+                expected = f'/{package_id}/{fixtures.VERSION}/{package_id}.{fixtures.VERSION}.nupkg'
+                if self.path != expected or package_id != package_id.lower():
+                    self.send_error(404, 'Unknown flat-container path')
+                    return
+                if package_id in owner.pending:
+                    count, data = owner.pending[package_id]
+                    if count == 0:
+                        owner.packages[package_id] = data
+                        del owner.pending[package_id]
+                    else:
+                        owner.pending[package_id] = (count - 1, data)
                 status = owner.statuses.get(package_id, 200 if package_id in owner.packages else 404)
                 self.send_response(status)
+                if status == 302 and package_id in owner.redirects:
+                    self.send_header('Location', owner.redirects[package_id])
                 self.end_headers()
                 if status == 200:
                     self.wfile.write(owner.packages[package_id])
@@ -96,7 +113,7 @@ class PartialReleaseRecoveryTests(unittest.TestCase):
         self.nuget = NuGet()
         self.addCleanup(self.nuget.close)
         self.output = self.root / 'recovery'
-        self.arguments = SimpleNamespace(evidence_directory=self.output, version=fixtures.VERSION, registry='registry.test', release_run_id='304', recovery_bundle=self.bundle, source_root=self.root, repository='Hexalith/Hexalith.Memories', shared_directory=self.f.shared, nuget_base_uri=self.nuget.url, skopeo_command='skopeo', phase='recover')
+        self.arguments = SimpleNamespace(evidence_directory=self.output, version=fixtures.VERSION, registry='registry.test', release_run_id='304', recovery_bundle=self.bundle, source_root=self.root, repository='Hexalith/Hexalith.Memories', shared_directory=self.f.shared, nuget_base_uri=self.nuget.url, skopeo_command='skopeo', phase='recover', nuget_validation_timeout=0)
         self.assets, self.writes = {}, []
         self.release, self.draft, self.issue = False, False, True
         self.registry_status = None
@@ -106,6 +123,8 @@ class PartialReleaseRecoveryTests(unittest.TestCase):
         self.interrupted_release = False
         self.interrupted_create = False
         self.downloads = 0
+        self.listed_issues = None
+        self.unobservable_draft = False
         self.failed_run = {'id': 304, 'run_attempt': 1, 'head_sha': fixtures.SOURCE_SHA, 'path': '.github/workflows/release.yml', 'conclusion': 'failure', 'status': 'completed', 'repository': {'full_name': 'Hexalith/Hexalith.Memories'}}
 
     def rebundle(self):
@@ -184,10 +203,15 @@ class PartialReleaseRecoveryTests(unittest.TestCase):
                                 raise ValueError('fixture timeout after immutable Release asset PUT')
                 elif action == 'edit':
                     self.mark_write(args)
+                    self.assertIn('--latest=false', args)
                     self.draft = False
                 else:
                     raise AssertionError(args)
             elif args[:3] == ['gh', 'issue', 'list']:
+                self.assertEqual('1000', args[args.index('--limit') + 1])
+                self.assertEqual(f'in:title "PARTIAL PUBLISH {fixtures.VERSION} - manual reconciliation required"', args[args.index('--search') + 1])
+                if self.listed_issues is not None:
+                    return json.dumps(self.listed_issues)
                 return json.dumps([{'number': 32, 'title': f'PARTIAL PUBLISH {fixtures.VERSION} - manual reconciliation required'}] if self.issue else [])
             elif args[:3] in (['gh', 'issue', 'comment'], ['gh', 'issue', 'close']):
                 self.mark_write(args)
@@ -203,7 +227,8 @@ class PartialReleaseRecoveryTests(unittest.TestCase):
         original_run = C.subprocess.run
         def native(command, **kwargs):
             if command[:3] == ['gh', 'release', 'view']:
-                return SimpleNamespace(returncode=0 if self.release else 1, stdout=json.dumps({'tagName': 'v' + fixtures.VERSION, 'isDraft': self.draft, 'isPrerelease': False, 'assets': [{'name': n} for n in self.assets]}) if self.release else '', stderr='' if self.release else 'release not found')
+                visible = self.release and not self.unobservable_draft
+                return SimpleNamespace(returncode=0 if visible else 1, stdout=json.dumps({'tagName': 'v' + fixtures.VERSION, 'isDraft': self.draft, 'isPrerelease': False, 'assets': [{'name': n} for n in self.assets]}) if visible else '', stderr='' if visible else 'release not found')
             return original_run(command, **kwargs)
         def probe(_kind, repository, version):
             return self.registry_status or (200 if f'{repository}:{version}' in self.f.remote_graphs else 404)
@@ -452,6 +477,70 @@ class PartialReleaseRecoveryTests(unittest.TestCase):
                 self.assertEqual(13, len(self.assets))
                 self.assertTrue((self.output / 'recovery-results.json').is_file())
 
+    def test_ordinary_packet_refuses_each_missing_producer_record_after_consistent_rehash(self):
+        packet, _ = self.ordinary_packet()
+        with tarfile.open(fileobj=io.BytesIO(packet)) as archive:
+            originals = {member.name: archive.extractfile(member).read() for member in archive}
+        document = json.loads(originals['evidence-manifest.json'])
+        required = {path.relative_to(self.root).as_posix() if path.is_absolute() else path.as_posix()
+                    for path in A.required_files(self.f.evidence, self.f.output, self.root / 'artifacts/packages/release', self.root / 'artifacts/release', self.deployment)}
+        required.add('artifacts/containers/release/production-deployment.yaml')
+        self.assertEqual(129, len(required))
+        authorization = 'artifacts/release/container-evidence/authorization.json'
+        self.assertIn(authorization, required)
+        changed = self.root / 'changed-ordinary.tar.gz'
+        def without_record(name):
+            files = {key: value for key, value in originals.items() if key not in (name, 'evidence-manifest.json')}
+            manifest = dict(document, files=[entry for entry in document['files'] if entry['path'] != name])
+            files['evidence-manifest.json'] = C.canonical(manifest) + b'\n'
+            fixtures.tar_bytes(changed, files)
+            return changed.read_bytes(), C.canonical({'path': C.PACKET_NAME, 'sha256': C.sha256(changed), 'result': 'pass'})
+        for name in sorted(required):
+            data, receipt = without_record(name)
+            with self.subTest(missing=name), self.assertRaisesRegex(ValueError, 'incomplete|release identity'):
+                C.validate_ordinary_packet(data, receipt, self.f.identity, self.root)
+        data, receipt = without_record(authorization)
+        path = self.root / 'artifacts/release' / C.PACKET_NAME
+        path.write_bytes(data)
+        path.with_suffix(path.suffix + '.sha256.json').write_bytes(receipt)
+        self.rebundle()
+        self.present_packages()
+        self.release, self.draft = True, True
+        self.assets = {C.PACKET_NAME: data, C.PACKET_NAME + '.sha256.json': receipt}
+        with self.assertRaisesRegex(ValueError, 'incomplete'):
+            self.complete()
+        self.assertEqual([], self.writes)
+        self.assertEqual({C.PACKET_NAME: data, C.PACKET_NAME + '.sha256.json': receipt}, self.assets)
+
+    def test_recovery_bundle_cli_default_preserves_ordinary_packet_and_explicit_outputs(self):
+        packet, receipt = self.ordinary_packet()
+        ordinary = self.root / 'artifacts/release' / C.PACKET_NAME
+        ordinary_receipt = ordinary.with_suffix(ordinary.suffix + '.sha256.json')
+        def invoke(*arguments):
+            result = subprocess.run([sys.executable, str(fixtures.ROOT / 'tools/archive-release-evidence.py'), *arguments], cwd=self.root, capture_output=True, text=True, timeout=120)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        invoke('--recovery-bundle')
+        recovery = ordinary.with_name('release-recovery-bundle.tar.gz')
+        recovery_receipt = recovery.with_suffix(recovery.suffix + '.sha256.json')
+        self.assertEqual('recoverable', C.read_json(recovery_receipt)['result'])
+        recovery_bytes = recovery.read_bytes(), recovery_receipt.read_bytes()
+        explicit = self.root / 'explicit-recovery.tar.gz'
+        invoke('--recovery-bundle', '--output', str(explicit))
+        self.assertEqual('recoverable', C.read_json(explicit.with_suffix('.gz.sha256.json'))['result'])
+        self.assertEqual((packet, receipt), (ordinary.read_bytes(), ordinary_receipt.read_bytes()))
+        self.assertEqual(recovery_bytes, (recovery.read_bytes(), recovery_receipt.read_bytes()))
+        with tarfile.open(recovery) as archive:
+            self.assertEqual(packet, archive.extractfile('artifacts/release/' + C.PACKET_NAME).read())
+            self.assertEqual(receipt, archive.extractfile('artifacts/release/' + C.PACKET_NAME + '.sha256.json').read())
+        invoke('--diagnostics')
+        self.assertEqual({'path': C.PACKET_NAME, 'sha256': C.sha256(ordinary), 'result': 'diagnostic-only'}, C.read_json(ordinary_receipt))
+        normal_bytes = ordinary.read_bytes(), ordinary_receipt.read_bytes()
+        explicit = self.root / 'explicit-ordinary.tar.gz'
+        invoke('--diagnostics', '--output', str(explicit))
+        self.assertEqual('diagnostic-only', C.read_json(explicit.with_suffix('.gz.sha256.json'))['result'])
+        self.assertEqual(normal_bytes, (ordinary.read_bytes(), ordinary_receipt.read_bytes()))
+        self.assertEqual(recovery_bytes, (recovery.read_bytes(), recovery_receipt.read_bytes()))
+
     def test_malformed_or_comment_only_deployment_refuses_before_destination_writes(self):
         for text in ('kind: [invalid YAML\n', '\n'.join('# registry.test/' + image['repository'] + ':' + fixtures.VERSION for image in C.CANONICAL_IMAGES[:4])):
             self.deployment.write_text(text)
@@ -529,7 +618,15 @@ class PartialReleaseRecoveryTests(unittest.TestCase):
         self.assertEqual('absent', attempt['classification'])
         self.assertIn('409', attempt['error'])
         self.push_error = 'fixture timeout during NuGet push'
-        with self.assertRaisesRegex(ValueError, 'timeout'):
+        writes = len(self.writes)
+        with self.assertRaisesRegex(ValueError, 'Prior NuGet package-push attempt remains unresolved'):
+            self.complete()
+        self.assertEqual(writes, len(self.writes))
+        self.assertTrue(C.read_json(self.output / 'completion-summary.json')['sideEffects'][-1]['uncertain'])
+        # Preserve the first-attempt transport-timeout control in its own bound directory.
+        self.output = self.root / 'timeout-recovery'
+        self.arguments.evidence_directory = self.output
+        with self.assertRaisesRegex(ValueError, 'timeout during NuGet push'):
             self.complete()
         self.assertTrue(C.read_json(self.output / 'completion-summary.json')['sideEffects'][-1]['uncertain'])
 
@@ -609,12 +706,28 @@ class PartialReleaseRecoveryTests(unittest.TestCase):
                     self.complete()
                 self.assertEqual([], self.writes)
         self.registry_status = None
+        target = NuGet()
+        self.addCleanup(target.close)
+        package_id = self.ids[0].lower()
+        route = f'/{package_id}/{fixtures.VERSION}/{package_id}.{fixtures.VERSION}.nupkg'
+        target.packages[package_id] = self.nuget.packages[package_id]
+        self.nuget.redirects[package_id] = target.url + route
+        self.nuget.statuses[package_id] = 302
+        # Positive control: the Location really follows to an identical package
+        # with the default opener, so accepting redirects would mask ambiguity.
+        with urllib.request.urlopen(self.nuget.url + route) as response:
+            self.assertEqual(target.packages[package_id], response.read())
+        self.assertEqual([route], target.requests)
+        target.requests.clear()
+        original_packages = dict(self.nuget.packages)
         for status in (302, 401, 403, 503):
             with self.subTest(nuget=status):
                 self.nuget.statuses[self.ids[0].lower()] = status
                 with self.assertRaisesRegex(ValueError, 'ambiguous'):
                     self.complete()
                 self.assertEqual([], self.writes)
+                self.assertEqual([], target.requests)
+                self.assertEqual(original_packages, self.nuget.packages)
         self.nuget.statuses.clear()
         with mock.patch.object(C, 'open_package', side_effect=TimeoutError('fixture timeout')), self.assertRaisesRegex(ValueError, 'ambiguous'):
             self.complete()
@@ -632,13 +745,29 @@ class PartialReleaseRecoveryTests(unittest.TestCase):
 
     def test_pending_flat_container_after_successful_push_has_no_completion_credit(self):
         self.present_images()
-        self.present_packages(9)
-        self.delayed_package = self.ids[-1]
-        with self.assertRaisesRegex(ValueError, 'Final fifteen-member verification'):
+        self.delayed_package = C.read_json(self.root / 'artifacts/release/package-identity.json')['packages'][0]['id']
+        with self.assertRaisesRegex(ValueError, 'NuGet validation deadline/readback'):
             self.complete()
         self.assertFalse(self.release)
         self.assertEqual('failed', C.read_json(self.output / 'completion-summary.json')['status'])
         self.assertTrue(C.read_json(self.output / 'completion-summary.json')['sideEffects'][-1]['uncertain'])
+        self.assertEqual(1, sum(write[:3] == ['dotnet', 'nuget', 'push'] for write in self.writes))
+
+    def test_unresolved_package_push_refuses_retry_until_positive_identical_readback(self):
+        self.present_images()
+        self.delayed_package = C.read_json(self.root / 'artifacts/release/package-identity.json')['packages'][0]['id']
+        with self.assertRaisesRegex(ValueError, 'NuGet validation deadline/readback'):
+            self.complete()
+        self.writes.clear()
+        with self.assertRaisesRegex(ValueError, 'Prior NuGet package-push attempt remains unresolved'):
+            self.complete()
+        self.assertEqual([], self.writes)
+        self.nuget.packages[self.delayed_package.lower()] = package_bytes(self.delayed_package, signed=True)
+        self.delayed_package = None
+        self.complete()
+        self.assertEqual(9, sum(write[:3] == ['dotnet', 'nuget', 'push'] for write in self.writes))
+        attempts = C.read_json(self.output / 'completion-summary.json')['sideEffects']
+        self.assertTrue(all(attempt['verified'] and not attempt['uncertain'] for attempt in attempts))
 
     def test_copy_failure_after_manifest_put_is_reconciled_by_read_only_graph_on_rerun(self):
         self.present_packages()
@@ -681,7 +810,7 @@ class PartialReleaseRecoveryTests(unittest.TestCase):
         original = deepcopy(self.f.identity)
         for label, mutate in (
             ('set digest', lambda i: i.update(setSha256='f' * 64)),
-            ('source', lambda i: i.update(sourceSha='f' * 40)),
+            ('source', lambda i: i.update(sourceSha='f' * 40, workflowSha='f' * 40)),
             ('version', lambda i: i.update(version='9.9.9')),
             ('images', lambda i: i['images'].pop()),
             ('builds', lambda i: i.update(buildsSha='f' * 40)),
@@ -690,12 +819,22 @@ class PartialReleaseRecoveryTests(unittest.TestCase):
             mutate(changed)
             if label != 'set digest':
                 changed['setSha256'] = hashlib.sha256(C.canonical({k: v for k, v in changed.items() if k != 'setSha256'})).hexdigest()
-            C.write_json(self.f.evidence / 'identity.json', changed)
-            with fixtures.working_directory(self.root):
-                A.archive_recovery_bundle(self.f.evidence, self.bundle, self.f.output, self.root / 'artifacts/packages/release', self.root / 'artifacts/release', self.deployment)
+            # Preserve a recoverable outer receipt and every file hash, so these
+            # mutations exercise the consumer's frozen/bundle bindings.
+            with tarfile.open(self.bundle) as archive:
+                files = {member.name: archive.extractfile(member).read() for member in archive}
+            manifest = json.loads(files.pop('recovery-manifest.json'))
+            files['artifacts/release/container-evidence/identity.json'] = C.canonical(changed)
+            manifest['files'] = [{'path': name, 'size': len(data), 'sha256': hashlib.sha256(data).hexdigest()} for name, data in sorted(files.items())]
+            files['recovery-manifest.json'] = C.canonical(manifest)
+            fixtures.tar_bytes(self.bundle, files)
+            C.write_json(self.bundle.with_suffix(self.bundle.suffix + '.sha256.json'), {'path': self.bundle.name, 'sha256': C.sha256(self.bundle), 'result': 'recoverable'})
             with self.subTest(drift=label), self.assertRaises((ValueError, FileNotFoundError)):
                 self.complete()
+            self.assertNotIn('receipt', C.read_json(self.output / 'completion-summary.json')['error'])
+            self.assertIn('Bundle version/source/set' if label in ('source', 'version') else 'Frozen identity', C.read_json(self.output / 'completion-summary.json')['error'])
             self.assertEqual([], self.writes)
+            self.rebundle()
         C.write_json(self.f.evidence / 'identity.json', original)
         self.rebundle()
         self.failed_run['head_sha'] = 'f' * 40
@@ -705,6 +844,281 @@ class PartialReleaseRecoveryTests(unittest.TestCase):
         self.bundle.write_bytes(self.bundle.read_bytes() + b'tamper')
         with self.assertRaisesRegex(ValueError, 'receipt'):
             self.complete()
+        self.assertEqual([], self.writes)
+
+    def test_workflow_metadata_and_image_phases_execute_without_package_credentials(self):
+        self.present_packages(4)
+        self.present_images(3)
+        github_output = self.root / 'phase-output.txt'
+        base = ['contract', '--version', fixtures.VERSION, '--registry', 'registry.test', '--release-run-id', '304', '--release-run-attempt', '1', '--source-root', str(self.root), '--recovery-bundle', str(self.bundle), '--shared-directory', str(self.f.shared), '--evidence-directory', str(self.output), '--nuget-base-uri', self.nuget.url]
+        with self.boundary(), mock.patch.dict(os.environ, {'GITHUB_OUTPUT': str(github_output), 'NUGET_API_KEY': ''}):
+            with mock.patch.object(C, 'load_shared', side_effect=AssertionError('metadata must not load helpers')), mock.patch.object(sys, 'argv', base + ['--phase', 'recovery-metadata']):
+                self.assertEqual(0, C.main())
+            self.assertIn('builds-sha=' + C.APPROVED_BUILDS_SHA, github_output.read_text())
+            self.arguments.phase = 'recovery-plan'
+            C.current_completion(self.arguments)
+            plan = (self.output / 'recovery-plan.json').read_bytes()
+            with mock.patch.object(sys, 'argv', base + ['--phase', 'recover-images']):
+                self.assertEqual(0, C.main())
+            self.assertEqual('images-verified', C.read_json(self.output / 'completion-summary.json')['status'])
+            self.assertEqual(plan, (self.output / 'recovery-plan.json').read_bytes())
+            self.assertEqual(2, sum(write[0] == 'skopeo' for write in self.writes))
+            self.assertFalse(any(write[0] in ('dotnet', 'gh') for write in self.writes))
+
+    def test_fresh_checkout_exposes_approved_catalog_for_real_msbuild_then_removes_alias(self):
+        fresh = self.root / 'fresh-checkout'
+        fresh.mkdir()
+        for filename in ('global.json', 'Directory.Build.props', 'Directory.Build.targets', 'Directory.Packages.props'):
+            shutil.copyfile(fixtures.ROOT / filename, fresh / filename)
+        image = C.CANONICAL_IMAGES[0]
+        project = fresh / image['project']
+        project.parent.mkdir(parents=True)
+        shutil.copyfile(fixtures.ROOT / image['project'], project)
+        for target in (fixtures.ROOT / image['project']).parent.glob('*.targets'):
+            shutil.copyfile(target, project.parent / target.name)
+        approved = fixtures.approved_builds_checkout()
+        catalog = fresh / '.hexalith/builds-source-proof'
+        files = subprocess.check_output(['git', '-C', str(approved), 'ls-tree', '-r', '--name-only', C.APPROVED_BUILDS_SHA, '--', 'Props'], text=True).splitlines()
+        for name in files:
+            path = catalog / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(subprocess.check_output(['git', '-C', str(approved), 'show', f'{C.APPROVED_BUILDS_SHA}:{name}']))
+        (fresh / 'references/Hexalith.Builds').mkdir(parents=True)  # checkout with submodules:false
+        command = ['dotnet', 'msbuild', str(project), '-nologo', '-p:Configuration=Debug', '-p:UseHexalithProjectReferences=false', '-getProperty:HexalithVersionsLoaded']
+        absent = subprocess.run(command, cwd=fresh, capture_output=True, text=True)
+        self.assertNotEqual(0, absent.returncode)
+        self.assertIn('MSB4019', absent.stdout + absent.stderr)
+        self.assertIn('Hexalith.Builds/Props/Directory.Packages.props', absent.stdout + absent.stderr)
+        environment = dict(os.environ, GITHUB_WORKSPACE=str(fresh))
+        expose = self.workflow_run('recover-partial-release.yml', 'Expose approved Builds catalog for trusted fixtures')
+        completed = subprocess.run(['bash', '-c', expose], cwd=fresh, env=environment, capture_output=True, text=True)
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        self.assertEqual(catalog.resolve(), (fresh / 'references/Hexalith.Builds').resolve())
+        present = subprocess.run(command, cwd=fresh, capture_output=True, text=True)
+        self.assertEqual(0, present.returncode, present.stdout + present.stderr)
+        self.assertEqual('true', present.stdout.strip())
+        cleanup = self.workflow_run('recover-partial-release.yml', 'Remove trusted fixture catalog alias')
+        subprocess.run(['bash', '-c', cleanup], cwd=fresh, env=environment, check=True)
+        self.assertFalse((fresh / 'references/Hexalith.Builds').exists())
+        workflow = (fixtures.ROOT / '.github/workflows/recover-partial-release.yml').read_text()
+        self.assertLess(workflow.index('Expose approved Builds catalog'), workflow.index('Validate trusted recovery tooling'))
+        self.assertLess(workflow.index('Validate trusted recovery tooling'), workflow.index('Remove trusted fixture catalog alias'))
+        cleanup_step = workflow.split('      - name: Remove trusted fixture catalog alias\n', 1)[1].split('      - name:', 1)[0]
+        self.assertIn("if: always() && steps.fixture-catalog.outcome == 'success'", cleanup_step)
+
+    def test_existing_packet_plan_requires_bound_canonical_fifteen_member_identities(self):
+        self.present_packages()
+        self.present_images()
+        self.complete()
+        original = dict(self.assets)
+        self.writes.clear()
+        cases = [('duplicate', lambda plan: plan['members'].__setitem__(1, deepcopy(plan['members'][0]))),
+                 ('unrelated', lambda plan: plan['members'][0].update(name='Other.Package')),
+                 ('package file', lambda plan: plan['members'][0].update(file='Other.nupkg')),
+                 ('image', lambda plan: plan['members'][10].update(image='registry.test/other:1.2.3')),
+                 ('index digest', lambda plan: plan['members'][10].update(indexDigest='sha256:' + 'f' * 64))]
+        cases += [(key, lambda plan, key=key: plan.update({key: 'unrelated'})) for key in ('version', 'sourceSha', 'setSha256')]
+        for label, mutate in cases:
+            self.assets = dict(original)
+            self.rewrite_packet(lambda document, files: mutate(document['plan']))
+            with self.subTest(plan=label), self.assertRaisesRegex(ValueError, 'passing complete plan'):
+                self.complete()
+            self.assertEqual([], self.writes)
+
+    def test_existing_packet_validator_metadata_must_match_recomputed_graph(self):
+        self.present_packages()
+        self.present_images()
+        self.complete()
+        original = dict(self.assets)
+        self.writes.clear()
+        for label, mutate in (
+            ('image', lambda validation: validation.update(image='registry.test/other:1.2.3')),
+            ('child platform', lambda validation: validation['children'][0].update(platform='linux/arm64')),
+            ('child digest', lambda validation: validation['children'][0].update(digest='sha256:' + 'f' * 64)),
+        ):
+            self.assets = dict(original)
+            def alter(document, files):
+                name = 'records/server/oci-validation.json'
+                validation = json.loads(files[name])
+                mutate(validation)
+                files[name] = C.canonical(validation)
+                document['health'][0]['ociValidationSha256'] = hashlib.sha256(files[name]).hexdigest()
+                files['records/server/health.json'] = C.canonical(document['health'][0])
+            self.rewrite_packet(alter)
+            with self.subTest(metadata=label), self.assertRaisesRegex(ValueError, 'metadata differs from the recomputed graph'):
+                self.complete()
+            self.assertEqual([], self.writes)
+
+    def test_nuget_validation_window_waits_read_only_and_publishes_each_package_once(self):
+        self.present_packages(9)
+        self.present_images()
+        self.delayed_package = self.ids[-1]
+        self.nuget.pending[self.ids[-1].lower()] = (12, package_bytes(self.ids[-1], signed=True))
+        self.arguments.nuget_validation_timeout = 60
+        with mock.patch.object(C.time, 'sleep') as waiting:
+            self.complete()
+        self.assertGreater(waiting.call_count, 0)
+        self.assertEqual(1, sum(write[:3] == ['dotnet', 'nuget', 'push'] for write in self.writes))
+        self.assertEqual('succeeded', C.read_json(self.output / 'completion-summary.json')['status'])
+        for path in self.nuget.requests:
+            package_id = path.split('/')[1]
+            self.assertEqual(f'/{package_id}/{fixtures.VERSION}/{package_id}.{fixtures.VERSION}.nupkg', path)
+
+    def test_flat_container_fake_rejects_wrong_version_filename_and_case(self):
+        self.present_packages()
+        package_id = self.ids[0].lower()
+        for path in (f'/{package_id}/9.9.9/{package_id}.9.9.9.nupkg', f'/{package_id}/{fixtures.VERSION}/wrong.nupkg', f'/{self.ids[0]}/{fixtures.VERSION}/{package_id}.{fixtures.VERSION}.nupkg'):
+            with self.subTest(path=path), self.assertRaises(urllib.error.HTTPError) as refused:
+                urllib.request.urlopen(self.nuget.url + path).close()
+            refused.exception.close()
+
+    def test_current_incident_is_commented_then_closed_after_asset_verification(self):
+        self.present_packages()
+        self.present_images()
+        self.complete()
+        incident = [write for write in self.writes if write[:2] == ['gh', 'issue']]
+        self.assertEqual(['comment', 'close'], [write[2] for write in incident])
+        self.assertIn('setSha256=' + self.f.identity['setSha256'], incident[0][-1])
+        self.assertEqual(13, len(self.assets))
+        self.assertFalse(self.issue)
+
+    def test_current_incident_multiple_matches_and_limit_are_named_refusals(self):
+        self.present_packages()
+        self.present_images()
+        self.complete()
+        self.writes.clear()
+        title = f'PARTIAL PUBLISH {fixtures.VERSION} - manual reconciliation required'
+        for count, diagnostic in ((2, 'Multiple open'), (1000, 'result limit')):
+            self.listed_issues = [{'number': index, 'title': title} for index in range(count)]
+            with self.subTest(count=count), self.assertRaisesRegex(ValueError, diagnostic):
+                self.complete()
+            self.assertEqual([], self.writes)
+
+    def test_unobservable_created_draft_refuses_before_any_asset_upload(self):
+        self.present_packages()
+        self.present_images()
+        self.unobservable_draft = True
+        with self.assertRaisesRegex(ValueError, 'draft is not observable'):
+            self.complete()
+        self.assertEqual(['create'], [write[2] for write in self.writes if write[:2] == ['gh', 'release']])
+        self.assertTrue(C.read_json(self.output / 'completion-summary.json')['sideEffects'][-1]['uncertain'])
+
+    def workflow_run(self, filename, step_name):
+        text = (fixtures.ROOT / '.github/workflows' / filename).read_text()
+        block = text.split('      - name: ' + step_name + '\n', 1)[1].split('      - name:', 1)[0]
+        match = re.search(r'^        run: (.+)$', block, re.MULTILINE)
+        if match.group(1) == '|':
+            return '\n'.join(line[10:] for line in block[match.end():].splitlines() if line.startswith('          '))
+        return match.group(1)
+
+    def test_failed_publish_producer_cli_workflow_download_and_recovery_complete_retained_bytes(self):
+        # Execute the actual publication path and interrupt transport after a PUT.
+        def interrupted(command, log=None):
+            if str(command[0]) == 'skopeo' and len(self.f.remote_graphs) >= 2:
+                raise ValueError('fixture release publisher lost transport before remaining PUTs')
+            result = self.f.fake_run(command, log)
+            if str(command[0]) == 'skopeo' and str(command[-1]).endswith('/memories-mcp:' + fixtures.VERSION):
+                raise ValueError('fixture release publisher lost transport after immutable PUT')
+            return result
+        with self.f.execution(), mock.patch.object(C, 'run', side_effect=interrupted), self.assertRaisesRegex(ValueError, 'Container publication or verification failed'):
+            C.shared_phase(self.f.shared, self.f.evidence, self.f.identity, 'publish')
+            C.publish_archives(self.f.output, self.f.evidence, self.f.shared, self.f.identity, self.f.validator, 'skopeo')
+        self.assertEqual(2, len(self.f.remote_graphs))
+        self.assertIn(f'version {fixtures.VERSION} and release-run-id 304', C.read_json(self.f.output / 'publish-summary.json')['recovery'])
+        for filename in ('archive-release-evidence.py', 'container-publication-contract.py'):
+            shutil.copyfile(fixtures.ROOT / 'tools' / filename, self.root / 'tools' / filename)
+        retain = self.workflow_run('release.yml', 'Retain prepared partial-release recovery bytes')
+        produced = subprocess.run(shlex.split(retain), cwd=self.root, capture_output=True, text=True, timeout=120)
+        self.assertEqual(0, produced.returncode, produced.stdout + produced.stderr)
+        produced_bundle = self.root / 'artifacts/release/release-recovery-bundle.tar.gz'
+        self.assertEqual('recoverable', C.read_json(produced_bundle.with_suffix('.gz.sha256.json'))['result'])
+        upload = (fixtures.ROOT / '.github/workflows/release.yml').read_text().split('      - name: Upload immutable recovery bundle\n', 1)[1].split('      - name:', 1)[0]
+        self.assertIn('if: failure()', upload)
+        self.assertIn('compression-level: 0', upload)
+        self.assertIn('retention-days: 90', upload)
+        zipped = self.root / 'retained-artifact.zip'
+        with zipfile.ZipFile(zipped, 'w') as archive:
+            for path in (produced_bundle, produced_bundle.with_suffix('.gz.sha256.json')):
+                archive.write(path, path.name)
+        self.fake_workflow_api(zipped)
+        download = self.workflow_run('recover-partial-release.yml', 'Download hash-bound failed-run recovery artifact').replace('${{ steps.recovery-tooling.outputs.path }}', str(self.root / 'tools'))
+        completed = subprocess.run(['bash', '-c', download], cwd=self.root, env=self.workflow_environment, capture_output=True, text=True, timeout=120)
+        self.assertEqual(0, completed.returncode, completed.stdout + completed.stderr)
+        self.arguments.recovery_bundle = self.root / 'artifacts/recovery/bundle/release-recovery-bundle.tar.gz'
+        self.present_packages(4)
+        self.complete()
+        self.assertEqual(3, sum(write[0] == 'skopeo' for write in self.writes))
+        self.assertEqual(6, sum(write[:3] == ['dotnet', 'nuget', 'push'] for write in self.writes))
+        self.assertEqual(13, len(self.assets))
+
+    def fake_workflow_api(self, zipped=None):
+        binary = self.root / 'workflow-bin'
+        binary.mkdir(exist_ok=True)
+        self.api = {'production': {'protection_rules': [{'type': 'required_reviewers', 'reviewers': [{'id': 1}]}], 'deployment_branch_policy': {'protected_branches': True}}, 'run': self.failed_run,
+                    'artifacts': {'total_count': 1, 'artifacts': [{'id': 987, 'name': 'release-recovery-bundle', 'expired': False, 'digest': 'sha256:' + C.sha256(zipped) if zipped else ''}]}}
+        self.api_path = self.root / 'workflow-api.json'
+        C.write_json(self.api_path, self.api)
+        gh = binary / 'gh'
+        gh.write_text(f'#!{sys.executable}\nimport json, os, sys\nfrom pathlib import Path\napi=json.loads(Path(os.environ["FIXTURE_API"]).read_text())\nurl=sys.argv[-1]\nassert sys.argv[1]=="api",sys.argv\nif url.endswith("/zip"):\n sys.stdout.buffer.write(Path(os.environ["FIXTURE_ZIP"]).read_bytes())\nelif url.endswith("/production"):\n print(json.dumps(api["production"]))\nelif "/artifacts?" in url:\n print(json.dumps(api["artifacts"]))\nelse:\n print(json.dumps(api["run"]))\n')
+        gh.chmod(0o755)
+        git = binary / 'git'
+        git.write_text(f'#!{sys.executable}\nimport sys\nif "rev-list" in sys.argv: print({fixtures.SOURCE_SHA!r})\nif "show" in sys.argv: print("env:\\n  KUBECTL_VERSION: \'v1.34.7\'")\n')
+        git.chmod(0o755)
+        self.workflow_environment = dict(os.environ, PATH=str(binary) + os.pathsep + os.environ['PATH'], FIXTURE_API=str(self.api_path), FIXTURE_ZIP=str(zipped or ''), RECOVERY_VERSION=fixtures.VERSION, RELEASE_RUN_ID='304', GITHUB_REPOSITORY=self.arguments.repository, GITHUB_OUTPUT=str(self.root / 'gate-output'))
+        shutil.copyfile(fixtures.ROOT / 'tools/container-publication-contract.py', self.root / 'tools/container-publication-contract.py')
+
+    def test_executed_workflow_production_failed_run_and_artifact_gates_have_named_refusals(self):
+        self.fake_workflow_api()
+        production = self.workflow_run('recover-partial-release.yml', 'Require production environment approval rule')
+        # Execute the exact CLI used by both protection readbacks.
+        result = subprocess.run(['bash', '-c', production], cwd=self.root, env=self.workflow_environment, capture_output=True, text=True)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.api['production']['protection_rules'] = []
+        C.write_json(self.api_path, self.api)
+        result = subprocess.run(['bash', '-c', production], cwd=self.root, env=self.workflow_environment, capture_output=True, text=True)
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn('Production approval rule', result.stderr)
+        self.api['production']['protection_rules'] = [{'type': 'required_reviewers', 'reviewers': [{'id': 1}]}]
+        for label, policy in (('missing', {}), ('null', {'deployment_branch_policy': None})):
+            self.api['production'].pop('deployment_branch_policy', None)
+            self.api['production'].update(policy)
+            C.write_json(self.api_path, self.api)
+            result = subprocess.run(['bash', '-c', production], cwd=self.root, env=self.workflow_environment, capture_output=True, text=True)
+            with self.subTest(branch_policy=label):
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn('Production approval rule or deployment branch policy missing', result.stderr)
+        source_job = (fixtures.ROOT / '.github/workflows/recover-partial-release.yml').read_text().split('  release-source:\n', 1)[1].split('  recover:\n', 1)[0]
+        upload = source_job.split('      - name: Upload release source refusal evidence\n', 1)[1]
+        self.assertIn('if: always()', upload)
+        self.assertIn('name: partial-release-source-evidence-v${{ inputs.version }}', upload)
+        self.assertIn('path: artifacts/recovery/protection/**', upload)
+        self.assertLess(source_job.index('Require production environment approval rule'), source_job.index('Upload release source refusal evidence'))
+        command = ['python3', 'tools/container-publication-contract.py', '--phase', 'failed-run-gate', '--version', fixtures.VERSION, '--release-run-id', '304', '--tag-commit', fixtures.SOURCE_SHA, '--repository', self.arguments.repository]
+        result = subprocess.run(command, cwd=self.root, env=self.workflow_environment, capture_output=True, text=True)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn('kubectl-version=v1.34.7', (self.root / 'gate-output').read_text())
+        for key, wrong, reason in (('path', '.github/workflows/ci.yml', 'workflow'), ('conclusion', 'cancelled', 'completed failure'), ('head_sha', 'f' * 40, 'tag head SHA'), ('run_attempt', 0, 'run attempt')):
+            self.api['run'] = dict(self.failed_run, **{key: wrong})
+            C.write_json(self.api_path, self.api)
+            result = subprocess.run(command, cwd=self.root, env=self.workflow_environment, capture_output=True, text=True)
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn('Failed release run proof differs: ' + reason, result.stderr)
+        download = ['python3', 'tools/container-publication-contract.py', '--phase', 'download-bundle', '--version', fixtures.VERSION, '--release-run-id', '304', '--repository', self.arguments.repository]
+        for artifacts, reason in (([], 'missing/expired or ambiguous'), ([{'name': 'release-recovery-bundle', 'expired': True}], 'missing/expired or ambiguous'), ([{'name': 'release-recovery-bundle', 'expired': False}] * 2, 'missing/expired or ambiguous')):
+            self.api['artifacts'] = {'artifacts': artifacts}
+            C.write_json(self.api_path, self.api)
+            result = subprocess.run(download, cwd=self.root, env=self.workflow_environment, capture_output=True, text=True)
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn(reason, result.stderr)
+        zipped = self.root / 'bad-digest.zip'
+        with zipfile.ZipFile(zipped, 'w') as archive:
+            archive.writestr('unexpected', 'bytes')
+        self.workflow_environment['FIXTURE_ZIP'] = str(zipped)
+        self.api['artifacts'] = {'artifacts': [{'id': 987, 'name': 'release-recovery-bundle', 'expired': False, 'digest': 'sha256:' + 'f' * 64}]}
+        C.write_json(self.api_path, self.api)
+        result = subprocess.run(download, cwd=self.root, env=self.workflow_environment, capture_output=True, text=True)
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn('artifact digest mismatch', result.stderr)
         self.assertEqual([], self.writes)
 
     def test_missing_preparation_retains_named_unrecoverable_bundle(self):
@@ -754,6 +1168,41 @@ class PartialReleaseRecoveryTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'Immediate image recheck'):
                 C.current_completion(self.arguments)
         self.assertEqual([], self.writes)
+
+    def test_package_destination_changes_before_push_refuse_or_skip_without_mutation(self):
+        self.present_packages()
+        self.present_images()
+        package_id = self.ids[0]
+        key = package_id.lower()
+        original = C.classify_package
+        for classification in ('present-different', 'ambiguous', 'present-identical'):
+            with self.subTest(classification=classification):
+                self.nuget.packages.pop(key, None)
+                self.nuget.statuses.clear()
+                self.writes.clear()
+                calls, remote = 0, None
+                def raced(item, *arguments):
+                    nonlocal calls, remote
+                    if item['id'] == package_id:
+                        calls += 1
+                        if calls == 2:
+                            self.assertEqual('absent', C.read_json(self.output / 'recovery-plan.json')['members'][0]['classification'])
+                            self.nuget.packages[key] = package_bytes(package_id, signed=True, content='retained' if classification == 'present-identical' else 'competing remote bytes')
+                            if classification == 'ambiguous':
+                                self.nuget.statuses[key] = 503
+                            remote = dict(self.nuget.packages)
+                    return original(item, *arguments)
+                with self.boundary(), mock.patch.object(C, 'classify_package', side_effect=raced):
+                    if classification == 'present-identical':
+                        C.current_completion(self.arguments)
+                    else:
+                        with self.assertRaisesRegex(ValueError, 'Immediate NuGet recheck.*' + classification):
+                            C.current_completion(self.arguments)
+                        self.assertEqual([], self.writes)
+                self.assertGreaterEqual(calls, 2)
+                self.assertEqual(classification, C.read_json(self.output / 'packages' / (package_id + '.before-push.json'))['classification'])
+                self.assertEqual([], [write for write in self.writes if write[:3] == ['dotnet', 'nuget', 'push']])
+                self.assertEqual(remote, self.nuget.packages)
 
     def test_recovery_helper_gate_accepts_only_recorded_sha_and_hashes(self):
         with mock.patch.object(C.subprocess, 'run', return_value=SimpleNamespace(stdout='f' * 40)):

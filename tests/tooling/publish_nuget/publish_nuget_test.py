@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -556,6 +557,7 @@ class PublishNuGetTests(unittest.TestCase):
             self.assertIn("docs/dev/release-runbook.md", body)
             self.assertIn("Dispatch **Recover Partial Release** from live", body)
             self.assertIn("release-run-id", body)
+            self.assertIn("with version 1.2.3 and release-run-id 123456", body)
             self.assertIn("retained recovery bundle and production approval", body)
             self.assertNotIn("Rerun the Release workflow", body)
 
@@ -880,7 +882,8 @@ class IssueHelperReliabilityTests(unittest.TestCase):
                 self.assertNotEqual(0, result.returncode)
                 self.assertEqual([], calls)
                 # PowerShell inserts diagnostic margin bars when a long TMPDIR wraps a line.
-                self.assertIn("JSON summary object", " ".join(result.stderr.replace("|", " ").split()))
+                diagnostic = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", result.stderr)
+                self.assertIn("JSON summary object", " ".join(diagnostic.replace("|", " ").split()))
 
     def test_create_recovery_adds_current_evidence_to_a_preexisting_incident(self):
         result, calls = self.run_helper(existing_title=self.title, gh_plan={

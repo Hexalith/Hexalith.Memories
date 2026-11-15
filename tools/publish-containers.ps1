@@ -16,10 +16,15 @@ param(
 
     [switch]$PublicationContract,
 
+    [string[]]$Repositories,
+
+    [switch]$HistoricalInventory,
+
     [switch]$Push
 )
 
 $ErrorActionPreference = 'Stop'
+$Repositories = @($Repositories | Where-Object { $_ } | ForEach-Object { $_.Split(',') })
 
 if (-not $PSBoundParameters.ContainsKey('Registry') -and
     -not [string]::IsNullOrWhiteSpace($env:HEXALITH_ZOT_REGISTRY)) {
@@ -47,8 +52,56 @@ if ($Version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') {
 $repoRoot = if ([string]::IsNullOrWhiteSpace($RepositoryRoot)) {
     Split-Path -Parent $PSScriptRoot
 }
+
 else {
     (Resolve-Path -LiteralPath $RepositoryRoot).Path
+}
+if ($HistoricalInventory) {
+    # The tagged publisher is data only: parse its candidate table, never invoke it.
+    $tokens = $null
+    $parseErrors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'tools/publish-containers.ps1'), [ref]$tokens, [ref]$parseErrors)
+    if ($parseErrors.Count) { throw 'Historical publisher is not parseable; refusing before -Push.' }
+    $tables = @($ast.FindAll({ param($node)
+        $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+        $node.Left -is [System.Management.Automation.Language.VariableExpressionAst] -and
+        $node.Left.VariablePath.UserPath -in @('images', 'imageCandidates') -and
+        $node.Right.Extent.Text.Trim().StartsWith('@(') -and
+        $node.Right.Extent.Text -match '\[ordered\]@\{'
+    }, $true))
+    if ($tables.Count -ne 1) { throw 'Historical publisher has no unique literal image candidate table; refusing before -Push.' }
+    $known = @{
+        'server' = @('Hexalith.Memories.Server', 'memories')
+        'mcp' = @('Hexalith.Memories.Mcp', 'memories-mcp')
+        'access-telemetry' = @('Hexalith.Memories.AccessTelemetry', 'memories-access-telemetry')
+        'access-telemetry-clock' = @('Hexalith.Memories.AccessTelemetry.Clock', 'memories-access-telemetry-clock')
+    }
+    $selected = @($tables[0].Right.FindAll({ param($node) $node -is [System.Management.Automation.Language.HashtableAst] }, $true) | ForEach-Object {
+        $fields = @{}
+        foreach ($pair in $_.KeyValuePairs) { $fields[$pair.Item1.Extent.Text.Trim("'", '"')] = $pair.Item2.Extent.Text.Trim() }
+        $name = $fields['name'].Trim("'", '"')
+        if (-not $known.ContainsKey($name)) { throw "Unsupported historical image candidate '$name'; refusing before -Push." }
+        $project = $known[$name][0]
+        $repository = $known[$name][1]
+        $expectedRepository = if ($name -eq 'server') { '$RepositoryPrefix' } else { '"$RepositoryPrefix' + $repository.Substring(8) + '"' }
+        if ($fields['project'] -cne "'src/$project/$project.csproj'" -or $fields['repository'] -cne $expectedRepository -or
+            -not (Test-Path -LiteralPath (Join-Path $repoRoot "src/$project/$project.csproj"))) {
+            throw "Historical publisher mapping/project differs for '$name'; refusing before -Push."
+        }
+        $repository
+    })
+    if ($selected.Count -notin @(2, 4) -or @($selected | Select-Object -Unique).Count -ne $selected.Count -or
+        'memories' -notin $selected -or 'memories-mcp' -notin $selected) { throw 'Unsupported historical image set; refusing before -Push.' }
+    $inventory = Get-Content (Join-Path $repoRoot 'tools/release-packages.json') -Raw | ConvertFrom-Json
+    $ids = @($inventory.packages | ForEach-Object {
+        if ($null -ne $_.PSObject.Properties['id'] -or $null -eq $_.PSObject.Properties['packageId']) { throw 'Unsupported historical manifest shape; refusing before -Push.' }
+        $_.packageId
+    })
+    $expected = @((Get-Content (Join-Path $PSScriptRoot 'release-packages.json') -Raw | ConvertFrom-Json).packages.id | Where-Object { $_ -ne 'Hexalith.Memories.EventStoreExtensions' })
+    if ($ids.Count -ne 9 -or (Compare-Object $expected $ids -CaseSensitive)) { throw 'Unsupported historical package set; refusing before -Push.' }
+    if ($env:GITHUB_OUTPUT) { "repositories=$($selected -join ',')" | Out-File $env:GITHUB_OUTPUT -Append }
+    $selected -join ','
+    return
 }
 # Current source trees carry the frozen five-image manifest and refuse every occupied tag;
 # Recover Partial Release completes missing members from retained bytes. Historical tagged trees keep reconciliation.
@@ -107,8 +160,13 @@ $imageCandidates = @(
     }
 )
 $images = @($imageCandidates | Where-Object {
-        Test-Path -LiteralPath (Join-Path $repoRoot $_.project)
+        (Test-Path -LiteralPath (Join-Path $repoRoot $_.project)) -and
+        (-not $Repositories -or $_.repository -cin $Repositories)
     })
+if ($Repositories -and ($Repositories.Count -ne @($Repositories | Select-Object -Unique).Count -or
+    (Compare-Object @($images.repository) $Repositories -CaseSensitive))) {
+    throw 'Explicit historical repository filter differs from available canonical projects; refusing publication.'
+}
 if (@($images | Where-Object { $_.name -in @('server', 'mcp') }).Count -ne 2) {
     throw "Container publication requires Server and MCP projects under '$repoRoot'; found: $((@($images.name) -join ', '))."
 }

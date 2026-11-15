@@ -402,6 +402,56 @@ def assert_authenticated_calls_use_scoped_authfile(test: unittest.TestCase, root
 
 
 class PublishContainersTests(unittest.TestCase):
+    def test_historical_tagged_publisher_inventory_limits_build_and_push_to_two_or_four(self):
+        projects = ('Server', 'Mcp', 'AccessTelemetry', 'AccessTelemetry.Clock')
+        names = ('server', 'mcp', 'access-telemetry', 'access-telemetry-clock')
+        repositories = ('memories', 'memories-mcp', 'memories-access-telemetry', 'memories-access-telemetry-clock')
+        for shape, count, variable in (('v2.11', 2, 'images'), ('v2.16', 4, 'images'), ('v3.0', 4, 'imageCandidates')):
+            with self.subTest(tag=shape), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                _, env = prepare_environment(root)
+                source = write_source_tree(root / 'source')  # all five projects exist
+                parameters = ('ServerImage', 'McpImage', 'AccessTelemetryImage', 'AccessTelemetryClockImage')[:count]
+                (source / 'tools/render-production-deployment.ps1').write_text('param([string]$Version, [string]$OutputPath, ' + ', '.join('[string]$' + name for name in parameters) + ')\n@(' + ', '.join('$' + name for name in parameters) + ') | Set-Content -LiteralPath $OutputPath\n')
+                table = []
+                for index in range(count):
+                    project = 'Hexalith.Memories.' + projects[index]
+                    repository = '$RepositoryPrefix' if index == 0 else '"$RepositoryPrefix' + repositories[index][8:] + '"'
+                    table.append("[ordered]@{ name = '" + names[index] + "'; project = 'src/" + project + '/' + project + ".csproj'; repository = " + repository + '; archive = $(throw "never execute tagged data") }')
+                (source / 'tools/publish-containers.ps1').write_text('$' + variable + ' = @(\n' + ',\n'.join(table) + '\n)\nthrow "never execute tagged publisher"\n')
+                inventory = json.loads((REPO_ROOT / 'tools/release-packages.json').read_text())
+                (source / 'tools/release-packages.json').write_text(json.dumps({'packages': [{'packageId': item['id']} for item in inventory['packages'] if item['id'] != 'Hexalith.Memories.EventStoreExtensions']}))
+                staging = root / 'staged'
+                staging.mkdir()
+                for filename in ('publish-containers.ps1', 'release-packages.json'):
+                    shutil.copyfile(REPO_ROOT / 'tools' / filename, staging / filename)
+                result = subprocess.run(['pwsh', '-NoProfile', '-File', str(staging / 'publish-containers.ps1'), '-Version', VERSION, '-Registry', 'registry.test', '-RepositoryRoot', str(source), '-HistoricalInventory'], env=env, capture_output=True, text=True)
+                self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+                selected = result.stdout.strip()
+                self.assertEqual(','.join(repositories[:count]), selected)
+                self.assertEqual([], command_log(root))
+                manifest = source / 'tools/release-packages.json'
+                valid = json.loads(manifest.read_text())
+                for label, entries in (
+                    ('substituted', [*valid['packages'][:-1], {'packageId': 'Other.Package'}]),
+                    ('missing', valid['packages'][:-1]),
+                    ('duplicate', [*valid['packages'][:-1], valid['packages'][0]]),
+                ):
+                    manifest.write_text(json.dumps({'packages': entries}))
+                    refused = subprocess.run(['pwsh', '-NoProfile', '-File', str(staging / 'publish-containers.ps1'), '-Version', VERSION, '-Registry', 'registry.test', '-RepositoryRoot', str(source), '-HistoricalInventory'], env=env, capture_output=True, text=True)
+                    with self.subTest(tag=shape, package_set=label):
+                        self.assertNotEqual(0, refused.returncode)
+                        self.assertIn('Unsupported historical package set', refused.stderr)
+                        self.assertEqual([], command_log(root))
+                manifest.write_text(json.dumps(valid))
+                output = root / 'artifacts'
+                result = run_publish(output, env, push=False, repository_root=source, extra_arguments=['-Repositories', selected])
+                self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+                self.assertEqual(list(names[:count]), [entry['image'] for entry in command_log(root) if entry['command'] == 'dotnet'])
+                result = run_publish(output, env, push=True, repository_root=source, extra_arguments=['-Repositories', selected])
+                self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+                self.assertEqual(ALL_IMAGES[:count], copy_references(root))
+
     def test_registry_environment_override_drives_push_and_render_targets(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

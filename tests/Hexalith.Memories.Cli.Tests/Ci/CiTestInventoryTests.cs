@@ -630,7 +630,12 @@ public sealed partial class CiTestInventoryTests
         workflow.ShouldContain("--phase recovery-metadata");
         workflow.ShouldContain("-RecoveryBundle");
         workflow.ShouldContain("release-recovery-bundle");
-        workflow.ShouldContain("artifact.get('digest')");
+        workflow.ShouldContain("--phase download-bundle");
+        workflow.ShouldContain("--phase production-gate");
+        workflow.ShouldContain("--phase failed-run-gate");
+        workflow.ShouldContain("version: ${{ steps.source.outputs.kubectl-version }}");
+        workflow.ShouldContain("persist-credentials: false");
+        workflow.ShouldNotContain("semantic-release");
         workflow.ShouldContain("Validate historical inventory before any mutation");
         workflow.ShouldContain("-Repositories");
         workflow.ShouldContain("NuGet/login@v1");
@@ -645,6 +650,27 @@ public sealed partial class CiTestInventoryTests
             workflow.IndexOf("Verify container registry write scope", StringComparison.Ordinal));
         workflow.IndexOf("Write complete fifteen-member recovery plan", StringComparison.Ordinal).ShouldBeLessThan(
             workflow.IndexOf("Exchange recovery OIDC token", StringComparison.Ordinal));
+        workflow.IndexOf("Write complete fifteen-member recovery plan", StringComparison.Ordinal).ShouldBeLessThan(
+            workflow.IndexOf("Recover retained missing images and verify health", StringComparison.Ordinal));
+        workflow.IndexOf("Verify container registry write scope", StringComparison.Ordinal).ShouldBeLessThan(
+            workflow.IndexOf("Restore tagged source", StringComparison.Ordinal));
+        workflow.IndexOf("Reconcile immutable container tags", StringComparison.Ordinal).ShouldBeLessThan(
+            workflow.IndexOf("Complete GitHub Release and incident recovery", StringComparison.Ordinal));
+        workflow.ShouldContain("-HistoricalInventory");
+        workflow.ShouldContain("-Repositories ('${{ steps.historical.outputs.repositories }}'.Split(','))");
+        string trustedFixtures = workflow.Split("      - name: Validate trusted recovery tooling", StringSplitOptions.None)[1]
+            .Split("      - name:", StringSplitOptions.None)[0];
+        trustedFixtures.ShouldNotContain("secrets.");
+        string recoveryHeader = workflow.Split("  recover:", StringSplitOptions.None)[1]
+            .Split("    steps:", StringSplitOptions.None)[0];
+        recoveryHeader.ShouldNotContain("GH_TOKEN");
+        recoveryHeader.ShouldNotContain("HEXALITH_ZOT_USERNAME");
+        recoveryHeader.ShouldNotContain("HEXALITH_ZOT_API_KEY");
+        string workflowCheckout = workflow.Split("      - name: Checkout recovery workflow source", StringSplitOptions.None)[1]
+            .Split("      - name:", StringSplitOptions.None)[0];
+        workflowCheckout.ShouldContain("persist-credentials: false");
+
+
         workflow.IndexOf("Reprove live main and exact push CI", StringComparison.Ordinal).ShouldBeLessThan(
             workflow.IndexOf("Stage trusted recovery tooling", StringComparison.Ordinal));
     }

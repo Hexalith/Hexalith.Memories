@@ -17,6 +17,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -677,6 +678,19 @@ def classify_package(item, identity, bundle_root, nuget_base):
     return result
 
 
+def await_package_validation(item, identity, bundle_root, arguments, evidence):
+    """Wait read-only for nuget.org validation; never repeat an immutable push."""
+    deadline = time.monotonic() + getattr(arguments, "nuget_validation_timeout", 600)
+    observations = []
+    while True:
+        observed = classify_package(item, identity, bundle_root, arguments.nuget_base_uri)
+        observations.append(observed)
+        write_json(evidence / "packages" / (item["id"] + ".validation.json"), {"observations": observations})
+        if observed["classification"] != "absent" or time.monotonic() >= deadline:
+            return observed
+        time.sleep(min(10, max(0, deadline - time.monotonic())))
+
+
 def classify_image(image, identity, graphs, preflight, validator):
     reference = f"{identity['registry']}/{image['repository']}:{identity['version']}"
     result = {"kind": "image", "name": image["name"], "image": reference, "indexDigest": graphs[image["name"]]["index_digest"]}
@@ -849,6 +863,16 @@ def packet_files(data, manifest_name):
     return document, files
 
 
+def ordinary_evidence_files(evidence, container_directory, package_directory, summary_directory, deployment_path):
+    """Keep the ordinary producer and its recovery consumer on one required inventory."""
+    member_files = ("index.raw", "child-linux-amd64.manifest.raw", "child-linux-amd64.config.raw", "child-linux-arm64.manifest.raw", "child-linux-arm64.config.raw", "oci-validation.json", "health.json", "health-amd64.log", "health-arm64.log", "health-run.log", "transport.log", "destination-before-copy.json", "build-deployment.log", "build-oci.log", "runtime-config-parity.json", "smoke-preflight.log", "local/oci-validation.json", "local/index.raw", "local/child-linux-amd64.manifest.raw", "local/child-linux-amd64.config.raw", "local/child-linux-arm64.manifest.raw", "local/child-linux-arm64.config.raw")
+    paths = [evidence / name for name in ("identity.json", "authorization.json", "archive-compatibility.json", "preflight-verify.log", "preflight-publish.log", "preflight-container.log", "preflight/publication-identity.json", "preflight/publication-preflight.verify.json", "preflight/publication-preflight.publish.json", "preflight/publication-preflight.container.json")]
+    for image in CANONICAL_IMAGES:
+        paths += [evidence / image["name"] / name for name in member_files]
+    paths += [Path("tools/release-containers.json"), Path("tools/release-packages.json"), summary_directory / "package-identity.json", container_directory / "build-summary.json", container_directory / "publish-summary.json", package_directory / "publish-summary.json", summary_directory / "publish-summary.json", deployment_path]
+    return paths
+
+
 def validate_ordinary_packet(data, receipt_data, identity, bundle_root):
     receipt = json.loads(receipt_data, object_pairs_hook=strict_object)
     if receipt != {"path": PACKET_NAME, "sha256": hashlib.sha256(data).hexdigest(), "result": "pass"}:
@@ -859,9 +883,8 @@ def validate_ordinary_packet(data, receipt_data, identity, bundle_root):
             or any(document.get(key) != identity[key] for key in ("version", "sourceSha", "setSha256"))
             or json.loads(files.get("artifacts/release/container-evidence/identity.json", b"{}"), object_pairs_hook=strict_object) != identity):
         raise ValueError("Retained ordinary evidence packet differs from the release identity.")
-    required = {"artifacts/release/package-identity.json", "tools/release-containers.json", "tools/release-packages.json"}
-    required.update(f"artifacts/release/container-evidence/{image['name']}/{name}" for image in CANONICAL_IMAGES
-                    for name in ("oci-validation.json", "index.raw", "child-linux-amd64.manifest.raw", "child-linux-amd64.config.raw", "child-linux-arm64.manifest.raw", "child-linux-arm64.config.raw", "health.json", "health-amd64.log", "health-arm64.log", "health-run.log"))
+    required = {path.as_posix() for path in ordinary_evidence_files(DEFAULT_EVIDENCE_DIRECTORY, Path("artifacts/containers/release"), Path("artifacts/packages/release"), Path("artifacts/release"), Path("artifacts/deployment/hexalith-memories-production.yaml"))}
+    required.add("artifacts/containers/release/production-deployment.yaml")
     if not required <= set(files):
         raise ValueError("Retained ordinary evidence packet is incomplete.")
     for name, data in files.items():
@@ -898,11 +921,18 @@ def recovery_packet(path, document, evidence, bundle_root):
 
 def validate_recovery_packet(data, identity, manifest, graphs, packages, restore_directory=None):
     document, files = packet_files(data, "recovery-evidence.json")
+    plan = document.get("plan", {})
+    canonical_members = {("package", item["id"]): {"file": item["file"]} for item in packages["packages"]}
+    canonical_members.update({("image", image["name"]): {"image": f"{identity['registry']}/{image['repository']}:{identity['version']}",
+                             "indexDigest": graphs[image["name"]]["index_digest"]} for image in CANONICAL_IMAGES})
+    members = plan.get("members", [])
     if (document.get("artifactKind") != "partial-release-recovery" or document.get("result") != "pass"
             or any(document.get(key) != identity[key] for key in ("version", "sourceSha", "setSha256"))
-            or document.get("bundleManifest") != manifest or document.get("plan", {}).get("result") != "pass"
-            or len(document.get("plan", {}).get("members", [])) != 15
-            or any(item.get("classification") not in ("absent", "present-identical") for item in document["plan"]["members"])):
+            or document.get("bundleManifest") != manifest or plan.get("result") != "pass"
+            or any(plan.get(key) != identity[key] for key in ("version", "sourceSha", "setSha256"))
+            or len(members) != 15 or {(item.get("kind"), item.get("name")) for item in members} != set(canonical_members)
+            or any(item.get("classification") not in ("absent", "present-identical")
+                   or any(item.get(key) != value for key, value in canonical_members.get((item.get("kind"), item.get("name")), {}).items()) for item in members)):
         raise ValueError("Existing recovery packet differs from the retained release set/bundle or lacks a passing complete plan.")
     retained_hashes = {item["path"]: item["sha256"] for item in manifest["files"]}
     for name in IDENTITY_RECORD_FILES:
@@ -927,11 +957,17 @@ def validate_recovery_packet(data, identity, manifest, graphs, packages, restore
         if not required <= set(files):
             raise ValueError("Existing recovery packet omits referenced raw OCI/health records.")
         validation = json.loads(files[prefix + "oci-validation.json"], object_pairs_hook=strict_object)
+        if (validation.get("image") != f"{identity['registry']}/{image['repository']}:{identity['version']}"
+                or validation.get("raw_index_file") != "index.raw"
+                or any(validation.get(key) != value for key, value in graph.items() if key not in ("children", "index_bytes"))):
+            raise ValueError("Existing recovery packet OCI validator metadata differs from the recomputed graph.")
         if (files[prefix + "index.raw"] != graph["index_bytes"] or validation.get("index_digest") != graph["index_digest"]
                 or len(validation.get("children", [])) != 2 or json.loads(files[prefix + "health.json"], object_pairs_hook=strict_object) != health
                 or health.get("ociValidationSha256") != hashlib.sha256(files[prefix + "oci-validation.json"]).hexdigest()):
             raise ValueError("Existing recovery packet raw validator/health binding differs.")
         for child, recorded in zip(graph["children"], validation["children"]):
+            if any(recorded.get(key) != value for key, value in child.items() if key not in ("manifest_bytes", "config_bytes")):
+                raise ValueError("Existing recovery packet OCI child metadata differs from the recomputed graph.")
             for kind in ("manifest", "config"):
                 name = f"child-linux-{child['platform'].split('/')[1]}.{kind}.raw"
                 raw = files.get(prefix + name)
@@ -1023,6 +1059,14 @@ def current_completion(arguments):
                 raise ValueError("Existing recovery receipt without its packet is ambiguous; retained packet required before writes.")
             if arguments.phase == "recover" and plan["absentPackages"] and not os.environ.get("NUGET_API_KEY"):
                 raise ValueError("NuGet Trusted Publishing login required for recover-partial-release.yml / production; policy owner: Jérôme Piquot. No stored key is permitted.")
+            for attempt in progress:
+                if attempt.get("operation") != "package-push" or not attempt.get("attempted") or attempt.get("verified"):
+                    continue
+                observed = next(member for member in plan["members"] if member["kind"] == "package" and member["name"] == attempt["name"])
+                if observed["classification"] != "present-identical":
+                    raise ValueError(f"Prior NuGet package-push attempt remains unresolved for {attempt['name']}; refusing another write until positive identical readback.")
+                attempt.update(classification="present-identical", verified=True, uncertain=False, observation=observed)
+                save_progress(evidence, progress)
             # The full plan and every occupied asset have been checked before this point.
             # Images are recovered first; package keys are minted by the immediately
             # preceding workflow login only when the saved plan has absent packages.
@@ -1039,15 +1083,20 @@ def current_completion(arguments):
                     attempt = dict(current, **{key: identity[key] for key in ("version", "sourceSha", "setSha256")}, operation="package-push", attempted=True, verified=False, uncertain=True)
                     progress.append(attempt)
                     save_progress(evidence, progress)
+                    pushed = False
                     try:
                         run(["dotnet", "nuget", "push", bundle_root / "artifacts/packages/release" / item["file"], "--source", "https://api.nuget.org/v3/index.json", "--api-key", os.environ["NUGET_API_KEY"]], evidence / "packages" / (item["id"] + ".push.log"))
+                        pushed = True
                     except Exception as error:
                         attempt["error"] = redact(error)
                         raise
                     finally:
-                        observed = classify_package(item, identity, bundle_root, arguments.nuget_base_uri)
+                        observed = (await_package_validation(item, identity, bundle_root, arguments, evidence) if pushed
+                                    else classify_package(item, identity, bundle_root, arguments.nuget_base_uri))
                         attempt.update(classification=observed["classification"], verified=observed["classification"] == "present-identical", uncertain=observed["classification"] != "present-identical", observation=observed)
                         save_progress(evidence, progress)
+                    if not attempt["verified"]:
+                        raise ValueError(f"NuGet validation deadline/readback left {item['id']} unverified; publication remains uncertain and subsequent writes are refused.")
             final = recovery_plan(bundle_root, evidence / "final", identity, packages, graphs, preflight, validator, arguments.nuget_base_uri)
             if any(item["classification"] != "present-identical" for item in final["members"]):
                 raise ValueError("Final fifteen-member verification is incomplete (NuGet validation may still be pending); no Release completion credit.")
@@ -1079,7 +1128,8 @@ def current_completion(arguments):
                 finally:
                     try:
                         observed, present = release_snapshot(identity, evidence, assets)
-                        attempt.update(verified=observed is not None and set(expected) <= set(present) and (not published or not observed["isDraft"]), uncertain=False, verifiedAssets=sorted(present))
+                        verified = observed is not None and set(expected) <= set(present) and (not published or not observed["isDraft"])
+                        attempt.update(verified=verified, uncertain=not verified, verifiedAssets=sorted(present))
                         result["releaseAssets"] = [{"file": name, "sha256": hashlib.sha256(data).hexdigest()} for name, data in sorted(present.items())]
                     except Exception as error:
                         attempt["reprobeError"] = redact(error)
@@ -1089,6 +1139,8 @@ def current_completion(arguments):
                 if release is None:
                     release_write(["gh", "release", "create", tag, "--repo", identity["repository"], "--verify-tag", "--title", tag, "--generate-notes", "--draft"], "release-create", [])
                     release, downloaded = release_snapshot(identity, evidence, assets)
+                    if release is None:
+                        raise ValueError("Created recovery draft is not observable; refusing asset uploads until its state can be verified.")
             for name, path in assets.items():
                 if name in downloaded:
                     continue
@@ -1100,7 +1152,7 @@ def current_completion(arguments):
                 release, downloaded = release_snapshot(identity, evidence, assets)
                 if set(downloaded) != set(assets):
                     raise ValueError("Draft must have all thirteen verified assets before publication.")
-                release_write(["gh", "release", "edit", tag, "--repo", identity["repository"], "--draft=false"], "release-publish", assets, published=True)
+                release_write(["gh", "release", "edit", tag, "--repo", identity["repository"], "--draft=false", "--latest=false"], "release-publish", assets, published=True)
             release, downloaded = release_snapshot(identity, evidence, assets)
             if release is None or release["isDraft"] or set(downloaded) != set(assets):
                 raise ValueError("GitHub Release does not contain the complete thirteen verified assets.")
@@ -1129,9 +1181,64 @@ def current_completion(arguments):
         write_json(evidence / "completion-summary.json", result)
 
 
+def workflow_gate(arguments):
+    """Execute read-only workflow gates with retained, named refusal diagnostics."""
+    evidence = arguments.evidence_directory.resolve()
+    evidence.mkdir(parents=True, exist_ok=True)
+    if arguments.phase == "production-gate":
+        protection = json.loads(run(["gh", "api", f"repos/{arguments.repository}/environments/production"]), object_pairs_hook=strict_object)
+        write_json(evidence / "production-protection.json", protection)
+        if (not any(rule.get("type") == "required_reviewers" and rule.get("reviewers") for rule in protection.get("protection_rules", []))
+                or protection.get("deployment_branch_policy") is None):
+            raise ValueError("Production approval rule or deployment branch policy missing. Owner Jérôme Piquot must restore production protection before recovery.")
+    elif arguments.phase == "failed-run-gate":
+        failed = json.loads(run(["gh", "api", f"repos/{arguments.repository}/actions/runs/{arguments.release_run_id}"]), object_pairs_hook=strict_object)
+        write_json(evidence / "failed-run.json", failed)
+        checks = {"run ID": failed.get("id") == int(arguments.release_run_id),
+                  "repository": failed.get("repository", {}).get("full_name") == arguments.repository,
+                  "workflow": failed.get("path") == ".github/workflows/release.yml",
+                  "completed failure": failed.get("status") == "completed" and failed.get("conclusion") == "failure",
+                  "tag head SHA": failed.get("head_sha") == arguments.tag_commit,
+                  "run attempt": type(failed.get("run_attempt")) is int and failed["run_attempt"] > 0}
+        refused = [name for name, valid in checks.items() if not valid]
+        if refused:
+            raise ValueError("Failed release run proof differs: " + ", ".join(refused))
+        # Read the failed source's renderer tool pin as data, never execute its workflow.
+        workflow = run(["git", "-C", arguments.source_root, "show", f"{arguments.tag_commit}:.github/workflows/release.yml"])
+        pins = re.findall(r"^  KUBECTL_VERSION: ['\"]?(v[0-9]+\.[0-9]+\.[0-9]+)['\"]?\s*$", workflow, re.MULTILINE)
+        current = subprocess.run(["git", "-C", str(arguments.source_root), "cat-file", "-e", f"{arguments.tag_commit}:tools/release-containers.json"], capture_output=True, check=False).returncode == 0
+        if current and len(pins) != 1:
+            raise ValueError("Failed release source has no unique pinned kubectl version; renderer byte proof cannot proceed.")
+        if os.environ.get("GITHUB_OUTPUT"):
+            with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+                output.write(f"attempt={failed['run_attempt']}\n")
+                if current:
+                    output.write(f"kubectl-version={pins[0]}\n")
+    else:
+        document = json.loads(run(["gh", "api", f"repos/{arguments.repository}/actions/runs/{arguments.release_run_id}/artifacts?per_page=100"]), object_pairs_hook=strict_object)
+        write_json(evidence / "artifacts.json", document)
+        if document.get("total_count", len(document.get("artifacts", []))) > len(document.get("artifacts", [])):
+            raise ValueError("Recovery artifact listing is truncated; artifact selection is ambiguous.")
+        artifacts = [item for item in document.get("artifacts", []) if item.get("name") == "release-recovery-bundle" and not item.get("expired")]
+        if len(artifacts) != 1:
+            raise ValueError("Recovery bundle missing/expired or ambiguous; only failures retaining pre-publication bytes can recover. Owner: Jérôme Piquot.")
+        artifact = artifacts[0]
+        target = evidence / "bundle.zip"
+        with target.open("wb") as stream:
+            subprocess.run(["gh", "api", f"repos/{arguments.repository}/actions/artifacts/{artifact['id']}/zip"], stdout=stream, check=True, timeout=COMMAND_TIMEOUT_SECONDS)
+        if artifact.get("digest") != "sha256:" + sha256(target):
+            raise ValueError("Failed-run artifact digest mismatch or missing digest.")
+        with zipfile.ZipFile(target) as archive:
+            names = archive.namelist()
+            expected = {"release-recovery-bundle.tar.gz", "release-recovery-bundle.tar.gz.sha256.json"}
+            if len(names) != 2 or set(names) != expected:
+                raise ValueError("Unexpected recovery artifact inventory.")
+            archive.extractall(evidence / "bundle")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--phase", choices=("build", "authorize", "publish", "package-identity", "recovery-metadata", "recovery-plan", "recover-images", "recover"), required=True)
+    parser.add_argument("--phase", choices=("build", "authorize", "publish", "package-identity", "production-gate", "failed-run-gate", "download-bundle", "recovery-metadata", "recovery-plan", "recover-images", "recover"), required=True)
     parser.add_argument("--version", required=True)
     parser.add_argument("--registry", default=os.environ.get("HEXALITH_ZOT_REGISTRY") or "registry.hexalith.com")
     parser.add_argument("--repository-prefix", default="memories")
@@ -1142,6 +1249,8 @@ def main():
     parser.add_argument("--recovery-bundle", type=Path)
     parser.add_argument("--release-run-id")
     parser.add_argument("--release-run-attempt")
+    parser.add_argument("--tag-commit")
+    parser.add_argument("--nuget-validation-timeout", type=float, default=600)
     parser.add_argument("--source-root", type=Path, default=Path.cwd())
     parser.add_argument("--repository", default="Hexalith/Hexalith.Memories")
     parser.add_argument("--nuget-base-uri", default="https://api.nuget.org/v3-flatcontainer")
@@ -1151,6 +1260,9 @@ def main():
     evidence = arguments.evidence_directory.resolve()
     output = arguments.output_directory.resolve()
     try:
+        if arguments.phase in ("production-gate", "failed-run-gate", "download-bundle"):
+            workflow_gate(arguments)
+            return 0
         if arguments.phase in ("recovery-metadata", "recovery-plan", "recover-images", "recover"):
             current_completion(arguments)
             return 0

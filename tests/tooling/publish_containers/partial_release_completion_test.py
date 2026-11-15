@@ -303,7 +303,11 @@ class PartialReleaseCompletionTests(unittest.TestCase):
         for name in staged_names:
             self.assertIn(f"Copy-Item ./tools/{name} $toolingPath", workflow)
         self.assertIn("Validate historical inventory before any mutation", workflow)
-        self.assertIn("$repositories.Count -notin @(2,4)", workflow)
+        self.assertIn("-HistoricalInventory", workflow)
+        publisher = (REPO_ROOT / 'tools/publish-containers.ps1').read_text()
+        self.assertIn("$selected.Count -notin @(2, 4)", publisher)
+        self.assertIn("Parser]::ParseFile", publisher)
+        self.assertIn("-Repositories ('${{ steps.historical.outputs.repositories }}'.Split(','))", workflow)
         with tempfile.TemporaryDirectory() as temp, PackageServer() as nuget:
             root = Path(temp)
             source, summary, deployment, env = self.prepare(root)
