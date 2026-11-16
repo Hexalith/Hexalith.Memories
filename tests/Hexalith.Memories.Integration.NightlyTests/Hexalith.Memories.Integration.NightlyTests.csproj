@@ -1,0 +1,123 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Hexalith.Memories.AccessTelemetry.Contracts\Hexalith.Memories.AccessTelemetry.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Hexalith.Memories.AccessTelemetry.Clock\Hexalith.Memories.AccessTelemetry.Clock.csproj" />
+    <ProjectReference Include="..\..\src\Hexalith.Memories.AccessTelemetry\Hexalith.Memories.AccessTelemetry.csproj" />
+    <ProjectReference Include="..\..\src\Hexalith.Memories.AppHost\Hexalith.Memories.AppHost.csproj">
+      <IsAspireProjectResource>false</IsAspireProjectResource>
+    </ProjectReference>
+    <ProjectReference Include="..\..\src\Hexalith.Memories.Server\Hexalith.Memories.Server.csproj" />
+    <ProjectReference Include="..\..\src\Hexalith.Memories.Contracts\Hexalith.Memories.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Hexalith.Memories.Client.Rest\Hexalith.Memories.Client.Rest.csproj" />
+    <ProjectReference Include="..\..\src\Hexalith.Memories.Cli\Hexalith.Memories.Cli.csproj" />
+    <ProjectReference Include="..\..\src\Hexalith.Memories.Mcp\Hexalith.Memories.Mcp.csproj" />
+    <ProjectReference Include="..\Hexalith.Memories.TestHelpers\Hexalith.Memories.TestHelpers.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.Testing" />
+    <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+    <PackageReference Include="System.Text.Json" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Shouldly" />
+    <PackageReference Include="NSubstitute" />
+    <PackageReference Include="NFalkorDB" />
+    <PackageReference Include="NRedisStack" />
+    <PackageReference Include="Testcontainers" />
+    <PackageReference Include="StackExchange.Redis" />
+    <PackageReference Include="coverlet.collector">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <Using Include="Hexalith.Memories.Server.Workflows.Contracts" />
+    <Using Include="Hexalith.Memories.Server.Serialization" />
+  </ItemGroup>
+
+  <!-- Qualification-only workflows do not use version discovery. Its generated public
+       registry collides with the production Server registry imported by this assembly. -->
+  <Target Name="RemoveQualificationWorkflowVersionRegistryGenerator" BeforeTargets="CoreCompile">
+    <ItemGroup>
+      <Analyzer Remove="@(Analyzer)" Condition="'%(Filename)' == 'Dapr.Workflow.Versioning.Generators'" />
+    </ItemGroup>
+  </Target>
+
+  <ItemGroup>
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\AssemblyInfo.cs" Link="AssemblyInfo.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Cli\CliSearchIntegrationTests.cs" Link="Cli\CliSearchIntegrationTests.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\EventStoreIntegration\EventIngestionPipelineIntegrationTests.cs" Link="EventStoreIntegration\EventIngestionPipelineIntegrationTests.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Factories\IndexInputFactory.cs" Link="Factories\IndexInputFactory.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\AspireIngestionPipelineFixture.cs" Link="Fixtures\AspireIngestionPipelineFixture.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\CompositeSearchFixture.cs" Link="Fixtures\CompositeSearchFixture.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\DaprStateSidecarCollection.cs" Link="Fixtures\DaprStateSidecarCollection.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\DaprStateSidecarFixture.cs" Link="Fixtures\DaprStateSidecarFixture.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\EmbeddingProviderFaultPlan.cs" Link="Fixtures\EmbeddingProviderFaultPlan.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\EmbeddingProviderSecret.cs" Link="Fixtures\EmbeddingProviderSecret.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\EmbeddingProviderTestMode.cs" Link="Fixtures\EmbeddingProviderTestMode.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\FakeHttpRequestEvidence.cs" Link="Fixtures\FakeHttpRequestEvidence.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\FalkorDbCollection.cs" Link="Fixtures\FalkorDbCollection.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\FalkorDbFixture.cs" Link="Fixtures\FalkorDbFixture.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\IngestionIntegrationTestDriver.cs" Link="Fixtures\IngestionIntegrationTestDriver.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\MemoryErasureProcessMessage.cs" Link="Fixtures\MemoryErasureProcessMessage.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\MemoryErasureProcessProtocol.cs" Link="Fixtures\MemoryErasureProcessProtocol.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\MemoryErasureProcessWorker.cs" Link="Fixtures\MemoryErasureProcessWorker.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\OllamaOidcFakeServer.cs" Link="Fixtures\OllamaOidcFakeServer.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\OpenBaoCapturedRequest.cs" Link="Fixtures\OpenBaoCapturedRequest.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\OpenBaoRecordingHandler.cs" Link="Fixtures\OpenBaoRecordingHandler.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\OpenBaoTopologyIntegrationTests.cs" Link="Fixtures\OpenBaoTopologyIntegrationTests.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\OwnedSemanticInventory.cs" Link="Fixtures\OwnedSemanticInventory.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\RedisStackCollection.cs" Link="Fixtures\RedisStackCollection.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\RedisStackFixture.cs" Link="Fixtures\RedisStackFixture.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\ScriptedHttpServer.cs" Link="Fixtures\ScriptedHttpServer.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Health\HealthEndpointIntegrationTests.cs" Link="Health\HealthEndpointIntegrationTests.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Ingestion\CandidateOnlyQualificationWorkflow.cs" Link="Ingestion\CandidateOnlyQualificationWorkflow.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Ingestion\ContentBearingLegacyRetryWorkflow.cs" Link="Ingestion\ContentBearingLegacyRetryWorkflow.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Ingestion\HistoricalCandidateArtifactWorkflow.cs" Link="Ingestion\HistoricalCandidateArtifactWorkflow.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Ingestion\HistoricalNaturalLanguageEmbeddingRetryWorkflow.cs" Link="Ingestion\HistoricalNaturalLanguageEmbeddingRetryWorkflow.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Ingestion\HistoricalProcessArtifactWorkflow.cs" Link="Ingestion\HistoricalProcessArtifactWorkflow.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Ingestion\LegacyRetryErasureQualificationWorkflow.cs" Link="Ingestion\LegacyRetryErasureQualificationWorkflow.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Ingestion\OllamaAspireIngestionPipelineCollection.cs" Link="Ingestion\OllamaAspireIngestionPipelineCollection.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Ingestion\RetainedAnnotationSchedulingWorkflow.cs" Link="Ingestion\RetainedAnnotationSchedulingWorkflow.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Ingestion\RetryDatabaseInterception.cs" Link="Ingestion\RetryDatabaseInterception.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Search\DegradationIntegrationTests.cs" Link="Search\DegradationIntegrationTests.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Search\GraphScopedSearchIntegrationTests.cs" Link="Search\GraphScopedSearchIntegrationTests.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Search\SemanticSearchIntegrationTests.cs" Link="Search\SemanticSearchIntegrationTests.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Search\SyntacticSearchIntegrationTests.cs" Link="Search\SyntacticSearchIntegrationTests.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Telemetry\AccessTelemetryOperationRendezvous.cs" Link="Telemetry\AccessTelemetryOperationRendezvous.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Telemetry\AccessTelemetryYamlLeastPrivilegeValidator.cs" Link="Telemetry\AccessTelemetryYamlLeastPrivilegeValidator.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Telemetry\AspireEndToEndTraceTests.cs" Link="Telemetry\AspireEndToEndTraceTests.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Telemetry\AuditLogStreamIntegrationTests.cs" Link="Telemetry\AuditLogStreamIntegrationTests.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Telemetry\CollectingLogger.cs" Link="Telemetry\CollectingLogger.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Telemetry\CollectingLoggerProvider.cs" Link="Telemetry\CollectingLoggerProvider.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Telemetry\CoordinatedAccessTelemetryStateStore.cs" Link="Telemetry\CoordinatedAccessTelemetryStateStore.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Telemetry\FailFirstStateStore.cs" Link="Telemetry\FailFirstStateStore.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Telemetry\Infrastructure\AuditEventStreamReader.cs" Link="Telemetry\Infrastructure\AuditEventStreamReader.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Telemetry\Infrastructure\CliTracingHarness.cs" Link="Telemetry\Infrastructure\CliTracingHarness.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Telemetry\Infrastructure\InMemorySpanCollector.cs" Link="Telemetry\Infrastructure\InMemorySpanCollector.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Telemetry\Infrastructure\ServerActivityStreamReader.cs" Link="Telemetry\Infrastructure\ServerActivityStreamReader.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Telemetry\Infrastructure\TelemetryAsserts.cs" Link="Telemetry\Infrastructure\TelemetryAsserts.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Telemetry\InnerOperationOverlapStateStore.cs" Link="Telemetry\InnerOperationOverlapStateStore.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Telemetry\LifecycleProcessBoundaryDeliveryClient.cs" Link="Telemetry\LifecycleProcessBoundaryDeliveryClient.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Telemetry\ObservedFakeTimeProvider.cs" Link="Telemetry\ObservedFakeTimeProvider.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Telemetry\TimedOutageAccessTelemetryDeliveryClient.cs" Link="Telemetry\TimedOutageAccessTelemetryDeliveryClient.cs" />
+  </ItemGroup>
+
+</Project>

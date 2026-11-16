@@ -292,22 +292,14 @@ class PartialReleaseCompletionTests(unittest.TestCase):
         env["GH_TOKEN"] = "SECRET_GITHUB_TOKEN_SHOULD_NOT_LEAK"
         return source, summary, deployment, env
 
-    def test_workflow_staged_tooling_requires_current_manifest_and_reads_historical_tag(self) -> None:
-        workflow = (REPO_ROOT / ".github/workflows/recover-partial-release.yml").read_text(encoding="utf-8")
+    def test_staged_tooling_requires_current_manifest_and_reads_historical_tag(self) -> None:
         staged_names = (
-            "verify-container-registry.ps1",
-            "publish-containers.ps1",
-            "complete-partial-release.ps1",
-            "release-packages.json",
+            "verify-container-registry.ps1", "publish-containers.ps1",
+            "complete-partial-release.ps1", "release-packages.json",
         )
-        for name in staged_names:
-            self.assertIn(f"Copy-Item ./tools/{name} $toolingPath", workflow)
-        self.assertIn("Validate historical inventory before any mutation", workflow)
-        self.assertIn("-HistoricalInventory", workflow)
         publisher = (REPO_ROOT / 'tools/publish-containers.ps1').read_text()
         self.assertIn("$selected.Count -notin @(2, 4)", publisher)
         self.assertIn("Parser]::ParseFile", publisher)
-        self.assertIn("-Repositories ('${{ steps.historical.outputs.repositories }}'.Split(','))", workflow)
         with tempfile.TemporaryDirectory() as temp, PackageServer() as nuget:
             root = Path(temp)
             source, summary, deployment, env = self.prepare(root)

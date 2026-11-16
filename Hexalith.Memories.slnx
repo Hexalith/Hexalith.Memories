@@ -31,6 +31,7 @@
     <Project Path="tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj" />
     <Project Path="tests/Hexalith.Memories.TestHelpers/Hexalith.Memories.TestHelpers.csproj" />
     <Project Path="tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj" />
+    <Project Path="tests/Hexalith.Memories.Integration.NightlyTests/Hexalith.Memories.Integration.NightlyTests.csproj" />
     <Project Path="tests/Hexalith.Memories.Mcp.Tests/Hexalith.Memories.Mcp.Tests.csproj" />
     <Project Path="tests/Hexalith.Memories.Benchmarks/Hexalith.Memories.Benchmarks.csproj" />
     <Project Path="tests/Hexalith.Memories.Web.Specimens/Hexalith.Memories.Web.Specimens.csproj" />

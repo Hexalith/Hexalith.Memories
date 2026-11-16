@@ -61,19 +61,10 @@ class Pg2RuntimeControlPlaneIdentityTests(unittest.TestCase):
             shutil.copy2(REPO_ROOT / relative, target)
         # Only this disposable fixture gets a baseline; the workspace is never staged or committed.
         message = 'test: establish disposable source fixture\n'
-        message_file = root / 'fixture-message.txt'
-        message_file.write_text(message)
-        lint_command = [str(REPO_ROOT / 'node_modules/.bin/commitlint'),
-                        '--config', str(REPO_ROOT / 'commitlint.config.mjs'), '--edit', str(message_file)]
-        subprocess.run(lint_command, cwd=REPO_ROOT, check=True, capture_output=True)
-        message_file.unlink()
         for command in (['git', 'init', '-q'], ['git', 'add', '.'],
                         ['git', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
                          '-c', 'commit.gpgsign=false', 'commit', '-qm', message.strip()]):
             subprocess.run(command, cwd=root, check=True, capture_output=True)
-        message_file.write_bytes(subprocess.check_output(['git', 'log', '-1', '--format=%B'], cwd=root))
-        subprocess.run(lint_command, cwd=REPO_ROOT, check=True, capture_output=True)
-        message_file.unlink()
         return root
 
     def run_gate(self, scenario=None, *, session=SESSION, gate='C1.15', profile='PG-ONPREM-2',

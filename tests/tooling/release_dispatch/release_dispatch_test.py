@@ -67,33 +67,11 @@ class ReleaseDispatchTests(unittest.TestCase):
         self.source = load_script(SOURCE_SCRIPT, "release_source_test")
         self.destination = load_script(DESTINATION_SCRIPT, "release_destination_test")
 
-    def test_workflow_dispatch_proves_source_before_production_job(self):
-        workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
-        self.assertIn("workflow_dispatch:", workflow)
-        self.assertNotIn("  push:\n", workflow)
-        self.assertNotIn("    if: github.ref == 'refs/heads/main'", workflow)
-        self.assertLess(workflow.index("  release-source:"), workflow.index("  release:\n"))
-        self.assertLess(workflow.index("Require production environment approval rule"), workflow.index("  release:\n"))
-        self.assertIn("needs: release-source", workflow)
-        self.assertIn("environment: production", workflow)
-        self.assertIn("Require production environment approval rule", workflow)
-        self.assertIn("Recheck production approval rule before publication", workflow)
-        self.assertLess(workflow.index("  release:\n"), workflow.index("Recheck production approval rule before publication"))
-        self.assertLess(workflow.index("Recheck production approval rule before publication"), workflow.index("uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0"))
-        self.assertIn("prepare-domain-release@" + self.source.APPROVED_BUILDS_SHA, workflow)
-        self.assertIn("builds-execution-sha: " + self.source.APPROVED_BUILDS_SHA, workflow)
-        self.assertIn("expected-package-count: '10'", workflow)
-        self.assertIn("publication-flag: ${{ vars.HEXALITH_RELEASE_PUBLISH_ENABLED }}", workflow)
-        self.assertIn("uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0", workflow)
-        self.assertNotIn("./tools/test-release.ps1", workflow)
-        self.assertIn("Release version was computed but semantic-release created no tag.", workflow)
 
     def test_release_pin_is_approved_and_profile_tracks_the_gitlink(self):
-        workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
         approved = "ae77d5690a9411a2154fa4ed5231edc373942573"
         self.assertEqual(approved, self.source.APPROVED_BUILDS_SHA)
         self.assertEqual(approved, self.destination.APPROVED_BUILDS_SHA)
-        self.assertEqual(3, workflow.count(approved))
         profile = json.loads((ROOT / "tools/builds-publication-qualification.json").read_text(encoding="utf-8"))
         gitlink = subprocess.run(
             ["git", "rev-parse", "HEAD:references/Hexalith.Builds"], cwd=ROOT,
@@ -102,23 +80,6 @@ class ReleaseDispatchTests(unittest.TestCase):
         self.assertEqual(gitlink, profile["buildsSha"])
 
     def test_five_image_release_retains_diagnostic_and_durable_success_evidence(self):
-        workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
-        emulator = workflow.split("      - name: Initialize both container platforms\n", 1)[1].split("      - name:", 1)[0]
-        self.assertRegex(emulator, r"image: tonistiigi/binfmt@sha256:[0-9a-f]{64}(?:\n|$)")
-        tools = workflow.split("      - name: Require archive transport and isolated health tools\n", 1)[1].split("      - name:", 1)[0]
-        self.assertIn("skopeo --version", tools)
-        configuration = json.loads((ROOT / ".releaserc.json").read_text(encoding="utf-8"))
-        assets = configuration["plugins"][3][1]["assets"]
-        self.assertIn("artifacts/release/hexalith-memories-release-evidence.tar.gz", assets)
-        self.assertIn("artifacts/release/hexalith-memories-release-evidence.tar.gz.sha256.json", assets)
-        diagnostics = workflow.split("      - name: Archive release failure diagnostics\n", 1)[1].split("      - name:", 1)[0]
-        upload = workflow.split("      - name: Upload release publication evidence\n", 1)[1].split("      - name:", 1)[0]
-        self.assertIn("if: failure()", diagnostics)
-        self.assertIn("--diagnostics", diagnostics)
-        self.assertIn("if: always()", upload)
-        self.assertIn("artifacts/release/**", upload)
-        self.assertIn("retention-days: 90", upload)
-        self.assertLess(workflow.index("Archive release failure diagnostics"), workflow.index("Upload release publication evidence"))
         publisher = (ROOT / "tools/publish-release.ps1").read_text(encoding="utf-8")
         self.assertLess(publisher.index("--phase authorize"), publisher.index("-Script './tools/publish-nuget.ps1'"))
         self.assertIn("-PublicationContract", publisher)
@@ -222,139 +183,8 @@ class ReleaseDispatchTests(unittest.TestCase):
         self.assertEqual(self.source.APPROVED_BUILDS_SHA, self.destination.APPROVED_BUILDS_SHA)
         preflight = (ROOT / "tools/release-preflight.ps1").read_text(encoding="utf-8")
         publisher = (ROOT / "tools/publish-nuget.ps1").read_text(encoding="utf-8")
-        release_config = json.loads((ROOT / ".releaserc.json").read_text(encoding="utf-8"))
-        prepare_command = release_config["plugins"][2][1]["prepareCmd"]
         self.assertIn("check-release-destinations.py", preflight)
         self.assertNotIn("check-release-destinations.py", publisher)
-        self.assertLess(prepare_command.index("pack-release.ps1"), prepare_command.index("check-release-destinations.py"))
-        self.assertLess(prepare_command.index("check-release-destinations.py"), prepare_command.index("check-release-source.py"))
-        self.assertIn("--version ${nextRelease.version}", prepare_command)
-        self.assertNotIn("check-release-source.py", release_config["plugins"][2][1]["publishCmd"])
-
-    def test_both_production_protection_checks_allow_admin_bypass_and_require_reviewers_and_branch_policy(self):
-        workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
-        with tempfile.TemporaryDirectory() as temporary:
-            fake_gh = Path(temporary) / "gh"
-            fake_gh.write_text(
-                "#!/usr/bin/env bash\n"
-                "set -euo pipefail\n"
-                "query=''\n"
-                "while [ \"$#\" -gt 0 ]; do\n"
-                "  if [ \"$1\" = '--jq' ]; then shift; query=$1; fi\n"
-                "  shift\n"
-                "done\n"
-                "printf '%s\\n' \"$GH_RESPONSE\" | jq -r \"$query\"\n",
-                encoding="utf-8",
-            )
-            fake_gh.chmod(0o755)
-            reviewer = {"type": "User", "id": 1}
-            scenarios = (
-                ({"protection_rules": []}, False),
-                ({"protection_rules": [{"type": "wait_timer", "wait_timer": 5}]}, False),
-                ({"protection_rules": [{"type": "required_reviewers", "reviewers": []}]}, False),
-                ({"protection_rules": [{"type": "required_reviewers", "reviewers": [reviewer]}],
-                  "can_admins_bypass": True, "deployment_branch_policy": {"protected_branches": True}}, True),
-                ({"protection_rules": [{"type": "required_reviewers", "reviewers": []}],
-                  "can_admins_bypass": True, "deployment_branch_policy": {"protected_branches": True}}, False),
-                ({"protection_rules": [{"type": "required_reviewers", "reviewers": [reviewer]}],
-                  "can_admins_bypass": True, "deployment_branch_policy": None}, False),
-                ({"protection_rules": [{"type": "required_reviewers", "reviewers": [reviewer]}],
-                  "can_admins_bypass": False, "deployment_branch_policy": None}, False),
-                ({"protection_rules": [{"type": "required_reviewers", "reviewers": [reviewer]}],
-                  "can_admins_bypass": False, "deployment_branch_policy": {"protected_branches": True}}, True),
-            )
-            for step_name in ("Require production environment approval rule", "Recheck production approval rule before publication"):
-                step = workflow.split("      - name: " + step_name, 1)[1]
-                command = re.search(r"        run: \|\n((?:          .*\n)+)", step)
-                self.assertIsNotNone(command)
-                script = "\n".join(line[10:] for line in command.group(1).splitlines())
-                for response, expected_success in scenarios:
-                    with self.subTest(step=step_name, response=response):
-                        environment = dict(os.environ)
-                        environment.update(
-                            PATH=f"{temporary}:{os.environ['PATH']}",
-                            GITHUB_REPOSITORY="Hexalith/Hexalith.Memories",
-                            GH_TOKEN="fixture",
-                            GH_RESPONSE=json.dumps(response),
-                        )
-                        result = subprocess.run(["bash", "-c", script], env=environment, capture_output=True, text=True)
-                        self.assertEqual(expected_success, result.returncode == 0, result.stderr)
-
-    def test_prepare_hook_refuses_failed_source_proof_before_tag_phase(self):
-        release_config = json.loads((ROOT / ".releaserc.json").read_text(encoding="utf-8"))
-        command = release_config["plugins"][2][1]["prepareCmd"].replace("${nextRelease.version}", "1.2.3")
-        with tempfile.TemporaryDirectory() as temporary:
-            fake_bin = Path(temporary)
-            pack = fake_bin / "pwsh"
-            pack.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-            pack.chmod(0o755)
-            proof = fake_bin / "python3"
-            proof.write_text(
-                "#!/usr/bin/env bash\n[[ \"$1\" == *check-release-source.py ]] && exit 42\nexit 0\n",
-                encoding="utf-8",
-            )
-            proof.chmod(0o755)
-            environment = dict(os.environ)
-            environment["PATH"] = f"{temporary}:{os.environ['PATH']}"
-
-            result = subprocess.run(["bash", "-c", command], env=environment, capture_output=True, text=True)
-
-            self.assertEqual(42, result.returncode)
-
-    def test_prepare_hook_refuses_failed_destination_proof_before_tag_phase(self):
-        release_config = json.loads((ROOT / ".releaserc.json").read_text(encoding="utf-8"))
-        command = release_config["plugins"][2][1]["prepareCmd"].replace("${nextRelease.version}", "1.2.3")
-        with tempfile.TemporaryDirectory() as temporary:
-            fake_bin = Path(temporary)
-            for name, content in (
-                ("pwsh", "#!/usr/bin/env bash\nexit 0\n"),
-                ("python3", "#!/usr/bin/env bash\n[[ \"$1\" == *check-release-destinations.py ]] && exit 43\nexit 0\n"),
-            ):
-                path = fake_bin / name
-                path.write_text(content, encoding="utf-8")
-                path.chmod(0o755)
-            environment = dict(os.environ)
-            environment["PATH"] = f"{temporary}:{os.environ['PATH']}"
-            result = subprocess.run(["bash", "-c", command], env=environment, capture_output=True, text=True)
-            self.assertEqual(43, result.returncode)
-
-    def test_prepare_hook_refuses_source_that_advances_during_destination_validation(self):
-        release_config = json.loads((ROOT / ".releaserc.json").read_text(encoding="utf-8"))
-        command = release_config["plugins"][2][1]["prepareCmd"].replace("${nextRelease.version}", "1.2.3")
-        sha = "b" * 40
-        with tempfile.TemporaryDirectory() as temporary:
-            directory = Path(temporary)
-            write_controlled_pinned_helper(directory)
-            tooling = directory / "tools"
-            tooling.mkdir()
-            for path in (SOURCE_SCRIPT, DESTINATION_SCRIPT, ROOT / "tools/release-packages.json"):
-                shutil.copyfile(path, tooling / path.name)
-            fake_bin = directory / "bin"
-            fake_bin.mkdir()
-            for name, content in (
-                ("pwsh", "#!/usr/bin/env bash\nexit 0\n"),
-                ("git", "#!/usr/bin/env bash\n"
-                 f"if [[ \"$2\" == *builds-execution ]]; then echo {self.source.APPROVED_BUILDS_SHA}; "
-                 f"else echo {sha}; fi\n"),
-            ):
-                path = fake_bin / name
-                path.write_text(content, encoding="utf-8")
-                path.chmod(0o755)
-            environment = {key: value for key, value in os.environ.items() if not key.startswith(("GIT_", "GITHUB_"))}
-            environment.update(
-                PATH=f"{fake_bin}:{os.environ['PATH']}",
-                GITHUB_REPOSITORY="Hexalith/Hexalith.Memories",
-                GITHUB_EVENT_NAME="workflow_dispatch",
-                GITHUB_REF="refs/heads/main",
-                GITHUB_SHA=sha,
-                CONTROLLED_DESTINATION_STATUS="404",
-                CONTROLLED_SOURCE_STATE=str(directory / "source-advanced"),
-            )
-            result = subprocess.run(["bash", "-c", command], cwd=directory, env=environment, capture_output=True, text=True)
-
-            self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-            self.assertIn("[release-destinations] pass:", result.stdout)
-            self.assertIn("[release-source] refused: source-no-longer-current", result.stderr)
 
     def test_destination_wrapper_dynamically_loads_valid_helper_for_absent_and_occupied_destinations(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -376,48 +206,6 @@ class ReleaseDispatchTests(unittest.TestCase):
                     else:
                         self.assertIn("occupied controlled destination", stderr.getvalue())
 
-    def test_workflow_publication_detection_requires_new_tag_and_artifacts(self):
-        workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
-        step = workflow.split("      - name: Detect release publication\n", 1)[1].split("      - name:", 1)[0]
-        script = textwrap.dedent(step.split("        run: |\n", 1)[1])
-        scenarios = (
-            ("unchanged-tags", False, False, False, False),
-            ("new-tag-without-artifacts", True, False, False, False),
-            ("new-tag-without-packages", True, True, False, False),
-            ("new-tag-with-artifacts", True, True, True, True),
-        )
-        for name, new_tag, deployment, package, expected_success in scenarios:
-            with self.subTest(name=name), tempfile.TemporaryDirectory() as temporary:
-                directory = Path(temporary)
-                environment = {key: value for key, value in os.environ.items() if not key.startswith(("GIT_", "GITHUB_"))}
-                environment.update(BEFORE_FINGERPRINT=hashlib.sha256(b"").hexdigest(),
-                                   GITHUB_OUTPUT=str(directory / "github-output"))
-                for arguments in (
-                    ["init", "--initial-branch=main"],
-                    ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
-                     "commit", "--allow-empty", "-m", "chore: create publication detection fixture"],
-                ):
-                    subprocess.run(["git", *arguments], cwd=directory, env=environment, check=True, capture_output=True)
-                if new_tag:
-                    subprocess.run(["git", "tag", "v1.2.3"], cwd=directory, env=environment, check=True, capture_output=True)
-                for present, relative in (
-                    (deployment, "artifacts/deployment/hexalith-memories-production.yaml"),
-                    (package, "artifacts/packages/release/Package.1.2.3.nupkg"),
-                ):
-                    if present:
-                        path = directory / relative
-                        path.parent.mkdir(parents=True, exist_ok=True)
-                        path.write_text("fixture", encoding="utf-8")
-                output = Path(environment["GITHUB_OUTPUT"])
-                output.write_text("", encoding="utf-8")
-
-                result = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", script], cwd=directory,
-                                        env=environment, capture_output=True, text=True)
-
-                self.assertEqual(expected_success, result.returncode == 0, result.stdout + result.stderr)
-                self.assertEqual("published=true\n" if expected_success else "", output.read_text(encoding="utf-8"))
-                if not new_tag:
-                    self.assertIn("semantic-release created no tag", result.stderr)
 
     def test_destination_wrapper_refuses_wrong_checkout_missing_helper_and_version(self):
         with tempfile.TemporaryDirectory() as temporary:

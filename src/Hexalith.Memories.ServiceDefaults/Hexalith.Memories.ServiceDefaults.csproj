@@ -24,6 +24,7 @@
          the DI-guard eager-fail path without going through a reflection shim. -->
     <InternalsVisibleTo Include="Hexalith.Memories.Server.Tests" />
     <InternalsVisibleTo Include="Hexalith.Memories.IntegrationTests" />
+    <InternalsVisibleTo Include="Hexalith.Memories.Integration.NightlyTests" />
   </ItemGroup>
 
   <ItemGroup>

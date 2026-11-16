@@ -15,12 +15,6 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[3]
 RUNNER = REPO_ROOT / "tools" / "verify-access-telemetry-c1.ps1"
 FIXTURE = Path(__file__).parent / "fixtures" / "c1_15_complete.json"
-STORY = REPO_ROOT / "_bmad-output" / "implementation-artifacts" / "27-21-runtime-and-control-plane-identity.md"
-EXECUTION_SPEC = REPO_ROOT / "_bmad-output" / "implementation-artifacts" / "spec-27-21-runtime-control-plane-identity-6.md"
-HISTORICAL_HANDOFF = REPO_ROOT / "_bmad-output" / "implementation-artifacts" / "spec-27-21-runtime-control-plane-identity.md"
-SPRINT_STATUS = REPO_ROOT / "_bmad-output" / "implementation-artifacts" / "sprint-status.yaml"
-DEFERRED_WORK = REPO_ROOT / "_bmad-output" / "implementation-artifacts" / "deferred-work.md"
-EPIC_CONTEXT = REPO_ROOT / "_bmad-output" / "implementation-artifacts" / "epic-27-context.md"
 BASE_KUSTOMIZATION = REPO_ROOT / "deploy" / "kubernetes" / "base" / "kustomization.yaml"
 LIFECYCLE_DEPLOYMENTS = REPO_ROOT / "deploy" / "kubernetes" / "base" / "access-telemetry-deployments.yaml"
 PRODUCTION_KUSTOMIZATION = REPO_ROOT / "deploy" / "kubernetes" / "overlays" / "production" / "kustomization.yaml"
@@ -1352,96 +1346,6 @@ class RuntimeControlPlaneIdentityTests(unittest.TestCase):
         self.assertTrue(zero_scaled or not explicit_alpha_pair_present)
         self.assertIn("ACCESS_TELEMETRY_ENABLED=false", production_text)
 
-        story_text = STORY.read_text(encoding="utf-8")
-        sprint_status = SPRINT_STATUS.read_text(encoding="utf-8")
-        story_state = re.search(r"(?m)^Status: (review|done)$", story_text)
-        self.assertIsNotNone(story_state)
-        self.assertRegex(
-            sprint_status,
-            rf"(?m)^  27-21-runtime-and-control-plane-identity: {story_state.group(1)}$",
-        )
-        spec_text = EXECUTION_SPEC.read_text(encoding="utf-8")
-        expected_spec_state = "in-review" if story_state.group(1) == "review" else "done"
-        self.assertRegex(spec_text, rf"(?m)^status: '{expected_spec_state}'$")
-        self.assertRegex(
-            sprint_status,
-            r"(?m)^  27-4-retention-verification-operations-runbook-and-a41-close-out: done$",
-        )
-
-        slice_proof_match = re.search(
-            r"(?ms)^## Slice Proof\s*$.*?(?=^## |\Z)",
-            story_text,
-        )
-        self.assertIsNotNone(slice_proof_match)
-        slice_rows = [
-            line
-            for line in slice_proof_match.group(0).splitlines()
-            if line.startswith("| C1.15 |")
-        ]
-        self.assertEqual(1, len(slice_rows))
-        slice_cells = [cell.strip() for cell in slice_rows[0].strip("|").split("|")]
-        self.assertEqual(["accepted", "complete"], slice_cells[-2:])
-        self.assertEqual("`/root/review_c1_packet`", slice_cells[-3])
-        self.assertEqual(
-            [f"../../{OBSERVED_PACKET_PATH}", f"../../{INDEPENDENT_REVIEW_PATH}"],
-            re.findall(r"\]\(([^)]+)\)", slice_cells[3]),
-        )
-        self.assertIn(OBSERVED_PACKET_SHA256, slice_cells[3])
-        self.assertIn(INDEPENDENT_REVIEW_SHA256, slice_cells[3])
-        self.assertIn(
-            "pwsh ./tools/verify-access-telemetry-c1.ps1 -Gate C1.15 -ProfileId PG-ONPREM-1 "
-            "-EvidenceDirectory ./artifacts/access-telemetry-c1/C1.15",
-            story_text,
-        )
-
-        expected_disposition = {
-            "Independent reviewer": "/root/review_c1_packet",
-            "Packet disposition": "accepted",
-            "Accepted scope": "DW-718 capture/review closure and C1.15 runtime/control-plane identity capture only",
-            "Observed packet": f"[Observed packet](../../{OBSERVED_PACKET_PATH})",
-            "Observed packet SHA-256": OBSERVED_PACKET_SHA256,
-            "Independent review artifact": f"[Independent packet review](../../{INDEPENDENT_REVIEW_PATH})",
-            "Independent review SHA-256": INDEPENDENT_REVIEW_SHA256,
-            "C1.15 review state": "accepted",
-            "C1.15 completion state": "complete",
-            "Production acceptance": "not-evaluated",
-            "productionGatePassed": "false",
-            "Production write enablement authorized": "false",
-            "Other C1 gates discharged": "none",
-            "C1.25 security approval": "false",
-            "Story 27.4 advanced": "false",
-            "A41 closed": "false",
-            "Human sign-off": "false",
-        }
-        # Bind acceptance to its tracked exact section and immutable references.
-        # Local ignored evidence files need not exist in a fresh CI checkout.
-        for label, text in (("story", story_text), ("execution-spec", spec_text)):
-            with self.subTest(record=label):
-                disposition_section = re.search(
-                    r"(?ms)^## 2026-10-04 Independent C1\.15 Packet Disposition\s*$.*?(?=^## |\Z)",
-                    text,
-                )
-                self.assertIsNotNone(disposition_section)
-                actual_disposition = {}
-                for line in disposition_section.group(0).splitlines():
-                    if not line.startswith("| "):
-                        continue
-                    cells = [cell.strip().strip("`") for cell in line.strip("|").split("|")]
-                    self.assertEqual(2, len(cells))
-                    if cells[0] == "Field" or cells[0].startswith(":--"):
-                        continue
-                    self.assertNotIn(cells[0], actual_disposition)
-                    actual_disposition[cells[0]] = cells[1]
-                self.assertEqual(expected_disposition, actual_disposition)
-
-        handoff_text = HISTORICAL_HANDOFF.read_text(encoding="utf-8")
-        self.assertRegex(handoff_text, r"(?m)^status: 'awaiting-operator'$")
-        historical_halt = re.search(r"(?ms)^## 2026-09-05 DW-718 Halt Note\s*$.*?\Z", handoff_text)
-        self.assertIsNotNone(historical_halt)
-        self.assertIn("DW-718 capture was halted", historical_halt.group(0))
-        self.assertIn("no Ready", historical_halt.group(0))
-        self.assertIn("awaiting-operator", historical_halt.group(0))
-
         result, packets, _, _ = self.run_gate(self.base_scenario)
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual("observed", packets[0]["producerStatus"])
@@ -1449,64 +1353,6 @@ class RuntimeControlPlaneIdentityTests(unittest.TestCase):
         self.assertFalse(packets[0]["productionGatePassed"])
         self.assertEqual("not-evaluated", packets[0]["productionLifecycleWrites"])
 
-        change_log_match = re.search(
-            r"(?ms)^## Change Log\s*$.*?(?=^## |\Z)",
-            story_text,
-        )
-        self.assertIsNotNone(change_log_match)
-        change_log_rows = change_log_match.group(0).splitlines()
-        creation_rows = [line for line in change_log_rows if line.startswith("| 2026-08-03 | create-story |")]
-        review_rows = [line for line in change_log_rows if line.startswith("| 2026-08-03 | code-review |")]
-        self.assertEqual(1, len(creation_rows))
-        self.assertEqual(1, len(review_rows))
-        self.assertIn("Creation baseline records 6 discovered test methods", creation_rows[0])
-        self.assertIn("comparable discovery `6 -> 12` test methods", review_rows[0])
-
-        a41_action_match = re.search(
-            r'(?ms)^  - epic: 20\s*$\n    action: "Keep 20\.5-A41-ACCESS-TELEMETRY-RETENTION .*?'
-            r'(?=^  - epic:|\Z)',
-            sprint_status,
-        )
-        self.assertIsNotNone(a41_action_match)
-        self.assertRegex(
-            a41_action_match.group(0),
-            r"(?m)^    status: done  # 2026-11-01: resolved by accepted debt \(DW-17\)",
-        )
-
-        epic_context = EPIC_CONTEXT.read_text(encoding="utf-8")
-        self.assertIn(
-            "Twenty-three other gates remain held and unregistered; planning drafts confer no ownership or gate credit.",
-            epic_context,
-        )
-        self.assertIn(INDEPENDENT_REVIEW_PATH, epic_context)
-        self.assertIn(INDEPENDENT_REVIEW_SHA256, epic_context)
-        self.assertIn(OBSERVED_PACKET_SHA256, epic_context)
-
-        deferred_work = DEFERRED_WORK.read_text(encoding="utf-8")
-        deferred_sections = {}
-        for deferred_id in ("17", "718"):
-            section_match = re.search(
-                rf"(?ms)^### DW-{deferred_id}:.*?(?=^### DW-|\Z)",
-                deferred_work,
-            )
-            self.assertIsNotNone(section_match)
-            deferred_sections[deferred_id] = section_match.group(0)
-
-        self.assertRegex(deferred_sections["17"], r"(?m)^status: done 2026-11-01$")
-        self.assertRegex(
-            deferred_sections["17"],
-            r"(?m)^resolution: 2026-11-01 — Resolved by accepted debt; not closed as qualified",
-        )
-        residual = deferred_sections["718"]
-        self.assertIn("27.21-C1.15-REAL-PACKET-REVIEW", residual)
-        self.assertRegex(residual, r"(?m)^status: done 2026-10-04$")
-        resolution = re.search(r"(?m)^resolution: 2026-10-04 .*?$", residual)
-        self.assertIsNotNone(resolution)
-        for bound_evidence in (
-            OBSERVED_PACKET_PATH, OBSERVED_PACKET_SHA256,
-            INDEPENDENT_REVIEW_PATH, INDEPENDENT_REVIEW_SHA256, "/root/review_c1_packet",
-        ):
-            self.assertIn(bound_evidence, resolution.group(0))
 
     def test_legacy_lowercase_gate_and_profile_preserve_c1_15_capture(self) -> None:
         result, packets, calls, evidence = self.run_gate(

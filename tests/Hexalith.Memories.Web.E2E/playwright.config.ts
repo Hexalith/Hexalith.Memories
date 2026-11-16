@@ -39,7 +39,7 @@ export default defineConfig({
     ? undefined
     : {
         command:
-          'dotnet run --project ../Hexalith.Memories.Web.SpecimenHost/Hexalith.Memories.Web.SpecimenHost.csproj --configuration Debug --no-launch-profile --urls http://127.0.0.1:5177',
+          'dotnet run --project ../Hexalith.Memories.Web.SpecimenHost/Hexalith.Memories.Web.SpecimenHost.csproj --configuration Release --no-build --no-restore --no-launch-profile --urls http://127.0.0.1:5177',
         url: baseURL,
         reuseExistingServer: !isCI,
         timeout: 120_000,
