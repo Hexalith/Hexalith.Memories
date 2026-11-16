@@ -26,6 +26,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Hexalith.Memories.IntegrationTests" />
+    <InternalsVisibleTo Include="Hexalith.Memories.Integration.NightlyTests" />
   </ItemGroup>
 
 </Project>

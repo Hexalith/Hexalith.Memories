@@ -28,7 +28,7 @@ using Shouldly;
 /// </summary>
 [Collection("AspireIngestionPipeline")]
 [Trait("Category", "Integration")]
-public sealed class HealthEndpointIntegrationTests
+public sealed partial class HealthEndpointIntegrationTests
 {
     private readonly AspireIngestionPipelineFixture _fixture;
 
@@ -37,91 +37,6 @@ public sealed class HealthEndpointIntegrationTests
     private static readonly TimeSpan HealthProbeTimeout = TimeSpan.FromSeconds(5);
 
     public HealthEndpointIntegrationTests(AspireIngestionPipelineFixture fixture) => _fixture = fixture;
-
-    [Fact]
-    public async Task ReadyEndpoint_AllHealthy_Returns200WithFiveEntries()
-    {
-        using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync("/ready");
-
-        response.StatusCode.ShouldBe(HttpStatusCode.OK);
-        response.Content.Headers.ContentType?.MediaType.ShouldBe("application/json");
-
-        JsonElement root = await response.Content.ReadFromJsonAsync<JsonElement>();
-        root.GetProperty("schemaVersion").GetInt32().ShouldBe(1);
-        root.GetProperty("status").GetString().ShouldBe("Healthy");
-
-        JsonElement entries = root.GetProperty("entries");
-        foreach (string name in new[] { "dapr-sidecar", "dapr-statestore", "redisearch", "redis-vector", "falkordb" })
-        {
-            entries.GetProperty(name).GetProperty("status").GetString().ShouldBe("Healthy");
-        }
-    }
-
-    [Fact]
-    public async Task AliveEndpoint_Default_Returns200WithSidecarAndSelfOnly()
-    {
-        using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync("/alive");
-
-        response.StatusCode.ShouldBe(HttpStatusCode.OK);
-        JsonElement root = await response.Content.ReadFromJsonAsync<JsonElement>();
-        root.GetProperty("status").GetString().ShouldBe("Healthy");
-
-        JsonElement entries = root.GetProperty("entries");
-        entries.TryGetProperty("self", out _).ShouldBeTrue();
-        entries.TryGetProperty("dapr-sidecar", out _).ShouldBeTrue();
-        entries.TryGetProperty("redisearch", out _).ShouldBeFalse();
-        entries.TryGetProperty("redis-vector", out _).ShouldBeFalse();
-        entries.TryGetProperty("falkordb", out _).ShouldBeFalse();
-    }
-
-    [Fact]
-    [Trait("Category", "IntegrationSlow")]
-    public async Task ReadyEndpoint_FalkorDbDown_ReturnsDegradedWithCapabilities()
-    {
-        try
-        {
-            using CancellationTokenSource stopCts = new(HealthTransitionTimeout);
-            await _fixture.StopFalkorDbContainerAsync(stopCts.Token);
-
-            JsonElement root = await WaitForEndpointAsync(
-                "/ready",
-                HttpStatusCode.OK,
-                "Degraded");
-
-            JsonElement falkor = root.GetProperty("entries").GetProperty("falkordb");
-            falkor.GetProperty("status").GetString().ShouldBe("Degraded");
-            falkor.GetProperty("affectedCapabilities").EnumerateArray()
-                .Select(e => e.GetString()!)
-                .ShouldContain("graph-traversal");
-        }
-        finally
-        {
-            _ = await _fixture.RestartTopologyAsync();
-        }
-    }
-
-    [Fact]
-    [Trait("Category", "IntegrationSlow")]
-    public async Task AliveEndpoint_DaprSidecarDown_Returns503Unhealthy()
-    {
-        try
-        {
-            using CancellationTokenSource stopCts = new(HealthTransitionTimeout);
-            await _fixture.StopDaprSidecarAsync(stopCts.Token);
-
-            JsonElement root = await WaitForEndpointAsync(
-                "/alive",
-                HttpStatusCode.ServiceUnavailable,
-                "Unhealthy");
-
-            JsonElement sidecar = root.GetProperty("entries").GetProperty("dapr-sidecar");
-            sidecar.GetProperty("status").GetString().ShouldBe("Unhealthy");
-        }
-        finally
-        {
-            _ = await _fixture.RestartTopologyAsync();
-        }
-    }
 
     private async Task<JsonElement> WaitForEndpointAsync(
         string path,

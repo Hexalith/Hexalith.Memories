@@ -24,6 +24,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Hexalith.Memories.Mcp.Tests" />
     <InternalsVisibleTo Include="Hexalith.Memories.IntegrationTests" />
+    <InternalsVisibleTo Include="Hexalith.Memories.Integration.NightlyTests" />
     <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
   </ItemGroup>
 

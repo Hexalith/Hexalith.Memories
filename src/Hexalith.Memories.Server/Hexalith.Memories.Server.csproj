@@ -27,6 +27,7 @@
     <InternalsVisibleTo Include="Hexalith.Memories.Server.Tests" />
     <InternalsVisibleTo Include="Hexalith.Memories.DerivedStores.Tests" />
     <InternalsVisibleTo Include="Hexalith.Memories.IntegrationTests" />
+    <InternalsVisibleTo Include="Hexalith.Memories.Integration.NightlyTests" />
     <InternalsVisibleTo Include="Hexalith.Memories.Benchmarks" />
     <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
     <Using Include="Hexalith.Memories.Contracts.V1" />

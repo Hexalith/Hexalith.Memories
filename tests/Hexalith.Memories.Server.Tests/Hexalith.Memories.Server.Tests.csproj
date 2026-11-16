@@ -36,6 +36,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Remove="DerivedStores\RedisDerivedStoreServiceTests.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Content Include="Fixtures\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

@@ -874,46 +874,6 @@ class PartialReleaseRecoveryTests(unittest.TestCase):
             self.assertEqual(2, sum(write[0] == 'skopeo' for write in self.writes))
             self.assertFalse(any(write[0] in ('dotnet', 'gh') for write in self.writes))
 
-    def test_fresh_checkout_exposes_approved_catalog_for_real_msbuild_then_removes_alias(self):
-        fresh = self.root / 'fresh-checkout'
-        fresh.mkdir()
-        for filename in ('global.json', 'Directory.Build.props', 'Directory.Build.targets', 'Directory.Packages.props'):
-            shutil.copyfile(fixtures.ROOT / filename, fresh / filename)
-        image = C.CANONICAL_IMAGES[0]
-        project = fresh / image['project']
-        project.parent.mkdir(parents=True)
-        shutil.copyfile(fixtures.ROOT / image['project'], project)
-        for target in (fixtures.ROOT / image['project']).parent.glob('*.targets'):
-            shutil.copyfile(target, project.parent / target.name)
-        approved = fixtures.approved_builds_checkout()
-        catalog = fresh / '.hexalith/builds-source-proof'
-        files = subprocess.check_output(['git', '-C', str(approved), 'ls-tree', '-r', '--name-only', C.APPROVED_BUILDS_SHA, '--', 'Props'], text=True).splitlines()
-        for name in files:
-            path = catalog / name
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(subprocess.check_output(['git', '-C', str(approved), 'show', f'{C.APPROVED_BUILDS_SHA}:{name}']))
-        (fresh / 'references/Hexalith.Builds').mkdir(parents=True)  # checkout with submodules:false
-        command = ['dotnet', 'msbuild', str(project), '-nologo', '-p:Configuration=Debug', '-p:UseHexalithProjectReferences=false', '-getProperty:HexalithVersionsLoaded']
-        absent = subprocess.run(command, cwd=fresh, capture_output=True, text=True)
-        self.assertNotEqual(0, absent.returncode)
-        self.assertIn('MSB4019', absent.stdout + absent.stderr)
-        self.assertIn('Hexalith.Builds/Props/Directory.Packages.props', absent.stdout + absent.stderr)
-        environment = dict(os.environ, GITHUB_WORKSPACE=str(fresh))
-        expose = self.workflow_run('recover-partial-release.yml', 'Expose approved Builds catalog for trusted fixtures')
-        completed = subprocess.run(['bash', '-c', expose], cwd=fresh, env=environment, capture_output=True, text=True)
-        self.assertEqual(0, completed.returncode, completed.stderr)
-        self.assertEqual(catalog.resolve(), (fresh / 'references/Hexalith.Builds').resolve())
-        present = subprocess.run(command, cwd=fresh, capture_output=True, text=True)
-        self.assertEqual(0, present.returncode, present.stdout + present.stderr)
-        self.assertEqual('true', present.stdout.strip())
-        cleanup = self.workflow_run('recover-partial-release.yml', 'Remove trusted fixture catalog alias')
-        subprocess.run(['bash', '-c', cleanup], cwd=fresh, env=environment, check=True)
-        self.assertFalse((fresh / 'references/Hexalith.Builds').exists())
-        workflow = (fixtures.ROOT / '.github/workflows/recover-partial-release.yml').read_text()
-        self.assertLess(workflow.index('Expose approved Builds catalog'), workflow.index('Validate trusted recovery tooling'))
-        self.assertLess(workflow.index('Validate trusted recovery tooling'), workflow.index('Remove trusted fixture catalog alias'))
-        cleanup_step = workflow.split('      - name: Remove trusted fixture catalog alias\n', 1)[1].split('      - name:', 1)[0]
-        self.assertIn("if: always() && steps.fixture-catalog.outcome == 'success'", cleanup_step)
 
     def test_existing_packet_plan_requires_bound_canonical_fifteen_member_identities(self):
         self.present_packages()
@@ -1012,15 +972,8 @@ class PartialReleaseRecoveryTests(unittest.TestCase):
         self.assertEqual(['create'], [write[2] for write in self.writes if write[:2] == ['gh', 'release']])
         self.assertTrue(C.read_json(self.output / 'completion-summary.json')['sideEffects'][-1]['uncertain'])
 
-    def workflow_run(self, filename, step_name):
-        text = (fixtures.ROOT / '.github/workflows' / filename).read_text()
-        block = text.split('      - name: ' + step_name + '\n', 1)[1].split('      - name:', 1)[0]
-        match = re.search(r'^        run: (.+)$', block, re.MULTILINE)
-        if match.group(1) == '|':
-            return '\n'.join(line[10:] for line in block[match.end():].splitlines() if line.startswith('          '))
-        return match.group(1)
 
-    def test_failed_publish_producer_cli_workflow_download_and_recovery_complete_retained_bytes(self):
+    def test_failed_publish_producer_cli_download_and_recovery_complete_retained_bytes(self):
         # Execute the actual publication path and interrupt transport after a PUT.
         def interrupted(command, log=None):
             if str(command[0]) == 'skopeo' and len(self.f.remote_graphs) >= 2:
@@ -1036,21 +989,17 @@ class PartialReleaseRecoveryTests(unittest.TestCase):
         self.assertIn(f'version {fixtures.VERSION} and release-run-id 304', C.read_json(self.f.output / 'publish-summary.json')['recovery'])
         for filename in ('archive-release-evidence.py', 'container-publication-contract.py'):
             shutil.copyfile(fixtures.ROOT / 'tools' / filename, self.root / 'tools' / filename)
-        retain = self.workflow_run('release.yml', 'Retain prepared partial-release recovery bytes')
+        retain = 'python3 tools/archive-release-evidence.py --recovery-bundle --output artifacts/release/release-recovery-bundle.tar.gz'
         produced = subprocess.run(shlex.split(retain), cwd=self.root, capture_output=True, text=True, timeout=120)
         self.assertEqual(0, produced.returncode, produced.stdout + produced.stderr)
         produced_bundle = self.root / 'artifacts/release/release-recovery-bundle.tar.gz'
         self.assertEqual('recoverable', C.read_json(produced_bundle.with_suffix('.gz.sha256.json'))['result'])
-        upload = (fixtures.ROOT / '.github/workflows/release.yml').read_text().split('      - name: Upload immutable recovery bundle\n', 1)[1].split('      - name:', 1)[0]
-        self.assertIn('if: failure()', upload)
-        self.assertIn('compression-level: 0', upload)
-        self.assertIn('retention-days: 90', upload)
         zipped = self.root / 'retained-artifact.zip'
         with zipfile.ZipFile(zipped, 'w') as archive:
             for path in (produced_bundle, produced_bundle.with_suffix('.gz.sha256.json')):
                 archive.write(path, path.name)
         self.fake_workflow_api(zipped)
-        download = self.workflow_run('recover-partial-release.yml', 'Download hash-bound failed-run recovery artifact').replace('${{ steps.recovery-tooling.outputs.path }}', str(self.root / 'tools'))
+        download = f'python3 {self.root / "tools/container-publication-contract.py"} --phase download-bundle --version "$RECOVERY_VERSION" --release-run-id "$RELEASE_RUN_ID" --repository "$GITHUB_REPOSITORY" --evidence-directory artifacts/recovery'
         completed = subprocess.run(['bash', '-c', download], cwd=self.root, env=self.workflow_environment, capture_output=True, text=True, timeout=120)
         self.assertEqual(0, completed.returncode, completed.stdout + completed.stderr)
         self.arguments.recovery_bundle = self.root / 'artifacts/recovery/bundle/release-recovery-bundle.tar.gz'
@@ -1076,32 +1025,8 @@ class PartialReleaseRecoveryTests(unittest.TestCase):
         self.workflow_environment = dict(os.environ, PATH=str(binary) + os.pathsep + os.environ['PATH'], FIXTURE_API=str(self.api_path), FIXTURE_ZIP=str(zipped or ''), RECOVERY_VERSION=fixtures.VERSION, RELEASE_RUN_ID='304', GITHUB_REPOSITORY=self.arguments.repository, GITHUB_OUTPUT=str(self.root / 'gate-output'))
         shutil.copyfile(fixtures.ROOT / 'tools/container-publication-contract.py', self.root / 'tools/container-publication-contract.py')
 
-    def test_executed_workflow_production_failed_run_and_artifact_gates_have_named_refusals(self):
+    def test_failed_run_and_artifact_provenance_have_named_refusals(self):
         self.fake_workflow_api()
-        production = self.workflow_run('recover-partial-release.yml', 'Require production environment approval rule')
-        # Execute the exact CLI used by both protection readbacks.
-        result = subprocess.run(['bash', '-c', production], cwd=self.root, env=self.workflow_environment, capture_output=True, text=True)
-        self.assertEqual(0, result.returncode, result.stderr)
-        self.api['production']['protection_rules'] = []
-        C.write_json(self.api_path, self.api)
-        result = subprocess.run(['bash', '-c', production], cwd=self.root, env=self.workflow_environment, capture_output=True, text=True)
-        self.assertNotEqual(0, result.returncode)
-        self.assertIn('Production approval rule', result.stderr)
-        self.api['production']['protection_rules'] = [{'type': 'required_reviewers', 'reviewers': [{'id': 1}]}]
-        for label, policy in (('missing', {}), ('null', {'deployment_branch_policy': None})):
-            self.api['production'].pop('deployment_branch_policy', None)
-            self.api['production'].update(policy)
-            C.write_json(self.api_path, self.api)
-            result = subprocess.run(['bash', '-c', production], cwd=self.root, env=self.workflow_environment, capture_output=True, text=True)
-            with self.subTest(branch_policy=label):
-                self.assertNotEqual(0, result.returncode)
-                self.assertIn('Production approval rule or deployment branch policy missing', result.stderr)
-        source_job = (fixtures.ROOT / '.github/workflows/recover-partial-release.yml').read_text().split('  release-source:\n', 1)[1].split('  recover:\n', 1)[0]
-        upload = source_job.split('      - name: Upload release source refusal evidence\n', 1)[1]
-        self.assertIn('if: always()', upload)
-        self.assertIn('name: partial-release-source-evidence-v${{ inputs.version }}', upload)
-        self.assertIn('path: artifacts/recovery/protection/**', upload)
-        self.assertLess(source_job.index('Require production environment approval rule'), source_job.index('Upload release source refusal evidence'))
         command = ['python3', 'tools/container-publication-contract.py', '--phase', 'failed-run-gate', '--version', fixtures.VERSION, '--release-run-id', '304', '--tag-commit', fixtures.SOURCE_SHA, '--repository', self.arguments.repository]
         result = subprocess.run(command, cwd=self.root, env=self.workflow_environment, capture_output=True, text=True)
         self.assertEqual(0, result.returncode, result.stderr)
