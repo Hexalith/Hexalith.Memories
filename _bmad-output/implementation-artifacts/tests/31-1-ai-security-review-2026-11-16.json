@@ -1,0 +1,166 @@
+[
+  {
+    "location": "docs/operations/openbao.md:18-41,53-55; deploy/openbao/values.yaml:25-28",
+    "trigger_condition": "Live OpenBao 2.6.2 and approved 2.6.4 have no current advisory applicability disposition.",
+    "guard_snippet": "Inventory the affected authentication, Transit and OIDC features without credentials; document applicability and prepare a separately authorized supported, patched release.",
+    "potential_consequence": "The deployed version is affected and the approved candidate still omits later fixes; exploit prerequisites were not established.",
+    "lens": "adversarial",
+    "id": "ADV-01",
+    "disposition": "Confirmed new advisory-specific finding; version drift was already owned.",
+    "sources": [
+      "https://github.com/openbao/openbao/security/advisories/GHSA-gf3j-hm38-jhh5",
+      "https://github.com/openbao/openbao/security/advisories/GHSA-q74w-hv5x-6hxf",
+      "https://github.com/openbao/openbao/security/advisories/GHSA-5pmx-2p74-x478",
+      "https://github.com/openbao/openbao/security/advisories/GHSA-q824-44ff-f5j5",
+      "https://github.com/openbao/openbao/security/advisories/GHSA-8xxq-mq9m-xmhw"
+    ]
+  },
+  {
+    "location": "docs/operations/openbao.md:62,411-412; deploy/openbao/smoke-test.yaml:53-56",
+    "trigger_condition": "Compensating controls claim every access/request is audited without runtime audit-write evidence.",
+    "guard_snippet": "Qualify the claim to audited operations; disclose excluded health/seal-status paths and capture a correlated non-sensitive audited operation.",
+    "potential_consequence": "The status smoke can pass without exercising the audit device, so the control is overstated.",
+    "lens": "adversarial",
+    "id": "ADV-02",
+    "disposition": "Confirmed new documentation/control-evidence finding; declared-versus-loaded caveat exists elsewhere.",
+    "sources": [
+      "https://openbao.org/docs/audit/"
+    ]
+  },
+  {
+    "location": "deploy/openbao/values.yaml:172-180,220-228; docs/operations/openbao.md:541-560",
+    "trigger_condition": "The declared file audit destination has bounded storage with no documented rotation or pressure handling.",
+    "guard_snippet": "Record an operations owner for rotation with SIGHUP, capacity/failure monitoring and audit availability verification; check the live arrangement before claiming rotation is absent.",
+    "potential_consequence": "An unavailable sole audit destination can stop audited operations while unaudited status checks still succeed.",
+    "lens": "adversarial",
+    "id": "ADV-03",
+    "disposition": "Confirmed documentation/evidence gap; live rotation absence and disk-full behavior were not tested.",
+    "sources": [
+      "https://openbao.org/docs/audit/file/",
+      "https://openbao.org/docs/audit/"
+    ]
+  },
+  {
+    "location": "docs/operations/openbao.md:375,543-547",
+    "trigger_condition": "The expiry divergence says remeasurement requires reading a Kubernetes Secret.",
+    "guard_snippet": "Inspect the public certificate at the intended endpoint and record identity and expiry, keeping private keys and Secret payloads unread.",
+    "potential_consequence": "A safe expiry check is unnecessarily deferred and the historical rotation deadline stays unverified.",
+    "lens": "adversarial",
+    "id": "ADV-04",
+    "disposition": "Confirmed correction; parent public-certificate inventory remeasured expiry without Secret access."
+  },
+  {
+    "location": "deploy/openbao/values.yaml:145-158,215-218; docs/operations/openbao.md:411,416-429,550-553",
+    "trigger_condition": "Static seal material and all recovery shares share the Kubernetes platform trust boundary.",
+    "guard_snippet": "Retain the disclosed limitation, plan an external seal trust source and separate recovery custody; describe compromise as combined Secret and storage access.",
+    "potential_consequence": "Combined key-custody and storage compromise defeats at-rest protection; colocated shares supply no independent custody.",
+    "lens": "adversarial",
+    "id": "ADV-05",
+    "disposition": "Existing accepted limitation reaffirmed; namespace read permissions alone do not imply PVC-content access.",
+    "sources": [
+      "https://openbao.org/docs/configuration/seal/static/"
+    ]
+  },
+  {
+    "location": "deploy/openbao/values.yaml:70-110; docs/operations/openbao.md:378,412,431-449",
+    "trigger_condition": "The application and cert-manager namespaces admit every pod to port 8200.",
+    "guard_snippet": "Under a separately authorized operations change, narrow namespace-and-pod selectors to actual consumers and reconcile the record.",
+    "potential_consequence": "Unrelated compromised workloads can reach the listener, increasing reliance on authentication and ACLs.",
+    "lens": "adversarial",
+    "id": "ADV-06",
+    "disposition": "Existing accepted limitation reaffirmed; not a newly undocumented defect.",
+    "sources": [
+      "https://kubernetes.io/docs/concepts/services-networking/network-policies/"
+    ]
+  },
+  {
+    "location": "docs/operations/openbao.md:64,363-365,387,392",
+    "trigger_condition": "Additional ingress policies and a NodePort broaden access beyond the four internal Services.",
+    "guard_snippet": "Inventory Traefik routes, middleware and NodePort reachability, then justify or reconcile each source under its operations owner.",
+    "potential_consequence": "Reviewing only the base policy or ClusterIP Services understates effective listener exposure.",
+    "lens": "adversarial",
+    "id": "ADV-07",
+    "disposition": "Existing owned divergence, reconfirmed by live read-only probes; reachability from each source not exercised.",
+    "sources": [
+      "https://kubernetes.io/docs/concepts/services-networking/network-policies/"
+    ]
+  },
+  {
+    "location": "deploy/openbao/values.yaml:52-55; docs/operations/openbao.md:68,380",
+    "trigger_condition": "Two bindings grant system:auth-delegator with no identified Kubernetes-auth consumer.",
+    "guard_snippet": "Identify its consumer or revoke both chart and out-of-band bindings under operations authorization; preserve required discovery access.",
+    "potential_consequence": "A compromised server identity retains unnecessary review privileges; changing the Helm value alone leaves the duplicate grant.",
+    "lens": "adversarial",
+    "id": "ADV-08",
+    "disposition": "Existing owned divergence; does not imply permission to read Secret values."
+  },
+  {
+    "location": "docs/operations/openbao.md:63,78,175-183,381,555-560",
+    "trigger_condition": "Servers, persistent data/audit volumes and snapshots share one node.",
+    "guard_snippet": "Create an off-node/off-cluster snapshot copy and rehearse recovery before claiming node-loss recoverability.",
+    "potential_consequence": "Loss of the storage failure domain can remove state and its only documented backup together.",
+    "lens": "adversarial",
+    "id": "ADV-09",
+    "disposition": "Existing recovery gap; successful snapshot Jobs supply no off-cluster recovery proof."
+  },
+  {
+    "location": "deploy/openbao/values.yaml:29,135; docs/operations/openbao.md:59-75,386,391",
+    "trigger_condition": "OnDelete and ConfigMap/template observations do not establish each server's loaded configuration.",
+    "guard_snippet": "Keep declared-versus-effective caveats and reconcile admitted Pod fields and loaded security settings independently.",
+    "potential_consequence": "A configuration correction can leave earlier settings running.",
+    "lens": "adversarial",
+    "id": "ADV-10",
+    "disposition": "Existing owned divergence; parent measured admitted security/probe/mount fields but not loaded HCL."
+  },
+  {
+    "location": "docs/operations/openbao.md:56,81-86,169-172,390",
+    "trigger_condition": "Ready replicas and HA status do not prove voting membership or exercised failover.",
+    "guard_snippet": "Retain intended-voter qualifications until redacted membership evidence and a separately scoped failover exercise exist.",
+    "potential_consequence": "Healthy replicas can be mistaken for demonstrated quorum and process failover.",
+    "lens": "adversarial",
+    "id": "ADV-11",
+    "disposition": "Existing owned evidence gap; current runbook already qualifies it."
+  },
+  {
+    "location": "tests/Hexalith.Memories.Server.Tests/Deployment/OpenBaoPlatformDocumentationTests.cs:635-650",
+    "trigger_condition": "Detected credential-shaped strings are interpolated into assertion failures.",
+    "guard_snippet": "Assert that detection counts are zero using path and category only; verify failure output with synthetic canaries.",
+    "potential_consequence": "A real credential can be copied from the rejected document into persistent CI logs.",
+    "lens": "edge-case-hunter",
+    "id": "EDGE-01",
+    "disposition": "Confirmed new guard defect; both string.Join messages and collection assertion rendering require removal."
+  },
+  {
+    "location": "tests/Hexalith.Memories.Server.Tests/Deployment/OpenBaoPlatformDocumentationTests.cs:1027-1085",
+    "trigger_condition": "A reviewer completes one checkpoint while the other security gates remain open.",
+    "guard_snippet": "Validate each checkpoint state, evaluator and date independently; require all gates only for parent completion.",
+    "potential_consequence": "Valid partial review fails CI or encourages premature closure of other gates.",
+    "lens": "edge-case-hunter",
+    "id": "EDGE-02",
+    "disposition": "Confirmed new guard defect; overlaps VER-02 and is retained separately."
+  },
+  {
+    "location": "tests/Hexalith.Memories.Server.Tests/Deployment/OpenBaoPlatformDocumentationTests.cs:1053-1084",
+    "trigger_condition": "Appointing a reviewer before signature makes the unsigned-record guard fail.",
+    "guard_snippet": "Permit assigned-but-pending records without completion dates and add an in-memory control for that state.",
+    "potential_consequence": "Recording a genuine appointment fails CI unless the record stays falsely unassigned or claims early closure.",
+    "lens": "verification-gap",
+    "id": "VER-01",
+    "disposition": "Confirmed new guard defect.",
+    "gap_shape": "other",
+    "consumer": "CurrentSecurityCheckpoints_AgreeWithUnsignedEvidenceAndReviewerDivergence at OpenBaoPlatformDocumentationTests.cs:901",
+    "evidence": "Unsigned branch requires unassigned in evidence at1056 and every checkpoint owner at1080; controls at940-960 exercise wholly unassigned or wholly signed states only."
+  },
+  {
+    "location": "tests/Hexalith.Memories.Server.Tests/Deployment/OpenBaoPlatformDocumentationTests.cs:1027-1074",
+    "trigger_condition": "Partial signatures or different checkpoint evaluators/dates cannot pass the global signed-state branch.",
+    "guard_snippet": "Validate per-gate dispositions and signatures; test partial completion and mixed reviewers while the parent stays in-progress.",
+    "potential_consequence": "CI pressures records to overstate all gates as complete under one signer and date.",
+    "lens": "verification-gap",
+    "id": "VER-02",
+    "disposition": "Confirmed new guard defect; overlaps EDGE-02 and is retained separately.",
+    "gap_shape": "other",
+    "consumer": "ValidateCurrentSecurityRecords, called by real-record test at OpenBaoPlatformDocumentationTests.cs:901",
+    "evidence": "One signed flag at1027 selects all three states at1063-1084; signed path requires one evaluator/date. Story lines267-273 explicitly require separate gates to preserve partial completion."
+  }
+]
