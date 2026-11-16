@@ -38,14 +38,14 @@ context:
 
 ## Open Questions
 
-1. Is an independent signed evaluation available for C4b/C5b/C7? Provide the evaluator's identity, date and signed record or repository path for verification and incorporation; otherwise leave the story blocked on independent review without changing checkpoints or status. Appointment alone is insufficient. The repository cannot establish this external fact.
+1. Which input should this run use? **Independent signed evaluation available:** provide its repository path or durable reference, evaluator identity, date and independence so the existing closeout can proceed. **No independent evaluation available:** retain this draft and all pending gates. **Redirect to local remediation:** explicitly change scope to the two recorded Memories guard defects (EVAL-03 diagnostic disclosure and EVAL-04 appointment/partial-signature handling); prepare that implementation without claiming independent approval. The owner-attested assistant report does not resolve the external closeout dependency.
 
 ## Code Map
 
 - Evidence section 4 is authoritative; sections 9.1/9.3 hold today's profile/smoke evidence; section 9.4 is the current unsigned summary.
 - The parent story holds separate C4b/C5b/C7 rows, cumulative File List and append-only phase ledger. All implementation tasks are checked.
 - The runbook reviewer header, Named divergences and limitation narrative must follow authentic evidence; preserve its runtime Secret inventory.
-- `tests/Hexalith.Memories.Server.Tests/Deployment/OpenBaoPlatformDocumentationTests.cs`: reuse `ValidateCurrentSecurityRecords`, its independent signed control and `PlatformEvidence_RecordsExecutedSmokeTestAndReviewerState`. Existing guards support both states; no new methods planned.
+- `tests/Hexalith.Memories.Server.Tests/Deployment/OpenBaoPlatformDocumentationTests.cs`: reuse `ValidateCurrentSecurityRecords`, its independent signed control and `PlatformEvidence_RecordsExecutedSmokeTestAndReviewerState`. Existing guards cover wholly unsigned and wholly signed records; assigned-but-unsigned and partial-signature states are known defects. The current closeout scope plans execution only; remediation requires an explicit scope decision.
 - `docs/governance/openbao-independent-security-review.md`: prepared evaluator handoff, exact measured-profile references, existing technical findings and required signed-return fields. This supporting document supplies no independent approval.
 - `_bmad-output/implementation-artifacts/tests/31-1-assistant-security-evaluation-2026-11-16.md` and its JSON companion: owner-requested direct assistant evaluation, live peer-DNS TLS defect, unauthenticated-denial controls and executable reproductions of the diagnostic/review-state defects. Overall technical outcome: changes requested; no independent signature.
 
@@ -109,6 +109,23 @@ approval verbatim in the report and structured companion. The owner approves the
 and its changes-requested conclusions. The existing assistant attribution and prior evidence bundles
 remain preserved. The local owner-attestation receipt and `owner-attested-evaluation.zip` bind the
 approved report version and the appended owner record; no independent-signature gate is discharged.
+
+2026-11-16 build resumption at `d2a39a84ccf2bcc1f89c428b50591c3c462aaedf`: verified the assistant-covered
+report prefix, owner-approved prefix and current full-report SHA-256 against the structured
+companion; all three match. The recorded outcome remains changes requested and
+`independent_human_signoff` remains false. Refreshed the stale Epic 31 context from current
+planning artifacts. No independent signed return is present among the Story 31.1 records.
+
+Planning facts: the remaining intent gap is the independent evaluation or an explicit redirection
+to local remediation. Existing closeout work has no deployment, messaging, credential or other
+irreversible action. Its footprint remains the listed records and execution of existing guards;
+no new callable surface is planned. EVAL-03/EVAL-04 are actionable local defects, but this draft
+cannot silently turn evidence incorporation into implementation of those fixes. No checkpoint,
+parent-story status, waiver or Story 31.2 activation criterion changed during this resumption.
+
+2026-11-16: User approved local EVAL-03/EVAL-04 remediation and retention of this full closeout
+history. The separate implementation spec `spec-31-1-openbao-security-guard-remediation.md` carries
+that work; this draft and its independent-evaluation dependency remain pending.
 
 ## Spec Change Log
 
