@@ -525,7 +525,7 @@ development_status:
   30-4-five-image-publication-contract: done
   30-5-partial-release-recovery: done
   30-6-release-cutover-parity-and-rollback: done
-  epic-30-retrospective: optional
+  epic-30-retrospective: done  # 2026-11-16: retro complete (epic-30-retro-2026-11-16.md, machine verdict rejected: current-set recovery fails closed on runners (CRLF render mismatch) and the production recovery job runs @main Builds actions; A1-A11 proposed).
 
   # Epic 31: OpenBao Secrets Platform and Runtime Secret-Store Migration
   # Registered on 2026-07-26 by the approved Sprint Change Proposal 2026-07-26, executing the
@@ -599,7 +599,7 @@ action_items:
   - epic: 18
     action: "Reconcile architecture.md stale anchors against live code: MemoryUnitId is opaque/GUID-derived (not ULID); tests are xunit.v3 3.2.2 (not 2.9.3); routes are minimal-API app.MapX (not Controllers/*Controller.cs); Server Dapr app-id default is memories (not memories-server)"
     owner: "Winston, Paige"
-    status: open
+    status: done  # 2026-11-16: Epic 30 retro follow-through; edcdade8 fixed architecture.md:107,274,1262,1441 (epic-30-retro-2026-11-16.md).
   - epic: 18
     action: "Generalize the drift-guard hardening lessons: prefer table-row-form anchors over bare ShouldContain substrings, and add an anti-corruption assertion (no leaked tool-call markup) to contract-doc guard tests"
     owner: "Amelia, Murat"
@@ -779,7 +779,7 @@ action_items:
   - epic: 26
     action: "Complete the carried repository-governance controls: enforce or formally accept root line-ending policy and reject or explicitly annotate undeclared root-submodule pointer changes"
     owner: "Amelia, Winston"
-    status: open
+    status: in-progress  # 2026-11-16: Epic 30 retro follow-through; line-ending half landed (c72a1ae2), root-submodule pointer half still open (epic-30-retro-2026-11-16.md).
   - epic: 26
     action: "Preserve the Epic 25 breaking-change obligation by recording the api/v1, CLR rename, and TraverseAsync changes with the required breaking-change signal before semantic release"
     owner: "Amelia, John"
@@ -832,7 +832,7 @@ action_items:
     epic: 27
     action: "Move the parked access-telemetry tooling CI lanes (1,508 s of the 2,102 s test-unit-contract job) to nightly or path filters while keeping the ACCESS_TELEMETRY_ENABLED=false and replicas: 0 pins in PR CI, and decide retire-versus-keep for the parked qualification tooling"
     owner: "Murat, Amelia"
-    status: open
+    status: in-progress  # 2026-11-16: Epic 30 retro follow-through; dd94e3d3 removed the suites from every workflow instead of moving them to nightly, retire-versus-keep undecided (epic-30-retro-2026-11-16.md).
     ref: "_bmad-output/implementation-artifacts/epic-27-retro-2026-11-01.md"
   - id: "epic-27-retro-item-69-reject-story-number-only-commit-subjects"
     epic: 27
@@ -966,3 +966,69 @@ action_items:
     owner: "Amelia"
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-29-retro-2026-11-02.md"
+  - id: "epic-30-retro-item-91-fix-current-set-retained-byte-recovery-r"
+    epic: 30
+    action: "Fix current-set retained-byte recovery: render the tagged deployment through Git attributes (git archive, not git show plus write_text) in container-publication-contract.py verify_tagged_deployment, because CRLF redis-stack.conf renders redis-stack-config-444ff7t4hh on the runner and LF renders tfmk6ftkcm, and add a CRLF fixture that fails today (retro F1)"
+    owner: "Amelia, Murat"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-30-retro-2026-11-16.md"
+  - id: "epic-30-retro-item-92-pin-initialize-dotnet-and-initialize-bui"
+    epic: 30
+    action: "Pin initialize-dotnet and initialize-build in recover-partial-release.yml (lines 120, 167, 250, 253) to the approved Builds SHA, invert the CiTestInventoryTests allow-list that accepts initialize-build@main in jobs holding id-token or contents write, and in the same pass SHA-pin third-party actions, set persist-credentials false, record provenance for the 49c913da curl re-pin and digest-pin ContainerBaseImage (retro F2, F13)"
+    owner: "Amelia (Winston reviews)"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-30-retro-2026-11-16.md"
+  - id: "epic-30-retro-item-93-restore-execution-of-the-eight-category"
+    epic: 30
+    action: "Restore execution of the eight Category=Integration ContentExtractionClientTests orphaned when tools/test-release.ps1 was retired, and add an inventory fact that every Integration trait lives in a project an integration lane runs (retro F11)"
+    owner: "Murat"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-30-retro-2026-11-16.md"
+  - id: "epic-30-retro-item-94-register-the-follow-up-story-release-pat"
+    epic: 30
+    action: "Register the follow-up story Release-path failure-handling residuals bundling the seven deferred-work entries retargeted to epic-30-retrospective (skip-duplicate 409, NuGet eventual consistency, version floor, terminal tag, GitHub-plugin and publish-failed incidents, NuGet child guidance) and the retro F12 failure modes, rewriting each entry's reopen trigger to that story"
+    owner: "John, Jérôme Piquot, Amelia"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-30-retro-2026-11-16.md"
+  - id: "epic-30-retro-item-95-decide-whether-can_admins_bypass-true-3e"
+    epic: 30
+    action: "Decide whether can_admins_bypass true (3e98dc99) with agent-submitted approvals under the sole owner's account still satisfies the Story 30.3 protected production environment, record the decision, reconcile spec-30-3 line 46, parity-matrix.md line 16 and epics.md 30.3, and add an approver or bypass marker to release evidence (retro F5, F6)"
+    owner: "Jérôme Piquot"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-30-retro-2026-11-16.md"
+  - id: "epic-30-retro-item-96-decide-the-builds-execution-pin-rule-aga"
+    epic: 30
+    action: "Decide the Builds execution-pin rule against release-runbook.md lines 18-20 (execution pin ae77d569 versus gitlink and profile e2bbbd08), add a guard tying executed helper bytes to the qualified revision, require an approval record per execution-pin change, and fix the stale pins in CONTRIBUTING.md, branch-protection.md, tests/README.md, the release runbook and the spec-30-3 misattribution (retro F7)"
+    owner: "Winston, Paige"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-30-retro-2026-11-16.md"
+  - id: "epic-30-retro-item-97-convert-the-final-code-live-proof-obliga"
+    epic: 30
+    action: "Convert the final-code live-proof obligations at deferred-work.md lines 6324-6336 into numbered ID-led entries the restored schema guard parses, then after A1 and A2 run them at the next owner-dispatched release with the additive identity snapshot and one deliberate recovery drill (retro F3)"
+    owner: "Jérôme Piquot"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-30-retro-2026-11-16.md"
+  - id: "epic-30-retro-item-98-reconcile-epic-30-records-dated-correcti"
+    epic: 30
+    action: "Reconcile Epic 30 records: dated corrections for epics.md 30.3 and 30.6 status and checkpoint tables, the 30.5 File List count, the 30.1 seven-to-eight project union, release-runbook.md ACL list missing memories-domain-service and the merge-to-rerun text, the epic-30-context.md regeneration entry, and move epic-30 to done (retro F4, F8, F9)"
+    owner: "Paige, John"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-30-retro-2026-11-16.md"
+  - id: "epic-30-retro-item-99-record-the-release-path-agent-policy-nev"
+    epic: 30
+    action: "Record the release-path agent policy: never act on a question still pending with the user (66822bc5 pushed before the answer), cross-repository release sweeps must not author story-owned code on main mid-story, and fold story done only on green exact-source CI into epic-29-retro-item-89 (retro L1, L3, L4)"
+    owner: "Jérôme Piquot, John"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-30-retro-2026-11-16.md"
+  - id: "epic-30-retro-item-100-triage-the-42-open-earlier-epic-action-i"
+    epic: 30
+    action: "Triage the 42 open earlier-epic action items into registered stories, dated DW entries or explicit closes, since 25 of 26 Epic 27-29 items show no landing, and raise epic-27-retro-item-69 because v3.0.16 was released from docs-only 637eaa1b and dispatch-only release will bump for 56d93d6f and 1306a0f8 (retro L5, L7)"
+    owner: "John (Jérôme Piquot decides)"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-30-retro-2026-11-16.md"
+  - id: "epic-30-retro-item-101-register-a-dw-entry-for-epic-30-structur"
+    epic: 30
+    action: "Register a DW entry for Epic 30 structural debt: the qualify-builds-publication.py fake seams, the contract current_completion function and 11-phase CLI, the CiTestInventoryTests YAML parser, the five image repositories hard-coded in seven places, ten release-packages.json readers, private Builds API use and the local dotnet publish in place of Builds publish-containers.sh, triggered by the next contract-tool change or Builds helper bump (retro F14, F15)"
+    owner: "Winston"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-30-retro-2026-11-16.md"
