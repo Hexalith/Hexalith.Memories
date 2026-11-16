@@ -437,16 +437,21 @@ authority reviewed this platform.
 | Reviewer of record | Murat TEA for Jérôme (`murat-tea-for-jpiquot`), carried as namespace annotation `hexalith.io/security-reviewer` |
 | Platform Operations owner | Jérôme Piquot (`jpiquot`) |
 | Evaluation status | **Not signed.** No named evaluator reviewed the measured platform during the dev-story session or during code review |
-| Owner of the blocker | Security reviewer `murat-tea-for-jpiquot`, with Platform Operations (`jpiquot`) accountable for scheduling it |
+| Owner of the blocker | Independent security reviewer **unassigned**; Administrator (`jpiquot`) accountable for scheduling and escalation. The recorded persona is not an independent reviewer |
 | Waiver approver | **Administrator / Jérôme Piquot (`jpiquot`)**, approved 2026-07-28 during Story 31.1 code review |
 | Approver independence | **Not independent, and recorded as a defect rather than repeated as a claim.** The waiver approver (`jpiquot`) is simultaneously the Platform Operations owner, a co-accountable owner of checkpoints C4 and C5, and the human the reviewer persona `murat-tea-for-jpiquot` acts for. Story 27.3 withdrew this exact pairing on 2026-07-26 because it "names one human plus a persona acting for that same human" and does not satisfy an independent-security-reviewer requirement (`27-3-production-adapter-and-deployment-profile.md:706`). Story 31.1's second-pass code review 2026-07-28 found the same pairing closing C7 here. The Administrator's decision was to keep the waiver and record the independence defect explicitly, so nothing in this story claims an independent authority evaluated the platform. Carried as a `Named divergences` row in `docs/operations/openbao.md` with its own reopen trigger |
 | Waiver approved | 2026-07-28. Recorded as accepted debt in the shape the `20.5-A41` accepted-debt clause of `project-context.md` models — no project rule authorizes waiving a mandatory checkpoint in general, so this is an Administrator decision recorded by analogy, not a rule being followed: named approver, scope, rationale, risk, compensating controls, and a time-bounded expiry |
 | Waiver scope | Checkpoint C7 only — the reviewer's recorded evaluation. It waives **no** acceptance criterion, neither accepted limitation, and no other checkpoint. AC2's documentation obligations were met independently and are asserted executably |
 | Waiver rationale | The platform is already deployed and this story documents rather than changes it. Both limitations are recorded with owner, consequence, compensating controls and reopen trigger, and the documentation is bound by an executed guard, so the record is reviewable on its own evidence while the evaluation is scheduled |
 | Consequence | Both accepted limitations are documented, but no independent security authority has evaluated the platform **as measured**. The static file-based seal and the namespace-wide port 8200 ingress stand accepted without a countersignature. Story 31.1 code review additionally found the seal row's compensating controls overstated — the `shamir` 2-of-3 shares live in this same namespace and are not yet escrowed, and the port 8200 NetworkPolicy is the subject of the other limitation — and corrected the row before this waiver was recorded, so the waiver covers an accurate record rather than the original one |
-| Compensating controls | Restricted Pod Security enforced on the namespace; RBAC scoped to the platform ServiceAccounts; all Services `ClusterIP` with no ingress; persistent JSON audit device; `OpenBaoPlatformDocumentationTests` executing over both published records on every CI run so the accepted-limitation text cannot silently soften |
+| Compensating controls | Historical waiver record from 2026-07-28: Restricted Pod Security enforced on the namespace; RBAC scoped to the platform ServiceAccounts; four `hexalith-keys*` Services `ClusterIP` with no ingress on those Services; persistent JSON audit device; `OpenBaoPlatformDocumentationTests` executing over both published records on every CI run so the accepted-limitation text cannot silently soften |
 | Waiver expiry | **2026-10-26** (90 days). On that date checkpoint C7 reopens automatically as `pending` / `not complete` unless a dated, named evaluation has been recorded |
-| Reopen trigger | Whichever comes first: the 2026-10-26 expiry; a dated, named evaluation by `murat-tea-for-jpiquot` covering the platform as measured, both accepted limitations and the amended AC2 qualifier, appended to this artifact as its own row; any change to the seal configuration, the NetworkPolicy ingress, or the voter count; or Story 31.2 activation |
+| Historical waiver reopen trigger | Whichever comes first: the 2026-10-26 expiry; a dated, named evaluation by `murat-tea-for-jpiquot` covering the platform as measured, both accepted limitations and the amended AC2 qualifier, appended to this artifact as its own row; any change to the seal configuration, the NetworkPolicy ingress, or the voter count; or Story 31.2 activation |
+| Independent reviewer | **unassigned** — the owner persona supplies no independent authority |
+| Scheduling accountable owner | **Administrator (`jpiquot`)**; assign an independent reviewer and schedule the signed evaluation |
+| Reopen trigger | Expiry **2026-10-26 already fired**. Obtain a dated, named independent signed evaluation covering the current measured profile and both limitations; reassess on seal/ingress/voter changes or Story 31.2 activation |
+| Checkpoint C4b state | `pending` / `not complete`; no independent seal countersignature; completion date **none** |
+| Checkpoint C5b state | `pending` / `not complete`; no independent ingress countersignature; completion date **none** |
 | Checkpoint C7 state | `pending` / `not complete` — the 2026-10-26 waiver expired and no dated, named evaluation has been recorded |
 
 The Task 1 measurements (section 1), the Task 2 reconciliation (section 2), and the executed smoke test
@@ -838,3 +843,320 @@ These three objects are named in `docs/operations/openbao.md` under `Deployed pl
 in this repository`, each with owner Hexalith Platform Operations (`jpiquot`) and a reopen trigger.
 They are not a third accepted limitation. NetworkPolicy `deployment-seal-external` `.spec` remains
 uncaptured (DW-729); this slice does not add that JSON.
+
+## 9. Current deployment re-measure and CA-only smoke (2026-11-16)
+
+Read-only capture started **2026-11-16T15:45:59Z**, primary projections finished
+**2026-11-16T15:46:49Z**, and additional pod-template/consumer metadata was captured at
+**2026-11-16T15:47:50Z**, all with `--context=jpiquot@local`. Captures and useful logs are retained
+under ignored `artifacts/story-31-1/`. No Secret contents were read: the sole Secret request projected
+names and types. No approved values were deployed or downgraded, no ingress/RBAC was written,
+and no runtime store, tenant route or Production qualification was changed. The only live write
+was creation of the named disposable smoke Job; its previous instance was absent.
+
+### 9.1 Current measured profile
+
+| Contract | Measured value on 2026-11-16 |
+| :--- | :--- |
+| Kubernetes context | `jpiquot@local` |
+| Kubernetes nodes | one node, `node1`, roles `control-plane,worker`, `v1.34.9` |
+| Namespace / application namespace | `openbao` / `hexalith-memories` |
+| Helm release, Service, StatefulSet | `hexalith-keys` |
+| Helm release revisions | 10 metadata objects (`sh.helm.release.v1.hexalith-keys.v1` through `v10`); release Secret contents not read |
+| Chart label | `helm.sh/chart: openbao-0.29.5` on all three server pods; chart digest not measured and cannot be inferred from this label |
+| Server image | `quay.io/openbao/openbao:2.6.2@sha256:11fd73a2102cda9c55d5d881a8c3210303146a7ec1e8ac76f526e175c6d24641`; all three runtime imageIDs match that digest |
+| Server version | `2.6.2` on all three servers |
+| Raft voters | `3` replicas, `3/3` Ready; `hexalith-keys-0`, `hexalith-keys-1`, `hexalith-keys-2` all Running on `node1`; three healthy servers observed, voting membership unmeasured |
+| HA mode | `ha_enabled: true`; active endpoint `hexalith-keys-1`, standby endpoints `hexalith-keys-0` and `hexalith-keys-2` |
+| Initialization / recovery | all three `initialized: true`, `sealed: false`, `storage_type: raft`; recovery seal `shamir`, threshold `2` of `3` |
+| Storage and retry_join | ConfigMap declared HCL (loaded-runtime reconciliation unproven): integrated Raft at `/openbao/data`; three TLS-verified retry_join peers `hexalith-keys-0/1/2.hexalith-keys-internal.openbao.svc.cluster.local:8200`, each with matching leader_tls_servername and leader_ca_cert_file `/openbao/userconfig/openbao-server-tls/ca.crt`; approved values declare only peer 0 (owned divergence) |
+| Per-pod addresses | StatefulSet template only (admitted Pod fields unprobed): `BAO_API_ADDR=https://$(POD_IP):8200`, `BAO_CLUSTER_ADDR=https://$(HOSTNAME).hexalith-keys-internal:8201`, `BAO_RAFT_NODE_ID` from `metadata.name`; no static node_id in HCL |
+| Seal | ConfigMap declared HCL (loaded-runtime reconciliation unproven): `seal "static"`, current_key_id `kubernetes-openbao-seal-v1`, current_key `file:///openbao/userconfig/openbao-seal/current.key` |
+| Audit / leases / UI | ConfigMap declared HCL (loaded-runtime reconciliation unproven): persistent JSON file `/openbao/audit/openbao-audit.json`, mode `0600`, hmac_accessor `true`; default/max lease TTL `168h`/`8760h`; `ui = false`; additional declared `allow_unauthenticated_workflows = false` |
+| Persistent volumes | six 10Gi ReadWriteOnce data/audit PVCs, all Bound, `openebs-hostpath-retain`, each labelled part-of `hexalith-memories`; snapshot PVC `openbao-snapshots` 2Gi Bound on the same StorageClass |
+| Services | four `hexalith-keys*` Services are ClusterIP; no standard Ingress objects observed, Traefik custom routes unprobed; internal Service headless with publishNotReadyAddresses true; main Service publishNotReadyAddresses absent (API default false); extra `deployment-seal-transit` NodePort `8200:30820/TCP` targets the active voter |
+| TLS listener | ConfigMap declared HCL (loaded-runtime reconciliation unproven): `[::]:8200`, cluster `[::]:8201`, `tls_disable = 0`, `tls_min_version = "tls12"`; cert/key file references under `/openbao/userconfig/openbao-server-tls` |
+| Service discovery / RBAC | `service_registration "kubernetes" {}`; Role `hexalith-keys-discovery-role` pods get/watch/list/update/patch, RoleBinding `hexalith-keys-discovery-rolebinding` to ServiceAccount `hexalith-keys` |
+| ServiceAccount token | ServiceAccount `hexalith-keys` exists with no referenced legacy token Secret and default `false`; StatefulSet template requests `automountServiceAccountToken: true`; actual server Pod automount unprobed |
+| Token review binding | both `hexalith-keys-server-binding` and `hexalith-keys-tokenreview` bind ServiceAccount `hexalith-keys` to `system:auth-delegator` |
+| Pod Security / ownership | namespace Restricted enforce/audit/warn at latest; owner `jpiquot`, recorded reviewer annotation `murat-tea-for-jpiquot` (non-independent) |
+| Pod / container security | StatefulSet template only (admitted Pod fields unprobed): runAsNonRoot true, uid 100, gid/fsGroup 1000, fsGroupChangePolicy OnRootMismatch, seccomp RuntimeDefault; allowPrivilegeEscalation false, drop ALL; additional declared readOnlyRootFilesystem true |
+| Affinity / update / retention | preferred hostname anti-affinity weight 100; OnDelete, OrderedReady, governing Service `hexalith-keys-internal`; PVC whenDeleted/whenScaled Retain |
+| Readiness / liveness | StatefulSet template only (admitted Pod fields unprobed): readiness exec `[bao, status]`, no skip-verify flag, thresholds initial 5s / period 5s / timeout 3s / failures 3; liveness HTTPS `/v1/sys/health?standbyok=true&sealedcode=204&uninitcode=204` on 8200, initial 30s / period 10s / timeout 3s / failures 3 |
+| Resources / logging | StatefulSet template only (admitted Pod fields unprobed): requests 250m CPU / 256Mi, limits 1 CPU / 1Gi; imagePullPolicy IfNotPresent; BAO_LOG_LEVEL info, BAO_LOG_FORMAT json |
+| Labels / config annotation | part-of `hexalith-memories`, platform-owner `jpiquot`; StatefulSet pod-template security-reviewer annotation and `openbao.hashicorp.com/config-checksum` present; admitted Pod annotations unprobed; OnDelete still requires deliberate pod replacement to adopt template changes |
+| Secret mounts | StatefulSet template only (admitted Pod fields unprobed): TLS and seal Secret declarations readOnly true, defaultMode 288 (`0440`), under `/openbao/userconfig/openbao-server-tls` and `/openbao/userconfig/openbao-seal`; no Secret contents read |
+| Optional resources | no Deployment or DaemonSet in namespace openbao; no UI Service and HCL ui false; consistent with approved injector/csi/ui disabled, not a Helm-values read |
+| NetworkPolicy | `hexalith-keys` still admits every pod in `hexalith-memories` and `cert-manager` on 8200, self on 8200/8201; additive policies `deployment-seal-external` and `ext-secrets-1-custody-provider-29a4ace57e04` also admit 8200 (see owned policy rows) |
+| Backup | CronJob `openbao-raft-snapshot`, `30 0 * * *`, Forbid, ServiceAccount `openbao-snapshot`, PVC `openbao-snapshots`; two succeeded Jobs, last success `2026-11-16T00:30:05Z`; no off-cluster recovery proven |
+| Profile annotations | openbao still carries release-r2 deployment/profile IDs and the historical three manifest hashes/composite; hexalith-memories has no hexalith.io profile annotations in this probe; neither is a current qualification |
+
+### 9.2 Read-only commands and projected observations
+
+All commands below were executed; object JSON was projected before saving. The complete declared
+HCL in ConfigMap `hexalith-keys-config` was read (file references, no inline secret values), never a
+Secret `.data` field. These projections supply section 9.1 rather than the approved values or section 1.
+
+```bash
+kubectl --context=jpiquot@local get nodes -o json | jq '[.items[]|{name:.metadata.name,roles:(.metadata.labels|keys|map(select(startswith("node-role.kubernetes.io/")))),version:.status.nodeInfo.kubeletVersion}]'
+kubectl --context=jpiquot@local -n openbao get cm hexalith-keys-config -o jsonpath='{.data}'
+kubectl --context=jpiquot@local -n openbao get secret --no-headers -o custom-columns=NAME:.metadata.name,TYPE:.type
+kubectl --context=jpiquot@local -n openbao get networkpolicy -o json | jq '[.items[]|{name:.metadata.name,spec:.spec}]'
+kubectl --context=jpiquot@local -n openbao get svc -o json | jq '[.items[]|{name:.metadata.name,type:.spec.type,clusterIP:.spec.clusterIP,publishNotReadyAddresses:.spec.publishNotReadyAddresses,ports:.spec.ports,selector:.spec.selector}]'
+kubectl --context=jpiquot@local -n openbao get pvc -o json | jq '[.items[]|{name:.metadata.name,phase:.status.phase,storageClass:.spec.storageClassName,capacity:.status.capacity,accessModes:.spec.accessModes}]'
+kubectl --context=jpiquot@local -n openbao get sa hexalith-keys -o jsonpath='{.automountServiceAccountToken}{"\n"}'
+kubectl --context=jpiquot@local -n openbao get role,rolebinding -o json | jq '[.items[]|{kind,name:.metadata.name,rules,roleRef,subjects}]'
+kubectl --context=jpiquot@local get clusterrolebindings -o json | jq '[.items[]|select(.metadata.name|startswith("hexalith-keys"))|{name:.metadata.name,roleRef,subjects}]'
+kubectl --context=jpiquot@local get ns openbao hexalith-memories -o json | jq '[.items[]|{name:.metadata.name,labels:.metadata.labels,annotations:(.metadata.annotations|with_entries(select(.key|startswith("hexalith.io/"))))}]'
+kubectl --context=jpiquot@local -n openbao get deployment,daemonset -o name
+kubectl --context=jpiquot@local -n openbao get ingress -o name
+for pod in hexalith-keys-0 hexalith-keys-1 hexalith-keys-2; do
+  kubectl --context=jpiquot@local -n openbao exec "$pod" -- env BAO_CACERT=/openbao/userconfig/openbao-server-tls/ca.crt bao status -format=json | jq '{initialized,sealed,storage_type,ha_enabled,version,recovery_seal_type,t,n,leader_cluster_address}'
+done
+```
+
+Node result: `node1`, control-plane/worker, `v1.34.9`. Secret metadata: the five operational
+Secrets from section 8.6 remain, with release metadata `v1` through `v10` (ten entries).
+Namespace `openbao` retains its Restricted labels, owner/reviewer and release-r2 annotations;
+`hexalith-memories` has no `hexalith.io/` annotations. Deployment/DaemonSet and Ingress queries
+returned no names; this does not probe Traefik custom route objects. Both auth-delegator bindings
+remain. All six data/audit PVCs and the snapshot PVC are Bound.
+
+The StatefulSet, pod and CronJob projections were executed as follows:
+
+```bash
+kubectl --context=jpiquot@local -n openbao get statefulset hexalith-keys -o json | jq '{name:.metadata.name,labels:.metadata.labels,replicas:.spec.replicas,ready:.status.readyReplicas,updateStrategy:.spec.updateStrategy,podManagementPolicy:.spec.podManagementPolicy,serviceName:.spec.serviceName,pvcRetention:.spec.persistentVolumeClaimRetentionPolicy,affinity:.spec.template.spec.affinity,podSecurityContext:.spec.template.spec.securityContext,automount:.spec.template.spec.automountServiceAccountToken,serviceAccount:.spec.template.spec.serviceAccountName,annotations:(.spec.template.metadata.annotations|with_entries(select(.key|startswith("hexalith.io/") or startswith("checksum/")))),containers:[.spec.template.spec.containers[]|{name,image,imagePullPolicy,securityContext,resources,readinessProbe,livenessProbe,env:[.env[]|select(.name|test("^(POD_IP|HOSTNAME|BAO_API_ADDR|BAO_CLUSTER_ADDR|BAO_RAFT_NODE_ID|BAO_LOG_LEVEL|BAO_LOG_FORMAT)$"))],volumeMounts}],volumes:[.spec.template.spec.volumes[]|select(.secret!=null)|{name,secret:{secretName:.secret.secretName,defaultMode:.secret.defaultMode,items:.secret.items}}],volumeClaimTemplates:[.spec.volumeClaimTemplates[]|{name:.metadata.name,spec:.spec}]}'
+kubectl --context=jpiquot@local -n openbao get statefulset hexalith-keys -o json | jq '{labels:.spec.template.metadata.labels,annotations:.spec.template.metadata.annotations,configAnnotation:.metadata.annotations["openbao.hashicorp.com/config-checksum"],configVolumes:[.spec.template.spec.volumes[]|select(.configMap!=null or .emptyDir!=null)]}'
+kubectl --context=jpiquot@local -n openbao get pods -o json | jq '[.items[]|{name:.metadata.name,node:.spec.nodeName,phase:.status.phase,chart:.metadata.labels["helm.sh/chart"],labels:(.metadata.labels|with_entries(select(.key|startswith("app.kubernetes.io/") or startswith("hexalith.io/")))),images:[.spec.containers[]|{name,image}],statuses:[.status.containerStatuses[]?|{name,ready,imageID}]}]'
+kubectl --context=jpiquot@local -n openbao get cronjob,job -o json | jq '[.items[]|select(.metadata.name|startswith("openbao-raft-snapshot"))|{kind,name:.metadata.name,schedule:.spec.schedule,concurrencyPolicy:.spec.concurrencyPolicy,serviceAccount:.spec.jobTemplate.spec.template.spec.serviceAccountName,volumes:.spec.jobTemplate.spec.template.spec.volumes,status:(.status|{lastSuccessfulTime,succeeded,completionTime})}]'
+kubectl --context=jpiquot@local -n openbao get endpoints hexalith-keys-active hexalith-keys-standby -o json | jq '[.items[]|{name:.metadata.name,subsets:[.subsets[]|{addresses:[.addresses[]|.targetRef.name],ports:.ports}]}]'
+```
+
+All three pod versions/digests agree with section 9.1. StatefulSet readiness is 3/3; these are three
+healthy servers, not measured voting membership. `bao status` does not list voting members; snapshot Jobs
+`openbao-raft-snapshot-29911710` and `openbao-raft-snapshot-29913150` succeeded. Endpoints returned
+a deprecation warning recommending EndpointSlice but successfully identified leader/standbys.
+Config checksum is a **pod-template** annotation, present with SHA-256
+`f25aa8b5429bb50464097bb70b13ebb1c1bec13feb97fad5e939692761fe4385`; the queried
+StatefulSet metadata checksum is null. OnDelete does not automatically replace existing pods.
+
+Additional policy `.spec` observations (all select the OpenBao server; rules are additive):
+
+| Policy | Sources admitted to TCP 8200 | Ownership / disposition |
+| :--- | :--- | :--- |
+| `hexalith-keys` | namespace-wide `hexalith-memories`, namespace-wide `cert-manager`; self also 8201 | Existing accepted namespace-ingress limitation retained |
+| `deployment-seal-external` | namespace `traefik` AND pod `app.kubernetes.io/name=traefik`, OR `192.168.1.30/32` | Platform Operations (`jpiquot`); current runbook owns narrowing/adoption trigger. Historical DW-729 uncaptured-spec condition now has this measurement; no deferred-ledger edit claimed |
+| `ext-secrets-1-custody-provider-29a4ace57e04` | namespace `ext-secrets-1-isolated` AND pod app In [`inventory`, `ext-secrets-1-custody`] | Platform Operations (`jpiquot`); justify/remove/adopt when custody lane ends |
+
+The namespace-wide rule now spans 11 listed application-namespace pods (including three completed
+TLS-reloader Job pods) and three cert-manager pods; the old ten-pod list remains explicitly historical.
+Commands: `kubectl --context=jpiquot@local -n hexalith-memories get pod -o custom-columns=NAME:.metadata.name --no-headers`
+and `kubectl --context=jpiquot@local -n cert-manager get pod -o custom-columns=NAME:.metadata.name --no-headers`.
+No third accepted limitation is introduced. No network policy was changed.
+
+Measurement boundaries and owned proof gaps: **Hexalith Platform Operations (`jpiquot`)** owns
+`Voting membership is unmeasured`, `Declared configuration lacks loaded-runtime reconciliation`,
+and `Traefik custom-route exposure is unmeasured` in the runbook divergence table. No authenticated
+Raft member listing was performed; obtain separately authorized redacted membership proof without
+reading Secret contents or exposing credentials. The detailed security/probe/env/mount projections
+above describe the **StatefulSet template only**; actual admitted server Pod fields remain unprobed
+and OnDelete permits older Pods. ConfigMap HCL is **declared configuration**, with no claim that
+all running servers loaded it. Reopen on safe per-Pod projections plus separately established
+secret-safe loaded-configuration reconciliation. Empty standard Ingress output leaves Traefik
+custom routes and external exposure unmeasured; reopen on read-only route/middleware/Service
+allowlist inventory and owner-led reconciliation. No new live Job or route mutation was performed.
+
+### 9.3 Current smoke execution
+
+Preflight at **2026-11-16T15:45:59Z**:
+`kubectl --context=jpiquot@local -n openbao get job hexalith-keys-smoke-test --ignore-not-found -o jsonpath='{.status.conditions[*].type}'`
+returned no Job. No deletion was needed.
+
+```text
+$ kubectl --context=jpiquot@local apply -f deploy/openbao/smoke-test.yaml
+job.batch/hexalith-keys-smoke-test created
+$ kubectl --context=jpiquot@local -n openbao wait --for=condition=complete job/hexalith-keys-smoke-test --timeout=2m
+job.batch/hexalith-keys-smoke-test condition met
+$ kubectl --context=jpiquot@local -n openbao logs job/hexalith-keys-smoke-test
+```
+
+Projected status fields observed in those logs, bound separately from historical section 3.1:
+
+| Field | Observed value on 2026-11-16 |
+| :--- | :--- |
+| initialized | `true` |
+| sealed | `false` |
+| storage_type | `raft` |
+| ha_enabled | `true` |
+| version | `2.6.2` |
+| Completion UTC | `2026-11-16T15:46:10Z` |
+| Client image | `2.6.0@sha256:900bb64d0671cd1d82b693c56206f7263b582445f3a3bb6ba6e5213f524a6653` |
+| Admitted CA projection | Job and Pod: exactly `items: [{key: ca.crt, path: ca.crt}]`, Secret `openbao-server-tls`, mode 288; Job confirms read-only mount and automount false; Pod mount/automount fields unprobed |
+| Job / Pod result | `hexalith-keys-smoke-test` succeeded 1, Complete; Pod `hexalith-keys-smoke-test-5fj94` Succeeded, exit 0 |
+
+The admitted objects were captured before TTL cleanup with these exact projections:
+
+```bash
+kubectl --context=jpiquot@local -n openbao get job hexalith-keys-smoke-test -o json | jq '{name:.metadata.name,status:.status,backoffLimit:.spec.backoffLimit,activeDeadlineSeconds:.spec.activeDeadlineSeconds,ttlSecondsAfterFinished:.spec.ttlSecondsAfterFinished,automount:.spec.template.spec.automountServiceAccountToken,securityContext:.spec.template.spec.securityContext,containers:[.spec.template.spec.containers[]|{name,image,env,command,securityContext,resources,volumeMounts}],volumes:.spec.template.spec.volumes}'
+kubectl --context=jpiquot@local -n openbao get pods -l job-name=hexalith-keys-smoke-test -o json | jq '[.items[]|{name:.metadata.name,node:.spec.nodeName,phase:.status.phase,volumes:.spec.volumes,statuses:[.status.containerStatuses[]?|{name,image,imageID,state}]}]'
+kubectl --context=jpiquot@local -n openbao logs job/hexalith-keys-smoke-test | jq '{initialized,sealed,storage_type,ha_enabled,version,recovery_seal_type,t,n}'
+```
+
+Observed Job start `2026-11-16T15:46:05Z`, completion `2026-11-16T15:46:10Z`, succeeded 1;
+Pod completed at `2026-11-16T15:46:08Z` with exit 0. Both admitted objects show only Secret
+`openbao-server-tls` key `ca.crt` at `ca.crt`, defaultMode 288. The Job template confirms the read-only
+mount `/openbao/tls` and automount false. The admitted Pod projection omitted volumeMounts and
+automountServiceAccountToken; those Pod-specific fields are unprobed, not confirmed by the Job.
+Job automount false, uid 100/gid 1000/fsGroup 1000, RuntimeDefault, no privilege escalation,
+drop ALL; backoff/deadline/TTL 0/60/300; CPU request/limit 10m/100m, memory 32Mi/128Mi.
+Its command is `bao status -format=json`, BAO_ADDR the internal Service and BAO_CACERT
+`/openbao/tls/ca.crt`; client imageID matches the approved **2.6.0 digest** in the table.
+This proves CA-verified status access to measured **2.6.2**, not 2.6.4 compatibility, Dapr secret reads,
+restart recovery, or independent security approval. Historical successes are preserved unchanged.
+
+### 9.4 Current independent-review ownership
+
+As of **2026-11-16**, C4b/C5b/C7 are **pending / not complete**, with **no completion date**.
+Independent reviewer **unassigned**; **Administrator (`jpiquot`) accountable for scheduling and escalation**.
+No independent signed evidence exists. The July waiver expired on **2026-10-26**; it supplies no
+current approval and is neither extended nor replaced by passing guards. Section 4 is the current
+state record; its historical waiver fields remain dated. Story 31.1 stays **in-progress**.
+Story 31.2 activation still depends only on C1/C2/C3/C4a/C5a/C6; its activation does not discharge
+these security obligations. Helm reproduction remains separate Platform Operations work.
+
+Additional read-only checks after the primary capture: `command -v helm` returned no path;
+`kubectl --context=jpiquot@local -n openbao get certificate,issuer -o name` returned no names.
+No chart digest or cert/token contents were derived.
+
+Supplementary label/ServiceAccount metadata projections at **2026-11-16T15:57:02Z**:
+
+```bash
+kubectl --context=jpiquot@local -n openbao get pvc -o json | jq '[.items[]|{name:.metadata.name,labels:.metadata.labels}]'
+kubectl --context=jpiquot@local -n openbao get sa hexalith-keys -o json | jq '{name:.metadata.name,automountServiceAccountToken,secrets}'
+```
+
+All six data/audit PVCs carry `app.kubernetes.io/part-of: hexalith-memories`; the ServiceAccount
+exists with automount false and `secrets: null`, consistent with createSecret false. Post-TTL
+`kubectl --context=jpiquot@local -n openbao get job hexalith-keys-smoke-test --ignore-not-found -o name`
+returned no Job. No cleanup write was required.
+
+### 9.5 Implementation verification and discovery
+
+Both baseline and updated builds ran under `run-with-temp`, with disposable outputs beneath the
+wrapper's private TMPDIR and useful logs retained under `artifacts/story-31-1/`. No fallback was
+needed. Exact build command inside that wrapper:
+
+```bash
+DOTNET_CLI_USE_MSBUILD_SERVER=0 dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --configuration Debug -p:UseHexalithProjectReferences=true --artifacts-path "$TMPDIR/build" --disable-build-servers -m:1 /nr:false -p:NuGetAudit=false -p:MinVerVersionOverride=1.0.0
+```
+
+Result: **Build succeeded, 0 warnings, 0 errors**, target **net11.0**, source references.
+The temporary verification root copied the solution marker, docs, deploy and implementation/planning
+artifacts so the built assembly's normal root discovery read the disposable records. Commands:
+
+```bash
+dotnet exec "$TMPDIR/build/bin/Hexalith.Memories.Server.Tests/debug/Hexalith.Memories.Server.Tests.dll" -list methods -noLogo
+DiffEngine_Disabled=true dotnet exec "$TMPDIR/build/bin/Hexalith.Memories.Server.Tests/debug/Hexalith.Memories.Server.Tests.dll" -class Hexalith.Memories.Server.Tests.Deployment.OpenBaoPlatformDocumentationTests -parallel none -noLogo
+DiffEngine_Disabled=true dotnet exec "$TMPDIR/build/bin/Hexalith.Memories.Server.Tests/debug/Hexalith.Memories.Server.Tests.dll" -method Hexalith.Memories.Server.Tests.Deployment.ProductionDeploymentArtifactsTests.OpenBaoDeploymentProfile_IsPinnedTlsOnlyPersistentAndInternal -parallel none -noLogo
+```
+
+Comparable runner-derived discovery, named unit **xUnit test method** (same source-reference Debug
+configuration, net11.0 target, runner, unfiltered method scope before/after):
+
+| Discovery scope | Before | After | Phase delta |
+| :--- | :--- | :--- | :--- |
+| Server.Tests assembly | 2454 | 2457 | +3 |
+| Deployment namespace | 101 | 104 | +3 |
+| OpenBaoPlatformDocumentationTests | 13 | 16 | +3 |
+| ProductionDeploymentArtifactsTests | 14 | 14 | +0 |
+
+Sorted method-set SHA-256 (method lines only, LF plus final newline):
+before `00e5485bb56b29af3737a56adf928f5355b6ce4788a413ec2d9566cd5c80bf09`,
+after `9e740ecd206e100df0ca67035ec26fc9230f03856120956cd3174f17681b40e1`.
+Set difference: exactly the three new `CurrentDeploymentProfile_…`, `CurrentSmokeResult_…` and
+`CurrentSecurityCheckpoints_…` methods; none removed. Older net10.0 discoveries are historical and
+were not used as this phase's comparator.
+
+Execution, distinct named unit **xUnit test case**: documentation **16 passed, 0 failed/skipped**;
+pinned deployment regression **1 passed, 0 failed/skipped**. The first post-edit focused run caught
+one new divergence key colliding with an existing uniqueness assertion; the key was made distinct,
+and the final runs passed. The runner warns that `-parallel` is deprecated; the spec-required selector
+still executes successfully.
+
+Six negative trials ran against disposable copies under TMPDIR with the same 16-case class selector:
+
+| Mutation | Observed outcome |
+| :--- | :--- |
+| Current server version changed in both current tables to historical 2.6.0 | exit 1, refused |
+| Current server version changed in both current tables to approved 2.6.4 | exit 1, refused |
+| Current smoke version changed in both current tables to historical 2.6.0 | exit 1, refused |
+| Story C7 current completion state restored to waived | exit 1, refused |
+| Runbook reviewer-independence divergence restored to C7 waiver closure | exit 1, refused |
+| Evidence current C7 state restored to waived with the expired waiver | exit 1, refused |
+
+The three mutated files were restored byte-identical within the disposable copy; post-restoration
+execution passed **16/16**. The live worktree was never mutated for these trials. Useful transcripts:
+`artifacts/story-31-1/build-before.log`, `build-final.log`, `discovery-before.log`,
+`discovery-final.log`, `documentation-tests-final.log`, `deployment-regression.log`,
+`mutation-results.json` and `documentation-post-mutations.log` (same directory).
+
+Exactly two accepted limitations remain; four owned manifests are unchanged. Sprint status values
+and Story 31.2 activation criteria are unchanged. `git diff --check` passes. Security countersignatures,
+independent platform evaluation, Helm reproduction, off-cluster recovery and approved 2.6.4 deployment
+remain separately owned obligations; these tests close none of them.
+
+Final post-ledger checks use the same **separate** class and method invocations above; transcripts
+are `artifacts/story-31-1/build-verified.log`, `documentation-verified.log` and
+`regression-verified.log`. A trial combining the class selector and regression method selector
+intersected their scopes and reported Total 0; it is not counted as execution evidence.
+
+### 9.6 Review corrections to measurement and guard boundaries
+
+The review distinguishes three healthy server Pods from unmeasured voting membership; no authenticated
+member listing or fault exercise was performed. Security/probe/env/mount details are explicitly
+StatefulSet-template observations, ConfigMap HCL is declared configuration, and OnDelete leaves
+admitted Pod and loaded-runtime reconciliation unproven. Platform Operations (`jpiquot`) owns those
+proof gaps and the unmeasured Traefik custom-route exposure, with read-only reconciliation triggers
+in the runbook. No Secret contents, new smoke Job, credentials or routes were accessed or changed.
+
+Smoke success and the CA-only items observed on both objects are retained; read-only mounts and
+automount false are confirmed only on the Job template. Guards now bind C3, require the new owned
+rows and substantive values, independently pin security declarations, and compare section 9.4 with
+the current checkpoint/evaluator state. In-memory controls reject jointly corrupted TLS/placeholder
+records, accept a consistent independently signed closure and reject the owner persona or stale
+summary/expiry/owner; real C4b/C5b/C7 states remain pending with reviewer unassigned.
+
+### 9.6 Review corrections and final independent verification
+
+The review corrected observation boundaries: three healthy server replicas do not prove voting
+membership; StatefulSet templates do not prove admitted server-Pod fields under OnDelete; and
+ConfigMap HCL does not prove each process loaded those declarations. These proof gaps, plus
+unprobed Traefik custom routes, now carry Platform Operations owners and reopen triggers. The smoke
+Pod projection proves its CA-only Secret items; read-only mount and disabled automount were confirmed
+on the admitted Job, not in the retained Pod projection. No second live Job was created.
+
+All eleven reviewer findings (including one duplicate) and the parent fixture-lifecycle finding were
+fixed; none was deferred. Guards now require the owned gap rows, substantive independently pinned
+security declarations, current C3 evidence, and agreement with section 9.4. Synthetic controls use fixed
+fixtures, accept a consistent independent signature with unsigned or already signed source input, and
+reject the owner persona, stale ownership/expiry summaries and joint TLS/placeholder corruption.
+These are synthetic controls only; real C4b/C5b/C7 remain pending / not complete.
+
+Final command: `run-with-temp python3 -u artifacts/story-31-1/verify-parent.py`. Its retained
+`parent-verification.json` records every expanded build/runner command. Debug/source-reference
+net11.0 build: **0 warnings, 0 errors**; documentation **18 cases passed**, pinned deployment
+regression **1 case passed**, no failures, skips or unexecuted cases. Logs: `parent-build.log`,
+`parent-documentation.log`, `parent-deployment-regression.log`, `parent-discovery.log` under
+`artifacts/story-31-1/`. The wrapper waited for all child commands and removed disposable outputs.
+
+Comparable final discovery: **2454→2459** assembly methods, **101→106** Deployment,
+**13→18** documentation, **14→14** regression class. Final sorted method-set SHA-256:
+`e175336aca2454078b69937277419e5fea368888e52fb09929b5bd1a04e7e617`. The implementation added three methods and review added two:
+**+5** for this invocation, cumulative story-added methods **+18**. The earlier 16-case results
+in section 9.5 remain their original executed-stage evidence, not the final count.
+
+Final reconciliation: **8/8** owned paths, including the workflow-generated epic context and dispatch
+spec. Four manifests and all **238** development-status mapping values are unchanged; the approved
+intent is preserved byte-for-byte after newline normalization. CRLF Markdown/C#, LF YAML and
+`git diff --check` pass. No tenant/case routing, selector, authorization, evidence attribution or
+persisted data changed, so tenant-isolation negative-evidence triggering is not applicable here.

@@ -5996,7 +5996,7 @@ The deployed OpenBao `hexalith-keys` platform and the runtime Dapr `secretstore`
 
 ### Story 31.1: OpenBao Platform Hardening and Documentation
 
-**Status:** review (dev-story 2026-07-28: post-review continuation complete, checkpoint C3 discharged by a smoke-test re-run under the CA-only projection; `done` gated on the Platform Operations `helm diff` and on checkpoints C4/C5, which the approved 2026-07-28 sprint change keeps `not complete`). **Owner:** Memories Maintainer + security reviewer.
+**Status:** in-progress (current measured-profile refresh 2026-11-16). Documentation checkpoints C1/C2/C3/C4a/C5a/C6 are complete and guard-asserted; C4b/C5b/C7 remain pending / not complete without independent signed evidence or completion dates. The C7 waiver expired 2026-10-26. Independent reviewer unassigned; Administrator (`jpiquot`) accountable for scheduling. Helm reproduction is separate Platform Operations work, not a Story 31.1 checkpoint. Story 31.2 activation criteria remain unchanged. **Owner:** Memories Maintainer + Platform Operations; independent security reviewer unassigned.
 
 **Split note (2026-07-27).** Created by approved Sprint Change Proposal 2026-07-27 executing DW 27.3-CR16. The pre-split Story 31.1 bundled platform hardening and the runtime secret-store migration - two independently deployable outcomes - with no checkpoint table. Its scope is now Stories 31.1 and 31.2; no scope was added or dropped.
 

@@ -52,6 +52,16 @@ public sealed class OpenBaoPlatformDocumentationTests
 
     private const string LimitationsHeading = "Accepted limitations";
     private const string ProfileHeading = "Deployed profile as measured";
+    private const string CurrentProfileHeading = "Current deployment measured on 2026-11-16";
+    private const string CurrentProfileEvidenceHeading = "9.1 Current measured profile";
+    private const string CurrentSmokeHeading = "Current smoke result on 2026-11-16";
+    private const string CurrentSmokeEvidenceHeading = "9.3 Current smoke execution";
+    private const string CurrentServerVersion = "2.6.2";
+    private const string CurrentServerImage =
+        "quay.io/openbao/openbao:2.6.2@sha256:11fd73a2102cda9c55d5d881a8c3210303146a7ec1e8ac76f526e175c6d24641";
+    private const string CurrentSmokeApplyCommand = "kubectl --context=jpiquot@local apply -f deploy/openbao/smoke-test.yaml";
+    private const string CurrentSmokeWaitCommand =
+        "kubectl --context=jpiquot@local -n openbao wait --for=condition=complete job/hexalith-keys-smoke-test --timeout=2m";
     private const string AvailabilityHeading = "Availability profile";
     private const string DivergencesHeading = "Named divergences";
     private const string UntrackedStateHeading = "Deployed platform state not tracked in this repository";
@@ -249,8 +259,8 @@ public sealed class OpenBaoPlatformDocumentationTests
         var document = new MarkdownContractDocument(ReadDoc());
         string smokeTest = document.GetSection("Smoke test");
 
-        smokeTest.ShouldContain(SmokeTestApplyCommand, Case.Sensitive, "AC1 requires the smoke test to be runnable with a named command.");
-        smokeTest.ShouldContain(SmokeTestWaitCommand, Case.Sensitive, "AC1 requires the named completion command.");
+        smokeTest.ShouldContain(CurrentSmokeApplyCommand, Case.Sensitive, "AC1 requires the smoke test to be runnable with a named command.");
+        smokeTest.ShouldContain(CurrentSmokeWaitCommand, Case.Sensitive, "AC1 requires the named completion command.");
 
         // A named command without a recorded outcome is not AC1's "recorded result".
         IReadOnlyList<IReadOnlyList<string>> result = document.GetTableRows("Recorded result");
@@ -407,6 +417,12 @@ public sealed class OpenBaoPlatformDocumentationTests
             "profile annotations",
             "manifest hashes",
             "voter count",
+            "Live rendered configuration differs from approved values",
+            "Additional ingress policies widen effective sources",
+            "Application namespace identity metadata no longer present",
+            "Voting membership is unmeasured",
+            "Declared configuration lacks loaded-runtime reconciliation",
+            "Traefik custom-route exposure is unmeasured",
         ];
 
         foreach (string requiredKey in requiredDivergenceKeys)
@@ -449,6 +465,8 @@ public sealed class OpenBaoPlatformDocumentationTests
             "deployment-seal-transit",
             "deployment-seal-external",
             "deployment-seal-runner-token",
+            "ext-secrets-1-custody-provider-29a4ace57e04",
+            "`deployment-seal-runner`",
         ];
         foreach (string requiredKey in requiredUntrackedKeys)
         {
@@ -741,7 +759,7 @@ public sealed class OpenBaoPlatformDocumentationTests
             .ToDictionary(static row => row[0], static row => row[1], StringComparer.OrdinalIgnoreCase);
 
         record.ShouldContainKey("Reviewer of record");
-        record["Reviewer of record"].ShouldContain("murat-tea-for-jpiquot", Case.Sensitive, "C7 must name the reviewer of record.");
+        ShouldBeSubstantiveCell(record["Reviewer of record"], "Reviewer of record", ReviewerEvaluationHeading);
         record.ShouldContainKey("Checkpoint C7 state");
 
         string state = record["Checkpoint C7 state"];
@@ -786,6 +804,517 @@ public sealed class OpenBaoPlatformDocumentationTests
                 @"(?i)signed\s+by\s+\S+\s+on\s+20\d{2}-\d{2}-\d{2}",
                 "A signed C7 evaluation must name its evaluator and carry its date, in the form 'signed by <evaluator> on <YYYY-MM-DD>'.");
         }
+    }
+
+    [Fact]
+    public void CurrentDeploymentProfile_IsDatedAndBoundSeparatelyFromHistoryAndApprovedInputs()
+    {
+        var document = new MarkdownContractDocument(ReadDoc());
+        var evidence = new MarkdownContractDocument(ReadRepoFile(EvidenceRelativePath));
+        Dictionary<string, string> current = ReadMatchingDatedTables(
+            document, CurrentProfileHeading, evidence, CurrentProfileEvidenceHeading,
+            ["Contract", "Measured value on 2026-11-16"]);
+
+        // Separate identities: neither the historical table nor approved values can satisfy a current row.
+        current.Keys.ShouldBe(new[]
+        {
+            "Kubernetes context", "Kubernetes nodes", "Namespace / application namespace",
+            "Helm release, Service, StatefulSet", "Helm release revisions", "Chart label",
+            "Server image", "Server version", "Raft voters", "HA mode", "Initialization / recovery",
+            "Storage and retry_join", "Per-pod addresses", "Seal", "Audit / leases / UI",
+            "Persistent volumes", "Services", "TLS listener", "Service discovery / RBAC",
+            "ServiceAccount token", "Token review binding", "Pod Security / ownership",
+            "Pod / container security", "Affinity / update / retention", "Readiness / liveness",
+            "Resources / logging", "Labels / config annotation", "Secret mounts", "Optional resources",
+            "NetworkPolicy", "Backup", "Profile annotations",
+        });
+        current["Server image"].ShouldStartWith($"`{CurrentServerImage}`", Case.Sensitive);
+        current["Server version"].ShouldBe($"`{CurrentServerVersion}` on all three servers");
+        current["Chart label"].ShouldStartWith("`helm.sh/chart: openbao-0.29.5`", Case.Sensitive);
+        current["Chart label"].ShouldContain("chart digest not measured", Case.Sensitive);
+        current["Helm release revisions"].ShouldStartWith("10 metadata objects", Case.Sensitive);
+        current["Raft voters"].ShouldStartWith("`3` replicas, `3/3` Ready", Case.Sensitive);
+        current["Raft voters"].ShouldContain("all Running on `node1`", Case.Sensitive);
+        current["Raft voters"].ShouldContain("voting membership unmeasured", Case.Sensitive);
+        AssertCurrentMeasuredSecurity(current);
+        current["HA mode"].ShouldStartWith("`ha_enabled: true`", Case.Sensitive);
+        current["ServiceAccount token"].ShouldContain("default `false`", Case.Sensitive);
+        current["ServiceAccount token"].ShouldContain("automountServiceAccountToken: true", Case.Sensitive);
+        current["Readiness / liveness"].ShouldContain("no skip-verify flag", Case.Sensitive);
+        current["Storage and retry_join"].ShouldContain("three TLS-verified retry_join peers", Case.Sensitive);
+        current["Pod / container security"].ShouldContain("readOnlyRootFilesystem true", Case.Sensitive);
+        current["NetworkPolicy"].ShouldContain("deployment-seal-external", Case.Sensitive);
+        current["NetworkPolicy"].ShouldContain("ext-secrets-1-custody-provider-29a4ace57e04", Case.Sensitive);
+        current["Profile annotations"].ShouldContain("hexalith-memories has no hexalith.io profile annotations", Case.Sensitive);
+
+        ReadProfileRow(document, "Server version")[1].ShouldBe("`2.6.0`");
+        ReadRepoFile("deploy/openbao/values.yaml").ShouldContain("2.6.4@sha256:", Case.Sensitive);
+        string divergence = NormalizeWhitespace(string.Join(" ", document.GetTableRows(DivergencesHeading)
+            .Single(static row => row[0] == "Approved inputs differ from current deployment")));
+        divergence.ShouldContain("Platform Operations", Case.Sensitive);
+        divergence.ShouldContain("2.6.4/chart 0.29.6", Case.Sensitive);
+        divergence.ShouldContain("2.6.2 and chart label 0.29.5", Case.Sensitive);
+        divergence.ShouldContain("No upgrade/downgrade", Case.Sensitive);
+
+        IReadOnlyList<IReadOnlyList<string>> policies = evidence.GetTableRows("9.2 Read-only commands and projected observations");
+        policies.Select(static row => row[0]).ShouldBe(new[]
+        {
+            "`hexalith-keys`", "`deployment-seal-external`", "`ext-secrets-1-custody-provider-29a4ace57e04`",
+        });
+        policies[1][1].ShouldContain("192.168.1.30/32", Case.Sensitive);
+        policies[2][1].ShouldContain("ext-secrets-1-isolated", Case.Sensitive);
+        policies[2][1].ShouldContain("ext-secrets-1-custody", Case.Sensitive);
+    }
+
+    [Fact]
+    public void CurrentSmokeResult_BindsExecutedCommandsOutcomeAndAdmittedCaOnlyProjection()
+    {
+        var document = new MarkdownContractDocument(ReadDoc());
+        var evidence = new MarkdownContractDocument(ReadRepoFile(EvidenceRelativePath));
+        Dictionary<string, string> result = ReadMatchingDatedTables(
+            document, CurrentSmokeHeading, evidence, CurrentSmokeEvidenceHeading,
+            ["Field", "Observed value on 2026-11-16"], requireSubstantiveValues: false);
+        result.Count.ShouldBe(9);
+        result["initialized"].ShouldBe("`true`");
+        result["sealed"].ShouldBe("`false`");
+        result["storage_type"].ShouldBe("`raft`");
+        result["ha_enabled"].ShouldBe("`true`");
+        result["version"].ShouldBe($"`{CurrentServerVersion}`");
+        result["Completion UTC"].ShouldBe("`2026-11-16T15:46:10Z`");
+        result["Client image"].ShouldBe("`2.6.0@sha256:900bb64d0671cd1d82b693c56206f7263b582445f3a3bb6ba6e5213f524a6653`");
+        result["Admitted CA projection"].ShouldBe(
+            "Job and Pod: exactly `items: [{key: ca.crt, path: ca.crt}]`, Secret `openbao-server-tls`, mode 288; Job confirms read-only mount and automount false; Pod mount/automount fields unprobed");
+        result["Job / Pod result"].ShouldBe(
+            "`hexalith-keys-smoke-test` succeeded 1, Complete; Pod `hexalith-keys-smoke-test-5fj94` Succeeded, exit 0");
+        string execution = NormalizeWhitespace(evidence.GetSection(CurrentSmokeEvidenceHeading));
+        execution.ShouldContain(CurrentSmokeApplyCommand, Case.Sensitive);
+        execution.ShouldContain(CurrentSmokeWaitCommand, Case.Sensitive);
+        execution.ShouldContain("job.batch/hexalith-keys-smoke-test condition met", Case.Sensitive);
+        execution.ShouldContain("get job hexalith-keys-smoke-test -o json", Case.Sensitive);
+        execution.ShouldContain("get pods -l job-name=hexalith-keys-smoke-test -o json", Case.Sensitive);
+        execution.ShouldContain("before TTL cleanup", Case.Sensitive);
+        ValidateCurrentSmokeCheckpoint(ReadRepoFile(StoryRelativePath), result);
+
+    }
+
+    [Fact]
+    public void CurrentSecurityCheckpoints_AgreeWithUnsignedEvidenceAndReviewerDivergence()
+        => ValidateCurrentSecurityRecords(ReadCurrentSecurityRecords());
+
+    [Fact]
+    public void CurrentProfileSecurity_RejectsJointPlaceholderAndDisabledTlsCorruption()
+    {
+        string document = ReadDoc();
+        string evidence = ReadRepoFile(EvidenceRelativePath);
+        foreach ((string key, string value) in new[]
+        {
+            ("TLS listener", "TODO"),
+            ("TLS listener", "ConfigMap declared HCL: tls_disable = 1; tls_min_version = \"tls12\""),
+            ("Pod / container security", "StatefulSet template only: runAsNonRoot false; allowPrivilegeEscalation true"),
+        })
+        {
+            string corruptDocument = ReplaceTableCell(document, CurrentProfileHeading, key, 1, value);
+            string corruptEvidence = ReplaceTableCell(evidence, CurrentProfileEvidenceHeading, key, 1, value);
+            Should.Throw<ShouldAssertException>(() =>
+            {
+                Dictionary<string, string> current = ReadMatchingDatedTables(
+                    new MarkdownContractDocument(corruptDocument), CurrentProfileHeading,
+                    new MarkdownContractDocument(corruptEvidence), CurrentProfileEvidenceHeading,
+                    ["Contract", "Measured value on 2026-11-16"]);
+                AssertCurrentMeasuredSecurity(current);
+            });
+        }
+    }
+
+    [Fact]
+    public void CurrentSecurityRecords_AllowIndependentSignedClosureAndRejectOwnerPersonaOrStaleSummary()
+    {
+        // Run the same control path for both possible source states. Actual files are validated by
+        // CurrentSecurityCheckpoints_AgreeWithUnsignedEvidenceAndReviewerDivergence, separately.
+        VerifySyntheticSecurityControls(CreateUnsignedSecurityControl());
+        VerifySyntheticSecurityControls(CreateSignedSecurityControl());
+    }
+
+    /// <summary>Proves control generation and negative checks remain runnable when source records
+    /// have already transitioned from pending to independently signed closure.</summary>
+    private static void VerifySyntheticSecurityControls(IReadOnlyDictionary<string, string> sourceRecords)
+    {
+        ValidateCurrentSecurityRecords(sourceRecords);
+        Dictionary<string, string> signed = CreateSignedSecurityControl();
+        ValidateCurrentSecurityRecords(signed);
+        var nonIndependent = signed.ToDictionary(static pair => pair.Key,
+            static pair => pair.Value.Replace("independent-security-reviewer", "murat-tea-for-jpiquot", StringComparison.Ordinal));
+        Should.Throw<ShouldAssertException>(() => ValidateCurrentSecurityRecords(nonIndependent));
+
+        foreach ((string before, string after) in new[]
+        {
+            ("pending / not complete", "waived / complete"),
+            ("2026-10-26", "2027-10-26"),
+            ("Administrator (`jpiquot`)", "Former administrator (`other-owner`)"),
+        })
+        {
+            Dictionary<string, string> stale = CreateUnsignedSecurityControl();
+            stale["evidence"] = ReplaceSectionText(stale["evidence"], "9.4 Current independent-review ownership", before, after);
+            Should.Throw<ShouldAssertException>(() => ValidateCurrentSecurityRecords(stale));
+        }
+    }
+
+    /// <summary>Pins security declarations independently of matching prose in two records. Their
+    /// template/ConfigMap origin remains explicit; this proves no loaded-runtime reconciliation.</summary>
+    private static void AssertCurrentMeasuredSecurity(IReadOnlyDictionary<string, string> current)
+    {
+        current["TLS listener"].ShouldContain("ConfigMap declared HCL", Case.Sensitive);
+        current["TLS listener"].ShouldContain("tls_disable = 0", Case.Sensitive);
+        current["TLS listener"].ShouldContain("tls_min_version = \"tls12\"", Case.Sensitive);
+        current["TLS listener"].ShouldNotMatch(@"tls_disable\s*=\s*""?(1|true|yes|on)""?");
+        current["Seal"].ShouldContain("file:///openbao/userconfig/openbao-seal/current.key", Case.Sensitive);
+        foreach (string declaration in new[]
+        {
+            "runAsNonRoot true", "uid 100", "gid/fsGroup 1000", "seccomp RuntimeDefault",
+            "allowPrivilegeEscalation false", "drop ALL", "readOnlyRootFilesystem true",
+        })
+        {
+            current["Pod / container security"].ShouldContain(declaration, Case.Sensitive);
+        }
+
+        foreach (string key in new[] { "Per-pod addresses", "Pod / container security", "Readiness / liveness", "Resources / logging", "Secret mounts" })
+        {
+            current[key].ShouldContain("StatefulSet template only", Case.Sensitive);
+            current[key].ShouldContain("admitted Pod fields unprobed", Case.Sensitive);
+        }
+
+        current["Secret mounts"].ShouldContain("readOnly true, defaultMode 288", Case.Sensitive);
+        current["Affinity / update / retention"].ShouldContain("PVC whenDeleted/whenScaled Retain", Case.Sensitive);
+        current["Services"].ShouldContain("four `hexalith-keys*` Services are ClusterIP", Case.Sensitive);
+        current["Services"].ShouldContain("Traefik custom routes unprobed", Case.Sensitive);
+    }
+
+    /// <summary>Binds checkpoint C3 to the current execution, never to the historical smoke table.</summary>
+    private static void ValidateCurrentSmokeCheckpoint(string storyText, IReadOnlyDictionary<string, string> result)
+    {
+        IReadOnlyList<string> row = new MarkdownContractDocument(storyText).GetTableRows(CheckpointsHeading)
+            .Single(static candidate => candidate[0].StartsWith("C3 -", StringComparison.Ordinal));
+        row[2].ShouldContain("31-1-openbao-platform-evidence.md", Case.Sensitive);
+        row[2].ShouldContain("9.3 (current)", Case.Sensitive);
+        row[2].ShouldContain(CurrentSmokeApplyCommand, Case.Sensitive);
+        row[2].ShouldContain(CurrentSmokeWaitCommand, Case.Sensitive);
+        row[3].ShouldContain(result["Completion UTC"].Trim('`'), Case.Sensitive);
+        row[3].ShouldContain($"measured {result["version"].Trim('`')} server", Case.Sensitive);
+        row[3].ShouldContain("initialized true / sealed false / Raft / HA true", Case.Sensitive);
+        row[3].ShouldContain("Job and Pod each project ca.crt only", Case.Sensitive);
+        row[4].ShouldStartWith("complete", Case.Sensitive);
+        row[5].ShouldBe(result["Completion UTC"].Trim('`')[..10]);
+    }
+
+    /// <summary>Loads the five current records for a pure state-dependent consistency check.</summary>
+    private static Dictionary<string, string> ReadCurrentSecurityRecords() => new(StringComparer.Ordinal)
+    {
+        ["evidence"] = ReadRepoFile(EvidenceRelativePath),
+        ["story"] = ReadRepoFile(StoryRelativePath),
+        ["runbook"] = ReadDoc(),
+        ["epic"] = ReadRepoFile("_bmad-output/planning-artifacts/epics.md"),
+        ["sprint"] = ReadRepoFile("_bmad-output/implementation-artifacts/sprint-status.yaml"),
+    };
+
+    /// <summary>Unsigned records stay pending. Signed closure requires a dated independent evaluator,
+    /// explicit scope and independence evidence, and agreement across every current summary.</summary>
+    private static void ValidateCurrentSecurityRecords(IReadOnlyDictionary<string, string> sources)
+    {
+        var evidence = new MarkdownContractDocument(sources["evidence"]);
+        Dictionary<string, string> record = evidence.GetTableRows(ReviewerEvaluationHeading)
+            .ToDictionary(static row => row[0], static row => row[1], StringComparer.Ordinal);
+        string evaluation = record["Evaluation status"].Replace("**", string.Empty, StringComparison.Ordinal);
+        bool signed = evaluation.StartsWith("Signed by ", StringComparison.OrdinalIgnoreCase);
+        string signer = string.Empty;
+        string date = string.Empty;
+        if (signed)
+        {
+            Match signature = Regex.Match(evaluation,
+                @"^Signed by (?<signer>[A-Za-z0-9_.@-]+) on (?<date>20\d{2}-\d{2}-\d{2})\b",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(5));
+            signature.Success.ShouldBeTrue("Signed closure needs a named, dated evaluation of all three checkpoints and both limitations.");
+            evaluation.ShouldContain("current measured profile", Case.Insensitive);
+            evaluation.ShouldContain("C4b/C5b/C7", Case.Sensitive);
+            evaluation.ShouldContain("both accepted limitations", Case.Insensitive);
+            signer = signature.Groups["signer"].Value;
+            date = signature.Groups["date"].Value;
+            signer.ToLowerInvariant().ShouldNotBeOneOf("jpiquot", "murat-tea-for-jpiquot", "administrator");
+            DateOnly.Parse(date, CultureInfo.InvariantCulture).ShouldBeGreaterThanOrEqualTo(new DateOnly(2026, 11, 16));
+            DateOnly.Parse(date, CultureInfo.InvariantCulture).ShouldBeLessThanOrEqualTo(DateOnly.FromDateTime(DateTime.UtcNow));
+            record["Independent reviewer"].ShouldBe(signer);
+            record["Owner of the blocker"].ShouldNotContain("unassigned", Case.Insensitive);
+            record["Consequence"].ShouldContain($"independently evaluated by {signer} on {date}", Case.Sensitive);
+            record["Reopen trigger"].ShouldStartWith("Reassess", Case.Sensitive);
+            record.ShouldContainKey("Evaluator independence");
+            record["Evaluator independence"].ShouldContain(
+                $"Reviewer {signer} is independent of Platform Operations owner jpiquot and waiver approver jpiquot; evidence:", Case.Sensitive);
+            ShouldBeSubstantiveCell(record["Evaluator independence"], "Evaluator independence", ReviewerEvaluationHeading);
+        }
+        else
+        {
+            evaluation.ShouldStartWith("Not signed.", Case.Sensitive);
+            record["Independent reviewer"].ShouldStartWith("**unassigned**", Case.Sensitive);
+            record["Reopen trigger"].ShouldContain("2026-10-26 already fired", Case.Sensitive);
+        }
+
+        record["Scheduling accountable owner"].ShouldContain("Administrator (`jpiquot`)", Case.Sensitive);
+        record["Waiver expiry"].ShouldContain("2026-10-26", Case.Sensitive);
+        var story = new MarkdownContractDocument(sources["story"]);
+        foreach (string checkpoint in new[] { "C4b", "C5b", "C7" })
+        {
+            IReadOnlyList<string> row = story.GetTableRows(CheckpointsHeading)
+                .Single(candidate => candidate[0].StartsWith($"{checkpoint} -", StringComparison.Ordinal));
+            string state = record[$"Checkpoint {checkpoint} state"];
+            if (signed)
+            {
+                state.ShouldBe($"signed / complete by {signer} on {date}");
+                row[1].ShouldContain(signer, Case.Sensitive);
+                row[3].ShouldStartWith($"signed by {signer} on {date}", Case.Sensitive);
+                row[4].ShouldBe("complete");
+                row[5].ShouldBe(date);
+            }
+            else
+            {
+                state.ShouldContain("`pending` / `not complete`", Case.Sensitive);
+                state.ShouldNotContain("waived, not evaluated", Case.Insensitive);
+                row[1].ShouldContain("unassigned", Case.Insensitive);
+                row[1].ShouldContain("Administrator", Case.Sensitive);
+                row[3].ShouldStartWith("pending", Case.Sensitive);
+                row[4].ShouldStartWith("not complete", Case.Sensitive);
+                row[5].ShouldBe("—", $"Unsigned {checkpoint} has no completion date.");
+            }
+        }
+
+        string summary = NormalizeWhitespace(StripMarkdownPunctuation(evidence.GetSection("9.4 Current independent-review ownership")));
+        summary.ShouldContain("waiver expired on 2026-10-26", Case.Insensitive);
+        summary.ShouldContain("Administrator (jpiquot) accountable for scheduling and escalation", Case.Sensitive);
+        var document = new MarkdownContractDocument(sources["runbook"]);
+        IReadOnlyList<string> divergence = document.GetTableRows(DivergencesHeading)
+            .Single(static row => row[0] == "The security reviewer of record is not independent of the platform owner");
+        divergence[1].ShouldContain("Administrator accountable for scheduling", Case.Sensitive);
+        divergence[2].ShouldContain("waiver expired on 2026-10-26 and is historical only", Case.Sensitive);
+        divergence[3].ShouldContain("independent reviewer", Case.Sensitive);
+        string epic = NormalizeWhitespace(new MarkdownContractDocument(sources["epic"])
+            .GetSection("Story 31.1: OpenBao Platform Hardening and Documentation"));
+        epic.ShouldContain("Helm reproduction is separate Platform Operations work", Case.Sensitive);
+        Match storyStatus = Regex.Match(sources["story"], @"^Status: (?<status>in-progress|done)$", RegexOptions.Multiline, TimeSpan.FromSeconds(5));
+        storyStatus.Success.ShouldBeTrue();
+        string status = storyStatus.Groups["status"].Value;
+        epic.ShouldContain($"**Status:** {status}", Case.Sensitive);
+        string sprint = sources["sprint"];
+        sprint.ShouldContain($"31-1-openbao-platform-hardening-and-documentation: {status}", Case.Sensitive);
+        int trackingStart = sprint.IndexOf("# Story 31.1 renamed", StringComparison.Ordinal);
+        int trackingEnd = sprint.IndexOf("\n  31-2-", trackingStart, StringComparison.Ordinal);
+        trackingStart.ShouldBeGreaterThanOrEqualTo(0);
+        trackingEnd.ShouldBeGreaterThan(trackingStart);
+        string tracking = sprint[trackingStart..trackingEnd];
+        if (signed)
+        {
+            string closure = $"C4b/C5b/C7 are independently signed / complete by {signer} on {date}";
+            summary.ShouldContain(closure, Case.Sensitive);
+            summary.ShouldContain($"Independent reviewer {signer}", Case.Sensitive);
+            summary.ShouldContain($"completion date {date}", Case.Insensitive);
+            summary.ShouldNotContain("pending / not complete", Case.Insensitive);
+            summary.ShouldNotContain("unassigned", Case.Insensitive);
+            divergence[1].ShouldContain($"independent reviewer {signer}", Case.Sensitive);
+            divergence[2].ShouldContain(closure, Case.Sensitive);
+            divergence[2].ShouldNotContain("pending", Case.Insensitive);
+            epic.ShouldContain(closure, Case.Sensitive);
+            tracking.ShouldContain(closure, Case.Sensitive);
+            tracking.ShouldNotContain("pending/not complete", Case.Insensitive);
+            NormalizeWhitespace(sources["runbook"]).ShouldContain($"Independent reviewer: **{signer}**", Case.Sensitive);
+            NormalizeWhitespace(document.GetSection(LimitationsHeading)).ShouldContain("countersignatures are complete", Case.Sensitive);
+            evidence.GetSection(ReviewerEvaluationHeading).ShouldNotContain("No reviewer signature was obtained", Case.Sensitive);
+        }
+        else
+        {
+            status.ShouldBe("in-progress");
+            summary.ShouldContain("C4b/C5b/C7 are pending / not complete", Case.Sensitive);
+            summary.ShouldContain("no completion date", Case.Sensitive);
+            summary.ShouldContain("Independent reviewer unassigned", Case.Sensitive);
+            summary.ShouldContain("No independent signed evidence exists", Case.Sensitive);
+            divergence[1].ShouldContain("independent reviewer unassigned", Case.Sensitive);
+            divergence[2].ShouldContain("C4b, C5b and C7 are pending / not complete with no completion date", Case.Sensitive);
+            epic.ShouldContain("C4b/C5b/C7 remain pending / not complete", Case.Sensitive);
+            tracking.ShouldContain("C7 waiver expiry 2026-10-26 has fired", Case.Sensitive);
+            tracking.ShouldContain("C4b/C5b/C7 are pending/not complete with no completion date", Case.Sensitive);
+        }
+    }
+
+    /// <summary>Fixed, minimal pending records for synthetic controls. Fixture construction never
+    /// reads the mutable real records or relies on their current pending/signed state.</summary>
+    private static Dictionary<string, string> CreateUnsignedSecurityControl() => new(StringComparer.Ordinal)
+    {
+        ["evidence"] = $"""
+            ## {ReviewerEvaluationHeading}
+
+            **No reviewer signature was obtained.** Synthetic unsigned control.
+
+            | Field | Record |
+            | :--- | :--- |
+            | Evaluation status | **Not signed.** No independent evaluation recorded |
+            | Independent reviewer | **unassigned** — independent appointment outstanding |
+            | Owner of the blocker | Independent reviewer unassigned; Administrator accountable for scheduling |
+            | Scheduling accountable owner | Administrator (`jpiquot`); schedule independent evaluation |
+            | Consequence | Both accepted limitations await an independent evaluation |
+            | Waiver expiry | 2026-10-26, historical expiry |
+            | Reopen trigger | Expiry 2026-10-26 already fired; obtain independent evaluation |
+            | Checkpoint C4b state | `pending` / `not complete` |
+            | Checkpoint C5b state | `pending` / `not complete` |
+            | Checkpoint C7 state | `pending` / `not complete` |
+
+            ### 9.4 Current independent-review ownership
+
+            As of **2026-11-16**, C4b/C5b/C7 are **pending / not complete**, with **no completion date**.
+            Independent reviewer **unassigned**; **Administrator (`jpiquot`) accountable for scheduling and escalation**.
+            No independent signed evidence exists. The historical waiver expired on **2026-10-26**.
+
+            Additional read-only checks are outside this synthetic control.
+            """.ReplaceLineEndings("\n"),
+        ["story"] = $"""
+            Status: in-progress
+
+            ## {CheckpointsHeading}
+
+            | Checkpoint | Accountable owner | Required evidence artifact and command | Review state | Completion state | Completion date |
+            | :--- | :--- | :--- | :--- | :--- | :--- |
+            | C4b - Seal countersignature | Independent reviewer unassigned; Administrator accountable | Current independent evaluation | pending — no countersignature | not complete | — |
+            | C5b - Ingress countersignature | Independent reviewer unassigned; Administrator accountable | Current independent evaluation | pending — no countersignature | not complete | — |
+            | C7 - Platform evaluation | Independent reviewer unassigned; Administrator accountable | Current independent evaluation | pending — no evaluation | not complete | — |
+            """.ReplaceLineEndings("\n"),
+        ["runbook"] = $"""
+            Independent reviewer: **unassigned**.
+
+            ## {DivergencesHeading}
+
+            | Divergence | Owner | Why it is open | Reopen trigger |
+            | :--- | :--- | :--- | :--- |
+            | The security reviewer of record is not independent of the platform owner | Administrator accountable for scheduling; independent reviewer unassigned | C4b, C5b and C7 are pending / not complete with no completion date; waiver expired on 2026-10-26 and is historical only | Obtain an independent reviewer and a dated signed evaluation |
+
+            ## {LimitationsHeading}
+
+            Their independent countersignatures remain pending.
+            """.ReplaceLineEndings("\n"),
+        ["epic"] = """
+            ### Story 31.1: OpenBao Platform Hardening and Documentation
+
+            **Status:** in-progress. C4b/C5b/C7 remain pending / not complete. Helm reproduction is separate Platform Operations work.
+            """.ReplaceLineEndings("\n"),
+        ["sprint"] = """
+              # Story 31.1 renamed; synthetic tracking context.
+              # Story 31.1 stays in-progress: independent review outstanding.
+              # C7 waiver expiry 2026-10-26 has fired; C4b/C5b/C7 are pending/not complete with no completion date.
+              epic-31: in-progress
+              31-1-openbao-platform-hardening-and-documentation: in-progress
+              31-2-runtime-secret-store-migration: ready-for-dev
+            """.ReplaceLineEndings("\n"),
+    };
+
+    /// <summary>Builds a synthetic signed control in memory. No real record or approval is changed.</summary>
+    private static Dictionary<string, string> CreateSignedSecurityControl()
+    {
+        const string signer = "independent-security-reviewer";
+        const string date = "2026-11-16";
+        const string closure = "C4b/C5b/C7 are independently signed / complete by independent-security-reviewer on 2026-11-16";
+        Dictionary<string, string> sources = CreateUnsignedSecurityControl();
+        string evidence = sources["evidence"];
+        evidence = ReplaceTableCell(evidence, ReviewerEvaluationHeading, "Evaluation status", 1,
+            $"Signed by {signer} on {date}; covers current measured profile and C4b/C5b/C7; independently evaluated both accepted limitations.");
+        evidence = ReplaceTableCell(evidence, ReviewerEvaluationHeading, "Independent reviewer", 1, signer);
+        evidence = evidence.Replace("| Checkpoint C7 state |", $"| Evaluator independence | Reviewer {signer} is independent of Platform Operations owner jpiquot and waiver approver jpiquot; evidence: synthetic independent appointment and signed evaluation control |\n| Checkpoint C7 state |", StringComparison.Ordinal);
+        foreach (string checkpoint in new[] { "C4b", "C5b", "C7" })
+        {
+            evidence = ReplaceTableCell(evidence, ReviewerEvaluationHeading, $"Checkpoint {checkpoint} state", 1, $"signed / complete by {signer} on {date}");
+            string key = new MarkdownContractDocument(sources["story"]).GetTableRows(CheckpointsHeading)
+                .Single(row => row[0].StartsWith($"{checkpoint} -", StringComparison.Ordinal))[0];
+            sources["story"] = ReplaceTableCell(sources["story"], CheckpointsHeading, key, 1, $"Independent reviewer {signer}; Administrator accountable for scheduling");
+            sources["story"] = ReplaceTableCell(sources["story"], CheckpointsHeading, key, 3, $"signed by {signer} on {date}; measured profile and both limitations evaluated");
+            sources["story"] = ReplaceTableCell(sources["story"], CheckpointsHeading, key, 4, "complete");
+            sources["story"] = ReplaceTableCell(sources["story"], CheckpointsHeading, key, 5, date);
+        }
+
+        string introduction = new MarkdownContractDocument(evidence).GetSection(ReviewerEvaluationHeading).Split("| Field |", StringSplitOptions.None)[0];
+        evidence = ReplaceSectionText(evidence, ReviewerEvaluationHeading, introduction,
+            $"\nIndependent evaluation signed by {signer} on {date}, covering the current profile and both accepted limitations. Historical waiver fields remain dated.\n\n");
+        evidence = ReplaceTableCell(evidence, ReviewerEvaluationHeading, "Owner of the blocker", 1,
+            $"No open independent-review blocker; evaluation signed by {signer} on {date}; Administrator accountable for records");
+        evidence = ReplaceTableCell(evidence, ReviewerEvaluationHeading, "Scheduling accountable owner", 1,
+            $"Administrator (`jpiquot`); records independent evaluation by {signer} on {date}");
+        evidence = ReplaceTableCell(evidence, ReviewerEvaluationHeading, "Consequence", 1,
+            $"Both accepted limitations and current measured profile independently evaluated by {signer} on {date}");
+        evidence = ReplaceTableCell(evidence, ReviewerEvaluationHeading, "Reopen trigger", 1,
+            "Reassess on seal/ingress/voter changes or Story 31.2 activation");
+        int summaryStart = evidence.IndexOf("As of **2026-11-16**, C4b/C5b/C7", StringComparison.Ordinal);
+        int summaryEnd = evidence.IndexOf("Additional read-only checks", summaryStart, StringComparison.Ordinal);
+        evidence = evidence[..summaryStart] + $"{closure}; completion date {date}. Independent reviewer {signer}; Administrator (`jpiquot`) accountable for scheduling and escalation. The historical waiver expired on 2026-10-26. Story 31.1 is done.\n\n" + evidence[summaryEnd..];
+        sources["evidence"] = evidence;
+        sources["story"] = sources["story"].Replace("Status: in-progress", "Status: done", StringComparison.Ordinal);
+        sources["runbook"] = sources["runbook"].Replace("Independent reviewer: **unassigned**", $"Independent reviewer: **{signer}**", StringComparison.Ordinal)
+            .Replace("countersignatures remain pending", "countersignatures are complete", StringComparison.Ordinal);
+        const string divergenceKey = "The security reviewer of record is not independent of the platform owner";
+        sources["runbook"] = ReplaceTableCell(sources["runbook"], DivergencesHeading, divergenceKey, 1,
+            $"Administrator accountable for scheduling; independent reviewer {signer}");
+        sources["runbook"] = ReplaceTableCell(sources["runbook"], DivergencesHeading, divergenceKey, 2,
+            $"{closure}; waiver expired on 2026-10-26 and is historical only");
+        sources["epic"] = ReplaceSectionText(sources["epic"], "Story 31.1: OpenBao Platform Hardening and Documentation",
+            new MarkdownContractDocument(sources["epic"]).GetSection("Story 31.1: OpenBao Platform Hardening and Documentation")
+                .Split('\n').Single(static line => line.StartsWith("**Status:**", StringComparison.Ordinal)),
+            $"**Status:** done. {closure}. Helm reproduction is separate Platform Operations work. Independent reviewer {signer}.");
+        int commentStart = sources["sprint"].IndexOf("  # Story 31.1 stays in-progress:", StringComparison.Ordinal);
+        int commentEnd = sources["sprint"].IndexOf("  epic-31:", commentStart, StringComparison.Ordinal);
+        sources["sprint"] = sources["sprint"][..commentStart] + $"  # {closure}; historical waiver expired on 2026-10-26.\n" + sources["sprint"][commentEnd..];
+        sources["sprint"] = sources["sprint"].Replace("31-1-openbao-platform-hardening-and-documentation: in-progress", "31-1-openbao-platform-hardening-and-documentation: done", StringComparison.Ordinal);
+        return sources;
+    }
+
+    /// <summary>Changes one selected table cell in a synthetic control, retaining exact section scope.</summary>
+    private static string ReplaceTableCell(string text, string heading, string key, int cell, string value)
+    {
+        string section = new MarkdownContractDocument(text).GetSection(heading);
+        string line = section.Split('\n').Single(candidate => candidate.StartsWith($"| {key} |", StringComparison.Ordinal));
+        string[] cells = line.Split('|');
+        cells[cell + 1] = $" {value} ";
+        return ReplaceSectionText(text, heading, line, string.Join('|', cells));
+    }
+
+    /// <summary>Changes text within exactly one Markdown section for in-memory controls.</summary>
+    private static string ReplaceSectionText(string text, string heading, string before, string after)
+    {
+        string section = new MarkdownContractDocument(text).GetSection(heading);
+        section.ShouldContain(before, Case.Sensitive);
+        return text.Replace(section, section.Replace(before, after, StringComparison.Ordinal), StringComparison.Ordinal);
+    }
+
+    /// <summary>Compares every exact row/value across two current, dated records. Historical tables
+    /// cannot satisfy either lookup, and duplicated or missing keys fail before value comparison.</summary>
+    private static Dictionary<string, string> ReadMatchingDatedTables(
+        MarkdownContractDocument document,
+        string documentHeading,
+        MarkdownContractDocument evidence,
+        string evidenceHeading,
+        string[] headers,
+        bool requireSubstantiveValues = true)
+    {
+        document.GetTableHeader(documentHeading).ShouldBe(headers);
+        evidence.GetTableHeader(evidenceHeading).ShouldBe(headers);
+        IReadOnlyList<IReadOnlyList<string>> rows = document.GetTableRows(documentHeading);
+        IReadOnlyList<IReadOnlyList<string>> evidenceRows = evidence.GetTableRows(evidenceHeading);
+        rows.Count.ShouldBe(evidenceRows.Count);
+        for (int i = 0; i < rows.Count; i++)
+        {
+            rows[i].ShouldBe(evidenceRows[i], $"Current row {i} must agree between {documentHeading} and {evidenceHeading}.");
+            if (requireSubstantiveValues)
+            {
+                ShouldBeSubstantiveCell(rows[i][1], rows[i][0], documentHeading);
+            }
+            else
+            {
+                rows[i][1].ShouldNotBeNullOrWhiteSpace();
+                rows[i][1].Trim().ShouldNotBeOneOf(PlaceholderCells);
+            }
+        }
+
+        return rows.ToDictionary(static row => row[0], static row => row[1], StringComparer.Ordinal);
     }
 
     [Fact]

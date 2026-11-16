@@ -543,7 +543,9 @@ development_status:
   # (Story 31.1 checkpoint split and Epic 31 activation gate). It now binds on Story 31.1's
   # documentation checkpoints C1/C2/C3/C4a/C5a/C6 rather than on Story 31.1 reaching 'done'.
   # Story 31.1 stays in-progress: checkpoints C4b, C5b and C7 carry an un-obtained independent
-  # security countersignature, owner unassigned, reopen trigger 2026-10-26. No status value was
+  # security countersignature: reviewer unassigned; Administrator accountable for scheduling.
+  # C7 waiver expiry 2026-10-26 has fired; C4b/C5b/C7 are pending/not complete with no completion date.
+  # Current measured-profile refresh 2026-11-16 does not close security obligations. No status value was
   # changed by that proposal; Story 31.2 is developable at ready-for-dev.
   epic-31: in-progress
   31-1-openbao-platform-hardening-and-documentation: in-progress
