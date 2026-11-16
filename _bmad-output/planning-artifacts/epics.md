@@ -5964,7 +5964,7 @@ So that a real recovery can succeed and no moving reference executes where publi
 
 ### Story 30.8: Restore the orphaned Integration tests and guard CI lane selection
 
-**Status:** in-progress. **Owner:** Murat; Amelia implements.
+**Status:** done (2026-11-16), final implementation `898f451111740ccf489d56f7c20cd47edc2fcdf6`; exact-source push CI and extraction TRX verified. **Owner:** Murat; Amelia implements.
 
 **Origin and order:** Follows Story 30.7; registered 2026-11-16 for Epic 30 retro A3/item 93 (F11). `spec-30-8-restore-orphaned-integration-tests.md` is authoritative. This registration changes no retro verdict.
 
@@ -5978,7 +5978,7 @@ So that retiring or changing a test runner cannot silently drop coverage.
 | --- | --- | --- | --- | --- |
 | Baseline red with exactly 11 orphans | Murat | `artifacts/story-30-8/baseline-red.log`; exact command in the spec | independently reviewed 2026-11-16 | verified locally 2026-11-16 |
 | Automatic lane model, reviewed register and restored selection | Amelia; Murat verifies | `CiTestInventoryTests`, extraction class run and xUnit-discovery diff; spec Implementation Notes | independently reviewed; eight defect groups patched and reverified | verified locally 2026-11-16: 181 inventory cases, 11 extraction cases, 3 latency cases; empty discovery delta; 29 mutation refusals |
-| Exact-source push CI and extraction TRX | Murat | Successful push CI on the final commit, with Server.Tests TRX showing 11/11 extraction cases passed | pending | not complete; item 93 stays open |
+| Exact-source push CI and extraction TRX | Murat | Implementation `898f451111740ccf489d56f7c20cd47edc2fcdf6`; CI `43886197182`, CodeQL `43886197372`, Commitlint `43886196932`; artifact `14235084321` | reviewed | complete 2026-11-16: all push workflows succeeded; Server.Tests TRX extraction class: 11 executed, 11 passed, 0 failed, 0 skipped; item 93 done |
 
 ---
 
