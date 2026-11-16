@@ -178,33 +178,28 @@ tests/
 - Prefer fixture composition over inheritance.
 - Keep UI-selector guidance dormant until a browser harness exists; if one is added later, prefer `data-testid`.
 
-## Shared CI regression fixtures
+## Product tooling checks during migration
+
+Product checks remain in `tests/tooling`, including publication/recovery,
+package content, coverage validation, telemetry authorization and retention.
+Run complete applicable suites, for example:
 
 ```bash
-python3 -m unittest discover -s tests/tooling/ci_alignment -p '*_test.py'
+python3 -m unittest discover -s tests/tooling/coverage_gate -p '*test*.py'
+python3 -m unittest discover -s tests/tooling/publish_containers -p '*test*.py'
 ```
 
-Run `npm ci` first to install the tracked tooling graph; these stdlib unittest fixtures use the same
-pinned `js-yaml` parser as the commitlint fixtures. They read the actual CI caller, reject wrong
-workflow pins/platforms/project lists and bypassed mandatory gates, execute all aggregate result
-combinations, and execute the source-catalog command against missing, empty, failed and skipped
-reports. `test-unit-contract` runs this suite as a blocking step.
+Workflow YAML, agent/story ledgers and shared CI implementation qualification
+are owned centrally. The old `ci_alignment` suite and root npm tooling are
+removed. Browser dependencies remain in the browser workspace's own manifest
+and lockfile.
 
-`shared-ci / build-and-test` delegates the Release build and only `Contracts.Tests` to Builds
-`domain-ci.yml@6e7011fc754e74ac2a8864da1ce0b6d8f7178a48`, explicitly using
-`microsoft-testing-platform`. Shared results use `blocking-test-results` (seven days).
-The local `source-debug` job builds with `UseHexalithProjectReferences=true` and requires at least
-three source-selected owner catalog tests with no failures, errors, skips or not-run tests; its
-XML is uploaded as `source-catalog-verification` after failure as well as success. The unchanged
-required `build` status depends on both lanes and succeeds only when both succeed.
-
-The complete nine-project Coverlet collection, **76.5%** gate and package-only validation stay in
-`test-unit-contract`, retaining `test-unit-contract-results` for 14 days. Contracts appears in both
-lanes until coverage collector/report equivalence is proved. Shared consumer/coverage gates remain
-disabled because Memories owns these specialized checks; no collectors change. Web E2E, tenant
-negative evidence, scope/readiness, fast integration, deployment, SQL, commitlint and nightly
-benchmark owners remain blocking. For rollback see the
-[release runbook](../docs/dev/release-runbook.md#shared-ci-adoption-and-rollback).
+The local unit/coverage inventory requires nine project reports at **76.5%**.
+Shared support for collecting those outputs, npm browser preparation,
+Debug/source qualification, runtime composition and prepared rollout OCI inputs
+must be released before the dependent hooks are registered. Ordinary publication
+continues to use Release/package mode. A retained profile's input/approval drift
+is a failed prerequisite, with no authorization or passing gate credit.
 
 ## CI integration notes
 
@@ -213,8 +208,9 @@ benchmark owners remain blocking. For rollback see the
 - Coverage collection uses coverlet.MTP (`--coverlet`, Cobertura) via the wrappers. The include/exclude
   filters match `tests/tests.runsettings`.
 - Integration targets require Docker availability for Testcontainers.
-- Root PR/push automation lives in `.github/workflows/ci.yml`; scheduled/manual integration and
-  benchmark automation lives in `.github/workflows/nightly.yml`.
+- Hexalith.CiCd delivers the shared workflows at adoption. The prepared project split
+  assigns fast integration to CI and complete slow/performance and benchmark projects to nightly.
+  Hosted cadence and the combined runtime remain to be qualified after the shared prerequisites ship.
 
 ## Troubleshooting
 
