@@ -46,6 +46,8 @@ context:
 - The parent story holds separate C4b/C5b/C7 rows, cumulative File List and append-only phase ledger. All implementation tasks are checked.
 - The runbook reviewer header, Named divergences and limitation narrative must follow authentic evidence; preserve its runtime Secret inventory.
 - `tests/Hexalith.Memories.Server.Tests/Deployment/OpenBaoPlatformDocumentationTests.cs`: reuse `ValidateCurrentSecurityRecords`, its independent signed control and `PlatformEvidence_RecordsExecutedSmokeTestAndReviewerState`. Existing guards support both states; no new methods planned.
+- `docs/governance/openbao-independent-security-review.md`: prepared evaluator handoff, exact measured-profile references, existing technical findings and required signed-return fields. This supporting document supplies no independent approval.
+- `_bmad-output/implementation-artifacts/tests/31-1-assistant-security-evaluation-2026-11-16.md` and its JSON companion: owner-requested direct assistant evaluation, live peer-DNS TLS defect, unauthenticated-denial controls and executable reproductions of the diagnostic/review-state defects. Overall technical outcome: changes requested; no independent signature.
 
 ## Tasks & Acceptance
 
@@ -65,10 +67,72 @@ context:
 
 ## Implementation Notes
 
+2026-11-16 continuation: repository investigation and bounded searches of connected Outlook,
+Teams, GitHub issues and Pages found no matching independent signed evaluation. An OpenBao
+configuration discussion is not a signed evaluation; bounded searches do not establish that no
+external record exists. The existing AI review requests changes and expressly supplies no
+independent countersignature. Reviewer identity and appointment remain unresolved; Administrator
+is accountable for scheduling. The Open Question and draft status remain in place.
+
+Prepared `docs/governance/openbao-independent-security-review.md` and a local, hash-inventoried
+review packet under `artifacts/story-31-1/independent-review-handoff-2026-11-16/` for handover.
+At packet preparation, the request had not been sent. No evaluator was invented, no external appointment or deployment
+was made, and no checkpoint, waiver, parent-story status or Story 31.2 activation rule changed.
+The packet distinguishes repository inputs, historical live measurements and unresolved findings.
+
+Subsequent coordination on 2026-11-16: the user supplied Jérôme Piquot's contact,
+`jpiquot@itaneo.com`. Because he is the recorded Platform Operations owner, an Outlook request
+with the prepared ZIP attached asks him to nominate an independent evaluator and provide contact
+details and availability. The send action completed successfully; no recipient delivery or mailbox
+copy was independently verified. He remains the scheduling contact, not an independent signatory.
+The original attached packet is preserved; the send receipt is retained separately as
+`artifacts/story-31-1/independent-review-handoff-2026-11-16/coordination-email.json`.
+
+The owner's subsequent request to perform the evaluations directly was completed as an attributed
+assistant technical evaluation. Fresh metadata/status probes confirm the static seal, the single-node
+three-server profile, broad ingress and Kubernetes grants. Direct CA-verifying Pod-DNS checks
+newly reproduce certificate-name failures for peers 1 and 2; Service-name controls pass without
+disabling verification. Two administrative reads without credentials return 403 through a loopback
+API-server tunnel; this supplies no CNI or authenticated ACL proof. A fresh Debug/source-reference
+build and 19 existing cases pass, while supplemental disposable controls reproduce diagnostic
+disclosure and assigned/partial-review-state defects. No live configuration or source implementation
+changed. The technical report requests changes; all independent-signature gates remain pending.
+
+At the owner's subsequent signing request, Codex added a typed assistant-author attestation at
+2026-11-16T19:56:39Z to the technical report and its structured companion. It records the exact
+covered content length and SHA-256, preserves the changes-requested decision and explicitly
+claims no cryptographic or independent human signature. The original evidence archive is retained;
+`assistant-signed-evaluation.zip` packages the original snapshot, attributed report and receipt.
+
+At 2026-11-16T20:00:55Z, recorded Jérôme Piquot's explicit nominative owner attestation and follow-up
+approval verbatim in the report and structured companion. The owner approves the 2026-11-16 report
+and its changes-requested conclusions. The existing assistant attribution and prior evidence bundles
+remain preserved. The local owner-attestation receipt and `owner-attested-evaluation.zip` bind the
+approved report version and the appended owner record; no independent-signature gate is discharged.
+
 ## Spec Change Log
+
+- 2026-11-16: Added the independent-review handoff and search outcome as preparation only; preserved the frozen intent and pending signed-evidence dependency.
+- 2026-11-16: Recorded the user-supplied owner contact and completed coordination email requesting independent-reviewer nomination; preserved pending gates and the original attached packet.
+- 2026-11-16: Completed the owner's directly requested assistant evaluation, recorded current observations and three guard reproductions, and reported the new peer-DNS TLS defect; preserved the independent-signature requirement and all checkpoint/status values.
+- 2026-11-16: Added Codex's dated non-cryptographic author attestation and content digest at the owner's request; preserved the changes-requested outcome and pending independent-signature gates.
+- 2026-11-16: Recorded Jérôme Piquot's explicit nominative owner approval and follow-up confirmation verbatim, with provenance and report-version hashes; preserved remediation findings, independent-signature gates and draft closeout status.
 
 ## Review Triage Log
 
 ## Verification
 
 Use `run-with-temp` to build Server.Tests in Debug with source references and disposable artifacts; retain useful logs outside TMPDIR. Copy the solution marker and required records/manifests into the temporary root for test discovery. Invoke the built assembly with `-class Hexalith.Memories.Server.Tests.Deployment.OpenBaoPlatformDocumentationTests -parallel none -noLogo`, then method `ProductionDeploymentArtifactsTests.OpenBaoDeploymentProfile_IsPinnedTlsOnlyPersistentAndInternal`. Expected: 18 documentation cases and one regression pass without skips. Run `git diff --check`; compare checkpoint/status changes to the signed source. Existing synthetic controls cover independent closure, owner-persona rejection and stale-summary refusal; fixture signatures supply no real approval.
+
+Preparation verification executed on 2026-11-16 against source commit
+`5c1c22583fb4037997b266942a4fd4e05a245ebf`: disposable Debug/source-reference Server.Tests
+build passed with zero warnings/errors, all 18 documentation cases passed, and the one pinned
+deployment regression passed; zero failed/skipped. NuGet audit remained enabled. Exact commands,
+results and logs are in `artifacts/story-31-1/independent-review-handoff-2026-11-16/validation.json`
+and its sibling logs. These checks validate the existing records; they do not resolve the prior
+AI review's uncovered states or supply independent security approval.
+
+Both authored Markdown files passed local-link, CRLF and credential-shape checks without printing
+candidate material. The frozen intent matches HEAD verbatim; draft status and authoritative
+checkpoint/status records are preserved. `git diff --check` passed. No new tests or test-method
+changes were introduced, and no runtime, deployment, credential or tenant surface changed.

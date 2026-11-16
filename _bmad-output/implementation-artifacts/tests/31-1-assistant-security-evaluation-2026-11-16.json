@@ -1,0 +1,353 @@
+{
+  "date": "2026-11-16",
+  "completed_utc": "2026-11-16T19:49:10.031440+00:00",
+  "evaluator": "Codex assistant",
+  "delegated": false,
+  "source_commit": "262232e498511b51b5d01e769725ecc299519238",
+  "technical_evaluation_complete": true,
+  "overall_outcome": "changes requested",
+  "independent_human_signoff": false,
+  "checkpoint_dispositions": {
+    "C4b": "technical limitation evaluated; independent signature pending",
+    "C5b": "technical limitation evaluated; independent signature pending",
+    "C7": "technical platform evaluation completed with changes requested; independent signature pending"
+  },
+  "story_status": "in-progress; unchanged",
+  "waiver": "2026-10-26 expiry preserved; no renewal",
+  "observed_profile": {
+    "context": "jpiquot@local",
+    "namespace": "openbao",
+    "release": "hexalith-keys",
+    "servers": 3,
+    "nodes": 1,
+    "node": "node1",
+    "version": "2.6.2",
+    "image_sha256": "11fd73a2102cda9c55d5d881a8c3210303146a7ec1e8ac76f526e175c6d24641",
+    "seal_type": "static",
+    "recovery_seal_type": "shamir",
+    "threshold": 2,
+    "shares": 3
+  },
+  "verification": {
+    "metadata_queries_succeeded": 15,
+    "local_status_queries_succeeded": 3,
+    "explicit_peer_dns_tls_pass": 1,
+    "explicit_peer_dns_tls_fail": 2,
+    "service_identity_tls_controls_pass": 2,
+    "unauthenticated_http_results": {
+      "/v1/sys/health?standbyok=true": 200,
+      "/v1/sys/mounts": 403,
+      "/v1/auth/token/lookup-self": 403
+    },
+    "direct_source_pod_http_probes": "4 unavailable; curl absent; no denial inferred",
+    "documentation_cases_passed": 18,
+    "deployment_regression_cases_passed": 1,
+    "failed_or_skipped_existing_cases": 0,
+    "build_warnings": 0,
+    "build_errors": 0,
+    "guard_reproductions": [
+      {
+        "probe": "existing_wholly_unsigned_and_signed_controls",
+        "passed": true
+      },
+      {
+        "probe": "assigned_but_unsigned_reviewer",
+        "guard_rejects": true,
+        "reason": "Unsigned branch requires the independent-reviewer field to start with unassigned; all synthetic source strings were updated consistently."
+      },
+      {
+        "probe": "isolated_c4b_signature_with_c5b_c7_pending",
+        "guard_rejects": true,
+        "reason": "The unsigned whole-review branch requires C4b pending before later summary validation; this isolates the per-gate contract defect rather than claiming a full signed report."
+      },
+      {
+        "probe": "synthetic_canary_in_actual_secret_guard_failure",
+        "guard_rejects": true,
+        "failure_message_contains_synthetic_canary": true,
+        "candidate_value_logged": false
+      }
+    ],
+    "harness_history": "Initial harness exited 1 when checking the whole uppercase/digit-only input instead of its detected hex suffix. Mixed-density input corrected comparison; all retry jobs exit 0. No implementation changes."
+  },
+  "scope_limits": [
+    "no Secret API payloads, credentials, private keys, audit-log contents or encrypted state retrieved",
+    "no live resources, configuration, credentials or product implementation changed",
+    "API-server tunnel bypasses NetworkPolicy and skips trust verification; explicit per-Pod CA-verifying status checks are separate",
+    "authenticated ACL/cross-prefix proof, audit writes/rotation, affected feature inventory, actual Raft membership, failover and restore not executed",
+    "no new email sent during this evaluation"
+  ],
+  "findings": [
+    {
+      "id": "EVAL-01",
+      "priority": "high",
+      "classification": "newly reproduced defect",
+      "subject": "peer DNS TLS identity",
+      "outcome": "pod-1 and pod-2 hostname verification fail; pod-0 and both Service-identity controls pass",
+      "owner": "Platform Operations",
+      "evidence": [
+        "verified-status-hexalith-keys-0.json",
+        "peer-dns-tls-1.json",
+        "peer-dns-tls-2.json",
+        "peer-service-identity-control-1.json",
+        "peer-service-identity-control-2.json"
+      ],
+      "action": "Reconcile certificate SANs and intended peer identities, then verify each without disabling certificate verification."
+    },
+    {
+      "id": "EVAL-02",
+      "priority": "high",
+      "classification": "existing concern reconfirmed",
+      "subject": "version and advisory applicability",
+      "outcome": "2.6.2 observed; version ranges include deployment; feature enablement and exploitability unverified; 2.6.4 candidate does not cover October advisories",
+      "owner": "Platform Operations",
+      "evidence": [
+        "live-seal-type.json",
+        "server-pods.json"
+      ],
+      "action": "Inventory affected features and separately qualify a supported patched profile."
+    },
+    {
+      "id": "EVAL-03",
+      "priority": "high",
+      "classification": "existing defect dynamically reproduced",
+      "subject": "credential-safe assertion diagnostics",
+      "outcome": "actual guard rejects synthetic canary and includes its detected value in the exception message; candidate omitted from logs",
+      "owner": "Memories maintainer",
+      "evidence": [
+        "guard-probe-retry/guard-probes.json"
+      ],
+      "source_location": "tests/Hexalith.Memories.Server.Tests/Deployment/OpenBaoPlatformDocumentationTests.cs:633",
+      "action": "Assert counts/path/category without detected values or collection rendering."
+    },
+    {
+      "id": "EVAL-04",
+      "priority": "medium",
+      "classification": "existing defect dynamically reproduced",
+      "subject": "assigned and per-checkpoint reviewer states",
+      "outcome": "assigned-but-unsigned and isolated signed-C4b states rejected by global unsigned branch",
+      "owner": "Memories maintainer",
+      "evidence": [
+        "guard-probe-retry/guard-probes.json"
+      ],
+      "source_location": "tests/Hexalith.Memories.Server.Tests/Deployment/OpenBaoPlatformDocumentationTests.cs:1027",
+      "action": "Validate appointment and each gate independently; require mandatory completion only for parent completion."
+    },
+    {
+      "id": "EVAL-05",
+      "priority": "medium",
+      "classification": "existing evidence gap",
+      "subject": "audit write, rotation and capacity proof",
+      "outcome": "not exercised or established by status/403 probes; no audit-log contents retrieved",
+      "owner": "Platform Operations",
+      "action": "Capture a correlated non-sensitive audited operation and active-device/rotation/failure evidence."
+    },
+    {
+      "id": "EVAL-06",
+      "priority": "existing limitation",
+      "classification": "existing accepted limitation retained",
+      "subject": "static seal and custody boundary",
+      "outcome": "live static seal confirmed, recovery Shamir 2-of-3; no demonstrated separate custody boundary",
+      "owner": "Platform Operations",
+      "evidence": [
+        "live-seal-type.json",
+        "server-pods.json",
+        "persistent-volumes.json"
+      ],
+      "action": "Retain limitation and obtain external-seal/custody evidence before stronger claims."
+    },
+    {
+      "id": "EVAL-07",
+      "priority": "existing limitation",
+      "classification": "existing accepted limitation retained",
+      "subject": "broad additive ingress",
+      "outcome": "policies and NodePort inventoried; source-pod HTTP probes unavailable because curl is absent; API-server tunnel not a CNI test",
+      "owner": "Platform Operations",
+      "evidence": [
+        "network-policies.json",
+        "services.json",
+        "listener-and-unauthenticated-denial.json"
+      ],
+      "action": "Justify/narrow full source surface and prove allowed/denied connectivity plus authenticated ACL isolation."
+    },
+    {
+      "id": "EVAL-08",
+      "priority": "existing owned gap",
+      "classification": "existing owned gap retained",
+      "subject": "failure domain, RBAC and configuration proof",
+      "outcome": "single node, colocated snapshot class and duplicate auth-delegator bindings; restore, loaded full configuration and effective ACL proofs absent",
+      "owner": "Platform Operations",
+      "evidence": [
+        "nodes.json",
+        "snapshot-cronjob.json",
+        "cluster-role-bindings.json"
+      ],
+      "action": "Disposition existing gaps and produce recovery, permissions and loaded-profile evidence."
+    }
+  ],
+  "primary_advisories_checked": [
+    {
+      "id": "GHSA-gf3j-hm38-jhh5",
+      "published": "2026-10-01",
+      "fixes": [
+        "2.6.4",
+        "2.7.1"
+      ],
+      "required_feature": "Kubernetes auth token renewal",
+      "url": "https://github.com/openbao/openbao/security/advisories/GHSA-gf3j-hm38-jhh5",
+      "applicability": "deployed version included; runtime feature/prerequisites and exploitability not established"
+    },
+    {
+      "id": "GHSA-q74w-hv5x-6hxf",
+      "published": "2026-10-01",
+      "fixes": [
+        "2.6.4",
+        "2.7.1"
+      ],
+      "required_feature": "specific unauthenticated root/rekey endpoints enabled",
+      "url": "https://github.com/openbao/openbao/security/advisories/GHSA-q74w-hv5x-6hxf",
+      "applicability": "deployed version included; runtime feature/prerequisites and exploitability not established"
+    },
+    {
+      "id": "GHSA-5pmx-2p74-x478",
+      "published": "2026-10-26",
+      "fixes": [
+        "2.6.5",
+        "2.7.2"
+      ],
+      "required_feature": "Transit key import and affected ACL restriction",
+      "url": "https://github.com/openbao/openbao/security/advisories/GHSA-5pmx-2p74-x478",
+      "applicability": "deployed version included; runtime feature/prerequisites and exploitability not established"
+    },
+    {
+      "id": "GHSA-q824-44ff-f5j5",
+      "published": "2026-10-26",
+      "fixes": [
+        "2.6.5",
+        "2.7.2"
+      ],
+      "required_feature": "OIDC public client with client_credentials grant",
+      "url": "https://github.com/openbao/openbao/security/advisories/GHSA-q824-44ff-f5j5",
+      "applicability": "deployed version included; runtime feature/prerequisites and exploitability not established"
+    },
+    {
+      "id": "GHSA-8xxq-mq9m-xmhw",
+      "published": "2026-09-23",
+      "fixes": {
+        "builtin": [
+          "2.6.3",
+          "2.7.0"
+        ],
+        "sdk": [
+          "2.6.3",
+          "2.7.1"
+        ]
+      },
+      "required_feature": "malformed TypeKVPair/TypeHeader input to affected plugin",
+      "url": "https://github.com/openbao/openbao/security/advisories/GHSA-8xxq-mq9m-xmhw",
+      "applicability": "deployed version included; runtime feature/prerequisites and exploitability not established"
+    }
+  ],
+  "primary_documentation_checked": [
+    "https://openbao.org/docs/configuration/seal/static/",
+    "https://openbao.org/docs/audit/",
+    "https://openbao.org/docs/audit/file/",
+    "https://kubernetes.io/docs/concepts/services-networking/network-policies/"
+  ],
+  "inputs": [
+    {
+      "path": "deploy/openbao/values.yaml",
+      "sha256": "4d6e8909695100901be5008b5a4cd11d108ee03b495d26243d23a22ab25a0caa"
+    },
+    {
+      "path": "deploy/openbao/namespace.yaml",
+      "sha256": "8844e38ab62789fc93ae748fd49073e9c9e9b38860f7877130ba96e49fa11c4a"
+    },
+    {
+      "path": "deploy/openbao/service-account-hardening.yaml",
+      "sha256": "44571c24d6b7383428bb1fa0da1f30843e289fa722984f90fa86caf959d6b039"
+    },
+    {
+      "path": "deploy/openbao/smoke-test.yaml",
+      "sha256": "c1f4eb2c21b82a0544eb81bab189275d6edf15864932e51c481d47354dedeee7"
+    },
+    {
+      "path": "docs/operations/openbao.md",
+      "sha256": "bd29e76da4ab3de5912f5f79fa22e1119d22890e2861edfb00d238b0f5254bbc"
+    },
+    {
+      "path": "_bmad-output/implementation-artifacts/tests/31-1-openbao-platform-evidence.md",
+      "sha256": "81c77becd6cb7678607a8f5a52fc156b55866154487b0d3f94573401c3f2d06e"
+    },
+    {
+      "path": "_bmad-output/implementation-artifacts/31-1-openbao-platform-hardening-and-documentation.md",
+      "sha256": "a6863ee9073f19bd4171652c50c39237c4d6b04f3967917231d001834d6ae09b"
+    },
+    {
+      "path": "_bmad-output/implementation-artifacts/sprint-status.yaml",
+      "sha256": "a1bcd03d34bda41edbceba169a1a83948fbf1a57ee70a8c2a26c5967d12677e8"
+    },
+    {
+      "path": "_bmad-output/planning-artifacts/epics.md",
+      "sha256": "9c69f552b1e4431279f49522bb2faabd27da7aa71104710a967d16081a6b15b8"
+    },
+    {
+      "path": "tests/Hexalith.Memories.Server.Tests/Deployment/OpenBaoPlatformDocumentationTests.cs",
+      "sha256": "02e101cdd1cb7376a80853ae33230bacc98581e2c0f5331ad0a20aa3139c3de5"
+    },
+    {
+      "path": "_bmad-output/implementation-artifacts/tests/31-1-ai-security-review-2026-11-16.md",
+      "sha256": "b32383303ca5e0709d879f3d2f07747823d7dcfa18a9b8bb20cc5896bad97a99"
+    },
+    {
+      "path": "_bmad-output/implementation-artifacts/tests/31-1-ai-security-review-2026-11-16.json",
+      "sha256": "5f44afe27fb8a0f26dacc1ce355a67505e010512e71a513380e89cf42b1dbb3c"
+    }
+  ],
+  "evidence_directory": "artifacts/story-31-1/assistant-evaluation-2026-11-16",
+  "evidence_manifest": "evaluation-evidence-manifest.json",
+  "report": "_bmad-output/implementation-artifacts/tests/31-1-assistant-security-evaluation-2026-11-16.md",
+  "initial_source_commit": "5c1c22583fb4037997b266942a4fd4e05a245ebf",
+  "provenance_updated_utc": "2026-11-16T19:51:27.991955+00:00",
+  "revision_transition": {
+    "initial_commit": "5c1c22583fb4037997b266942a4fd4e05a245ebf",
+    "final_commit": "262232e498511b51b5d01e769725ecc299519238",
+    "reviewed_inputs_verified_unchanged": 12,
+    "scope": "Other CI/test-project changes outside this evaluation; targeted guard input files unchanged. No source snapshot or repository-wide regression certification claimed."
+  },
+  "signature": {
+    "signed_by": "Codex",
+    "actor_kind": "AI assistant",
+    "form": "Typed author attestation; non-cryptographic",
+    "signed_utc": "2026-11-16T19:56:39Z",
+    "capacity": "Author and performer of the C4b, C5b and C7 technical evaluations",
+    "decision": "changes requested",
+    "source_commit": "262232e498511b51b5d01e769725ecc299519238",
+    "scope": "Attests the recorded technical findings, executed checks and disclosed limits; no independent human countersignature, risk acceptance or Production clearance",
+    "report_path": "_bmad-output/implementation-artifacts/tests/31-1-assistant-security-evaluation-2026-11-16.md",
+    "covered_prefix_bytes": 18831,
+    "covered_prefix_sha256": "cc4f3d3a8b25023fb3914d0456b4c9e23a4986f99144f9d604584f2515ee4cee",
+    "hash_definition": "SHA-256 of exactly the first covered_prefix_bytes of the signed Markdown file, preserving original UTF-8/CRLF bytes; the appended signature section is outside this prefix.",
+    "signed_report_sha256": "d14ce5e846307c73c9937be00ec7bbf9a3aa563e3b37588fbb67ad531906e1ee"
+  },
+  "signature_updated_utc": "2026-11-16T19:56:39Z",
+  "owner_attestation": {
+    "name": "Jérôme Piquot",
+    "email": "jpiquot@itaneo.com",
+    "capacity": "Platform owner",
+    "recorded_utc": "2026-11-16T20:00:55Z",
+    "source": "Explicit user declaration and follow-up confirmation in this conversation",
+    "declaration_verbatim": "Je soussigné Jérôme Piquot, jpiquot@itaneo.com, approuve le rapport d’évaluation du 16 novembre 2026 et ses conclusions « corrections nécessaires », en qualité de propriétaire de la plateforme. Je demande l’enregistrement de mon attestation nominative.",
+    "follow_up_confirmation_verbatim": "j'approve",
+    "form": "Typed nominative owner attestation recorded from the conversation; non-cryptographic",
+    "approval_scope": "The evaluation report dated 2026-11-16 and its changes-requested conclusions, in the capacity of platform owner",
+    "independence": "Platform owner; not an independent security reviewer",
+    "covered_prefix_bytes": 20201,
+    "covered_prefix_sha256": "d14ce5e846307c73c9937be00ec7bbf9a3aa563e3b37588fbb67ad531906e1ee",
+    "source_commit": "262232e498511b51b5d01e769725ecc299519238",
+    "scope_limits": "No assertion that findings were fixed; no independent countersignature, waiver renewal or Production qualification recorded",
+    "report_after_attestation_sha256": "140e7ec7c0b0f8163a099e9c3dfa3617f6bbb7b636246b3abe374c226e95c911"
+  },
+  "owner_attestation_recorded_utc": "2026-11-16T20:00:55Z",
+  "current_report_sha256": "140e7ec7c0b0f8163a099e9c3dfa3617f6bbb7b636246b3abe374c226e95c911",
+  "attribution_chain_note": "The assistant signature object and its signed_report_sha256 describe the preserved assistant-attributed report version. That complete version is the owner attestation covered prefix. The current_report_sha256 includes the owner appendix. Both attestations are typed and non-cryptographic."
+}
