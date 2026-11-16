@@ -18,6 +18,9 @@ public sealed class RedisStackFixture : IAsyncLifetime
 
     public IConnectionMultiplexer Connection { get; private set; } = null!;
 
+    /// <summary>Gets the immutable fixture-owned container identity when the container lane is selected.</summary>
+    internal string? ContainerIdentity => _container?.Id;
+
     public string ConnectionString => _nativeConnectionString ?? OwnedLoopbackConnectionString(_container!.GetMappedPublicPort(6379));
 
     internal static string OwnedLoopbackConnectionString(ushort port) => $"127.0.0.1:{port}";
@@ -65,6 +68,3 @@ public sealed class RedisStackFixture : IAsyncLifetime
         }
     }
 }
-
-[CollectionDefinition("RedisStack")]
-public class RedisStackCollection : ICollectionFixture<RedisStackFixture>;

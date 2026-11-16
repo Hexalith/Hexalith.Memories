@@ -41,6 +41,24 @@ public sealed class DaprStateSidecarFixture : IAsyncLifetime
     /// <summary>Gets the fixture-owned API credential when workflow authentication is selected.</summary>
     public string? ApiToken { get; private set; }
 
+    /// <summary>Gets the independently observed lifetime of the parent-owned sidecar for process replacement controls.</summary>
+    internal object ProcessIdentity => _daprd is { HasExited: false }
+        ? new { _daprd.Id, StartTicks = _daprd.StartTime.ToUniversalTime().Ticks, AppId, DaprHttpEndpoint, DaprGrpcEndpoint }
+        : throw new InvalidOperationException("The parent-owned sidecar is not running.");
+
+    /// <summary>Gets whether strict process-boundary cleanup observed this owned sidecar exit.</summary>
+    internal bool ProcessExitObserved { get; private set; }
+
+    /// <summary>Stops and reaps the exact parent-owned sidecar under an independent cleanup deadline.</summary>
+    internal async Task StopObservedAsync()
+    {
+        if (_daprd is null) return;
+        using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        if (!_daprd.HasExited) _daprd.Kill(entireProcessTree: true);
+        await _daprd.WaitForExitAsync(cleanup.Token);
+        ProcessExitObserved = true;
+    }
+
     private bool _workflow;
     private string? _workflowRedisHost;
 
@@ -91,9 +109,14 @@ public sealed class DaprStateSidecarFixture : IAsyncLifetime
                     value: "{{(_workflow ? "true" : "false")}}"
               """).ConfigureAwait(false);
 
-        int httpPort = GetFreePort();
-        int grpcPort = GetFreePort();
-        int metricsPort = GetFreePort();
+        using TcpListener httpReservation = ReservePort();
+        using TcpListener grpcReservation = ReservePort();
+        using TcpListener metricsReservation = ReservePort();
+        using TcpListener internalReservation = ReservePort();
+        int httpPort = ((IPEndPoint)httpReservation.LocalEndpoint).Port;
+        int grpcPort = ((IPEndPoint)grpcReservation.LocalEndpoint).Port;
+        int metricsPort = ((IPEndPoint)metricsReservation.LocalEndpoint).Port;
+        int internalPort = ((IPEndPoint)internalReservation.LocalEndpoint).Port;
         DaprHttpEndpoint = $"http://127.0.0.1:{httpPort}";
         DaprGrpcEndpoint = $"http://127.0.0.1:{grpcPort}";
 
@@ -109,7 +132,7 @@ public sealed class DaprStateSidecarFixture : IAsyncLifetime
                     "--dapr-http-port", httpPort.ToString(),
                     "--dapr-grpc-port", grpcPort.ToString(),
                     "--metrics-port", metricsPort.ToString(),
-                    "--dapr-internal-grpc-port", GetFreePort().ToString(),
+                    "--dapr-internal-grpc-port", internalPort.ToString(),
                     "--resources-path", _componentsDir,
                     "--log-level", "info",
                     "--enable-app-health-check=false",
@@ -152,6 +175,10 @@ public sealed class DaprStateSidecarFixture : IAsyncLifetime
             }
         };
 
+        httpReservation.Stop();
+        grpcReservation.Stop();
+        metricsReservation.Stop();
+        internalReservation.Stop();
         if (!_daprd.Start())
         {
             throw new InvalidOperationException($"Failed to start daprd at '{daprdPath}'.");
@@ -240,6 +267,11 @@ public sealed class DaprStateSidecarFixture : IAsyncLifetime
 
                 last = new InvalidOperationException($"healthz status {(int)response.StatusCode}");
             }
+            catch (OperationCanceledException ex) when (!cts.IsCancellationRequested)
+            {
+                // The individual HTTP attempt can time out before the bounded sidecar startup deadline.
+                last = ex;
+            }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 last = ex;
@@ -266,11 +298,11 @@ public sealed class DaprStateSidecarFixture : IAsyncLifetime
             $"daprd not found at '{candidate}'. Install the Dapr CLI runtime (dapr init) before running LiveSidecar suites.");
     }
 
-    private static int GetFreePort()
+    private static TcpListener ReservePort()
     {
-        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
-        return ((IPEndPoint)listener.LocalEndpoint).Port;
+        return listener;
     }
 
     private static string Tail(StringBuilder builder)
@@ -282,6 +314,3 @@ public sealed class DaprStateSidecarFixture : IAsyncLifetime
         }
     }
 }
-
-[CollectionDefinition("DaprStateSidecar", DisableParallelization = true)]
-public sealed class DaprStateSidecarCollection : ICollectionFixture<DaprStateSidecarFixture>;

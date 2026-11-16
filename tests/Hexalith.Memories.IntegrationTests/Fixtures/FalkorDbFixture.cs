@@ -18,6 +18,9 @@ public sealed class FalkorDbFixture : IAsyncLifetime
 
     public IConnectionMultiplexer Connection { get; private set; } = null!;
 
+    /// <summary>Gets the immutable fixture-owned container identity when the container lane is selected.</summary>
+    internal string? ContainerIdentity => _container?.Id;
+
     public string ConnectionString => _nativeConnectionString ?? $"localhost:{_container!.GetMappedPublicPort(6379)}";
 
     public async ValueTask InitializeAsync()
@@ -60,6 +63,3 @@ public sealed class FalkorDbFixture : IAsyncLifetime
         }
     }
 }
-
-[CollectionDefinition("FalkorDB")]
-public class FalkorDbCollection : ICollectionFixture<FalkorDbFixture>;
