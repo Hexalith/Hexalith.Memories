@@ -291,6 +291,60 @@ vulnerable npm bundle. The owning maintainers must confirm a clean low-level aud
 verifier away from any obsolete internal API, and keep all release configuration and workflow
 contract tests green in the same pull request.
 
+### Release Workflow Action And Base-Image Pins
+
+`release.yml` and `recover-partial-release.yml` publish, so every action they run is a reviewed
+full-SHA identity. The same rule covers any job, in any workflow, that holds `contents: write`,
+`id-token: write` or `write-all`, whether declared on the job, inherited from the workflow, or
+received from the repository default token. Hexalith.Builds actions run at the approved execution
+pin `ae77d5690a9411a2154fa4ed5231edc373942573`, never `@main`. Each third-party action runs at the
+commit its major tag resolved to on 2026-11-16, and the line carries that tag as a comment:
+
+| Action | Tag | Pinned SHA |
+| --- | --- | --- |
+| `actions/checkout` | v7.0.1 | `3d3c42e5aac5ba805825da76410c181273ba90b1` |
+| `actions/upload-artifact` | v7.0.2 | `cf430e030ddbb5b0abf93d22962f4752f3646cd9` |
+| `actions/setup-dotnet` | v6.1.0 | `0f4a354dd5547a28c70b7853dbd95d5b67886e73` |
+| `azure/setup-kubectl` | v4.0.1 | `776406bce94f63e41d621b960d78ee25c8b76ede` |
+| `docker/setup-qemu-action` | v3.7.0 | `c7c53464625b32c7a7e944ae62b3e17d2b600130` |
+| `NuGet/login` | v1.2.0 | `8d196754b4036150537f80ac539e15c2f1028841` |
+
+`Workflows_ExternalActions_UseAllowedRefs` in `CiTestInventoryTests.cs` enforces the rule and names
+the workflow, job and reference it refuses. Unprivileged `ci.yml` jobs keep the major-tag and
+Builds `@main` policy. A Dependabot `github-actions` update to one of these pins fails until the
+reviewed table in that test changes in the same pull request. Resolve a replacement with
+`git ls-remote https://github.com/<owner>/<repo>.git 'refs/tags/<tag>' 'refs/tags/<tag>^{}'`, taking
+the peeled `^{}` commit for an annotated tag, and never move a version inside an unrelated change.
+Every checkout in both workflows sets `persist-credentials: false`. semantic-release pushes the
+release tag through its own `x-access-token:$GITHUB_TOKEN` URL, so no write token stays in
+`.git/config` for the build and publication hooks.
+
+An action-pin refresh changes all of these in one pull request:
+
+- every matching `uses:` line and its `# vX.Y.Z` comment in `release.yml` and
+  `recover-partial-release.yml`;
+- `ReviewedPinnedActions`, and `NuGetLoginAction` for `NuGet/login`, in
+  `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs`;
+- the `NuGet/login` pin in `tests/tooling/release_dispatch/release_dispatch_test.py`;
+- the table above.
+
+`Directory.Build.targets` digest-pins the container base image as
+`mcr.microsoft.com/dotnet/aspnet:11.0-alpine@sha256:d39b72ad1534fa0faf52b488bffb0762df7ba269d120f0338713d4dda2a41bf5`,
+the index (manifest list) digest resolved on 2026-11-16. Dependabot tracks no Docker ecosystem here,
+so the base never moves silently. Jérôme Piquot owns the refresh. Refresh at each monthly .NET 11
+servicing release, or on an Alpine or .NET base-image security advisory, whichever comes first:
+
+```bash
+docker buildx imagetools inspect mcr.microsoft.com/dotnet/aspnet:11.0-alpine
+```
+
+Take the top-level `Digest`, not a platform child's. In one pull request, update the
+`ContainerBaseImage` value in `Directory.Build.targets`, the `ReviewedContainerBaseImage` constant in
+`CiTestInventoryTests.cs` and the reference in this section. Then require green push CI (including
+`ContainerBaseImage_IsDigestPinnedAndInheritedByEveryProject`) before the next dispatch.
+SDK 11 keeps the full pinned reference in each child's `org.opencontainers.image.base.name` label;
+the approved Builds validators compare only the provenance labels.
+
 ### Dispatch and Approval
 
 Wait for successful push CI on the exact current `main` SHA, then dispatch **Release** from `main`. Read back `gh api repos/Hexalith/Hexalith.Memories/environments/production` and require a nonempty `required_reviewers` rule and a non-null `deployment_branch_policy` restricting deployments to `main` or protected branches. Administrator bypass was enabled (`can_admins_bypass: true`) on 2026-11-12 at the owner's explicit request. Administrators may bypass pending production approval through GitHub; current-main CI, destination checks and NuGet Trusted Publishing remain required. A workflow `environment: production` declaration alone is insufficient. The sole owner's self-review is an accepted exception until a second eligible reviewer is available. Set `HEXALITH_RELEASE_PUBLISH_ENABLED` to the exact lowercase value `true` at repository scope only for an authorized publication, and set `NUGET_USER` to the individual account that created the NuGet Trusted Publishing policy. Any other publication-flag value leaves the release frozen before OIDC and semantic-release.
@@ -894,6 +948,18 @@ those actions can move the published state away from the CI-recorded audit ancho
   Retention runs only on workflow failure: cancellation, runner loss or job timeout may leave no
   recovery bundle. A missing/expired bundle is a blocker. Recovery also refuses any run whose
   conclusion is not `failure`, including `cancelled` and `timed_out`, even if bytes were retained.
+- Before any registry, NuGet or Release read or write, recovery re-renders the retained deployment
+  with only the tagged renderer and its tagged inputs. `git archive <tag> -- tools/render-production-deployment.ps1
+  deploy/kubernetes` exports them into private scratch through the tagged tree's own
+  `.gitattributes`, so they carry the bytes the release runner's checkout rendered. That matters
+  because `redis-stack.conf` materializes as CRLF and kustomize hashes it into the
+  `redis-stack-config-<hash>` ConfigMap name: v4.0.0 published `444ff7t4hh`, while LF blob bytes
+  (the earlier `git show` path) give `tfmk6ftkcm`. The render must equal the retained
+  `hexalith-memories-production.yaml` byte for byte, or recovery refuses with "Retained deployment
+  differs". It refuses before rendering when `--source-root` is not its own Git checkout (such as
+  an empty `submodules: false` directory, where Git would read the enclosing repository), when the
+  tag commit is absent (a shallow clone: the recovery checkout needs the full tagged history,
+  `fetch-depth: 0`), and when an archived input is not a regular file, such as a symlink.
 - Recovery loads Builds helpers at the SHA and byte hashes recorded in the identity. Jérôme Piquot
   approved only `81c88b34d09d34260b92d7f0928dbbc1c7446baa` and
   `ae77d5690a9411a2154fa4ed5231edc373942573` for recovery on 2026-11-15. Another SHA requires a
@@ -913,8 +979,9 @@ those actions can move the published state away from the CI-recorded audit ancho
   their read-only rechecks, including verified side effects and uncertainty after a failed command.
 - Recovery rechecks each destination immediately before its write, copies missing images with
   `--preserve-digests`, and runs digest-bound health for any image without a passing retained
-  health record. Only when packages are absent does the workflow invoke `NuGet/login@v1`, using
-  `vars.NUGET_USER`, immediately before retained-package publication. No stored NuGet key is used.
+  health record. Only when packages are absent does the workflow invoke `NuGet/login` (v1.2.0,
+  pinned to `8d196754b4036150537f80ac539e15c2f1028841`), using `vars.NUGET_USER`, immediately before
+  retained-package publication. No stored NuGet key is used.
   The owner must configure Trusted Publishing for
   `Hexalith/Hexalith.Memories/recover-partial-release.yml/production`; until then, package recovery
   fails at login with Jérôme Piquot as the named owner. Image- and asset-only recovery can proceed.

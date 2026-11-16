@@ -5624,6 +5624,7 @@ Release maintainers can publish and recover one complete, identity-bound Memorie
 | `30-3-four-image-publication-contract` | `30-4-five-image-publication-contract` | Complete image publication |
 | `30-4-partial-release-recovery` | `30-5-partial-release-recovery` | Partial recovery |
 | `30-5-release-cutover-parity-and-rollback` | `30-6-release-cutover-parity-and-rollback` | Cutover and rollback |
+| No predecessor | `30-7-epic-30-retro-blockers` | Retro blockers |
 
 **Current inventory:** `tools/release-packages.json` is authoritative and currently contains ten packages, including `Hexalith.Memories.EventStoreExtensions`. The five images are server, MCP compatibility host, access telemetry, access-telemetry clock, and domain service. Historical nine-package/four-image acceptance is superseded for active Epic 30 only; no member is dropped to reproduce it.
 
@@ -5910,6 +5911,54 @@ So that cutover cannot lose a capability and rollback cannot alter anything alre
 | Lane-by-lane comparison | Memories Release Engineer | Package/image/asset/authorization/failure/recovery parity matrix | pending | not complete |
 | Prior publisher removal gate | Memories Release Engineer | Parity approval and gated removal diff | pending | not complete |
 | Rollback without artifact mutation | Platform Operations | Rollback rehearsal and before/after published identity comparison | pending | not complete |
+
+### Story 30.7: Epic 30 Retro Blockers
+
+**Status:** in-progress. **Owner:** Amelia and Murat; Winston reviews the pins.
+
+**Origin:** Registered 2026-11-16 from the Epic 30 retrospective (`epic-30-retro-2026-11-16.md`), actions A1 and A2 (findings F1, F2 and F13; `epic-30-retro-item-91` and `epic-30-retro-item-92`). `spec-30-7-epic-30-retro-blockers.md` is authoritative for intent, boundaries, file scope and evidence. Registration flips no retro verdict; that flip is an owner decision after this story lands.
+
+As a release maintainer,
+I want current-set recovery to re-render the release runner's attribute-applied deployment bytes, and every privileged release job to run only reviewed immutable actions,
+So that a real recovery can succeed and no moving reference executes where publication credentials exist.
+
+**Acceptance Criteria:**
+
+**Given** fixtures built from a real tagged repository, a CRLF clone and the real renderer, `pwsh` and `kubectl`,
+**When** they run against the baseline and the fixed `verify_tagged_deployment`,
+**Then** the CRLF, LF-refusal, absent-commit and enclosing-repository cases fail on the baseline and all pass on the fix.
+
+**Given** `release.yml` and `recover-partial-release.yml`,
+**When** `CiTestInventoryTests` runs,
+**Then** every external action there is a reviewed full SHA, `@main` is refused in privileged context, and unprivileged `ci.yml` keeps its current policy.
+
+**Given** both release workflows,
+**When** `CiTestInventoryTests` runs,
+**Then** every checkout sets `persist-credentials: false` and the semantic-release step carries `GITHUB_TOKEN`, which pushes the release tag.
+
+**Given** `Directory.Build.targets`,
+**When** `CiTestInventoryTests` runs,
+**Then** `ContainerBaseImage` equals the reviewed `mcr.microsoft.com/dotnet/aspnet:11.0-alpine` index digest and no project overrides it.
+
+**Given** the qualification curl pins,
+**When** deferred-work R3-B10 is read,
+**Then** the upstream asset-digest provenance is recorded next to the pins and in the R3-B10 resolution.
+
+**Given** the final commit,
+**When** the tooling suites, `CiTestInventoryTests` and push CI run,
+**Then** all are green, and only then do items 91 and 92 move to done.
+
+**Checkpoint evidence:** States are current as of 2026-11-16. Local results are not push-CI credit. Each independently verifiable gate has its own row.
+
+| Checkpoint | Owner | Evidence command or artifact | Review state | Completion state |
+| --- | --- | --- | --- | --- |
+| Red-first fixture run | Murat | `tagged_deployment_test.py` against the unchanged `7b6f8269` contract, recorded in the spec's Implementation Notes | in review | complete locally 2026-11-16: five behavior cases red, positive control green |
+| Fixed fixtures and tooling suites | Murat | `python3 -B -m unittest discover -s tests/tooling/<lane> -p '*_test.py'` for `publish_containers` and the release lanes | in review | complete locally 2026-11-16; coordinator verification pending |
+| CiTestInventoryTests | Amelia | `dotnet exec tests/Hexalith.Memories.Cli.Tests/bin/Release/net11.0/Hexalith.Memories.Cli.Tests.dll -class Hexalith.Memories.Cli.Tests.Ci.CiTestInventoryTests` | in review | complete locally 2026-11-16 |
+| Workflow pins verified | Amelia; Winston reviews | `git ls-remote` for each used tag, the three Builds paths at `ae77d569` locally and through the contents API, `actionlint` on both workflows | in review | complete locally 2026-11-16 |
+| Base-image digest pin | Amelia; Winston reviews | `docker buildx imagetools inspect mcr.microsoft.com/dotnet/aspnet:11.0-alpine`, plus a real Clock publish accepted by the approved Builds validator | in review | complete locally 2026-11-16 |
+| Curl provenance | Amelia | `gh api repos/stunnel/static-curl/releases/tags/8.20.0` asset digests and fresh download hashes, recorded in deferred-work R3-B10 | in review | complete 2026-11-16 |
+| Push CI on the final commit | Jérôme Piquot | `gh run list --commit $(git rev-parse HEAD)` on the final commit | pending | not complete: nothing is committed or pushed |
 
 
 ---

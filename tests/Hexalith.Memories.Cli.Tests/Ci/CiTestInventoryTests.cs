@@ -41,6 +41,33 @@ public sealed partial class CiTestInventoryTests
     // Story 14.5: the closed structured-entry status vocabulary of deferred-work.md (DW-2).
     private static readonly string[] AllowedDeferredStatuses = ["open", "resolved", "accepted", "carried-forward"];
 
+    // The reviewed NuGet Trusted Publishing exchange (v1.2.0) both release workflows run.
+    private const string NuGetLoginAction = "NuGet/login@8d196754b4036150537f80ac539e15c2f1028841";
+
+    // The reviewed base image: the 11.0-alpine index digest resolved on 2026-11-16 (release-runbook.md).
+    private const string ReviewedContainerBaseImage = "mcr.microsoft.com/dotnet/aspnet:11.0-alpine@sha256:d39b72ad1534fa0faf52b488bffb0762df7ba269d120f0338713d4dda2a41bf5";
+
+    // Story 30.7 (Epic 30 retro F2, F13): these workflows publish, so every one of their jobs
+    // takes the privileged action rule, whatever its own token scopes.
+    private static readonly string[] ReleaseWorkflowFiles = ["release.yml", "recover-partial-release.yml"];
+
+    // The only actions a privileged or release-workflow job may run, mapped to the tag comment
+    // each line must carry (null for Builds). Third-party SHAs are the commits the then-used
+    // major tags resolved to on 2026-11-16 (git ls-remote); Builds runs the approved execution
+    // pin. Moving any pin is a reviewed edit of this table.
+    private static readonly Dictionary<string, string?> ReviewedPinnedActions = new(StringComparer.Ordinal)
+    {
+        ["actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"] = "v7.0.1",
+        ["actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73"] = "v6.1.0",
+        ["actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"] = "v7.0.2",
+        ["azure/setup-kubectl@776406bce94f63e41d621b960d78ee25c8b76ede"] = "v4.0.1",
+        ["docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130"] = "v3.7.0",
+        [NuGetLoginAction] = "v1.2.0",
+        ["Hexalith/Hexalith.Builds/Github/initialize-build@ae77d5690a9411a2154fa4ed5231edc373942573"] = null,
+        ["Hexalith/Hexalith.Builds/Github/initialize-dotnet@ae77d5690a9411a2154fa4ed5231edc373942573"] = null,
+        ["Hexalith/Hexalith.Builds/Github/prepare-domain-release@ae77d5690a9411a2154fa4ed5231edc373942573"] = null,
+    };
+
     [Fact]
     public void DockerFreeProjectInventory_ShouldMatchExpectedUnitAndContractAssemblies()
     {
@@ -540,11 +567,13 @@ public sealed partial class CiTestInventoryTests
         IsReleaseCommand(step, "npx semantic-release").ShouldBeTrue();
         step.Uses.ShouldBeNull();
         step.Environment["NUGET_API_KEY"].ShouldBe("${{ steps.nuget-login.outputs.NUGET_API_KEY }}");
+        // The checkout persists no credential, so semantic-release pushes the tag with this token.
+        step.Environment["GITHUB_TOKEN"].ShouldBe("${{ secrets.GITHUB_TOKEN }}");
 
         string workflow = File.ReadAllText(Path.Combine(GetRepoRoot(), ".github", "workflows", "release.yml"));
         workflow.ShouldContain("id-token: write");
         workflow.ShouldContain("environment: production");
-        workflow.ShouldContain("NuGet/login@v1");
+        workflow.ShouldContain("uses: " + NuGetLoginAction + " # v1.2.0");
         workflow.ShouldContain("user: ${{ vars.NUGET_USER }}");
         workflow.ShouldNotContain("secrets.NUGET_API_KEY");
         ReleaseWorkflowStep[] steps = ParseReleaseWorkflowSteps(workflow.Split('\n'));
@@ -621,7 +650,7 @@ public sealed partial class CiTestInventoryTests
         workflow.ShouldNotContain("semantic-release");
         workflow.ShouldContain("Validate historical inventory before any mutation");
         workflow.ShouldContain("-Repositories");
-        workflow.ShouldContain("NuGet/login@v1");
+        workflow.ShouldContain("uses: " + NuGetLoginAction + " # v1.2.0");
         workflow.ShouldContain("steps.plan.outputs.absent-packages != '0'");
         workflow.ShouldContain("NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}");
         workflow.ShouldNotContain("secrets.NUGET_API_KEY");
@@ -1093,36 +1122,200 @@ public sealed partial class CiTestInventoryTests
     [Fact]
     public void Workflows_ExternalActions_UseAllowedRefs()
     {
-        string repoRoot = GetRepoRoot();
-        string workflowsRoot = Path.Combine(repoRoot, ".github", "workflows");
+        string workflowsRoot = Path.Combine(GetRepoRoot(), ".github", "workflows");
+        int external = 0;
 
-        Regex usesRegex = new(@"^\s*uses:\s*(?<ref>\S+)");
-        bool foundAny = false;
-
-        foreach (string workflowPath in Directory.GetFiles(workflowsRoot, "*.yml"))
+        foreach (string workflowPath in Directory.GetFiles(workflowsRoot, "*.yml").Concat(Directory.GetFiles(workflowsRoot, "*.yaml")))
         {
-            foreach (string line in File.ReadAllLines(workflowPath))
+            external += AssertWorkflowActionReferences(Path.GetFileName(workflowPath), File.ReadAllLines(workflowPath));
+        }
+
+        external.ShouldBeGreaterThan(0, "expected workflows to declare at least one third-party action under 'uses:'.");
+    }
+
+    [Theory]
+    [InlineData("    permissions:|      id-token: write", "Hexalith/Hexalith.Builds/Github/initialize-build@main", true)]
+    [InlineData("    permissions:|      contents: read", "Hexalith/Hexalith.Builds/Github/initialize-build@main", false)]
+    [InlineData(null, "actions/checkout@v7", true)]
+    [InlineData("    permissions:|      id-token: write", "./.github/actions/local-helper", true)]
+    [InlineData("    permissions:|      contents: read", "./.github/actions/local-helper", false)]
+    public void Workflows_ExternalActionPolicy_FollowsJobPrivilegeInOrdinaryWorkflows(string? jobPermissions, string reference, bool refused)
+    {
+        string[] lines =
+        [
+            "name: Fixture",
+            "on:",
+            "  push:",
+            "jobs:",
+            "  probe:",
+            "    runs-on: ubuntu-latest",
+            .. jobPermissions?.Split('|') ?? Array.Empty<string>(),
+            "    steps:",
+            "      - name: Probe",
+            $"        uses: {reference}",
+        ];
+
+        if (refused)
+        {
+            Should.Throw<ShouldAssertException>(() => AssertWorkflowActionReferences("ci.yml", lines))
+                .Message.ShouldContain($"ci.yml job 'probe' runs '{reference}'");
+        }
+        else
+        {
+            Should.NotThrow(() => AssertWorkflowActionReferences("ci.yml", lines));
+        }
+    }
+
+    /// <summary>Applies the job-aware action policy to one workflow and returns its external action count.</summary>
+    private static int AssertWorkflowActionReferences(string workflow, string[] lines)
+    {
+        bool releaseWorkflow = ReleaseWorkflowFiles.Contains(workflow, StringComparer.Ordinal);
+        int attributed = 0;
+        int external = 0;
+        foreach (string job in GetWorkflowJobNames(lines))
+        {
+            // A job that can write contents or mint OIDC tokens, and every job of a workflow
+            // that publishes, runs only reviewed immutable identities.
+            bool pinned = releaseWorkflow || IsPrivilegedWorkflowJob(lines, job);
+            foreach (string line in GetWorkflowJobLines(lines, job))
             {
-                Match match = usesRegex.Match(line);
+                Match match = ActionUsesRegex().Match(line);
                 if (!match.Success)
                 {
                     continue;
                 }
 
+                attributed++;
                 string reference = match.Groups["ref"].Value;
                 if (reference.StartsWith("./", StringComparison.Ordinal) || reference.StartsWith("../", StringComparison.Ordinal))
                 {
-                    // Local repository action; external action version policy does not apply.
+                    // An unprivileged local action is outside the external policy; a pinned job's
+                    // local action would run its nested actions unreviewed.
+                    pinned.ShouldBeFalse(
+                        $"{workflow} job '{job}' runs '{reference}': privileged and release-workflow jobs may not run local actions, whose nested actions escape the reviewed identities.");
                     continue;
                 }
 
-                IsAllowedExternalActionReference(reference).ShouldBeTrue(
-                    $"third-party action '{reference}' must use a major version tag like '@v7', or the exact reviewed upload-artifact v7.0.2 SHA; Hexalith.Builds actions must use '@main' except the exact reviewed workflow and helper identities.");
-                foundAny = true;
+                external++;
+                if (!pinned)
+                {
+                    IsAllowedExternalActionReference(reference).ShouldBeTrue(
+                        $"{workflow} job '{job}' runs '{reference}': third-party actions must use a major version tag like '@v7', the exact reviewed upload-artifact v7.0.2 SHA or a reviewed pin; Hexalith.Builds actions must use '@main' except the exact reviewed workflow and helper identities.");
+                    continue;
+                }
+
+                IsReviewedPinnedActionReference(reference).ShouldBeTrue(
+                    $"{workflow} job '{job}' runs '{reference}': privileged and release-workflow jobs may run only a reviewed owner/repo@<40-hex> identity, never '@main' or a moving tag.");
+                if (ReviewedPinnedActions[reference] is string version)
+                {
+                    match.Groups["rest"].Value.Trim().ShouldBe(
+                        $"# {version}",
+                        $"{workflow} job '{job}' must label '{reference}' with the reviewed tag it resolves to.");
+                }
             }
         }
 
-        foundAny.ShouldBeTrue("expected workflows to declare at least one third-party action under 'uses:'.");
+        lines.Count(static line => ActionUsesRegex().IsMatch(line)).ShouldBe(
+            attributed,
+            $"{workflow} declares an action reference outside every job this reader attributes.");
+        return external;
+    }
+
+    [Theory]
+    [InlineData("release.yml", "release", "release-source")]
+    [InlineData("recover-partial-release.yml", "recover", "release-source")]
+    public void ReleaseWorkflows_PrivilegedJobs_ExistSoThePinnedActionRuleIsNeverVacuous(string workflow, string privilegedJob, string readOnlyJob)
+    {
+        string[] lines = File.ReadAllLines(Path.Combine(GetRepoRoot(), ".github", "workflows", workflow));
+
+        IsPrivilegedWorkflowJob(lines, privilegedJob).ShouldBeTrue($"{workflow} jobs.{privilegedJob} must hold the publishing token this guard protects.");
+        IsPrivilegedWorkflowJob(lines, readOnlyJob).ShouldBeFalse($"{workflow} jobs.{readOnlyJob} is the read-only control for privilege detection.");
+        GetWorkflowJobLines(lines, privilegedJob).Count(static line => ActionUsesRegex().IsMatch(line)).ShouldBeGreaterThan(0);
+    }
+
+    [Theory]
+    [InlineData("permissions:|  contents: write", null, true)]
+    [InlineData("permissions:|  id-token: write # OIDC", null, true)]
+    [InlineData("permissions: write-all", null, true)]
+    [InlineData(null, null, true)]
+    [InlineData("permissions:|  contents: read|  pull-requests: write", null, false)]
+    [InlineData("permissions: read-all", null, false)]
+    [InlineData("permissions:|  contents: write", "    permissions:|      contents: read", false)]
+    [InlineData("permissions:|  contents: read", "    permissions:|      id-token: write", true)]
+    [InlineData("permissions:|  contents: read", "    permissions: {}", false)]
+    [InlineData(null, "    permissions: write-all", true)]
+    [InlineData(null, "    permissions:|      security-events: write|      contents: read", false)]
+    public void PrivilegedJobDetection_FollowsJobThenWorkflowThenDefaultPermissions(string? workflowPermissions, string? jobPermissions, bool expected)
+    {
+        string[] lines =
+        [
+            "name: Fixture",
+            "on:",
+            "  workflow_dispatch:",
+            .. workflowPermissions?.Split('|') ?? Array.Empty<string>(),
+            "jobs:",
+            "  probe:",
+            "    runs-on: ubuntu-latest",
+            .. jobPermissions?.Split('|') ?? Array.Empty<string>(),
+            "    steps:",
+            "      - name: Probe",
+            "        run: echo probe",
+        ];
+
+        IsPrivilegedWorkflowJob(lines, "probe").ShouldBe(expected);
+    }
+
+    [Theory]
+    [InlineData("release.yml")]
+    [InlineData("recover-partial-release.yml")]
+    public void ReleaseWorkflows_EveryCheckout_DoesNotPersistCredentials(string workflow)
+    {
+        string[] lines = File.ReadAllLines(Path.Combine(GetRepoRoot(), ".github", "workflows", workflow));
+        int checkouts = 0;
+        foreach (string job in GetWorkflowJobNames(lines))
+        {
+            foreach (ReleaseWorkflowStep step in ParseReleaseWorkflowSteps(GetWorkflowJobLines(lines, job)))
+            {
+                if (!ActionReference(step.Uses).StartsWith("actions/checkout@", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                checkouts++;
+                step.With.GetValueOrDefault("persist-credentials").ShouldBe(
+                    "false",
+                    $"{workflow} job '{job}' step '{step.Name}' must not leave its token in .git/config for later steps.");
+            }
+        }
+
+        checkouts.ShouldBeGreaterThan(0);
+        checkouts.ShouldBe(
+            lines.Count(static line => ActionUsesRegex().Match(line).Groups["ref"].Value.StartsWith("actions/checkout@", StringComparison.Ordinal)),
+            $"every {workflow} checkout must be a named step this reader inspects.");
+    }
+
+    [Fact]
+    public void ContainerBaseImage_IsDigestPinnedAndInheritedByEveryProject()
+    {
+        string repoRoot = GetRepoRoot();
+        MatchCollection declarations = ContainerBaseImageRegex().Matches(File.ReadAllText(Path.Combine(repoRoot, "Directory.Build.targets")));
+
+        declarations.Count.ShouldBe(1, "Directory.Build.targets must declare the container base image exactly once.");
+        string image = declarations[0].Groups["image"].Value;
+        image.ShouldMatch(
+            @"^mcr\.microsoft\.com/dotnet/aspnet:[0-9][^@\s]*@sha256:[0-9a-f]{64}$",
+            "the base image must name its tag and the reviewed index digest; a tag alone floats.");
+        image.ShouldBe(ReviewedContainerBaseImage, "a refresh must move the reviewed index (manifest list) digest, never a platform child's.");
+        string[] overrides =
+        [
+            .. Directory.EnumerateFiles(Path.Combine(repoRoot, "src"), "*", SearchOption.AllDirectories)
+                .Append(Path.Combine(repoRoot, "Directory.Build.props"))
+                .Where(static path => path.EndsWith(".csproj", StringComparison.Ordinal)
+                    || path.EndsWith(".props", StringComparison.Ordinal)
+                    || path.EndsWith(".targets", StringComparison.Ordinal))
+                .Where(static path => File.ReadAllText(path).Contains("<ContainerBaseImage", StringComparison.Ordinal)),
+        ];
+        overrides.ShouldBeEmpty("container projects must inherit the digest-pinned base image.");
     }
 
     [Theory]
@@ -1137,7 +1330,7 @@ public sealed partial class CiTestInventoryTests
     [InlineData("Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@f0feeb234cbc16f88c2886a6ffae7122e05dd640", false)]
     [InlineData("Hexalith/Hexalith.Builds/.github/workflows/release.yml@ae77d5690a9411a2154fa4ed5231edc373942573", false)]
     [InlineData("Hexalith/Hexalith.Builds/Github/initialize-build@163f3d0deac6b0db5ec4bdfcc0934b12e6adb46a", false)]
-    [InlineData("Hexalith/Hexalith.Builds/Github/initialize-build@ae77d5690a9411a2154fa4ed5231edc373942573", false)]
+    [InlineData("Hexalith/Hexalith.Builds/Github/initialize-build@ae77d5690a9411a2154fa4ed5231edc373942573", true)]
     [InlineData("actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd8", false)]
     [InlineData("actions/upload-artifact@0000000000000000000000000000000000000000", false)]
     [InlineData("actions/download-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9", false)]
@@ -1152,8 +1345,94 @@ public sealed partial class CiTestInventoryTests
     public void Workflows_ExternalActionReferenceSecurityMatrix(string reference, bool expected)
         => IsAllowedExternalActionReference(reference).ShouldBe(expected);
 
+    [Theory]
+    [InlineData("Hexalith/Hexalith.Builds/Github/initialize-build@main", false)]
+    [InlineData("Hexalith/Hexalith.Builds/Github/initialize-build@ae77d5690a9411a2154fa4ed5231edc373942573", true)]
+    [InlineData("Hexalith/Hexalith.Builds/Github/initialize-dotnet@main", false)]
+    [InlineData("Hexalith/Hexalith.Builds/Github/initialize-dotnet@ae77d5690a9411a2154fa4ed5231edc373942573", true)]
+    [InlineData("Hexalith/Hexalith.Builds/Github/prepare-domain-release@ae77d5690a9411a2154fa4ed5231edc373942573", true)]
+    [InlineData("Hexalith/Hexalith.Builds/Github/initialize-dotnet@81c88b34d09d34260b92d7f0928dbbc1c7446baa", false)]
+    [InlineData("Hexalith/Hexalith.Builds/Github/initialize-apt@ae77d5690a9411a2154fa4ed5231edc373942573", false)]
+    [InlineData("Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@ae77d5690a9411a2154fa4ed5231edc373942573", false)]
+    [InlineData("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1", true)]
+    [InlineData("actions/checkout@v7", false)]
+    [InlineData("actions/checkout@v7.0.1", false)]
+    [InlineData("actions/checkout@main", false)]
+    [InlineData("actions/checkout@3D3C42E5AAC5BA805825DA76410C181273BA90B1", false)]
+    [InlineData("actions/checkout@3d3c42e5", false)]
+    [InlineData("actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0", false)]
+    [InlineData("actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9", true)]
+    [InlineData("actions/download-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9", false)]
+    [InlineData("actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73", true)]
+    [InlineData("azure/setup-kubectl@776406bce94f63e41d621b960d78ee25c8b76ede", true)]
+    [InlineData("azure/setup-kubectl@c0c8b32d33a5244f1e5947304550403b63930415", false)]
+    [InlineData("docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130", true)]
+    [InlineData("NuGet/login@8d196754b4036150537f80ac539e15c2f1028841", true)]
+    [InlineData("NuGet/login@v1", false)]
+    [InlineData("nuget/login@8d196754b4036150537f80ac539e15c2f1028841", false)]
+    [InlineData("actions/setup-node@v6", false)]
+    [InlineData("@3d3c42e5aac5ba805825da76410c181273ba90b1", false)]
+    [InlineData("actions/checkout", false)]
+    public void Workflows_PrivilegedActionReferenceSecurityMatrix(string reference, bool expected)
+        => IsReviewedPinnedActionReference(reference).ShouldBe(expected);
+
+    private static bool IsReviewedPinnedActionReference(string reference)
+        => PinnedActionReferenceRegex().IsMatch(reference) && ReviewedPinnedActions.ContainsKey(reference);
+
+    /// <summary>Returns whether a job's token can write repository contents or mint OIDC tokens.</summary>
+    /// <remarks>
+    /// A job without its own permissions inherits the workflow's. Without either, the repository
+    /// default token applies, which can hold write scopes, so that job counts as privileged.
+    /// </remarks>
+    private static bool IsPrivilegedWorkflowJob(string[] lines, string jobName)
+        => GrantsPrivilegedPermission(GetBlockMappingBody(GetBlockMappingBody(lines, "jobs"), jobName))
+            ?? GrantsPrivilegedPermission(lines)
+            ?? true;
+
+    /// <returns><see langword="null"/> when the mapping declares no permissions.</returns>
+    private static bool? GrantsPrivilegedPermission(string[] mappingLines)
+    {
+        string[] declarations = [.. GetImmediateMappingLines(mappingLines).Where(static line => ReadMappingProperty(line).Key == "permissions")];
+        declarations.Length.ShouldBeLessThanOrEqualTo(1, "a workflow or job must declare permissions at most once.");
+        if (declarations.Length == 0)
+        {
+            return null;
+        }
+
+        string value = StripYamlComment(ReadMappingProperty(declarations[0]).Value);
+        if (value.Length > 0)
+        {
+            return StripQuotes(value) switch
+            {
+                "write-all" => true,
+                "read-all" or "{}" => false,
+                string other => throw new InvalidOperationException($"unsupported inline permissions '{other}'; use a block mapping, read-all, write-all or {{}}."),
+            };
+        }
+
+        return GetImmediateMappingLines(GetBlockMappingBody(mappingLines, "permissions"))
+            .Select(ReadMappingProperty)
+            .Any(static permission => permission.Key is "contents" or "id-token" && StripQuotes(StripYamlComment(permission.Value)) == "write");
+    }
+
+    private static string StripYamlComment(string value)
+    {
+        int comment = value.StartsWith('#') ? 0 : value.IndexOf(" #", StringComparison.Ordinal);
+        return (comment < 0 ? value : value[..comment]).Trim();
+    }
+
+    private static string ActionReference(string? uses)
+        => uses?.Split([' ', '\t'], 2)[0] ?? string.Empty;
+
     private static bool IsAllowedExternalActionReference(string reference)
     {
+        // An identity reviewed for privileged jobs is never weaker than a moving ref, so an
+        // unprivileged job may harden to it.
+        if (IsReviewedPinnedActionReference(reference))
+        {
+            return true;
+        }
+
         // This exception authorizes only the reviewed upload-artifact v7.0.2 identity.
         if (reference == "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9")
         {
@@ -1451,7 +1730,7 @@ public sealed partial class CiTestInventoryTests
         ReleaseWorkflowStep[] steps = ParseReleaseWorkflowSteps(
         [
             "      - name: A renamed exchange",
-            "        uses: NuGet/login@v1",
+            $"        uses: {NuGetLoginAction} # v1.2.0",
             "        with:",
             "          user: ${{ vars.NUGET_USER }}",
         ]);
@@ -1618,7 +1897,7 @@ public sealed partial class CiTestInventoryTests
         [
             .. steps.Where(step => command is null
                 ? stepName == "Exchange GitHub OIDC token for a temporary NuGet key"
-                    ? step.Uses == "NuGet/login@v1"
+                    ? ActionReference(step.Uses).StartsWith("NuGet/login@", StringComparison.Ordinal)
                     : string.Equals(step.Name, stepName, StringComparison.Ordinal)
                 : IsReleaseCommand(step, command)),
         ];
@@ -2121,6 +2400,16 @@ public sealed partial class CiTestInventoryTests
 
     [GeneratedRegex("^(?<key>\"[^\"]*\"|'[^']*'|[A-Za-z_][A-Za-z0-9_-]*)[ \\t]*:[ \\t]*(?<value>.*)$")]
     private static partial Regex BlockMappingPropertyRegex();
+
+    // Captures every action line, including a `- uses:` step header; `rest` holds the tag comment.
+    [GeneratedRegex(@"^\s*(?:-\s+)?uses:\s*(?<ref>\S*)(?<rest>.*)$")]
+    private static partial Regex ActionUsesRegex();
+
+    [GeneratedRegex("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_./-]+)?@[0-9a-f]{40}$")]
+    private static partial Regex PinnedActionReferenceRegex();
+
+    [GeneratedRegex(@"<ContainerBaseImage(?:\s[^>]*)?>(?<image>[^<]*)</ContainerBaseImage>")]
+    private static partial Regex ContainerBaseImageRegex();
 
     private static bool IsWorkflowContent(string line)
         => !string.IsNullOrWhiteSpace(line) && !line.TrimStart().StartsWith('#');

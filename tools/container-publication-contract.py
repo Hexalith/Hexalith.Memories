@@ -575,21 +575,56 @@ def validate_preparation(root, evidence, container_directory, package_directory,
     return identity
 
 
+def git_bytes(source, *arguments):
+    """Run git without text decoding, which would normalize the archived line endings."""
+    try:
+        return subprocess.run(["git", "-C", str(source), *arguments], capture_output=True, check=False, timeout=COMMAND_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        raise ValueError(f"git {arguments[0]} timed out after {COMMAND_TIMEOUT_SECONDS} s.") from None
+
+
+def require_own_checkout(source):
+    """Refuse a source Git would resolve through an enclosing repository, or cannot read at all."""
+    top = git_bytes(source, "rev-parse", "--show-toplevel")
+    if top.returncode:
+        raise ValueError(f"Git cannot read recovery source {source}: " + redact(captured_text(top.stderr))[-2000:])
+    if Path(os.fsdecode(top.stdout.strip())).resolve() != Path(source).resolve():
+        raise ValueError(f"Recovery source {source} is not its own Git checkout; Git would read an enclosing repository instead. Check out the tagged Memories repository itself.")
+
+
 def verify_tagged_deployment(source, tag_sha, identity, deployment):
-    """Run only the tagged renderer and its tagged kustomize inputs, in private scratch."""
+    """Run only the tagged renderer and its tagged kustomize inputs, in private scratch.
+
+    `git archive` applies the archived tree's own `.gitattributes`, so the inputs carry the
+    bytes the release runner's checkout rendered (CRLF `redis-stack.conf`), which kustomize
+    hashes into ConfigMap names. Blob bytes (`git show`) are LF and can never match.
+    """
     renderer = "tools/render-production-deployment.ps1"
-    inputs = run(["git", "-C", source, "ls-tree", "-r", "--name-only", tag_sha, "--", "deploy/kubernetes"]).splitlines()
-    if not inputs or "deploy/kubernetes/overlays/production/kustomization.yaml" not in inputs:
-        raise ValueError("Tagged production renderer input is missing.")
-    with tempfile.TemporaryDirectory(prefix="memories-tagged-deployment-") as temporary:
+    require_own_checkout(source)
+    commit = git_bytes(source, "cat-file", "-e", f"{tag_sha}^{{commit}}")
+    if commit.returncode:
+        raise ValueError(f"Tag commit {tag_sha} is absent from {source}; recovery needs the full tagged history (actions/checkout fetch-depth: 0): " + redact(captured_text(commit.stderr))[-2000:])
+    archive = git_bytes(source, "archive", "--format=tar", tag_sha, "--", renderer, "deploy/kubernetes")
+    if archive.returncode:
+        raise ValueError("Tagged production renderer input is missing: " + redact(captured_text(archive.stderr))[-2000:])
+    with tempfile.TemporaryDirectory(prefix="memories-tagged-deployment-") as temporary, tarfile.open(fileobj=io.BytesIO(archive.stdout), mode="r:") as members:
         root = Path(temporary)
-        for name in [renderer, *inputs]:
-            relative = PurePosixPath(name)
-            if relative.is_absolute() or ".." in relative.parts or "\\" in name:
+        names = set()
+        # tarfile consumes git's pax global header (the commit ID) itself; it is never a member.
+        for member in members:
+            relative = PurePosixPath(member.name)
+            if relative.is_absolute() or ".." in relative.parts or "\\" in member.name:
                 raise ValueError("Tagged renderer input contains an unsafe path.")
-            target = root / name
+            if member.isdir():
+                continue
+            if not member.isreg():
+                raise ValueError(f"Tagged renderer input is not a regular file: {member.name}")
+            target = root / member.name
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(run(["git", "-C", source, "show", f"{tag_sha}:{name}"]), encoding="utf-8")
+            target.write_bytes(members.extractfile(member).read())
+            names.add(relative.as_posix())
+        if not {renderer, "deploy/kubernetes/overlays/production/kustomization.yaml"} <= names:
+            raise ValueError("Tagged production renderer input is missing.")
         rendered = root / "production.yaml"
         command = ["pwsh", "-NoLogo", "-NoProfile", "-File", root / renderer, "-Version", identity["version"], "-OutputPath", rendered]
         for image, parameter in zip(CANONICAL_IMAGES[:4], ("ServerImage", "McpImage", "AccessTelemetryImage", "AccessTelemetryClockImage")):
@@ -601,6 +636,11 @@ def verify_tagged_deployment(source, tag_sha, identity, deployment):
 
 def verify_bundle(bundle, destination, source, version, release_run_id, repository):
     """Check the external receipt and every retained byte before opening any destination."""
+    require_own_checkout(source)
+    try:
+        tag_sha = run(["git", "-C", source, "rev-list", "-n", "1", f"refs/tags/v{version}"]).strip()
+    except ValueError as error:
+        raise ValueError(f"Recovery tag v{version} cannot be resolved in {source}; recovery needs the full tagged history (actions/checkout fetch-depth: 0). {error}") from None
     receipt = read_json(bundle.with_suffix(bundle.suffix + ".sha256.json"))
     if receipt.get("path") != bundle.name or receipt.get("sha256") != sha256(bundle) or receipt.get("result") != "recoverable":
         raise ValueError("Recovery bundle receipt is missing, unrecoverable or differs from the retained bytes.")
@@ -633,7 +673,6 @@ def verify_bundle(bundle, destination, source, version, release_run_id, reposito
         raise ValueError("Bundle version/source/set bindings differ from the requested recovery.")
     if str(identity["run"]["GITHUB_RUN_ID"]) != str(release_run_id):
         raise ValueError("Bundle identity belongs to another failed release run.")
-    tag_sha = run(["git", "-C", source, "rev-list", "-n", "1", f"refs/tags/v{version}"]).strip()
     if tag_sha != identity["sourceSha"] or run(["git", "-C", source, "rev-parse", "HEAD"]).strip() != tag_sha:
         raise ValueError("Trusted tag commit, checked-out source and failed-run identity differ.")
     failed = json.loads(run(["gh", "api", f"repos/{repository}/actions/runs/{release_run_id}"]), object_pairs_hook=strict_object)

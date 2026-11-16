@@ -22,6 +22,7 @@ import urllib.request
 import zipfile
 
 import publication_contract_test as fixtures
+from tagged_deployment_test import git
 
 C = fixtures.CONTRACT
 A = fixtures.ARCHIVE
@@ -106,6 +107,13 @@ class PartialReleaseRecoveryTests(unittest.TestCase):
         self.deployment = self.root / 'artifacts/deployment/hexalith-memories-production.yaml'
         self.deployment.parent.mkdir()
         shutil.copytree(fixtures.ROOT / 'deploy/kubernetes', self.root / 'deploy/kubernetes')
+        # Recovery archives these inputs from the source repository through real Git.
+        shutil.copyfile(fixtures.ROOT / '.gitattributes', self.root / '.gitattributes')
+        git(self.root, 'init', '-q', '-b', 'main')
+        git(self.root, 'add', '--', '.gitattributes', 'tools/render-production-deployment.ps1', 'deploy/kubernetes')
+        git(self.root, 'commit', '-q', '-m', 'fixture: tagged release inputs')
+        git(self.root, 'tag', 'v' + fixtures.VERSION)
+        self.tagged_commit = git(self.root, 'rev-parse', 'HEAD').decode().strip()
         with fixtures.working_directory(self.root):
             A.render_deployment(identity, self.deployment)
         self.bundle = self.root / 'release-recovery-bundle.tar.gz'
@@ -156,8 +164,6 @@ class PartialReleaseRecoveryTests(unittest.TestCase):
         if args[0] == 'git':
             if 'show' in args:
                 return (self.root / args[-1].split(':', 1)[1]).read_text()
-            if 'ls-tree' in args:
-                return '\n'.join(path.relative_to(self.root).as_posix() for path in (self.root / 'deploy/kubernetes').rglob('*') if path.is_file())
             return fixtures.SOURCE_SHA
         if args[:2] == ['gh', 'api']:
             return json.dumps(self.failed_run)
@@ -229,6 +235,9 @@ class PartialReleaseRecoveryTests(unittest.TestCase):
             if command[:3] == ['gh', 'release', 'view']:
                 visible = self.release and not self.unobservable_draft
                 return SimpleNamespace(returncode=0 if visible else 1, stdout=json.dumps({'tagName': 'v' + fixtures.VERSION, 'isDraft': self.draft, 'isPrerelease': False, 'assets': [{'name': n} for n in self.assets]}) if visible else '', stderr='' if visible else 'release not found')
+            if command[0] == 'git' and ('cat-file' in command or 'archive' in command):
+                # The frozen identity names the synthetic source SHA; Git reads the real fixture commit.
+                command = [value.replace(fixtures.SOURCE_SHA, self.tagged_commit) for value in command]
             return original_run(command, **kwargs)
         def probe(_kind, repository, version):
             return self.registry_status or (200 if f'{repository}:{version}' in self.f.remote_graphs else 404)

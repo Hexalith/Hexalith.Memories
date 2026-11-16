@@ -32,12 +32,12 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout dispatched source
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           submodules: false
       - name: Checkout approved Builds source proof
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Hexalith/Hexalith.Builds
           ref: ae77d5690a9411a2154fa4ed5231edc373942573
@@ -54,7 +54,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload release source refusal evidence
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: partial-release-source-evidence-v${{ inputs.version }}
           path: artifacts/recovery/protection/**
@@ -75,13 +75,13 @@ jobs:
       HEXALITH_ZOT_REGISTRY: ${{ vars.HEXALITH_ZOT_REGISTRY || 'registry.hexalith.com' }}
     steps:
       - name: Checkout recovery workflow source
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
           submodules: false
       - name: Checkout approved Builds source proof
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Hexalith/Hexalith.Builds
           ref: ae77d5690a9411a2154fa4ed5231edc373942573
@@ -117,7 +117,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Initialize dispatched .NET for trusted fixtures
-        uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@main
+        uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@ae77d5690a9411a2154fa4ed5231edc373942573
         with:
           global-json-file: global.json
       - name: Expose approved Builds catalog for trusted fixtures
@@ -164,12 +164,12 @@ jobs:
         run: git checkout --detach "$RECOVERY_COMMIT"
       - name: Initialize tagged .NET for retained package recovery
         if: steps.source.outputs.current == 'true'
-        uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@main
+        uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@ae77d5690a9411a2154fa4ed5231edc373942573
         with:
           global-json-file: global.json
       - name: Initialize kubectl
         if: steps.source.outputs.current == 'true'
-        uses: azure/setup-kubectl@v4
+        uses: azure/setup-kubectl@776406bce94f63e41d621b960d78ee25c8b76ede # v4.0.1
         with:
           version: ${{ steps.source.outputs.kubectl-version }}
       - name: Verify offline recovery bundle bindings
@@ -182,7 +182,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Checkout recorded approved recovery helpers
         if: steps.source.outputs.current == 'true'
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Hexalith/Hexalith.Builds
           ref: ${{ steps.metadata.outputs.builds-sha }}
@@ -191,7 +191,7 @@ jobs:
           submodules: false
       - name: Initialize both container platforms
         if: steps.source.outputs.current == 'true'
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
         with:
           platforms: arm64
           image: tonistiigi/binfmt@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
@@ -229,7 +229,7 @@ jobs:
       - name: Exchange recovery OIDC token for a temporary NuGet key
         if: steps.source.outputs.current == 'true' && steps.plan.outputs.absent-packages != '0'
         id: nuget-login
-        uses: NuGet/login@v1
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
         with:
           user: ${{ vars.NUGET_USER }}
       - name: Name missing NuGet recovery authorization blocker
@@ -247,10 +247,10 @@ jobs:
           HEXALITH_ZOT_API_KEY: ${{ secrets.HEXALITH_ZOT_API_KEY }}
       - name: Initialize historical build submodules
         if: steps.source.outputs.current == 'false'
-        uses: Hexalith/Hexalith.Builds/Github/initialize-build@main
+        uses: Hexalith/Hexalith.Builds/Github/initialize-build@ae77d5690a9411a2154fa4ed5231edc373942573
       - name: Initialize historical .NET
         if: steps.source.outputs.current == 'false'
-        uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@main
+        uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@ae77d5690a9411a2154fa4ed5231edc373942573
         with:
           global-json-file: global.json
       - name: Validate historical inventory before any mutation
@@ -292,7 +292,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload container recovery evidence
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: partial-release-completion-v${{ inputs.version }}
           path: |

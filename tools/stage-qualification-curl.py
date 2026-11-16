@@ -23,6 +23,13 @@ from pathlib import Path
 
 RELEASE_BASE = "https://github.com/stunnel/static-curl/releases/download/8.20.0"
 MAXIMUM_ARCHIVE_BYTES = 8 * 1024 * 1024
+# Provenance (Epic 30 retro F13, deferred-work R3-B10): each pin is the SHA-256 that GitHub
+# records as the asset digest of that exact .tar.xz on the stunnel/static-curl 8.20.0 release.
+# Both assets were uploaded on 2026-04-29 and are unchanged since, and fresh downloads on
+# 2026-11-16 hashed to the same values. The 2026-11-03 re-pin replaced the original Story 27.4
+# pins, which were the release notes' checksums of the inner `curl` binary and so could never
+# match the downloaded archive. Refresh a pin only from the release's own asset digest:
+#   gh api repos/stunnel/static-curl/releases/tags/<version> --jq '.assets[] | [.name, .digest]'
 ARTIFACTS: dict[str, tuple[str, str]] = {
     "linux-musl-x64": (
         "curl-linux-x86_64-musl-8.20.0.tar.xz",

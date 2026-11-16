@@ -7,7 +7,11 @@
     <DefineConstants>$(DefineConstants);HEXALITH_EVENTSTORE_MULTI_DOMAIN_WORKLOAD</DefineConstants>
   </PropertyGroup>
   <PropertyGroup Condition="'$(EnableContainer)' == 'true'">
-    <ContainerBaseImage>mcr.microsoft.com/dotnet/aspnet:11.0-alpine</ContainerBaseImage>
+    <!-- The tag names the runtime line; the index (manifest list) digest fixes the bytes every
+         platform child is built on. Dependabot tracks no Docker base here, so refresh it
+         deliberately: run `docker buildx imagetools inspect mcr.microsoft.com/dotnet/aspnet:11.0-alpine`
+         and replace the digest with its top-level Digest (docs/dev/release-runbook.md). -->
+    <ContainerBaseImage>mcr.microsoft.com/dotnet/aspnet:11.0-alpine@sha256:d39b72ad1534fa0faf52b488bffb0762df7ba269d120f0338713d4dda2a41bf5</ContainerBaseImage>
     <ContainerRegistry Condition="'$(ContainerRegistry)' == '' and '$(LocalSourceContainerArchive)' != 'true'">registry.hexalith.com</ContainerRegistry>
     <ContainerImageTag Condition="'$(ContainerImageTag)' == ''">$(Version)</ContainerImageTag>
     <ContainerUser>1654</ContainerUser>
