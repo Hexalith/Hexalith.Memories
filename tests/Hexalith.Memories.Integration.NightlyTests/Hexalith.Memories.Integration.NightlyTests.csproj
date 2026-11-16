@@ -67,13 +67,11 @@
     <Compile Include="..\Hexalith.Memories.IntegrationTests\Factories\IndexInputFactory.cs" Link="Factories\IndexInputFactory.cs" />
     <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\AspireIngestionPipelineFixture.cs" Link="Fixtures\AspireIngestionPipelineFixture.cs" />
     <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\CompositeSearchFixture.cs" Link="Fixtures\CompositeSearchFixture.cs" />
-    <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\DaprStateSidecarCollection.cs" Link="Fixtures\DaprStateSidecarCollection.cs" />
     <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\DaprStateSidecarFixture.cs" Link="Fixtures\DaprStateSidecarFixture.cs" />
     <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\EmbeddingProviderFaultPlan.cs" Link="Fixtures\EmbeddingProviderFaultPlan.cs" />
     <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\EmbeddingProviderSecret.cs" Link="Fixtures\EmbeddingProviderSecret.cs" />
     <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\EmbeddingProviderTestMode.cs" Link="Fixtures\EmbeddingProviderTestMode.cs" />
     <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\FakeHttpRequestEvidence.cs" Link="Fixtures\FakeHttpRequestEvidence.cs" />
-    <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\FalkorDbCollection.cs" Link="Fixtures\FalkorDbCollection.cs" />
     <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\FalkorDbFixture.cs" Link="Fixtures\FalkorDbFixture.cs" />
     <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\IngestionIntegrationTestDriver.cs" Link="Fixtures\IngestionIntegrationTestDriver.cs" />
     <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\MemoryErasureProcessMessage.cs" Link="Fixtures\MemoryErasureProcessMessage.cs" />
@@ -94,7 +92,6 @@
     <Compile Include="..\Hexalith.Memories.IntegrationTests\Ingestion\HistoricalNaturalLanguageEmbeddingRetryWorkflow.cs" Link="Ingestion\HistoricalNaturalLanguageEmbeddingRetryWorkflow.cs" />
     <Compile Include="..\Hexalith.Memories.IntegrationTests\Ingestion\HistoricalProcessArtifactWorkflow.cs" Link="Ingestion\HistoricalProcessArtifactWorkflow.cs" />
     <Compile Include="..\Hexalith.Memories.IntegrationTests\Ingestion\LegacyRetryErasureQualificationWorkflow.cs" Link="Ingestion\LegacyRetryErasureQualificationWorkflow.cs" />
-    <Compile Include="..\Hexalith.Memories.IntegrationTests\Ingestion\OllamaAspireIngestionPipelineCollection.cs" Link="Ingestion\OllamaAspireIngestionPipelineCollection.cs" />
     <Compile Include="..\Hexalith.Memories.IntegrationTests\Ingestion\RetainedAnnotationSchedulingWorkflow.cs" Link="Ingestion\RetainedAnnotationSchedulingWorkflow.cs" />
     <Compile Include="..\Hexalith.Memories.IntegrationTests\Ingestion\RetryDatabaseInterception.cs" Link="Ingestion\RetryDatabaseInterception.cs" />
     <Compile Include="..\Hexalith.Memories.IntegrationTests\Search\DegradationIntegrationTests.cs" Link="Search\DegradationIntegrationTests.cs" />

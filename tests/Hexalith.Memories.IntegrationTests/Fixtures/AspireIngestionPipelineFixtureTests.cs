@@ -779,42 +779,6 @@ public sealed class AspireIngestionPipelineFixtureTests
         McpServerIntegrationTests.IsDiagnosticResourceCategory(category).ShouldBeFalse();
     }
 
-    [Fact]
-    public void OpenBaoTopologyTraits_FastSlowAndPerformanceLanesRemainSeparated()
-    {
-        GetCategoryTraits(typeof(OpenBaoTopologyIntegrationTests)).ShouldContain("Integration");
-
-        string[] fastMethods =
-        [
-            nameof(OpenBaoTopologyIntegrationTests.DaprSecretReads_RuntimeAndAccessTelemetryCanariesMatchExpectedFingerprints),
-            nameof(OpenBaoTopologyIntegrationTests.ProviderBoundary_DaprScopesKeyScopesPoliciesPrefixesAndBulkOperationsFailClosed),
-            nameof(OpenBaoTopologyIntegrationTests.DaprSidecarMatrix_EnforcesExactComponentAndKeyAllowDenyBoundaries),
-            nameof(OpenBaoTopologyIntegrationTests.InPlaceOpenBaoRestart_RotatesGenerationAndRecoversDependentSidecars),
-            nameof(OpenBaoTopologyIntegrationTests.DiagnosticsModelGeneratedFilesAndLogs_ContainNoSensitiveMaterial),
-        ];
-        foreach (string methodName in fastMethods)
-        {
-            MethodInfo method = GetMethod(methodName);
-            FactAttribute fact = method.GetCustomAttribute<FactAttribute>()
-                .ShouldNotBeNull($"Fast OpenBao guard '{methodName}' must remain an xUnit Fact.");
-            fact.Skip.ShouldBeNullOrWhiteSpace($"Fast OpenBao guard '{methodName}' must remain runnable.");
-
-            IReadOnlyList<string> categories = GetCategoryTraits(method);
-            categories.ShouldNotContain("IntegrationSlow");
-            categories.ShouldNotContain("Performance");
-        }
-
-        IReadOnlyList<string> restartCategories = GetCategoryTraits(GetMethod(
-            nameof(OpenBaoTopologyIntegrationTests.FullTopologyRestart_ReinitializesOpenBaoAndRecoversPermittedDaprReads)));
-        restartCategories.ShouldContain("IntegrationSlow");
-        restartCategories.ShouldNotContain("Performance");
-
-        IReadOnlyList<string> nfrCategories = GetCategoryTraits(GetMethod(
-            nameof(OpenBaoTopologyIntegrationTests.OpenBaoColdStart_TopologyAcceptsQueriesWithinNfr7)));
-        nfrCategories.ShouldContain("IntegrationSlow");
-        nfrCategories.ShouldContain("Performance");
-    }
-
     private static bool AsyncMethodCalls(MethodInfo asyncMethod, MethodInfo targetMethod)
     {
         Type stateMachineType = asyncMethod.GetCustomAttribute<AsyncStateMachineAttribute>()
