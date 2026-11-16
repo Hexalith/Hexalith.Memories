@@ -86,7 +86,7 @@ dotnet test
 
 ### Coverage
 
-The required `test-unit-contract` PR/push job collects the eight-project Docker-free inventory and then
+The required `test-unit-contract` PR/push job collects the nine-project Docker-free inventory and then
 enforces unioned first-party line coverage. Run the same blocking sequence locally from the repository
 root after a Release build:
 
@@ -101,7 +101,7 @@ python tools/validate-coverage.py --results-directory TestResults/test-unit-cont
 ```
 
 `tests/tooling/coverage_gate/line-coverage-gate.json` is the single source for the **76.5%** minimum, production source
-scope, required assemblies, eight required project reports, and Server/CLI/MCP composition-root evidence. Each wrapper
+scope, required assemblies, nine required project reports, and Server/CLI/MCP composition-root evidence. Each wrapper
 removes the requested repository-local results directory before starting, so repeated runs cannot union stale
 attachments. The validator unions
 Cobertura lines by normalized repository path and line number, deduplicates collector attachment
@@ -198,7 +198,7 @@ three source-selected owner catalog tests with no failures, errors, skips or not
 XML is uploaded as `source-catalog-verification` after failure as well as success. The unchanged
 required `build` status depends on both lanes and succeeds only when both succeed.
 
-The complete eight-project Coverlet collection, **76.5%** gate and package-only validation stay in
+The complete nine-project Coverlet collection, **76.5%** gate and package-only validation stay in
 `test-unit-contract`, retaining `test-unit-contract-results` for 14 days. Contracts appears in both
 lanes until coverage collector/report equivalence is proved. Shared consumer/coverage gates remain
 disabled because Memories owns these specialized checks; no collectors change. Web E2E, tenant
@@ -231,3 +231,17 @@ benchmark owners remain blocking. For rollback see the
 - `_bmad/tea/testarch/knowledge/test-levels-framework.md`
 - `_bmad/tea/testarch/knowledge/test-priorities-matrix.md`
 - `_bmad/tea/testarch/knowledge/risk-governance.md`
+
+### Separated integration project ownership
+
+The fast and nightly integration projects are separate complete executables.
+`tools/test-projects.integration-fast.txt` selects `Hexalith.Memories.IntegrationTests`;
+`tools/test-projects.integration-slow.txt` selects `Hexalith.Memories.Integration.NightlyTests`.
+Exact `Category=Integration` selects both. `Category=IntegrationSlow` and
+`Category=Performance` select the nightly project; the fast compound selector
+selects the fast project. Run a project without a trait selector when qualifying
+all its cases, including untagged product tests. On adoption, the shared pipeline will run whole
+projects and place the nightly project and all benchmark cases in the nightly hook.
+Registration and hosted qualification still require released shared support.
+DerivedStores has sole ownership of its test source and a ninth required unit
+coverage report; the 76.5% threshold and production source scope are unchanged.

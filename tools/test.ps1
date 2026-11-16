@@ -61,8 +61,17 @@ try {
             Read-ProjectInventory 'tools/test-projects.unit-contract.txt'
             break
         }
-        '*Category=IntegrationSlow*' {
+        'Category=Integration' {
             Read-ProjectInventory 'tools/test-projects.integration-fast.txt'
+            Read-ProjectInventory 'tools/test-projects.integration-slow.txt'
+            break
+        }
+        '*Category=IntegrationSlow*' {
+            Read-ProjectInventory 'tools/test-projects.integration-slow.txt'
+            break
+        }
+        '*Category=Performance*' {
+            Read-ProjectInventory 'tools/test-projects.integration-slow.txt'
             break
         }
         '*Category=Integration*' {
@@ -74,12 +83,15 @@ try {
             break
         }
         default {
-            @()
+            Read-ProjectInventory 'tools/test-projects.unit-contract.txt'
+            Read-ProjectInventory 'tools/test-projects.integration-fast.txt'
+            Read-ProjectInventory 'tools/test-projects.integration-slow.txt'
+            Read-ProjectInventory 'tools/test-projects.benchmark.txt'
         }
     }
 
     if ($projectPaths.Count -eq 0) {
-        $projectPaths = @($null)
+        throw 'Selected test project inventory is empty.'
     }
 
     $resultsRoot = $null
@@ -113,7 +125,7 @@ try {
         }
 
         if (-not [string]::IsNullOrWhiteSpace($projectPath)) {
-            $arguments += $projectPath
+            $arguments += @('--project', $projectPath)
         }
 
         $arguments += @('--configuration', $Configuration)
