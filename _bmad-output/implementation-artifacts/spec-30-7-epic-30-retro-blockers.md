@@ -134,7 +134,7 @@ Anchors were derived on 2026-11-16 at `7b6f8269`. Re-derive them before editing.
 - [x] `Directory.Build.targets` -- set `aspnet:11.0-alpine@sha256:d39b72ad…41bf5` and a comment with the refresh command -- F13.
 - [x] `docs/dev/release-runbook.md` -- describe the `git archive` render and its refusals, update the `NuGet/login` text, and add the base-image digest refresh rule -- operator truth.
 - [x] `_bmad-output/implementation-artifacts/deferred-work.md` -- resolve R3-B10 with evidence.
-- [ ] `_bmad-output/planning-artifacts/epics.md`, `_bmad-output/implementation-artifacts/sprint-status.yaml`, `epic-30-context.md` -- register Story 30.7 (row and `story_execution_order`). After green CI on the exact final commit, set items 91 and 92 to `done` with minimal diffs.
+- [x] `_bmad-output/planning-artifacts/epics.md`, `_bmad-output/implementation-artifacts/sprint-status.yaml`, `epic-30-context.md` -- register Story 30.7 (row and `story_execution_order`). After green CI on the exact final commit, set items 91 and 92 to `done` with minimal diffs.
 
 **Acceptance Criteria:**
 - Given the new fixtures, when they run against the baseline contract, then the CRLF, LF-refusal, absent-commit and enclosing-repository cases fail. When they run against the fixed contract, all of them pass.
@@ -210,7 +210,7 @@ The positive controls held on both sides. The clone's `redis-stack.conf` is CRLF
 - **Inventory guard:** the per-workflow body is a helper. A synthetic `ci.yml` theory proves the privilege term and the local-action refusal. `*.yaml` files are scanned. Reviewed pins are also allowed unprivileged, so the old `initialize-build@ae77d569` row is now true. The semantic-release `GITHUB_TOKEN` is asserted, and the base image equals the reviewed constant.
 - **Reruns:** `tagged_deployment_test` 12/12, `partial_release_recovery_test` 52/52 (the only modules that exercise the edited functions) and `CiTestInventoryTests` 166/166. Dropping the privilege term turns 3 theory cases red. The wider lanes were not rerun; the coordinator runs full verification.
 
-**Not done.** Nothing has been committed or pushed, so push CI on the exact final commit has not run. Items 91 and 92 stay `open`, and the Story 30.7 sprint row stays `in-progress`. The last task stays unticked until that green run exists. No workflow was dispatched and no GitHub, environment or registry setting changed.
+**Closed (2026-11-16).** The code landed in `e4b2b08edacf1d10337258ffb6949711cc5987ca`. On that exact commit, push CI `43862752990` (CI), `43862752951` (CodeQL), `43862752937` (Commitlint) and `43862752591` (Qualify Builds publication) all `success` on `e4b2b08edacf1d10337258ffb6949711cc5987ca`. The CI test-unit-contract job ran `publish_containers` 177/177 with no skips, and Cli.Tests 618/618. A follow-up records commit then moved items 91 and 92 and the Story 30.7 row to `done`. No workflow was dispatched, and no GitHub, environment or registry setting changed.
 
 ## Spec Change Log
 

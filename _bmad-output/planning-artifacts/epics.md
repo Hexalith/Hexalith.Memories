@@ -5914,7 +5914,7 @@ So that cutover cannot lose a capability and rollback cannot alter anything alre
 
 ### Story 30.7: Epic 30 Retro Blockers
 
-**Status:** in-progress. **Owner:** Amelia and Murat; Winston reviews the pins.
+**Status:** done (2026-11-16; `e4b2b08e`, push CI green). **Owner:** Amelia and Murat; Winston reviews the pins.
 
 **Origin:** Registered 2026-11-16 from the Epic 30 retrospective (`epic-30-retro-2026-11-16.md`), actions A1 and A2 (findings F1, F2 and F13; `epic-30-retro-item-91` and `epic-30-retro-item-92`). `spec-30-7-epic-30-retro-blockers.md` is authoritative for intent, boundaries, file scope and evidence. Registration flips no retro verdict; that flip is an owner decision after this story lands.
 
@@ -5948,17 +5948,17 @@ So that a real recovery can succeed and no moving reference executes where publi
 **When** the tooling suites, `CiTestInventoryTests` and push CI run,
 **Then** all are green, and only then do items 91 and 92 move to done.
 
-**Checkpoint evidence:** States are current as of 2026-11-16. Local results are not push-CI credit. Each independently verifiable gate has its own row.
+**Checkpoint evidence:** States are current as of 2026-11-16, after the three-layer code review and push CI on `e4b2b08e`. Each independently verifiable gate has its own row.
 
 | Checkpoint | Owner | Evidence command or artifact | Review state | Completion state |
 | --- | --- | --- | --- | --- |
-| Red-first fixture run | Murat | `tagged_deployment_test.py` against the unchanged `7b6f8269` contract, recorded in the spec's Implementation Notes | in review | complete locally 2026-11-16: five behavior cases red, positive control green |
-| Fixed fixtures and tooling suites | Murat | `python3 -B -m unittest discover -s tests/tooling/<lane> -p '*_test.py'` for `publish_containers` and the release lanes | in review | complete locally 2026-11-16; coordinator verification pending |
-| CiTestInventoryTests | Amelia | `dotnet exec tests/Hexalith.Memories.Cli.Tests/bin/Release/net11.0/Hexalith.Memories.Cli.Tests.dll -class Hexalith.Memories.Cli.Tests.Ci.CiTestInventoryTests` | in review | complete locally 2026-11-16 |
-| Workflow pins verified | Amelia; Winston reviews | `git ls-remote` for each used tag, the three Builds paths at `ae77d569` locally and through the contents API, `actionlint` on both workflows | in review | complete locally 2026-11-16 |
-| Base-image digest pin | Amelia; Winston reviews | `docker buildx imagetools inspect mcr.microsoft.com/dotnet/aspnet:11.0-alpine`, plus a real Clock publish accepted by the approved Builds validator | in review | complete locally 2026-11-16 |
-| Curl provenance | Amelia | `gh api repos/stunnel/static-curl/releases/tags/8.20.0` asset digests and fresh download hashes, recorded in deferred-work R3-B10 | in review | complete 2026-11-16 |
-| Push CI on the final commit | Jérôme Piquot | `gh run list --commit $(git rev-parse HEAD)` on the final commit | pending | not complete: nothing is committed or pushed |
+| Red-first fixture run | Murat | `tagged_deployment_test.py` against the unchanged `7b6f8269` contract, recorded in the spec's Implementation Notes | reviewed | complete 2026-11-16: five behavior cases red, positive control green; re-confirmed by the coordinator |
+| Fixed fixtures and tooling suites | Murat | `python3 -B -m unittest discover -s tests/tooling/<lane> -p '*_test.py'` for `publish_containers` and the release lanes | reviewed | complete 2026-11-16: coordinator rerun green; push CI `43862752990` ran `publish_containers` 177/177 with no skips |
+| CiTestInventoryTests | Amelia | `dotnet exec tests/Hexalith.Memories.Cli.Tests/bin/Release/net11.0/Hexalith.Memories.Cli.Tests.dll -class Hexalith.Memories.Cli.Tests.Ci.CiTestInventoryTests` | reviewed | complete 2026-11-16: 166/166 locally; Cli.Tests 618/618 in push CI `43862752990` |
+| Workflow pins verified | Amelia; Winston reviews | `git ls-remote` for each used tag, the three Builds paths at `ae77d569` locally and through the contents API, `actionlint` on both workflows | reviewed | complete 2026-11-16 |
+| Base-image digest pin | Amelia; Winston reviews | `docker buildx imagetools inspect mcr.microsoft.com/dotnet/aspnet:11.0-alpine`, plus a real Clock publish accepted by the approved Builds validator | reviewed | complete 2026-11-16; Qualify Builds publication `43862752591` green on `e4b2b08e` |
+| Curl provenance | Amelia | `gh api repos/stunnel/static-curl/releases/tags/8.20.0` asset digests and fresh download hashes, recorded in deferred-work R3-B10 | reviewed | complete 2026-11-16 |
+| Push CI on the final commit | Jérôme Piquot | `gh run list --commit e4b2b08edacf1d10337258ffb6949711cc5987ca` | reviewed | complete 2026-11-16: push CI `43862752990` (CI), `43862752951` (CodeQL), `43862752937` (Commitlint) and `43862752591` (Qualify Builds publication) all `success` on `e4b2b08edacf1d10337258ffb6949711cc5987ca`. The records commit that writes this row cannot cite its own run |
 
 
 ---

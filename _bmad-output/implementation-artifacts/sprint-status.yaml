@@ -526,7 +526,7 @@ development_status:
   30-4-five-image-publication-contract: done
   30-5-partial-release-recovery: done
   30-6-release-cutover-parity-and-rollback: done
-  30-7-epic-30-retro-blockers: review  # 2026-11-16: retro A1/A2 (items 91, 92) from spec-30-7-epic-30-retro-blockers.md; items 91 and 92 move to done only after green push CI on the final commit.
+  30-7-epic-30-retro-blockers: done  # 2026-11-16: retro A1/A2 (items 91, 92) from spec-30-7-epic-30-retro-blockers.md, landed in e4b2b08e; push CI 43862752990 (CI), CodeQL, Commitlint and Qualify Builds publication green on that exact commit.
   epic-30-retrospective: done  # 2026-11-16: retro complete (epic-30-retro-2026-11-16.md, machine verdict rejected: current-set recovery fails closed on runners (CRLF render mismatch) and the production recovery job runs @main Builds actions; A1-A11 proposed).
 
   # Epic 31: OpenBao Secrets Platform and Runtime Secret-Store Migration
@@ -972,13 +972,13 @@ action_items:
     epic: 30
     action: "Fix current-set retained-byte recovery: render the tagged deployment through Git attributes (git archive, not git show plus write_text) in container-publication-contract.py verify_tagged_deployment, because CRLF redis-stack.conf renders redis-stack-config-444ff7t4hh on the runner and LF renders tfmk6ftkcm, and add a CRLF fixture that fails today (retro F1)"
     owner: "Amelia, Murat"
-    status: open
+    status: done  # 2026-11-16: Story 30.7 (e4b2b08e); push CI 43862752990 (CI), CodeQL, Commitlint and Qualify Builds publication green on that exact commit.
     ref: "_bmad-output/implementation-artifacts/epic-30-retro-2026-11-16.md"
   - id: "epic-30-retro-item-92-pin-initialize-dotnet-and-initialize-bui"
     epic: 30
     action: "Pin initialize-dotnet and initialize-build in recover-partial-release.yml (lines 120, 167, 250, 253) to the approved Builds SHA, invert the CiTestInventoryTests allow-list that accepts initialize-build@main in jobs holding id-token or contents write, and in the same pass SHA-pin third-party actions, set persist-credentials false, record provenance for the 49c913da curl re-pin and digest-pin ContainerBaseImage (retro F2, F13)"
     owner: "Amelia (Winston reviews)"
-    status: open
+    status: done  # 2026-11-16: Story 30.7 (e4b2b08e); push CI 43862752990 (CI), CodeQL, Commitlint and Qualify Builds publication green on that exact commit.
     ref: "_bmad-output/implementation-artifacts/epic-30-retro-2026-11-16.md"
   - id: "epic-30-retro-item-93-restore-execution-of-the-eight-category"
     epic: 30
