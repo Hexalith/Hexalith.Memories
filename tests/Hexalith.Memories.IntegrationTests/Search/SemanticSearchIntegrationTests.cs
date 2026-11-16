@@ -480,6 +480,7 @@ public class SemanticSearchIntegrationTests
 
     [Fact]
     [Trait("Category", "Performance")]
+    [Trait("Category", "IntegrationSlow")]
     public async Task SearchAsync_LatencySmokeTest_10ConcurrentQueries_ShouldBeFast()
     {
         // Arrange — seed 10K indexed memory units to match the story acceptance criteria

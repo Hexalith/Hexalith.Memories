@@ -43,7 +43,6 @@ public class ContentExtractionClientTests
     }
 
     [Fact]
-    [Trait("Category", "Integration")]
     public async Task ExtractAsync_PlainText_ShouldReturnContentUnchanged()
     {
         // Arrange
@@ -62,7 +61,6 @@ public class ContentExtractionClientTests
     }
 
     [Fact]
-    [Trait("Category", "Integration")]
     public async Task ExtractAsync_Pdf_ShouldReturnExtractedText()
     {
         // Arrange
@@ -83,7 +81,6 @@ public class ContentExtractionClientTests
     }
 
     [Fact]
-    [Trait("Category", "Integration")]
     public async Task ExtractAsync_Markdown_ShouldPreserveStructure()
     {
         // Arrange
@@ -104,7 +101,6 @@ public class ContentExtractionClientTests
     }
 
     [Fact]
-    [Trait("Category", "Integration")]
     public async Task ExtractAsync_ShouldComputeCorrectSha256Hash()
     {
         // Arrange
@@ -124,7 +120,6 @@ public class ContentExtractionClientTests
     }
 
     [Fact]
-    [Trait("Category", "Integration")]
     public async Task ExtractAsync_NullContentType_ShouldDefaultToOctetStream()
     {
         // Arrange
@@ -143,7 +138,6 @@ public class ContentExtractionClientTests
     }
 
     [Fact]
-    [Trait("Category", "Integration")]
     public async Task ExtractAsync_EmptyContentType_ShouldDefaultToOctetStream()
     {
         // Arrange
@@ -162,7 +156,6 @@ public class ContentExtractionClientTests
     }
 
     [Fact]
-    [Trait("Category", "Integration")]
     public async Task ExtractAsync_EmptyBytes_ShouldThrowKreuzbergValidationException()
     {
         // Arrange — Kreuzberg validates input before extraction and rejects empty data
@@ -179,7 +172,6 @@ public class ContentExtractionClientTests
     }
 
     [Fact]
-    [Trait("Category", "Integration")]
     public async Task ExtractAsync_ShouldSetExtractedAtTimestamp()
     {
         // Arrange

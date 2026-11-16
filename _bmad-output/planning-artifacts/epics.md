@@ -5625,6 +5625,7 @@ Release maintainers can publish and recover one complete, identity-bound Memorie
 | `30-4-partial-release-recovery` | `30-5-partial-release-recovery` | Partial recovery |
 | `30-5-release-cutover-parity-and-rollback` | `30-6-release-cutover-parity-and-rollback` | Cutover and rollback |
 | No predecessor | `30-7-epic-30-retro-blockers` | Retro blockers |
+| No predecessor | `30-8-restore-orphaned-integration-tests` | Restore integration test selection (A3/item 93) |
 
 **Current inventory:** `tools/release-packages.json` is authoritative and currently contains ten packages, including `Hexalith.Memories.EventStoreExtensions`. The five images are server, MCP compatibility host, access telemetry, access-telemetry clock, and domain service. Historical nine-package/four-image acceptance is superseded for active Epic 30 only; no member is dropped to reproduce it.
 
@@ -5960,6 +5961,24 @@ So that a real recovery can succeed and no moving reference executes where publi
 | Curl provenance | Amelia | `gh api repos/stunnel/static-curl/releases/tags/8.20.0` asset digests and fresh download hashes, recorded in deferred-work R3-B10 | reviewed | complete 2026-11-16 |
 | Push CI on the final commit | Jérôme Piquot | `gh run list --commit e4b2b08edacf1d10337258ffb6949711cc5987ca` | reviewed | complete 2026-11-16: push CI `43862752990` (CI), `43862752951` (CodeQL), `43862752937` (Commitlint) and `43862752591` (Qualify Builds publication) all `success` on `e4b2b08edacf1d10337258ffb6949711cc5987ca`. The records commit that writes this row cannot cite its own run |
 
+
+### Story 30.8: Restore the orphaned Integration tests and guard CI lane selection
+
+**Status:** in-progress. **Owner:** Murat; Amelia implements.
+
+**Origin and order:** Follows Story 30.7; registered 2026-11-16 for Epic 30 retro A3/item 93 (F11). `spec-30-8-restore-orphaned-integration-tests.md` is authoritative. This registration changes no retro verdict.
+
+As a maintainer,
+I want every Integration-tagged test selected by an automatic CI lane and every remaining exclusion reviewed,
+So that retiring or changing a test runner cannot silently drop coverage.
+
+**Acceptance Criteria:** The new Integration inventory fact first fails on exactly the eight Kreuzberg and three latency orphans, then all `CiTestInventoryTests` pass after removing the eight hermetic extraction traits and adding `IntegrationSlow` to the three latency methods. The 60 untagged methods remain registered in DW-731. Green push CI on the exact final commit must show all 11 `ContentExtractionClientTests` cases executed and passed before item 93 and this story become done.
+
+| Checkpoint | Owner | Evidence command or artifact | Review state | Completion state |
+| --- | --- | --- | --- | --- |
+| Baseline red with exactly 11 orphans | Murat | `artifacts/story-30-8/baseline-red.log`; exact command in the spec | independently reviewed 2026-11-16 | verified locally 2026-11-16 |
+| Automatic lane model, reviewed register and restored selection | Amelia; Murat verifies | `CiTestInventoryTests`, extraction class run and xUnit-discovery diff; spec Implementation Notes | independently reviewed; eight defect groups patched and reverified | verified locally 2026-11-16: 181 inventory cases, 11 extraction cases, 3 latency cases; empty discovery delta; 29 mutation refusals |
+| Exact-source push CI and extraction TRX | Murat | Successful push CI on the final commit, with Server.Tests TRX showing 11/11 extraction cases passed | pending | not complete; item 93 stays open |
 
 ---
 

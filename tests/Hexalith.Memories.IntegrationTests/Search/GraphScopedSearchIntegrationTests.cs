@@ -708,6 +708,7 @@ public class GraphScopedSearchIntegrationTests
 
     [Fact]
     [Trait("Category", "Performance")]
+    [Trait("Category", "IntegrationSlow")]
     public async Task SearchAsync_Latency_ShouldBeUnder2Seconds()
     {
         // Arrange — seed a small graph

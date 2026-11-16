@@ -187,6 +187,7 @@ story_execution_order:
       - 30-5-partial-release-recovery
       - 30-6-release-cutover-parity-and-rollback
       - 30-7-epic-30-retro-blockers
+      - 30-8-restore-orphaned-integration-tests
     # Historical citations only; aliases are not active status rows.
     historical_aliases:
       30-2-shared-ci-core-and-module-specific-verification-lanes: 30-1-shared-ci-core-and-module-specific-verification-lanes
@@ -527,6 +528,7 @@ development_status:
   30-5-partial-release-recovery: done
   30-6-release-cutover-parity-and-rollback: done
   30-7-epic-30-retro-blockers: done  # 2026-11-16: retro A1/A2 (items 91, 92) from spec-30-7-epic-30-retro-blockers.md, landed in e4b2b08e; push CI 43862752990 (CI), CodeQL, Commitlint and Qualify Builds publication green on that exact commit.
+  30-8-restore-orphaned-integration-tests: in-progress  # Retro A3/item 93; local guard and selection proof, then exact-final-commit green push CI and 11/11 extraction TRX cases before closure.
   epic-30-retrospective: done  # 2026-11-16: retro complete (epic-30-retro-2026-11-16.md, machine verdict rejected: current-set recovery fails closed on runners (CRLF render mismatch) and the production recovery job runs @main Builds actions; A1-A11 proposed).
 
   # Epic 31: OpenBao Secrets Platform and Runtime Secret-Store Migration
@@ -984,7 +986,7 @@ action_items:
     epic: 30
     action: "Restore execution of the eight Category=Integration ContentExtractionClientTests orphaned when tools/test-release.ps1 was retired, and add an inventory fact that every Integration trait lives in a project an integration lane runs (retro F11)"
     owner: "Murat"
-    status: open
+    status: open  # Story 30.8; closes only after green push CI on the exact final commit and 11/11 ContentExtractionClientTests TRX cases.
     ref: "_bmad-output/implementation-artifacts/epic-30-retro-2026-11-16.md"
   - id: "epic-30-retro-item-94-register-the-follow-up-story-release-pat"
     epic: 30

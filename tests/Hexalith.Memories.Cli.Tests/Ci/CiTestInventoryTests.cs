@@ -7,8 +7,11 @@ namespace Hexalith.Memories.Cli.Tests.Ci;
 
 using System.Diagnostics;
 using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Xml.Linq;
 
 using Shouldly;
 
@@ -36,6 +39,22 @@ public sealed partial class CiTestInventoryTests
         "access_telemetry_c1",
         "access_telemetry_c1_interchange",
         "access_telemetry_lifecycle",
+    ];
+
+    // Story 30.8: source-method counts, not expanded theory cases. DW-731 owns the eight
+    // untagged IntegrationTests files; the other two entries are deliberately opt-in/inert.
+    private static readonly (string File, int Count, string Reason)[] ReviewedUnselectedTests =
+    [
+        ("tests/Hexalith.Memories.IntegrationTests/Fixtures/OllamaOidcFakeServerTests.cs", 11, "DW-731"),
+        ("tests/Hexalith.Memories.IntegrationTests/Fixtures/PublicSurfaceStabilityTests.cs", 5, "DW-731"),
+        ("tests/Hexalith.Memories.IntegrationTests/Ingestion/InventoryWirePaginationIntegrationTests.cs", 1, "DW-731"),
+        ("tests/Hexalith.Memories.IntegrationTests/Ingestion/MemoryErasureProcessProtocolTests.cs", 5, "DW-731"),
+        ("tests/Hexalith.Memories.IntegrationTests/Ingestion/ReferencedSourceProducerIntegrationTests.cs", 4, "DW-731"),
+        ("tests/Hexalith.Memories.IntegrationTests/Ingestion/SourceInventoryProducerIntegrationTests.cs", 17, "DW-731"),
+        ("tests/Hexalith.Memories.IntegrationTests/Ingestion/TenantIngestionLifecycleIntegrationTests.cs", 5, "DW-731"),
+        ("tests/Hexalith.Memories.IntegrationTests/Ingestion/UnitOwnershipAuthorityIntegrationTests.cs", 12, "DW-731"),
+        ("tests/Hexalith.Memories.IntegrationTests/Fixtures/MemoryErasureProcessWorker.cs", 1, "Pipe-worker entry point; does nothing under discovery."),
+        ("tests/Hexalith.Memories.Cli.Tests/Telemetry/CliTelemetryStartupLatencyBenchmark.cs", 1, "Opt-in Benchmark outside the benchmark project."),
     ];
 
     // Story 14.5: the closed structured-entry status vocabulary of deferred-work.md (DW-2).
@@ -271,6 +290,68 @@ public sealed partial class CiTestInventoryTests
             $"ci.yml:integration-fast:Run fast Docker-backed integration tests:{ciFastCommand}",
             $"nightly.yml:integration-fast:Run Tier 3 integration tests (fast lane, excludes IntegrationSlow and Performance):{nightlyFastCommand}",
         ]);
+    }
+
+    [Fact]
+    public void IntegrationTraits_EveryTaggedTestIsSelectedByAnAutomaticCiLane()
+    {
+        string repoRoot = GetRepoRoot();
+        var lanes = GetAutomaticTestLanes(repoRoot);
+        var tests = ScanInventoriedTests(repoRoot);
+        var integrationTests = tests.Where(static test => test.Categories.Contains("Integration", StringComparer.Ordinal)).ToArray();
+        integrationTests.ShouldNotBeEmpty("Integration-tagged source tests must exist for this guard to be meaningful.");
+        string[] orphans = [.. integrationTests
+            .Where(test => !lanes.Any(lane => lane.Projects.Contains(test.Project, StringComparer.Ordinal) && MatchesCategoryFilter(test.Categories, lane.Filter)))
+            .Select(static test => $"{test.File}:{test.Line}: {test.Name} [Category={string.Join(",", test.Categories)}]")
+            .Order(StringComparer.Ordinal)];
+        orphans.ShouldBeEmpty($"Every Integration-tagged test needs an automatic CI lane. Found {orphans.Length} orphans:\n{string.Join('\n', orphans)}");
+    }
+
+    [Fact]
+    public void UnselectedTests_MatchTheReviewedRegister()
+    {
+        string repoRoot = GetRepoRoot();
+        var lanes = GetAutomaticTestLanes(repoRoot);
+        var tests = ScanInventoriedTests(repoRoot);
+        string[] unselected = [.. tests
+            .Where(test => !lanes.Any(lane => lane.Projects.Contains(test.Project, StringComparer.Ordinal) && MatchesCategoryFilter(test.Categories, lane.Filter)))
+            .GroupBy(static test => test.File, StringComparer.Ordinal)
+            .Select(static group => $"{group.Key}: {group.Count()}")
+            .Order(StringComparer.Ordinal)];
+        ReviewedUnselectedTests.Select(static entry => entry.File).Distinct(StringComparer.Ordinal).Count()
+            .ShouldBe(ReviewedUnselectedTests.Length, "The reviewed register must not contain duplicate files.");
+        string deferredWork = File.ReadAllText(Path.Combine(repoRoot, "_bmad-output", "implementation-artifacts", "deferred-work.md"));
+        foreach (var entry in ReviewedUnselectedTests)
+        {
+            tests.Count(test => test.File == entry.File).ShouldBeGreaterThanOrEqualTo(entry.Count, $"Stale reviewed register entry: {entry.File}");
+            entry.Reason.ShouldNotBeNullOrWhiteSpace($"Every register entry needs a DW entry or design reason: {entry.File}");
+            if (entry.Reason.StartsWith("DW-", StringComparison.Ordinal))
+            {
+                deferredWork.ShouldContain($"### {entry.Reason}:");
+            }
+        }
+
+        unselected.ShouldBe(ReviewedUnselectedTests.Select(static entry => $"{entry.File}: {entry.Count}").Order(StringComparer.Ordinal).ToArray(),
+            "Unselected source methods must exactly match the reviewed register; review every new orphan and shrink entries when tests acquire a lane.");
+    }
+
+    [Theory]
+    [InlineData("", "", true)]
+    [InlineData("", "Category=Integration", false)]
+    [InlineData("", "Category!=Integration&Category!=Benchmark", true)]
+    [InlineData("Integration", "Category=Integration", true)]
+    [InlineData("Integration,Performance", "Category=Integration&Category!=Performance", false)]
+    [InlineData("Integration,IntegrationSlow,Performance", "Category=IntegrationSlow", true)]
+    [InlineData("Integration", "Category=Integration&Category=IntegrationSlow", true)]
+    [InlineData("IntegrationSlow", "Category=Integration&Category=IntegrationSlow", true)]
+    [InlineData("Performance", "Category=Integration&Category=IntegrationSlow", false)]
+    [InlineData("Integration,Benchmark", "Category!=Integration&Category!=Benchmark", false)]
+    [InlineData("Benchmark", "Category!=Integration&Category!=Benchmark", false)]
+    [InlineData("Performance", "Category!=Integration&Category!=Benchmark", true)]
+    [InlineData("Integration,IntegrationSlow", "Category=Integration&Category=IntegrationSlow&Category!=IntegrationSlow", false)]
+    public void CategorySelection_UsesMtpAnyIncludeAndNoExclude(string categories, string filter, bool expected)
+    {
+        MatchesCategoryFilter(categories.Split(',', StringSplitOptions.RemoveEmptyEntries), filter).ShouldBe(expected);
     }
 
     [Fact]
@@ -2626,6 +2707,207 @@ public sealed partial class CiTestInventoryTests
     // regex mirrors DEFERRED_FIELD_RE exactly so the guard binds the invariant that matters.
     [GeneratedRegex(@"^\s*-\s+(?<label>ID|Status|Source story|Target artifact|Re-open trigger|Rationale):\s*(?<value>.*?)\s*$", RegexOptions.IgnoreCase)]
     private static partial Regex DeferredConsumerFieldRegex();
+
+    private static bool MatchesCategoryFilter(IEnumerable<string> categories, string filter)
+    {
+        string[] parts = filter.Split('&', StringSplitOptions.RemoveEmptyEntries);
+        parts.ShouldAllBe(static part => part.StartsWith("Category=", StringComparison.Ordinal) || part.StartsWith("Category!=", StringComparison.Ordinal),
+            $"Unmodelled category filter: {filter}");
+        string[] includes = [.. parts.Where(static part => part.StartsWith("Category=", StringComparison.Ordinal)).Select(static part => part["Category=".Length..])];
+        string[] excludes = [.. parts.Where(static part => part.StartsWith("Category!=", StringComparison.Ordinal)).Select(static part => part["Category!=".Length..])];
+        return (includes.Length == 0 || categories.Intersect(includes, StringComparer.Ordinal).Any()) &&
+            !categories.Intersect(excludes, StringComparer.Ordinal).Any();
+    }
+
+    private static (string Inventory, string[] Projects, string Filter)[] GetAutomaticTestLanes(string repoRoot)
+    {
+        // Reviewed SHA-256 of the entire LF-normalized runner, including routing, MTP
+        // argument generation and execution. Any drift requires reviewing this lane model
+        // before updating the pin; preserved snippets alone cannot prove the final arguments.
+        string script = File.ReadAllText(Path.Combine(repoRoot, "tools", "test.sh")).Replace("\r", string.Empty, StringComparison.Ordinal);
+        Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(script))).ShouldBe(
+            "8b79d7a5b3b78e0dbdfa1a405c5ad56c107e8624620f747c88925d5de6265902",
+            "tools/test.sh changed; review the complete runner and lane model before updating its normalized content hash.");
+
+        List<(string Inventory, string[] Projects, string Filter)> lanes = [];
+        string workflowsDirectory = Path.Combine(repoRoot, ".github", "workflows");
+        foreach (string path in Directory.EnumerateFiles(workflowsDirectory).Where(static path => path.EndsWith(".yml", StringComparison.Ordinal) || path.EndsWith(".yaml", StringComparison.Ordinal)).Order(StringComparer.Ordinal))
+        {
+            string[] lines = File.ReadAllLines(path);
+            string workflow = Path.GetFileName(path);
+            lines.ShouldAllBe(static line => !line.Contains("tools/test.ps1", StringComparison.Ordinal),
+                $"{workflow}: tools/test.ps1 is not modelled; review the lane model before adding it.");
+            int eventStart = Array.FindIndex(lines, static line => line is "on:" or "\"on\":" or "'on':");
+            eventStart.ShouldBeGreaterThanOrEqualTo(0, $"{workflow}: unmodelled workflow trigger shape.");
+            string[] eventLines = [.. lines.Skip(eventStart + 1).TakeWhile(static line => string.IsNullOrWhiteSpace(line) || line.StartsWith(' '))];
+            bool automatic = eventLines.Any(static line => Regex.IsMatch(line, @"^  (push|pull_request|schedule):"));
+            int modelledCommands = 0;
+            foreach (string job in GetWorkflowJobNames(lines))
+            {
+                string[] jobLines = GetWorkflowJobLines(lines, job);
+                foreach (ReleaseWorkflowStep step in ParseReleaseWorkflowSteps(jobLines))
+                {
+                    string command = step.Run ?? step.RunBlock;
+                    if (command.Contains("tools/test.sh", StringComparison.Ordinal))
+                    {
+                        modelledCommands++;
+                        string owner = $"{workflow}:{job}:{step.Name}";
+                        Regex.Matches(command, @"(?<!\S)--filter(?=\s|=|$)").Count.ShouldBe(
+                            1, $"{owner}: test.sh requires exactly one --filter argument.");
+                        Match match = Regex.Match(command.Trim(),
+                            """^bash \./tools/test\.sh --filter "(?<filter>[^"]+)"(?: --configuration Release)?(?: --no-build)?(?: --coverage)?(?: --results-directory [A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*)?$""");
+                        match.Success.ShouldBeTrue($"{owner}: unsupported test.sh command shape; expected one direct bash ./tools/test.sh invocation without shell wrappers or operators: {command.Trim()}");
+                        string filter = match.Groups["filter"].Value;
+                        (string inventory, string effectiveFilter) = filter switch
+                        {
+                            "Category!=Integration" => ("tools/test-projects.unit-contract.txt", "Category!=Integration&Category!=Benchmark"),
+                            "Category=Integration&Category!=IntegrationSlow&Category!=Performance" => ("tools/test-projects.integration-fast.txt", filter),
+                            "Category=IntegrationSlow" => ("tools/test-projects.integration-fast.txt", filter),
+                            "Category=Benchmark" => ("tools/test-projects.benchmark.txt", string.Empty),
+                            _ => throw new InvalidOperationException($"{owner}: unmodelled test.sh filter '{filter}'."),
+                        };
+                        if (automatic && GetWorkflowJobScalar(jobLines, "if") is null && step.If is null)
+                        {
+                            lanes.Add((inventory, ReadInventory(Path.Combine(repoRoot, inventory)), effectiveFilter));
+                        }
+                    }
+                }
+            }
+
+            modelledCommands.ShouldBe(lines.Count(static line => line.Contains("tools/test.sh", StringComparison.Ordinal)),
+                $"{workflow}: test.sh command outside the modelled job/step shape.");
+        }
+
+        foreach (string inventory in new[] { "tools/test-projects.unit-contract.txt", "tools/test-projects.integration-fast.txt", "tools/test-projects.benchmark.txt" })
+        {
+            lanes.ShouldContain(lane => lane.Inventory == inventory, $"{inventory} needs an unconditional lane on push, pull_request or schedule.");
+        }
+
+        return [.. lanes];
+    }
+
+    private static (string Project, string File, int Line, string Name, string[] Categories)[] ScanInventoriedTests(string repoRoot)
+    {
+        string[] projects = [.. new[] { "unit-contract", "integration-fast", "benchmark" }
+            .SelectMany(inventory => ReadInventory(Path.Combine(repoRoot, "tools", $"test-projects.{inventory}.txt")))
+            .Distinct(StringComparer.Ordinal)];
+        List<(string Project, string File, int Line, string Name, string[] Categories)> tests = [];
+        foreach (string project in projects)
+        {
+            XDocument projectDocument = XDocument.Load(Path.Combine(repoRoot, project));
+            projectDocument.Descendants().ShouldNotContain(
+                static element => element.Name.LocalName == "Compile" || element.Name.LocalName == "EnableDefaultCompileItems" || element.Name.LocalName == "EnableDefaultItems" || element.Name.LocalName == "DefaultItemExcludes" || element.Name.LocalName == "DefaultItemExcludesInProjectFolder",
+                $"{project}: unsupported source-membership declaration; the scanner requires default Compile membership without explicit includes, removes or exclusions.");
+            HashSet<string> classDeclarations = new(StringComparer.Ordinal);
+            string projectDirectory = Path.GetDirectoryName(Path.Combine(repoRoot, project))!;
+            foreach (string path in Directory.EnumerateFiles(projectDirectory, "*.cs", SearchOption.AllDirectories)
+                .Where(static path => !path.Replace('\\', '/').Contains("/obj/", StringComparison.Ordinal) && !path.Replace('\\', '/').Contains("/bin/", StringComparison.Ordinal))
+                .Order(StringComparer.Ordinal))
+            {
+                string file = Path.GetRelativePath(repoRoot, path).Replace('\\', '/');
+                string[] lines = File.ReadAllLines(path);
+                string source = string.Join('\n', lines);
+                foreach (Match definition in Regex.Matches(source, @"\bclass\s+(?<name>\w+)[^{;]*:\s*(?:(?:global::)?Xunit\.)?(?:FactAttribute|TheoryAttribute)\b"))
+                {
+                    int definitionLine = source[..definition.Index].Count(static character => character == '\n') + 1;
+                    (file == "tests/Hexalith.Memories.Server.Tests/RunnableSkippedFactAttribute.cs" && definition.Groups["name"].Value == "RunnableSkippedFactAttribute")
+                        .ShouldBeTrue($"{file}:{definitionLine}: unsupported custom test attribute definition; only the reviewed RunnableSkippedFactAttribute is modelled.");
+                }
+
+                int conditionalDepth = 0;
+                string? namespaceName = null;
+                string? className = null;
+                List<string> classCategories = [];
+                List<string> pendingClassCategories = [];
+                List<string> methodCategories = [];
+                bool pendingTrait = false;
+                int testLine = 0;
+                for (int index = 0; index < lines.Length; index++)
+                {
+                    string line = lines[index];
+                    string trimmed = line.Trim();
+                    string location = $"{file}:{index + 1}";
+                    if (Regex.IsMatch(trimmed, @"^#\s*if\b"))
+                    {
+                        conditionalDepth++;
+                    }
+                    else if (Regex.IsMatch(trimmed, @"^#\s*endif\b"))
+                    {
+                        conditionalDepth--;
+                    }
+
+                    Match namespaceMatch = Regex.Match(line, @"^namespace (?<name>[\w.]+);$");
+                    if (namespaceMatch.Success)
+                    {
+                        namespaceName = namespaceMatch.Groups["name"].Value;
+                    }
+
+                    if (trimmed.StartsWith('[') && Regex.IsMatch(trimmed, @"(?:^\[\s*|,\s*)(?:global::)?(?:Xunit\.)?(?:Fact|Theory|RunnableSkippedFact|Trait)(?:Attribute)?\b"))
+                    {
+                        trimmed.Contains("global::", StringComparison.Ordinal).ShouldBeFalse($"{location}: unsupported test attribute qualification.");
+                        int indent = line.Length - line.TrimStart().Length;
+                        (indent is 0 or 4).ShouldBeTrue($"{location}: unmodelled Fact, Theory or Trait indent {indent}.");
+                        Match trait = Regex.Match(trimmed, "^\\[Trait\\(\"(?<key>[^\"]+)\", \"(?<value>[^\"]+)\"\\)\\]$");
+                        if (trimmed.StartsWith("[Trait", StringComparison.Ordinal))
+                        {
+                            conditionalDepth.ShouldBe(0, $"{location}: conditional Trait metadata is not modelled; conditional test bodies may remain unchanged.");
+                            trait.Success.ShouldBeTrue($"{location}: unmodelled Trait shape.");
+                            if (trait.Groups["key"].Value == "Category")
+                            {
+                                (indent == 0 ? pendingClassCategories : methodCategories).Add(trait.Groups["value"].Value);
+                            }
+
+                            pendingTrait = indent == 4;
+                        }
+                        else
+                        {
+                            indent.ShouldBe(4, $"{location}: test attributes must belong to a top-level class member.");
+                            Regex.IsMatch(trimmed, @"^\[(Fact|Theory|RunnableSkippedFact)(\(.*\))?\]$").ShouldBeTrue($"{location}: unmodelled test attribute shape.");
+                            testLine.ShouldBe(0, $"{location}: multiple test attributes on one member are not modelled.");
+                            testLine = index + 1;
+                        }
+                    }
+
+                    Match classMatch = Regex.Match(line, @"^(?<indent> *)(?:(?:public|internal|private|protected|sealed|abstract|static|partial) +)*class (?<name>\w+)\b");
+                    if (classMatch.Success)
+                    {
+                        if (classMatch.Groups["indent"].Length == 0)
+                        {
+                            className = classMatch.Groups["name"].Value;
+                            classDeclarations.Add($"{namespaceName}.{className}").ShouldBeTrue(
+                                $"{location}: multiple declarations of {namespaceName}.{className} are not modelled; partial class traits require explicit review.");
+                            classCategories = [.. pendingClassCategories];
+                            pendingClassCategories.Clear();
+                        }
+                        else
+                        {
+                            pendingTrait.ShouldBeFalse($"{location}: a Trait on a nested class is not modelled.");
+                            testLine.ShouldBe(0, $"{location}: a test attribute on a nested class is not modelled.");
+                        }
+                    }
+
+                    if (testLine != 0 && Regex.IsMatch(line, @"^    public "))
+                    {
+                        Match method = Regex.Match(line, @"^    public .*?\b(?<name>\w+)\s*\(");
+                        method.Success.ShouldBeTrue($"{location}: unmodelled test method declaration.");
+                        namespaceName.ShouldNotBeNullOrWhiteSpace($"{location}: a file-scoped namespace is required.");
+                        className.ShouldNotBeNullOrWhiteSpace($"{location}: top-level test class was not found.");
+                        tests.Add((project, file, testLine, $"{namespaceName}.{className}.{method.Groups["name"].Value}",
+                            [.. classCategories.Concat(methodCategories).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)]));
+                        testLine = 0;
+                        methodCategories.Clear();
+                        pendingTrait = false;
+                    }
+                }
+
+                testLine.ShouldBe(0, $"{file}:{testLine}: test attribute without a modelled public method.");
+                pendingTrait.ShouldBeFalse($"{file}: Trait without a modelled test method.");
+                pendingClassCategories.ShouldBeEmpty($"{file}: Trait without a modelled top-level class.");
+            }
+        }
+
+        return [.. tests];
+    }
 
     private static string[] ReadInventory(string path)
         => File.ReadAllLines(path)

@@ -15,6 +15,7 @@ Release maintainers can publish and recover one complete, identity-bound Memorie
 - Story 30.5: Partial-Release Recovery
 - Story 30.6: Release Cutover Parity and Rollback
 - Story 30.7: Epic 30 Retro Blockers
+- Story 30.8: Restore the orphaned Integration tests and guard CI lane selection
 
 ## Requirements & Constraints
 
@@ -40,6 +41,7 @@ Release maintainers can publish and recover one complete, identity-bound Memorie
 
 - The order is 30.1 through 30.6. Story 30.4 also needs an approved frozen multi-container identity, and 30.5 needs qualified recovery evidence. Story 30.6 needs 30.3 through 30.5 done.
 - Story 30.7 follows the Epic 30 retrospective and carries its blocking actions A1 and A2 (items 91 and 92). Those items close only after green push CI on its final commit.
+- Story 30.8 follows 30.7 and carries A3 (item 93): restore the eight hermetic extraction cases to unit-contract, route three latency cases to IntegrationSlow, guard automatic lane selection, and register the 60 untagged methods in DW-731. Its spec is authoritative; item 93 and the story close only after green exact-final-commit push CI with all 11 extraction cases passed in Server.Tests TRX.
 - Epic-level labels and planned tables for 30.4 through 30.6 are historical. Story specs record 30.4 and 30.5 as done, and their checkpoints and File Scopes are authoritative. Earlier runs predate 30.5, so final-code live proof is still owed as the next owner-dispatched additive snapshot.
 - Earlier story numbers are historical aliases and must never be globally rewritten.
 - Story 27.3 owns the `production-deployment-verification` lane, and Epic 30 never gates it. Epic 31 owns deployed OpenBao and the runtime Dapr secret-store migration.

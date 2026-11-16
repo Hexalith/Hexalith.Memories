@@ -604,6 +604,7 @@ public class SyntacticSearchIntegrationTests
 
     [Fact]
     [Trait("Category", "Performance")]
+    [Trait("Category", "IntegrationSlow")]
     public async Task SearchAsync_LatencySmokeTest_10ConcurrentQueries_ShouldBeFast()
     {
         // Arrange — seed 100+ documents
