@@ -1,0 +1,143 @@
+{
+  "assets": [
+    {
+      "digest": "sha256:2e895c86831ba5dbd69d14abe1f62db5e8e3937565ce1bd6d2e33a9be6f7b490",
+      "name": "hexalith-memories-production.yaml",
+      "size": 51231
+    },
+    {
+      "digest": "sha256:c822b899dd7eec8006a3214747a04aa1c57d7399bd6f6891e9fbc43ae35cab2e",
+      "name": "hexalith-memories-release-evidence.tar.gz",
+      "size": 57045
+    },
+    {
+      "digest": "sha256:6de3b7f6331ca057d29a4a54314ce67077484f6873c569f288e4135366ff8f9a",
+      "name": "hexalith-memories-release-evidence.tar.gz.sha256.json",
+      "size": 158
+    },
+    {
+      "digest": "sha256:90285172e8137d6d21001767fc8995ea468ce8c8799c531160008d30e7c357fd",
+      "name": "Hexalith.Memories.Aspire.4.0.0.nupkg",
+      "size": 13715
+    },
+    {
+      "digest": "sha256:ae562a0e041c96d67d6cd716e74ccae444f5ba889e4ad533bc57e5c1d7ad8422",
+      "name": "Hexalith.Memories.Cli.4.0.0.nupkg",
+      "size": 2673759
+    },
+    {
+      "digest": "sha256:35590fcb8147e32a602e9797fb24842bdb9cc3f77a0515139f58212e0ec26c31",
+      "name": "Hexalith.Memories.Client.Rest.4.0.0.nupkg",
+      "size": 41883
+    },
+    {
+      "digest": "sha256:bac5f649a2ca59e8bf0ac5144f31eb42fb97a3a435f25b95521781000e7f5e36",
+      "name": "Hexalith.Memories.Contracts.4.0.0.nupkg",
+      "size": 364142
+    },
+    {
+      "digest": "sha256:427dc64becf7e34a7997f4563d202eea86f2ed29f8f702c74a081ff33e020001",
+      "name": "Hexalith.Memories.EventStore.4.0.0.nupkg",
+      "size": 78893
+    },
+    {
+      "digest": "sha256:e0a8d179ff45bcbd8c3b26ae211c59e859ba0fdb88f07b3b7b8622c44d860745",
+      "name": "Hexalith.Memories.EventStoreExtensions.4.0.0.nupkg",
+      "size": 7021
+    },
+    {
+      "digest": "sha256:68947e087a0359c22553213c2d2de13e90fb2b2f6e6b0c226211e19a79604225",
+      "name": "Hexalith.Memories.Mcp.4.0.0.nupkg",
+      "size": 37371
+    },
+    {
+      "digest": "sha256:950aec21439d604c5faf82b7b731bd46f0c1b433b8f2f0285a1ec1ee3fe29c9c",
+      "name": "Hexalith.Memories.Redis.4.0.0.nupkg",
+      "size": 5380
+    },
+    {
+      "digest": "sha256:09ce52458b5bda56a2bfba158ce98d2733d2b806d4616f39ad463d5ce3a021c4",
+      "name": "Hexalith.Memories.ServiceDefaults.4.0.0.nupkg",
+      "size": 23323
+    },
+    {
+      "digest": "sha256:684a29710c7ae5db8e57502d1719c73fb3f86c557ab3b54e6f215b29aa551241",
+      "name": "Hexalith.Memories.Telemetry.4.0.0.nupkg",
+      "size": 8913
+    }
+  ],
+  "classification": "targeted read-only v4.0.0 proof; not a complete identity snapshot",
+  "images": {
+    "memories": {
+      "digest": "sha256:9d1604b92420edd5cb1f7ce793fa62e270002f9c276ad4e70437053b1bf7a88b",
+      "mediaType": "application/vnd.oci.image.index.v1+json"
+    },
+    "memories-access-telemetry": {
+      "digest": "sha256:dbd73797f5fccfb86ac17053fea28a439754e8cb22804b67e2255cacd4308ad8",
+      "mediaType": "application/vnd.oci.image.index.v1+json"
+    },
+    "memories-access-telemetry-clock": {
+      "digest": "sha256:7bd3deadf8d7fbb252f8224d8f014ef40e5eb931f71c1b242a6f83df351b26f6",
+      "mediaType": "application/vnd.oci.image.index.v1+json"
+    },
+    "memories-domain-service": {
+      "digest": "sha256:8c000a1ed24d9e873ae2513acfa555db608ac352c9d886b038c906c76b2112d5",
+      "mediaType": "application/vnd.oci.image.index.v1+json"
+    },
+    "memories-mcp": {
+      "digest": "sha256:4108162da95e5ce1fc34802c588ace896d0c484c3bcc8f4b46281361ebceb7ca",
+      "mediaType": "application/vnd.oci.image.index.v1+json"
+    }
+  },
+  "observedDate": "2026-11-15",
+  "packages": {
+    "Hexalith.Memories.Aspire": {
+      "listed": true
+    },
+    "Hexalith.Memories.Cli": {
+      "listed": true
+    },
+    "Hexalith.Memories.Client.Rest": {
+      "listed": true
+    },
+    "Hexalith.Memories.Contracts": {
+      "listed": true
+    },
+    "Hexalith.Memories.EventStore": {
+      "listed": true
+    },
+    "Hexalith.Memories.EventStoreExtensions": {
+      "listed": true
+    },
+    "Hexalith.Memories.Mcp": {
+      "listed": true
+    },
+    "Hexalith.Memories.Redis": {
+      "listed": true
+    },
+    "Hexalith.Memories.ServiceDefaults": {
+      "listed": true
+    },
+    "Hexalith.Memories.Telemetry": {
+      "listed": true
+    }
+  },
+  "partialTagsWithoutRelease": [
+    "v3.0.19",
+    "v3.0.20",
+    "v3.0.21",
+    "v3.0.22"
+  ],
+  "release": {
+    "draft": false,
+    "html_url": "https://github.com/Hexalith/Hexalith.Memories/releases/tag/v4.0.0",
+    "id": 444271946,
+    "prerelease": false,
+    "tag_name": "v4.0.0",
+    "target_commitish": "main"
+  },
+  "tag": {
+    "commit": "c4ee997702ede948ada5f99eeae7b3782e92003b",
+    "object": "c4ee997702ede948ada5f99eeae7b3782e92003b"
+  }
+}

@@ -1,0 +1,12 @@
+test_evidence_failure_preserves_completed_side_effects_and_marks_aggregate_partial (release_orchestration_test.ReleaseOrchestrationTests.test_evidence_failure_preserves_completed_side_effects_and_marks_aggregate_partial) ... ok
+test_failed_frozen_authorization_refuses_both_families_and_retains_aggregate (release_orchestration_test.ReleaseOrchestrationTests.test_failed_frozen_authorization_refuses_both_families_and_retains_aggregate) ... ok
+test_pack_release_package_only_propagates_generated_validation_failure (release_orchestration_test.ReleaseOrchestrationTests.test_pack_release_package_only_propagates_generated_validation_failure) ... ok
+test_pack_release_package_only_stops_after_real_package_validation (release_orchestration_test.ReleaseOrchestrationTests.test_pack_release_package_only_stops_after_real_package_validation) ... ok
+test_pack_release_prebuilds_containers_and_copies_versioned_deployment_asset (release_orchestration_test.ReleaseOrchestrationTests.test_pack_release_prebuilds_containers_and_copies_versioned_deployment_asset) ... ok
+test_publish_release_attempts_both_families_and_writes_aggregate_partial_state (release_orchestration_test.ReleaseOrchestrationTests.test_publish_release_attempts_both_families_and_writes_aggregate_partial_state) ... ok
+test_publish_release_requires_both_families_for_success (release_orchestration_test.ReleaseOrchestrationTests.test_publish_release_requires_both_families_for_success) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 6.224s
+
+OK

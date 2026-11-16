@@ -1,0 +1,15 @@
+{
+  "command": [
+    "python3",
+    "-B",
+    "tools/release-identity-snapshot.py",
+    "capture",
+    "--output",
+    "_bmad-output/implementation-artifacts/30-6-cutover/identity-post-review.json"
+  ],
+  "startedAtUtc": "2026-11-15T23:50:39.449707+00:00",
+  "finishedAtUtc": "2026-11-15T23:50:41.464487+00:00",
+  "exitCode": 1,
+  "stdout": "",
+  "stderr": "[release-identity] refused: GitHub releases: unsafe pagination Link\n"
+}

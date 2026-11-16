@@ -40,3 +40,6 @@ tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs whitespace=cr-at-eo
 
 # Preserve the catalog wrapper CRLF convention in whitespace checks.
 Directory.Packages.props whitespace=cr-at-eol
+
+# Story 30.6 evidence hashes bind original JSON, receipts, logs and archives.
+_bmad-output/implementation-artifacts/30-6-cutover/** -text

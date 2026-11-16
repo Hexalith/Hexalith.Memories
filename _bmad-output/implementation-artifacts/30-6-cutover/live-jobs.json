@@ -1,0 +1,2113 @@
+[
+  {
+    "command": [
+      "gh",
+      "api",
+      "repos/Hexalith/Hexalith.Memories/actions/runs/43432588932/jobs?per_page=100"
+    ],
+    "jobs": [
+      {
+        "completed_at": "2026-11-13T13:19:04Z",
+        "conclusion": "success",
+        "html_url": "https://github.com/Hexalith/Hexalith.Memories/actions/runs/43432588932/job/131909550862",
+        "id": 131909550862,
+        "name": "release-source",
+        "started_at": "2026-11-13T13:18:54Z",
+        "steps": [
+          {
+            "completed_at": "2026-11-13T13:18:55Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "started_at": "2026-11-13T13:18:55Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-13T13:18:59Z",
+            "conclusion": "success",
+            "name": "Checkout dispatched source",
+            "number": 2,
+            "started_at": "2026-11-13T13:18:55Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-13T13:19:01Z",
+            "conclusion": "success",
+            "name": "Checkout approved Builds source proof",
+            "number": 3,
+            "started_at": "2026-11-13T13:18:59Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-13T13:19:02Z",
+            "conclusion": "success",
+            "name": "Prove current main and exact push CI before approval",
+            "number": 4,
+            "started_at": "2026-11-13T13:19:01Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-13T13:19:02Z",
+            "conclusion": "success",
+            "name": "Require production environment approval rule",
+            "number": 5,
+            "started_at": "2026-11-13T13:19:02Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-13T13:19:02Z",
+            "conclusion": "success",
+            "name": "Post Checkout approved Builds source proof",
+            "number": 9,
+            "started_at": "2026-11-13T13:19:02Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-13T13:19:03Z",
+            "conclusion": "success",
+            "name": "Post Checkout dispatched source",
+            "number": 10,
+            "started_at": "2026-11-13T13:19:02Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-13T13:19:03Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 11,
+            "started_at": "2026-11-13T13:19:03Z",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "completed_at": "2026-11-13T13:38:02Z",
+        "conclusion": "success",
+        "html_url": "https://github.com/Hexalith/Hexalith.Memories/actions/runs/43432588932/job/131909653711",
+        "id": 131909653711,
+        "name": "release",
+        "started_at": "2026-11-13T13:19:31Z",
+        "steps": [
+          {
+            "completed_at": "2026-11-13T13:19:36Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "started_at": "2026-11-13T13:19:32Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-13T13:19:39Z",
+            "conclusion": "success",
+            "name": "Checkout repository",
+            "number": 2,
+            "started_at": "2026-11-13T13:19:36Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-13T13:19:40Z",
+            "conclusion": "success",
+            "name": "Initialize kubectl",
+            "number": 3,
+            "started_at": "2026-11-13T13:19:39Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-13T13:19:40Z",
+            "conclusion": "success",
+            "name": "Install .NET 10 runtime and targeting packs",
+            "number": 4,
+            "started_at": "2026-11-13T13:19:40Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-13T13:22:17Z",
+            "conclusion": "success",
+            "name": "Prepare guarded release from pinned Builds",
+            "number": 5,
+            "started_at": "2026-11-13T13:19:40Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-13T13:22:18Z",
+            "conclusion": "success",
+            "name": "Verify semantic-release configuration offline",
+            "number": 6,
+            "started_at": "2026-11-13T13:22:17Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-13T13:22:23Z",
+            "conclusion": "success",
+            "name": "Validate package inventory before release",
+            "number": 7,
+            "started_at": "2026-11-13T13:22:18Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-13T13:22:28Z",
+            "conclusion": "success",
+            "name": "Initialize both container platforms",
+            "number": 8,
+            "started_at": "2026-11-13T13:22:23Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-13T13:22:29Z",
+            "conclusion": "success",
+            "name": "Require archive transport and isolated health tools",
+            "number": 9,
+            "started_at": "2026-11-13T13:22:28Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-13T13:22:38Z",
+            "conclusion": "success",
+            "name": "Run release preflight",
+            "number": 10,
+            "started_at": "2026-11-13T13:22:29Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-13T13:22:38Z",
+            "conclusion": "success",
+            "name": "Snapshot release tags",
+            "number": 11,
+            "started_at": "2026-11-13T13:22:38Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-13T13:22:39Z",
+            "conclusion": "success",
+            "name": "Reprove current main and exact push CI before publication",
+            "number": 12,
+            "started_at": "2026-11-13T13:22:38Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-13T13:22:39Z",
+            "conclusion": "success",
+            "name": "Recheck production approval rule before publication",
+            "number": 13,
+            "started_at": "2026-11-13T13:22:39Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-13T13:22:42Z",
+            "conclusion": "success",
+            "name": "Exchange GitHub OIDC token for a temporary NuGet key",
+            "number": 14,
+            "started_at": "2026-11-13T13:22:39Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-13T13:37:32Z",
+            "conclusion": "success",
+            "name": "Run semantic-release",
+            "number": 15,
+            "started_at": "2026-11-13T13:22:42Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-13T13:37:32Z",
+            "conclusion": "success",
+            "name": "Detect release publication",
+            "number": 16,
+            "started_at": "2026-11-13T13:37:32Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-13T13:37:32Z",
+            "conclusion": "skipped",
+            "name": "Alert partial release publish",
+            "number": 17,
+            "started_at": "2026-11-13T13:37:32Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-13T13:37:32Z",
+            "conclusion": "skipped",
+            "name": "Archive release failure diagnostics",
+            "number": 18,
+            "started_at": "2026-11-13T13:37:32Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-13T13:37:33Z",
+            "conclusion": "success",
+            "name": "Upload release publication evidence",
+            "number": 19,
+            "started_at": "2026-11-13T13:37:32Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-13T13:37:34Z",
+            "conclusion": "success",
+            "name": "Upload package artifacts",
+            "number": 20,
+            "started_at": "2026-11-13T13:37:33Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-13T13:37:35Z",
+            "conclusion": "success",
+            "name": "Upload deployment artifact",
+            "number": 21,
+            "started_at": "2026-11-13T13:37:34Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-13T13:37:36Z",
+            "conclusion": "success",
+            "name": "Post Initialize both container platforms",
+            "number": 39,
+            "started_at": "2026-11-13T13:37:35Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-13T13:38:01Z",
+            "conclusion": "success",
+            "name": "Post Prepare guarded release from pinned Builds",
+            "number": 40,
+            "started_at": "2026-11-13T13:37:36Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-13T13:38:01Z",
+            "conclusion": "success",
+            "name": "Post Install .NET 10 runtime and targeting packs",
+            "number": 41,
+            "started_at": "2026-11-13T13:38:01Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-13T13:38:01Z",
+            "conclusion": "success",
+            "name": "Post Checkout repository",
+            "number": 42,
+            "started_at": "2026-11-13T13:38:01Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-13T13:38:01Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 43,
+            "started_at": "2026-11-13T13:38:01Z",
+            "status": "completed"
+          }
+        ]
+      }
+    ],
+    "runId": 43432588932
+  },
+  {
+    "command": [
+      "gh",
+      "api",
+      "repos/Hexalith/Hexalith.Memories/actions/runs/41589105475/jobs?per_page=100"
+    ],
+    "jobs": [
+      {
+        "completed_at": "2026-11-03T06:19:47Z",
+        "conclusion": "failure",
+        "html_url": "https://github.com/Hexalith/Hexalith.Memories/actions/runs/41589105475/job/125761442386",
+        "id": 125761442386,
+        "name": "release-source",
+        "started_at": "2026-11-03T06:19:35Z",
+        "steps": [
+          {
+            "completed_at": "2026-11-03T06:19:37Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "started_at": "2026-11-03T06:19:36Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T06:19:41Z",
+            "conclusion": "success",
+            "name": "Checkout dispatched source",
+            "number": 2,
+            "started_at": "2026-11-03T06:19:37Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T06:19:42Z",
+            "conclusion": "success",
+            "name": "Checkout approved Builds source proof",
+            "number": 3,
+            "started_at": "2026-11-03T06:19:41Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T06:19:43Z",
+            "conclusion": "success",
+            "name": "Prove current main and exact push CI before approval",
+            "number": 4,
+            "started_at": "2026-11-03T06:19:42Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T06:19:44Z",
+            "conclusion": "failure",
+            "name": "Require production environment approval rule",
+            "number": 5,
+            "started_at": "2026-11-03T06:19:43Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T06:19:44Z",
+            "conclusion": "success",
+            "name": "Post Checkout approved Builds source proof",
+            "number": 9,
+            "started_at": "2026-11-03T06:19:44Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T06:19:44Z",
+            "conclusion": "success",
+            "name": "Post Checkout dispatched source",
+            "number": 10,
+            "started_at": "2026-11-03T06:19:44Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T06:19:44Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 11,
+            "started_at": "2026-11-03T06:19:44Z",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "completed_at": "2026-11-03T06:19:47Z",
+        "conclusion": "skipped",
+        "html_url": "https://github.com/Hexalith/Hexalith.Memories/actions/runs/41589105475/job/125761694990",
+        "id": 125761694990,
+        "name": "release",
+        "started_at": "2026-11-03T06:19:48Z",
+        "steps": []
+      }
+    ],
+    "runId": 41589105475
+  },
+  {
+    "command": [
+      "gh",
+      "api",
+      "repos/Hexalith/Hexalith.Memories/actions/runs/41731951859/jobs?per_page=100"
+    ],
+    "jobs": [
+      {
+        "completed_at": "2026-11-03T22:38:51Z",
+        "conclusion": "success",
+        "html_url": "https://github.com/Hexalith/Hexalith.Memories/actions/runs/41731951859/job/126251297759",
+        "id": 126251297759,
+        "name": "release-source",
+        "started_at": "2026-11-03T22:38:38Z",
+        "steps": [
+          {
+            "completed_at": "2026-11-03T22:38:39Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "started_at": "2026-11-03T22:38:39Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T22:38:43Z",
+            "conclusion": "success",
+            "name": "Checkout dispatched source",
+            "number": 2,
+            "started_at": "2026-11-03T22:38:39Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T22:38:46Z",
+            "conclusion": "success",
+            "name": "Checkout approved Builds source proof",
+            "number": 3,
+            "started_at": "2026-11-03T22:38:43Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T22:38:47Z",
+            "conclusion": "success",
+            "name": "Prove current main and exact push CI before approval",
+            "number": 4,
+            "started_at": "2026-11-03T22:38:46Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T22:38:48Z",
+            "conclusion": "success",
+            "name": "Require production environment approval rule",
+            "number": 5,
+            "started_at": "2026-11-03T22:38:47Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T22:38:48Z",
+            "conclusion": "success",
+            "name": "Post Checkout approved Builds source proof",
+            "number": 9,
+            "started_at": "2026-11-03T22:38:48Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T22:38:48Z",
+            "conclusion": "success",
+            "name": "Post Checkout dispatched source",
+            "number": 10,
+            "started_at": "2026-11-03T22:38:48Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T22:38:48Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 11,
+            "started_at": "2026-11-03T22:38:48Z",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "completed_at": "2026-11-03T22:51:50Z",
+        "conclusion": "failure",
+        "html_url": "https://github.com/Hexalith/Hexalith.Memories/actions/runs/41731951859/job/126253544610",
+        "id": 126253544610,
+        "name": "release",
+        "started_at": "2026-11-03T22:45:18Z",
+        "steps": [
+          {
+            "completed_at": "2026-11-03T22:45:22Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "started_at": "2026-11-03T22:45:19Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T22:45:25Z",
+            "conclusion": "success",
+            "name": "Checkout repository",
+            "number": 2,
+            "started_at": "2026-11-03T22:45:22Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T22:45:26Z",
+            "conclusion": "success",
+            "name": "Initialize kubectl",
+            "number": 3,
+            "started_at": "2026-11-03T22:45:25Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T22:49:07Z",
+            "conclusion": "success",
+            "name": "Prepare guarded release from pinned Builds",
+            "number": 4,
+            "started_at": "2026-11-03T22:45:26Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T22:49:08Z",
+            "conclusion": "success",
+            "name": "Verify semantic-release configuration offline",
+            "number": 5,
+            "started_at": "2026-11-03T22:49:07Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T22:49:13Z",
+            "conclusion": "success",
+            "name": "Validate package inventory before release",
+            "number": 6,
+            "started_at": "2026-11-03T22:49:08Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T22:49:20Z",
+            "conclusion": "success",
+            "name": "Initialize both container platforms",
+            "number": 7,
+            "started_at": "2026-11-03T22:49:13Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T22:49:20Z",
+            "conclusion": "success",
+            "name": "Require archive transport and isolated health tools",
+            "number": 8,
+            "started_at": "2026-11-03T22:49:20Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T22:49:30Z",
+            "conclusion": "success",
+            "name": "Run release preflight",
+            "number": 9,
+            "started_at": "2026-11-03T22:49:20Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T22:49:30Z",
+            "conclusion": "success",
+            "name": "Snapshot release tags",
+            "number": 10,
+            "started_at": "2026-11-03T22:49:30Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T22:49:31Z",
+            "conclusion": "success",
+            "name": "Reprove current main and exact push CI before publication",
+            "number": 11,
+            "started_at": "2026-11-03T22:49:30Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T22:49:31Z",
+            "conclusion": "success",
+            "name": "Recheck production approval rule before publication",
+            "number": 12,
+            "started_at": "2026-11-03T22:49:31Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T22:49:33Z",
+            "conclusion": "success",
+            "name": "Exchange GitHub OIDC token for a temporary NuGet key",
+            "number": 13,
+            "started_at": "2026-11-03T22:49:31Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T22:51:45Z",
+            "conclusion": "failure",
+            "name": "Run semantic-release",
+            "number": 14,
+            "started_at": "2026-11-03T22:49:33Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T22:51:45Z",
+            "conclusion": "skipped",
+            "name": "Detect release publication",
+            "number": 15,
+            "started_at": "2026-11-03T22:51:45Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T22:51:45Z",
+            "conclusion": "success",
+            "name": "Alert partial release publish",
+            "number": 16,
+            "started_at": "2026-11-03T22:51:45Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T22:51:46Z",
+            "conclusion": "success",
+            "name": "Archive release failure diagnostics",
+            "number": 17,
+            "started_at": "2026-11-03T22:51:45Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T22:51:46Z",
+            "conclusion": "success",
+            "name": "Upload release publication evidence",
+            "number": 18,
+            "started_at": "2026-11-03T22:51:46Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T22:51:46Z",
+            "conclusion": "skipped",
+            "name": "Upload package artifacts",
+            "number": 19,
+            "started_at": "2026-11-03T22:51:46Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T22:51:46Z",
+            "conclusion": "skipped",
+            "name": "Upload deployment artifact",
+            "number": 20,
+            "started_at": "2026-11-03T22:51:46Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T22:51:48Z",
+            "conclusion": "success",
+            "name": "Post Initialize both container platforms",
+            "number": 38,
+            "started_at": "2026-11-03T22:51:47Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T22:51:48Z",
+            "conclusion": "success",
+            "name": "Post Prepare guarded release from pinned Builds",
+            "number": 39,
+            "started_at": "2026-11-03T22:51:48Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T22:51:49Z",
+            "conclusion": "success",
+            "name": "Post Checkout repository",
+            "number": 40,
+            "started_at": "2026-11-03T22:51:48Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T22:51:49Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 41,
+            "started_at": "2026-11-03T22:51:49Z",
+            "status": "completed"
+          }
+        ]
+      }
+    ],
+    "runId": 41731951859
+  },
+  {
+    "command": [
+      "gh",
+      "api",
+      "repos/Hexalith/Hexalith.Memories/actions/runs/41738504412/jobs?per_page=100"
+    ],
+    "jobs": [
+      {
+        "completed_at": "2026-11-03T23:21:46Z",
+        "conclusion": "success",
+        "html_url": "https://github.com/Hexalith/Hexalith.Memories/actions/runs/41738504412/job/126273774913",
+        "id": 126273774913,
+        "name": "release-source",
+        "started_at": "2026-11-03T23:21:35Z",
+        "steps": [
+          {
+            "completed_at": "2026-11-03T23:21:36Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "started_at": "2026-11-03T23:21:36Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T23:21:40Z",
+            "conclusion": "success",
+            "name": "Checkout dispatched source",
+            "number": 2,
+            "started_at": "2026-11-03T23:21:36Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T23:21:41Z",
+            "conclusion": "success",
+            "name": "Checkout approved Builds source proof",
+            "number": 3,
+            "started_at": "2026-11-03T23:21:40Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T23:21:42Z",
+            "conclusion": "success",
+            "name": "Prove current main and exact push CI before approval",
+            "number": 4,
+            "started_at": "2026-11-03T23:21:41Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T23:21:43Z",
+            "conclusion": "success",
+            "name": "Require production environment approval rule",
+            "number": 5,
+            "started_at": "2026-11-03T23:21:42Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T23:21:43Z",
+            "conclusion": "success",
+            "name": "Post Checkout approved Builds source proof",
+            "number": 9,
+            "started_at": "2026-11-03T23:21:43Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T23:21:43Z",
+            "conclusion": "success",
+            "name": "Post Checkout dispatched source",
+            "number": 10,
+            "started_at": "2026-11-03T23:21:43Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T23:21:43Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 11,
+            "started_at": "2026-11-03T23:21:43Z",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "completed_at": "2026-11-03T23:33:03Z",
+        "conclusion": "failure",
+        "html_url": "https://github.com/Hexalith/Hexalith.Memories/actions/runs/41738504412/job/126273880939",
+        "id": 126273880939,
+        "name": "release",
+        "started_at": "2026-11-03T23:24:32Z",
+        "steps": [
+          {
+            "completed_at": "2026-11-03T23:24:38Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "started_at": "2026-11-03T23:24:33Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T23:24:42Z",
+            "conclusion": "success",
+            "name": "Checkout repository",
+            "number": 2,
+            "started_at": "2026-11-03T23:24:38Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T23:24:43Z",
+            "conclusion": "success",
+            "name": "Initialize kubectl",
+            "number": 3,
+            "started_at": "2026-11-03T23:24:42Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T23:29:14Z",
+            "conclusion": "success",
+            "name": "Prepare guarded release from pinned Builds",
+            "number": 4,
+            "started_at": "2026-11-03T23:24:43Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T23:29:15Z",
+            "conclusion": "success",
+            "name": "Verify semantic-release configuration offline",
+            "number": 5,
+            "started_at": "2026-11-03T23:29:14Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T23:29:17Z",
+            "conclusion": "success",
+            "name": "Validate package inventory before release",
+            "number": 6,
+            "started_at": "2026-11-03T23:29:15Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T23:29:24Z",
+            "conclusion": "success",
+            "name": "Initialize both container platforms",
+            "number": 7,
+            "started_at": "2026-11-03T23:29:17Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T23:29:24Z",
+            "conclusion": "success",
+            "name": "Require archive transport and isolated health tools",
+            "number": 8,
+            "started_at": "2026-11-03T23:29:24Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T23:29:35Z",
+            "conclusion": "success",
+            "name": "Run release preflight",
+            "number": 9,
+            "started_at": "2026-11-03T23:29:24Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T23:29:35Z",
+            "conclusion": "success",
+            "name": "Snapshot release tags",
+            "number": 10,
+            "started_at": "2026-11-03T23:29:35Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T23:29:36Z",
+            "conclusion": "success",
+            "name": "Reprove current main and exact push CI before publication",
+            "number": 11,
+            "started_at": "2026-11-03T23:29:35Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T23:29:36Z",
+            "conclusion": "success",
+            "name": "Recheck production approval rule before publication",
+            "number": 12,
+            "started_at": "2026-11-03T23:29:36Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T23:29:38Z",
+            "conclusion": "success",
+            "name": "Exchange GitHub OIDC token for a temporary NuGet key",
+            "number": 13,
+            "started_at": "2026-11-03T23:29:36Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T23:32:54Z",
+            "conclusion": "failure",
+            "name": "Run semantic-release",
+            "number": 14,
+            "started_at": "2026-11-03T23:29:38Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T23:32:54Z",
+            "conclusion": "skipped",
+            "name": "Detect release publication",
+            "number": 15,
+            "started_at": "2026-11-03T23:32:54Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T23:32:56Z",
+            "conclusion": "success",
+            "name": "Alert partial release publish",
+            "number": 16,
+            "started_at": "2026-11-03T23:32:54Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T23:32:56Z",
+            "conclusion": "success",
+            "name": "Archive release failure diagnostics",
+            "number": 17,
+            "started_at": "2026-11-03T23:32:56Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T23:32:58Z",
+            "conclusion": "success",
+            "name": "Upload release publication evidence",
+            "number": 18,
+            "started_at": "2026-11-03T23:32:56Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T23:32:58Z",
+            "conclusion": "skipped",
+            "name": "Upload package artifacts",
+            "number": 19,
+            "started_at": "2026-11-03T23:32:58Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T23:32:58Z",
+            "conclusion": "skipped",
+            "name": "Upload deployment artifact",
+            "number": 20,
+            "started_at": "2026-11-03T23:32:58Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T23:32:59Z",
+            "conclusion": "success",
+            "name": "Post Initialize both container platforms",
+            "number": 38,
+            "started_at": "2026-11-03T23:32:58Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T23:32:59Z",
+            "conclusion": "success",
+            "name": "Post Prepare guarded release from pinned Builds",
+            "number": 39,
+            "started_at": "2026-11-03T23:32:59Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T23:33:00Z",
+            "conclusion": "success",
+            "name": "Post Checkout repository",
+            "number": 40,
+            "started_at": "2026-11-03T23:32:59Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-03T23:33:00Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 41,
+            "started_at": "2026-11-03T23:33:00Z",
+            "status": "completed"
+          }
+        ]
+      }
+    ],
+    "runId": 41738504412
+  },
+  {
+    "command": [
+      "gh",
+      "api",
+      "repos/Hexalith/Hexalith.Memories/actions/runs/41743620863/jobs?per_page=100"
+    ],
+    "jobs": [
+      {
+        "completed_at": "2026-11-04T00:03:21Z",
+        "conclusion": "success",
+        "html_url": "https://github.com/Hexalith/Hexalith.Memories/actions/runs/41743620863/job/126291022256",
+        "id": 126291022256,
+        "name": "release-source",
+        "started_at": "2026-11-04T00:03:10Z",
+        "steps": [
+          {
+            "completed_at": "2026-11-04T00:03:11Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "started_at": "2026-11-04T00:03:11Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:03:15Z",
+            "conclusion": "success",
+            "name": "Checkout dispatched source",
+            "number": 2,
+            "started_at": "2026-11-04T00:03:11Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:03:17Z",
+            "conclusion": "success",
+            "name": "Checkout approved Builds source proof",
+            "number": 3,
+            "started_at": "2026-11-04T00:03:15Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:03:18Z",
+            "conclusion": "success",
+            "name": "Prove current main and exact push CI before approval",
+            "number": 4,
+            "started_at": "2026-11-04T00:03:17Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:03:18Z",
+            "conclusion": "success",
+            "name": "Require production environment approval rule",
+            "number": 5,
+            "started_at": "2026-11-04T00:03:18Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:03:18Z",
+            "conclusion": "success",
+            "name": "Post Checkout approved Builds source proof",
+            "number": 9,
+            "started_at": "2026-11-04T00:03:18Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:03:19Z",
+            "conclusion": "success",
+            "name": "Post Checkout dispatched source",
+            "number": 10,
+            "started_at": "2026-11-04T00:03:18Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:03:19Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 11,
+            "started_at": "2026-11-04T00:03:19Z",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "completed_at": "2026-11-04T00:16:21Z",
+        "conclusion": "failure",
+        "html_url": "https://github.com/Hexalith/Hexalith.Memories/actions/runs/41743620863/job/126291984772",
+        "id": 126291984772,
+        "name": "release",
+        "started_at": "2026-11-04T00:04:03Z",
+        "steps": [
+          {
+            "completed_at": "2026-11-04T00:04:09Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "started_at": "2026-11-04T00:04:04Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:04:13Z",
+            "conclusion": "success",
+            "name": "Checkout repository",
+            "number": 2,
+            "started_at": "2026-11-04T00:04:09Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:04:13Z",
+            "conclusion": "success",
+            "name": "Initialize kubectl",
+            "number": 3,
+            "started_at": "2026-11-04T00:04:13Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:10:01Z",
+            "conclusion": "success",
+            "name": "Prepare guarded release from pinned Builds",
+            "number": 4,
+            "started_at": "2026-11-04T00:04:13Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:10:02Z",
+            "conclusion": "success",
+            "name": "Verify semantic-release configuration offline",
+            "number": 5,
+            "started_at": "2026-11-04T00:10:01Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:10:04Z",
+            "conclusion": "success",
+            "name": "Validate package inventory before release",
+            "number": 6,
+            "started_at": "2026-11-04T00:10:02Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:10:11Z",
+            "conclusion": "success",
+            "name": "Initialize both container platforms",
+            "number": 7,
+            "started_at": "2026-11-04T00:10:04Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:10:11Z",
+            "conclusion": "success",
+            "name": "Require archive transport and isolated health tools",
+            "number": 8,
+            "started_at": "2026-11-04T00:10:11Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:10:22Z",
+            "conclusion": "success",
+            "name": "Run release preflight",
+            "number": 9,
+            "started_at": "2026-11-04T00:10:11Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:10:22Z",
+            "conclusion": "success",
+            "name": "Snapshot release tags",
+            "number": 10,
+            "started_at": "2026-11-04T00:10:22Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:10:23Z",
+            "conclusion": "success",
+            "name": "Reprove current main and exact push CI before publication",
+            "number": 11,
+            "started_at": "2026-11-04T00:10:22Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:10:24Z",
+            "conclusion": "success",
+            "name": "Recheck production approval rule before publication",
+            "number": 12,
+            "started_at": "2026-11-04T00:10:23Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:10:26Z",
+            "conclusion": "success",
+            "name": "Exchange GitHub OIDC token for a temporary NuGet key",
+            "number": 13,
+            "started_at": "2026-11-04T00:10:24Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:16:12Z",
+            "conclusion": "failure",
+            "name": "Run semantic-release",
+            "number": 14,
+            "started_at": "2026-11-04T00:10:26Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:16:12Z",
+            "conclusion": "skipped",
+            "name": "Detect release publication",
+            "number": 15,
+            "started_at": "2026-11-04T00:16:12Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:16:15Z",
+            "conclusion": "success",
+            "name": "Alert partial release publish",
+            "number": 16,
+            "started_at": "2026-11-04T00:16:12Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:16:15Z",
+            "conclusion": "success",
+            "name": "Archive release failure diagnostics",
+            "number": 17,
+            "started_at": "2026-11-04T00:16:15Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:16:17Z",
+            "conclusion": "success",
+            "name": "Upload release publication evidence",
+            "number": 18,
+            "started_at": "2026-11-04T00:16:15Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:16:17Z",
+            "conclusion": "skipped",
+            "name": "Upload package artifacts",
+            "number": 19,
+            "started_at": "2026-11-04T00:16:17Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:16:17Z",
+            "conclusion": "skipped",
+            "name": "Upload deployment artifact",
+            "number": 20,
+            "started_at": "2026-11-04T00:16:17Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:16:18Z",
+            "conclusion": "success",
+            "name": "Post Initialize both container platforms",
+            "number": 38,
+            "started_at": "2026-11-04T00:16:17Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:16:18Z",
+            "conclusion": "success",
+            "name": "Post Prepare guarded release from pinned Builds",
+            "number": 39,
+            "started_at": "2026-11-04T00:16:18Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:16:18Z",
+            "conclusion": "success",
+            "name": "Post Checkout repository",
+            "number": 40,
+            "started_at": "2026-11-04T00:16:18Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:16:19Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 41,
+            "started_at": "2026-11-04T00:16:18Z",
+            "status": "completed"
+          }
+        ]
+      }
+    ],
+    "runId": 41743620863
+  },
+  {
+    "command": [
+      "gh",
+      "api",
+      "repos/Hexalith/Hexalith.Memories/actions/runs/41748998467/jobs?per_page=100"
+    ],
+    "jobs": [
+      {
+        "completed_at": "2026-11-04T00:44:08Z",
+        "conclusion": "success",
+        "html_url": "https://github.com/Hexalith/Hexalith.Memories/actions/runs/41748998467/job/126309110207",
+        "id": 126309110207,
+        "name": "release-source",
+        "started_at": "2026-11-04T00:43:59Z",
+        "steps": [
+          {
+            "completed_at": "2026-11-04T00:44:00Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "started_at": "2026-11-04T00:43:59Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:44:03Z",
+            "conclusion": "success",
+            "name": "Checkout dispatched source",
+            "number": 2,
+            "started_at": "2026-11-04T00:44:00Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:44:04Z",
+            "conclusion": "success",
+            "name": "Checkout approved Builds source proof",
+            "number": 3,
+            "started_at": "2026-11-04T00:44:03Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:44:05Z",
+            "conclusion": "success",
+            "name": "Prove current main and exact push CI before approval",
+            "number": 4,
+            "started_at": "2026-11-04T00:44:04Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:44:06Z",
+            "conclusion": "success",
+            "name": "Require production environment approval rule",
+            "number": 5,
+            "started_at": "2026-11-04T00:44:05Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:44:06Z",
+            "conclusion": "success",
+            "name": "Post Checkout approved Builds source proof",
+            "number": 9,
+            "started_at": "2026-11-04T00:44:06Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:44:06Z",
+            "conclusion": "success",
+            "name": "Post Checkout dispatched source",
+            "number": 10,
+            "started_at": "2026-11-04T00:44:06Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:44:06Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 11,
+            "started_at": "2026-11-04T00:44:06Z",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "completed_at": "2026-11-04T01:11:24Z",
+        "conclusion": "failure",
+        "html_url": "https://github.com/Hexalith/Hexalith.Memories/actions/runs/41748998467/job/126309198313",
+        "id": 126309198313,
+        "name": "release",
+        "started_at": "2026-11-04T00:45:02Z",
+        "steps": [
+          {
+            "completed_at": "2026-11-04T00:45:08Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "started_at": "2026-11-04T00:45:03Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:45:12Z",
+            "conclusion": "success",
+            "name": "Checkout repository",
+            "number": 2,
+            "started_at": "2026-11-04T00:45:08Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:45:12Z",
+            "conclusion": "success",
+            "name": "Initialize kubectl",
+            "number": 3,
+            "started_at": "2026-11-04T00:45:12Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:48:48Z",
+            "conclusion": "success",
+            "name": "Prepare guarded release from pinned Builds",
+            "number": 4,
+            "started_at": "2026-11-04T00:45:12Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:48:48Z",
+            "conclusion": "success",
+            "name": "Verify semantic-release configuration offline",
+            "number": 5,
+            "started_at": "2026-11-04T00:48:48Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:48:51Z",
+            "conclusion": "success",
+            "name": "Validate package inventory before release",
+            "number": 6,
+            "started_at": "2026-11-04T00:48:48Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:48:56Z",
+            "conclusion": "success",
+            "name": "Initialize both container platforms",
+            "number": 7,
+            "started_at": "2026-11-04T00:48:51Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:48:56Z",
+            "conclusion": "success",
+            "name": "Require archive transport and isolated health tools",
+            "number": 8,
+            "started_at": "2026-11-04T00:48:56Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:49:07Z",
+            "conclusion": "success",
+            "name": "Run release preflight",
+            "number": 9,
+            "started_at": "2026-11-04T00:48:56Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:49:07Z",
+            "conclusion": "success",
+            "name": "Snapshot release tags",
+            "number": 10,
+            "started_at": "2026-11-04T00:49:07Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:49:08Z",
+            "conclusion": "success",
+            "name": "Reprove current main and exact push CI before publication",
+            "number": 11,
+            "started_at": "2026-11-04T00:49:07Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:49:09Z",
+            "conclusion": "success",
+            "name": "Recheck production approval rule before publication",
+            "number": 12,
+            "started_at": "2026-11-04T00:49:08Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T00:49:11Z",
+            "conclusion": "success",
+            "name": "Exchange GitHub OIDC token for a temporary NuGet key",
+            "number": 13,
+            "started_at": "2026-11-04T00:49:09Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T01:11:15Z",
+            "conclusion": "failure",
+            "name": "Run semantic-release",
+            "number": 14,
+            "started_at": "2026-11-04T00:49:11Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T01:11:15Z",
+            "conclusion": "skipped",
+            "name": "Detect release publication",
+            "number": 15,
+            "started_at": "2026-11-04T01:11:15Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T01:11:18Z",
+            "conclusion": "success",
+            "name": "Alert partial release publish",
+            "number": 16,
+            "started_at": "2026-11-04T01:11:15Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T01:11:18Z",
+            "conclusion": "success",
+            "name": "Archive release failure diagnostics",
+            "number": 17,
+            "started_at": "2026-11-04T01:11:18Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T01:11:20Z",
+            "conclusion": "success",
+            "name": "Upload release publication evidence",
+            "number": 18,
+            "started_at": "2026-11-04T01:11:18Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T01:11:20Z",
+            "conclusion": "skipped",
+            "name": "Upload package artifacts",
+            "number": 19,
+            "started_at": "2026-11-04T01:11:20Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T01:11:20Z",
+            "conclusion": "skipped",
+            "name": "Upload deployment artifact",
+            "number": 20,
+            "started_at": "2026-11-04T01:11:20Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T01:11:21Z",
+            "conclusion": "success",
+            "name": "Post Initialize both container platforms",
+            "number": 38,
+            "started_at": "2026-11-04T01:11:20Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T01:11:21Z",
+            "conclusion": "success",
+            "name": "Post Prepare guarded release from pinned Builds",
+            "number": 39,
+            "started_at": "2026-11-04T01:11:21Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T01:11:21Z",
+            "conclusion": "success",
+            "name": "Post Checkout repository",
+            "number": 40,
+            "started_at": "2026-11-04T01:11:21Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T01:11:21Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 41,
+            "started_at": "2026-11-04T01:11:21Z",
+            "status": "completed"
+          }
+        ]
+      }
+    ],
+    "runId": 41748998467
+  },
+  {
+    "command": [
+      "gh",
+      "api",
+      "repos/Hexalith/Hexalith.Memories/actions/runs/41757558329/jobs?per_page=100"
+    ],
+    "jobs": [
+      {
+        "completed_at": "2026-11-04T01:57:55Z",
+        "conclusion": "success",
+        "html_url": "https://github.com/Hexalith/Hexalith.Memories/actions/runs/41757558329/job/126337162160",
+        "id": 126337162160,
+        "name": "release-source",
+        "started_at": "2026-11-04T01:57:45Z",
+        "steps": [
+          {
+            "completed_at": "2026-11-04T01:57:46Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "started_at": "2026-11-04T01:57:46Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T01:57:50Z",
+            "conclusion": "success",
+            "name": "Checkout dispatched source",
+            "number": 2,
+            "started_at": "2026-11-04T01:57:46Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T01:57:51Z",
+            "conclusion": "success",
+            "name": "Checkout approved Builds source proof",
+            "number": 3,
+            "started_at": "2026-11-04T01:57:50Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T01:57:52Z",
+            "conclusion": "success",
+            "name": "Prove current main and exact push CI before approval",
+            "number": 4,
+            "started_at": "2026-11-04T01:57:51Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T01:57:52Z",
+            "conclusion": "success",
+            "name": "Require production environment approval rule",
+            "number": 5,
+            "started_at": "2026-11-04T01:57:52Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T01:57:53Z",
+            "conclusion": "success",
+            "name": "Post Checkout approved Builds source proof",
+            "number": 9,
+            "started_at": "2026-11-04T01:57:52Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T01:57:53Z",
+            "conclusion": "success",
+            "name": "Post Checkout dispatched source",
+            "number": 10,
+            "started_at": "2026-11-04T01:57:53Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T01:57:53Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 11,
+            "started_at": "2026-11-04T01:57:53Z",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "completed_at": "2026-11-04T02:21:30Z",
+        "conclusion": "failure",
+        "html_url": "https://github.com/Hexalith/Hexalith.Memories/actions/runs/41757558329/job/126337229672",
+        "id": 126337229672,
+        "name": "release",
+        "started_at": "2026-11-04T02:00:32Z",
+        "steps": [
+          {
+            "completed_at": "2026-11-04T02:00:37Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "started_at": "2026-11-04T02:00:33Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T02:00:41Z",
+            "conclusion": "success",
+            "name": "Checkout repository",
+            "number": 2,
+            "started_at": "2026-11-04T02:00:38Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T02:00:42Z",
+            "conclusion": "success",
+            "name": "Initialize kubectl",
+            "number": 3,
+            "started_at": "2026-11-04T02:00:41Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T02:05:28Z",
+            "conclusion": "success",
+            "name": "Prepare guarded release from pinned Builds",
+            "number": 4,
+            "started_at": "2026-11-04T02:00:42Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T02:05:29Z",
+            "conclusion": "success",
+            "name": "Verify semantic-release configuration offline",
+            "number": 5,
+            "started_at": "2026-11-04T02:05:28Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T02:05:39Z",
+            "conclusion": "success",
+            "name": "Validate package inventory before release",
+            "number": 6,
+            "started_at": "2026-11-04T02:05:29Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T02:05:46Z",
+            "conclusion": "success",
+            "name": "Initialize both container platforms",
+            "number": 7,
+            "started_at": "2026-11-04T02:05:39Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T02:05:46Z",
+            "conclusion": "success",
+            "name": "Require archive transport and isolated health tools",
+            "number": 8,
+            "started_at": "2026-11-04T02:05:46Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T02:05:57Z",
+            "conclusion": "success",
+            "name": "Run release preflight",
+            "number": 9,
+            "started_at": "2026-11-04T02:05:46Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T02:05:57Z",
+            "conclusion": "success",
+            "name": "Snapshot release tags",
+            "number": 10,
+            "started_at": "2026-11-04T02:05:57Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T02:05:58Z",
+            "conclusion": "success",
+            "name": "Reprove current main and exact push CI before publication",
+            "number": 11,
+            "started_at": "2026-11-04T02:05:57Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T02:05:59Z",
+            "conclusion": "success",
+            "name": "Recheck production approval rule before publication",
+            "number": 12,
+            "started_at": "2026-11-04T02:05:58Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T02:06:01Z",
+            "conclusion": "success",
+            "name": "Exchange GitHub OIDC token for a temporary NuGet key",
+            "number": 13,
+            "started_at": "2026-11-04T02:05:59Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T02:21:22Z",
+            "conclusion": "failure",
+            "name": "Run semantic-release",
+            "number": 14,
+            "started_at": "2026-11-04T02:06:01Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T02:21:22Z",
+            "conclusion": "skipped",
+            "name": "Detect release publication",
+            "number": 15,
+            "started_at": "2026-11-04T02:21:22Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T02:21:24Z",
+            "conclusion": "success",
+            "name": "Alert partial release publish",
+            "number": 16,
+            "started_at": "2026-11-04T02:21:22Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T02:21:24Z",
+            "conclusion": "success",
+            "name": "Archive release failure diagnostics",
+            "number": 17,
+            "started_at": "2026-11-04T02:21:24Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T02:21:26Z",
+            "conclusion": "success",
+            "name": "Upload release publication evidence",
+            "number": 18,
+            "started_at": "2026-11-04T02:21:24Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T02:21:26Z",
+            "conclusion": "skipped",
+            "name": "Upload package artifacts",
+            "number": 19,
+            "started_at": "2026-11-04T02:21:26Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T02:21:26Z",
+            "conclusion": "skipped",
+            "name": "Upload deployment artifact",
+            "number": 20,
+            "started_at": "2026-11-04T02:21:26Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T02:21:27Z",
+            "conclusion": "success",
+            "name": "Post Initialize both container platforms",
+            "number": 38,
+            "started_at": "2026-11-04T02:21:26Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T02:21:27Z",
+            "conclusion": "success",
+            "name": "Post Prepare guarded release from pinned Builds",
+            "number": 39,
+            "started_at": "2026-11-04T02:21:27Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T02:21:27Z",
+            "conclusion": "success",
+            "name": "Post Checkout repository",
+            "number": 40,
+            "started_at": "2026-11-04T02:21:27Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-04T02:21:27Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 41,
+            "started_at": "2026-11-04T02:21:27Z",
+            "status": "completed"
+          }
+        ]
+      }
+    ],
+    "runId": 41757558329
+  },
+  {
+    "command": [
+      "gh",
+      "api",
+      "repos/Hexalith/Hexalith.Memories/actions/runs/43012088139/jobs?per_page=100"
+    ],
+    "jobs": [
+      {
+        "completed_at": "2026-11-11T11:27:37Z",
+        "conclusion": "success",
+        "html_url": "https://github.com/Hexalith/Hexalith.Memories/actions/runs/43012088139/job/130493972542",
+        "id": 130493972542,
+        "name": "release-source",
+        "started_at": "2026-11-11T11:27:28Z",
+        "steps": [
+          {
+            "completed_at": "2026-11-11T11:27:29Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "started_at": "2026-11-11T11:27:28Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-11T11:27:32Z",
+            "conclusion": "success",
+            "name": "Checkout dispatched source",
+            "number": 2,
+            "started_at": "2026-11-11T11:27:29Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-11T11:27:34Z",
+            "conclusion": "success",
+            "name": "Checkout approved Builds source proof",
+            "number": 3,
+            "started_at": "2026-11-11T11:27:32Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-11T11:27:34Z",
+            "conclusion": "success",
+            "name": "Prove current main and exact push CI before approval",
+            "number": 4,
+            "started_at": "2026-11-11T11:27:34Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-11T11:27:35Z",
+            "conclusion": "success",
+            "name": "Require production environment approval rule",
+            "number": 5,
+            "started_at": "2026-11-11T11:27:34Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-11T11:27:35Z",
+            "conclusion": "success",
+            "name": "Post Checkout approved Builds source proof",
+            "number": 9,
+            "started_at": "2026-11-11T11:27:35Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-11T11:27:35Z",
+            "conclusion": "success",
+            "name": "Post Checkout dispatched source",
+            "number": 10,
+            "started_at": "2026-11-11T11:27:35Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-11T11:27:35Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 11,
+            "started_at": "2026-11-11T11:27:35Z",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "completed_at": "2026-11-11T11:35:15Z",
+        "conclusion": "failure",
+        "html_url": "https://github.com/Hexalith/Hexalith.Memories/actions/runs/43012088139/job/130494062335",
+        "id": 130494062335,
+        "name": "release",
+        "started_at": "2026-11-11T11:28:10Z",
+        "steps": [
+          {
+            "completed_at": "2026-11-11T11:28:17Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "started_at": "2026-11-11T11:28:11Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-11T11:28:20Z",
+            "conclusion": "success",
+            "name": "Checkout repository",
+            "number": 2,
+            "started_at": "2026-11-11T11:28:17Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-11T11:28:21Z",
+            "conclusion": "success",
+            "name": "Initialize kubectl",
+            "number": 3,
+            "started_at": "2026-11-11T11:28:20Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-11T11:32:04Z",
+            "conclusion": "success",
+            "name": "Prepare guarded release from pinned Builds",
+            "number": 4,
+            "started_at": "2026-11-11T11:28:21Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-11T11:32:05Z",
+            "conclusion": "success",
+            "name": "Verify semantic-release configuration offline",
+            "number": 5,
+            "started_at": "2026-11-11T11:32:04Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-11T11:32:07Z",
+            "conclusion": "success",
+            "name": "Validate package inventory before release",
+            "number": 6,
+            "started_at": "2026-11-11T11:32:05Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-11T11:32:13Z",
+            "conclusion": "success",
+            "name": "Initialize both container platforms",
+            "number": 7,
+            "started_at": "2026-11-11T11:32:07Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-11T11:32:13Z",
+            "conclusion": "success",
+            "name": "Require archive transport and isolated health tools",
+            "number": 8,
+            "started_at": "2026-11-11T11:32:13Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-11T11:32:24Z",
+            "conclusion": "success",
+            "name": "Run release preflight",
+            "number": 9,
+            "started_at": "2026-11-11T11:32:13Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-11T11:32:24Z",
+            "conclusion": "success",
+            "name": "Snapshot release tags",
+            "number": 10,
+            "started_at": "2026-11-11T11:32:24Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-11T11:32:25Z",
+            "conclusion": "success",
+            "name": "Reprove current main and exact push CI before publication",
+            "number": 11,
+            "started_at": "2026-11-11T11:32:24Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-11T11:32:26Z",
+            "conclusion": "success",
+            "name": "Recheck production approval rule before publication",
+            "number": 12,
+            "started_at": "2026-11-11T11:32:25Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-11T11:32:28Z",
+            "conclusion": "success",
+            "name": "Exchange GitHub OIDC token for a temporary NuGet key",
+            "number": 13,
+            "started_at": "2026-11-11T11:32:26Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-11T11:35:09Z",
+            "conclusion": "failure",
+            "name": "Run semantic-release",
+            "number": 14,
+            "started_at": "2026-11-11T11:32:28Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-11T11:35:09Z",
+            "conclusion": "skipped",
+            "name": "Detect release publication",
+            "number": 15,
+            "started_at": "2026-11-11T11:35:09Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-11T11:35:10Z",
+            "conclusion": "success",
+            "name": "Alert partial release publish",
+            "number": 16,
+            "started_at": "2026-11-11T11:35:09Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-11T11:35:10Z",
+            "conclusion": "success",
+            "name": "Archive release failure diagnostics",
+            "number": 17,
+            "started_at": "2026-11-11T11:35:10Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-11T11:35:11Z",
+            "conclusion": "success",
+            "name": "Upload release publication evidence",
+            "number": 18,
+            "started_at": "2026-11-11T11:35:10Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-11T11:35:11Z",
+            "conclusion": "skipped",
+            "name": "Upload package artifacts",
+            "number": 19,
+            "started_at": "2026-11-11T11:35:11Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-11T11:35:11Z",
+            "conclusion": "skipped",
+            "name": "Upload deployment artifact",
+            "number": 20,
+            "started_at": "2026-11-11T11:35:11Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-11T11:35:12Z",
+            "conclusion": "success",
+            "name": "Post Initialize both container platforms",
+            "number": 38,
+            "started_at": "2026-11-11T11:35:11Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-11T11:35:12Z",
+            "conclusion": "success",
+            "name": "Post Prepare guarded release from pinned Builds",
+            "number": 39,
+            "started_at": "2026-11-11T11:35:12Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-11T11:35:13Z",
+            "conclusion": "success",
+            "name": "Post Checkout repository",
+            "number": 40,
+            "started_at": "2026-11-11T11:35:12Z",
+            "status": "completed"
+          },
+          {
+            "completed_at": "2026-11-11T11:35:13Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 41,
+            "started_at": "2026-11-11T11:35:13Z",
+            "status": "completed"
+          }
+        ]
+      }
+    ],
+    "runId": 43012088139
+  }
+]

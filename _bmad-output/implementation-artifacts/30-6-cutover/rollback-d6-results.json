@@ -1,0 +1,116 @@
+{
+  "allReleaseLanesPass": false,
+  "base": "fad5ec5efb286a1b4589869a354895acd3aaf55c",
+  "beforeSnapshot": "identity-before.json",
+  "buildsGitlink": "e2bbbd0893f586e4d447ef8358ff747ea3d34435",
+  "finishedAtUtc": "2026-11-15T23:04:11Z",
+  "pushed": false,
+  "results": [
+    {
+      "artifact": "rollback-d6-actionlint.txt",
+      "command": [
+        "actionlint",
+        ".github/workflows/release.yml",
+        ".github/workflows/recover-partial-release.yml"
+      ],
+      "exitCode": 0,
+      "name": "actionlint",
+      "seconds": 0.0
+    },
+    {
+      "artifact": "rollback-d6-release_packages.txt",
+      "command": [
+        "python3",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests/tooling/release_packages",
+        "-p",
+        "*_test.py",
+        "-v"
+      ],
+      "exitCode": 0,
+      "name": "release_packages",
+      "seconds": 22.25
+    },
+    {
+      "artifact": "rollback-d6-release_preflight.txt",
+      "command": [
+        "python3",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests/tooling/release_preflight",
+        "-p",
+        "*_test.py",
+        "-v"
+      ],
+      "exitCode": 0,
+      "name": "release_preflight",
+      "seconds": 34.0
+    },
+    {
+      "artifact": "rollback-d6-release_dispatch.txt",
+      "command": [
+        "python3",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests/tooling/release_dispatch",
+        "-p",
+        "*_test.py",
+        "-v"
+      ],
+      "exitCode": 0,
+      "name": "release_dispatch",
+      "seconds": 0.5
+    },
+    {
+      "artifact": "rollback-d6-publish_nuget.txt",
+      "command": [
+        "python3",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests/tooling/publish_nuget",
+        "-p",
+        "*_test.py",
+        "-v"
+      ],
+      "exitCode": 0,
+      "name": "publish_nuget",
+      "paddingCharacters": 20,
+      "seconds": 39.97
+    },
+    {
+      "artifact": "rollback-d6-publish_containers.txt",
+      "command": [
+        "python3",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests/tooling/publish_containers",
+        "-p",
+        "*_test.py",
+        "-v"
+      ],
+      "exitCode": 1,
+      "name": "publish_containers",
+      "seconds": 111.73
+    }
+  ],
+  "startedAtUtc": "2026-11-15T23:00:42Z",
+  "target": "v4.0.0",
+  "targetCommit": "c4ee997702ede948ada5f99eeae7b3782e92003b",
+  "temporaryWorktreesRemoved": true
+}

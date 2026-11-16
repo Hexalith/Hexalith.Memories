@@ -1,0 +1,1477 @@
+{
+  "apiReads": [
+    "GET /repos/Hexalith/Hexalith.Memories/releases?per_page=100&page=N",
+    "GET /repos/Hexalith/Hexalith.Memories/releases/RELEASE_ID/assets?per_page=100&page=N"
+  ],
+  "assetCount": 1700,
+  "classification": "read-only GitHub API asset digest audit; not an identity snapshot",
+  "invalidDigestCount": 0,
+  "observedDate": "2026-11-15",
+  "releaseCount": 183,
+  "releases": [
+    {
+      "assetCount": 13,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 444271946,
+      "tag": "v4.0.0"
+    },
+    {
+      "assetCount": 13,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 442272340,
+      "tag": "v3.0.27"
+    },
+    {
+      "assetCount": 13,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 441666314,
+      "tag": "v3.0.26"
+    },
+    {
+      "assetCount": 13,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 435930782,
+      "tag": "v3.0.25"
+    },
+    {
+      "assetCount": 13,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 435753153,
+      "tag": "v3.0.24"
+    },
+    {
+      "assetCount": 13,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 433463293,
+      "tag": "v3.0.23"
+    },
+    {
+      "assetCount": 11,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 431815487,
+      "tag": "v3.0.18"
+    },
+    {
+      "assetCount": 11,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 431458023,
+      "tag": "v3.0.17"
+    },
+    {
+      "assetCount": 11,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 431419108,
+      "tag": "v3.0.16"
+    },
+    {
+      "assetCount": 11,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 430770863,
+      "tag": "v3.0.15"
+    },
+    {
+      "assetCount": 11,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 430663101,
+      "tag": "v3.0.14"
+    },
+    {
+      "assetCount": 11,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 429905545,
+      "tag": "v3.0.13"
+    },
+    {
+      "assetCount": 11,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 429870882,
+      "tag": "v3.0.12"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 429842457,
+      "tag": "v3.0.11"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 426734730,
+      "tag": "v3.0.10"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 426608031,
+      "tag": "v3.0.9"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 426575228,
+      "tag": "v3.0.8"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 426550977,
+      "tag": "v3.0.7"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 426518002,
+      "tag": "v3.0.6"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 426497061,
+      "tag": "v3.0.5"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 426471700,
+      "tag": "v3.0.4"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 426170374,
+      "tag": "v3.0.3"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 426147653,
+      "tag": "v3.0.2"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 426125299,
+      "tag": "v3.0.1"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 425902063,
+      "tag": "v3.0.0"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 422640117,
+      "tag": "v2.29.15"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 422323070,
+      "tag": "v2.29.14"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 422301219,
+      "tag": "v2.29.13"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 422247444,
+      "tag": "v2.29.12"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 422179967,
+      "tag": "v2.29.11"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 422117127,
+      "tag": "v2.29.10"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 421979160,
+      "tag": "v2.29.9"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 420056228,
+      "tag": "v2.29.8"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 419957087,
+      "tag": "v2.29.7"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 418760702,
+      "tag": "v2.29.6"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 418307658,
+      "tag": "v2.29.5"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 418137575,
+      "tag": "v2.29.4"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 417487872,
+      "tag": "v2.29.3"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 417337435,
+      "tag": "v2.29.2"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 384777540,
+      "tag": "v2.27.1"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 384663952,
+      "tag": "v2.27.0"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 383592468,
+      "tag": "v2.26.2"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 383545561,
+      "tag": "v2.26.1"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 383302581,
+      "tag": "v2.26.0"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 383281326,
+      "tag": "v2.25.2"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 383260981,
+      "tag": "v2.25.1"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 383245281,
+      "tag": "v2.25.0"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 383225007,
+      "tag": "v2.24.1"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 383219637,
+      "tag": "v2.24.0"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 383212756,
+      "tag": "v2.23.1"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 383208912,
+      "tag": "v2.23.0"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 379412893,
+      "tag": "v2.22.1"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 379225301,
+      "tag": "v2.22.0"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 371103028,
+      "tag": "v2.21.3"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 370975307,
+      "tag": "v2.21.2"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 370297808,
+      "tag": "v2.21.1"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 370118855,
+      "tag": "v2.21.0"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 370056346,
+      "tag": "v2.20.12"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 369886033,
+      "tag": "v2.20.11"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 369703156,
+      "tag": "v2.20.10"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 369290464,
+      "tag": "v2.20.9"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 368863727,
+      "tag": "v2.20.8"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 367225448,
+      "tag": "v2.20.7"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 367208682,
+      "tag": "v2.20.6"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 367202959,
+      "tag": "v2.20.5"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 367199931,
+      "tag": "v2.20.4"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 365490060,
+      "tag": "v2.20.3"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 365102018,
+      "tag": "v2.20.2"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 364786248,
+      "tag": "v2.20.1"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 363996932,
+      "tag": "v2.20.0"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 363842082,
+      "tag": "v2.19.10"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 363505239,
+      "tag": "v2.19.9"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 363261224,
+      "tag": "v2.19.8"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 361758139,
+      "tag": "v2.19.7"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 361526729,
+      "tag": "v2.19.6"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 361517280,
+      "tag": "v2.19.5"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 361027411,
+      "tag": "v2.19.4"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 360725645,
+      "tag": "v2.19.3"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 360715133,
+      "tag": "v2.19.2"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 360407566,
+      "tag": "v2.19.1"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 360270036,
+      "tag": "v2.19.0"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 360140318,
+      "tag": "v2.18.0"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 360064387,
+      "tag": "v2.17.0"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 357109912,
+      "tag": "v2.16.2"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 357099499,
+      "tag": "v2.16.1"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 357094909,
+      "tag": "v2.16.0"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 356961176,
+      "tag": "v2.15.2"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 356921966,
+      "tag": "v2.15.1"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 356665723,
+      "tag": "v2.15.0"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 356517173,
+      "tag": "v2.14.0"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 356437657,
+      "tag": "v2.13.3"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 356434044,
+      "tag": "v2.13.2"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 356400947,
+      "tag": "v2.13.1"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 356364417,
+      "tag": "v2.13.0"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 356362790,
+      "tag": "v2.12.1"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 356359273,
+      "tag": "v2.12.0"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 356093639,
+      "tag": "v2.11.0"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 355066438,
+      "tag": "v2.10.0"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 355013339,
+      "tag": "v2.9.0"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 354981190,
+      "tag": "v2.8.1"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 354964741,
+      "tag": "v2.8.0"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 354953520,
+      "tag": "v2.7.0"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 354836691,
+      "tag": "v2.6.22"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 354828994,
+      "tag": "v2.6.21"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 354791313,
+      "tag": "v2.6.20"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 354787398,
+      "tag": "v2.6.19"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 354761069,
+      "tag": "v2.6.18"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 354752277,
+      "tag": "v2.6.17"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 354745742,
+      "tag": "v2.6.16"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 354615556,
+      "tag": "v2.6.15"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 354323581,
+      "tag": "v2.6.14"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 354310815,
+      "tag": "v2.6.13"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 367205399,
+      "tag": "v2.6.7"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 367204493,
+      "tag": "v2.6.6"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 367203896,
+      "tag": "v2.6.5"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 367205707,
+      "tag": "v2.6.4"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 367205669,
+      "tag": "v2.6.3"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 367205621,
+      "tag": "v2.6.2"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 367205590,
+      "tag": "v2.6.1"
+    },
+    {
+      "assetCount": 10,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 367205553,
+      "tag": "v2.6.0"
+    },
+    {
+      "assetCount": 9,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 352718440,
+      "tag": "v2.5.0"
+    },
+    {
+      "assetCount": 9,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 352708275,
+      "tag": "v2.4.0"
+    },
+    {
+      "assetCount": 9,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 352697305,
+      "tag": "v2.3.0"
+    },
+    {
+      "assetCount": 9,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 352688731,
+      "tag": "v2.2.0"
+    },
+    {
+      "assetCount": 9,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 352613473,
+      "tag": "v2.1.0"
+    },
+    {
+      "assetCount": 9,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 352592024,
+      "tag": "v2.0.0"
+    },
+    {
+      "assetCount": 9,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 352579798,
+      "tag": "v1.46.0"
+    },
+    {
+      "assetCount": 8,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 352464048,
+      "tag": "v1.45.0"
+    },
+    {
+      "assetCount": 8,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 350763599,
+      "tag": "v1.44.1"
+    },
+    {
+      "assetCount": 8,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 349462974,
+      "tag": "v1.44.0"
+    },
+    {
+      "assetCount": 8,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 349167105,
+      "tag": "v1.43.1"
+    },
+    {
+      "assetCount": 8,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 349160610,
+      "tag": "v1.43.0"
+    },
+    {
+      "assetCount": 8,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 349029217,
+      "tag": "v1.42.0"
+    },
+    {
+      "assetCount": 8,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 348949329,
+      "tag": "v1.41.0"
+    },
+    {
+      "assetCount": 8,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 348904798,
+      "tag": "v1.40.0"
+    },
+    {
+      "assetCount": 8,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 348900200,
+      "tag": "v1.39.0"
+    },
+    {
+      "assetCount": 8,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 348893098,
+      "tag": "v1.38.0"
+    },
+    {
+      "assetCount": 8,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 348890845,
+      "tag": "v1.37.0"
+    },
+    {
+      "assetCount": 8,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 348887528,
+      "tag": "v1.36.0"
+    },
+    {
+      "assetCount": 8,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 348858669,
+      "tag": "v1.35.0"
+    },
+    {
+      "assetCount": 8,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 347502364,
+      "tag": "v1.34.1"
+    },
+    {
+      "assetCount": 8,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 347412533,
+      "tag": "v1.34.0"
+    },
+    {
+      "assetCount": 8,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 347399058,
+      "tag": "v1.33.0"
+    },
+    {
+      "assetCount": 8,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 346187139,
+      "tag": "v1.32.0"
+    },
+    {
+      "assetCount": 8,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 345403449,
+      "tag": "v1.31.1"
+    },
+    {
+      "assetCount": 8,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 345290314,
+      "tag": "v1.31.0"
+    },
+    {
+      "assetCount": 8,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 345257589,
+      "tag": "v1.30.0"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 323420982,
+      "tag": "v1.29.0"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 323341301,
+      "tag": "v1.28.1"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 323284586,
+      "tag": "v1.28.0"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 323192856,
+      "tag": "v1.27.0"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 323185053,
+      "tag": "v1.26.1"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 323039999,
+      "tag": "v1.26.0"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 322468465,
+      "tag": "v1.25.0"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 322422030,
+      "tag": "v1.24.0"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 322420912,
+      "tag": "v1.23.0"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 322402697,
+      "tag": "v1.22.0"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 317251685,
+      "tag": "v1.21.0"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 317221575,
+      "tag": "v1.20.0"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 317144493,
+      "tag": "v1.19.0"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 317113691,
+      "tag": "v1.18.0"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 317079733,
+      "tag": "v1.17.0"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 316846893,
+      "tag": "v1.16.0"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 316837574,
+      "tag": "v1.15.0"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 316834756,
+      "tag": "v1.14.0"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 316732654,
+      "tag": "v1.13.0"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 316723795,
+      "tag": "v1.12.0"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 316718999,
+      "tag": "v1.11.0"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 316702845,
+      "tag": "v1.10.0"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 316664436,
+      "tag": "v1.9.0"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 316663367,
+      "tag": "v1.8.0"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 316661033,
+      "tag": "v1.7.0"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 316652769,
+      "tag": "v1.6.0"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 316532260,
+      "tag": "v1.5.2"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 316476891,
+      "tag": "v1.5.1"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 316438204,
+      "tag": "v1.5.0"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 316398956,
+      "tag": "v1.4.0"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 316396186,
+      "tag": "v1.3.2"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 316348865,
+      "tag": "v1.3.1"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 316313586,
+      "tag": "v1.3.0"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 315590118,
+      "tag": "v1.2.0"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 313723384,
+      "tag": "v1.1.0"
+    },
+    {
+      "assetCount": 7,
+      "draft": false,
+      "invalidDigests": [],
+      "prerelease": false,
+      "releaseId": 313716926,
+      "tag": "v1.0.0"
+    }
+  ]
+}

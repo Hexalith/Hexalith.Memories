@@ -160,7 +160,7 @@ it out explicitly in story review.
 
 The forbidden-default list (one source of truth, in `tools/check-story-file-scope.py`) currently
 covers: `src/**/*.cs`, `tests/**/*.cs`, `tools/publish-nuget.ps1`, `tools/pack-release.ps1`,
-`tools/test-release.ps1`, `package-lock.json`, and the submodule trees under `references/`
+`package-lock.json`, and the submodule trees under `references/`
 (`references/Hexalith.AI.Tools/**`, `references/Hexalith.Builds/**`,
 `references/Hexalith.Commons/**`, `references/Hexalith.EventStore/**`,
 `references/Hexalith.FrontComposer/**`, `references/Hexalith.PolymorphicSerializations/**`,
@@ -667,7 +667,7 @@ Before changing release automation, run:
 
 ```powershell
 ./tools/validate-release-packages.ps1
-./tools/test-release.ps1
+./tools/test.ps1
 ./tools/pack-release.ps1 -Version 0.0.1-ci -OutputDirectory artifacts/packages/test -PackageOnly
 python3 -m unittest discover -s tests/tooling/release_dispatch -p '*_test.py'
 python3 -m unittest discover -s tests/tooling/release_preflight -p '*_test.py'

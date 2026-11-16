@@ -5985,6 +5985,9 @@ decision: 2026-11-01 keep-open — parked. Reopens only on the trigger: any Prod
   status: open
   handoff: Story 30.6 (owner decision D3, 2026-11-15). Release-path `publish-nuget.ps1 --skip-duplicate` remains open. Recovery independently compares retained ZIP entries, omits `--skip-duplicate`, and fails on HTTP 409 (`test_409_push_refuses_without_release_completion_or_success_credit`); that is no release-path false-success fix.
 
+  retarget: 2026-11-15 — Story 30.6 D4; target and reopen trigger are `epic-30-retrospective` (Jérôme Piquot), parity row `nuget-duplicate` in `30-6-cutover/parity-matrix.md`. This remains open as a shared gap; the prior 30.6 implementation trigger is superseded. No release-path fix was implemented.
+
+
 ## Deferred from: Story 30.3 review — Recovery publication approval (2026-11-02)
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-3-guarded-release-dispatch-and-shared-caller-adoption.md`
@@ -6037,11 +6040,17 @@ decision: 2026-11-01 keep-open — parked. Reopens only on the trigger: any Prod
   status: open
   handoff: Story 30.6 (owner decision D3, 2026-11-15). Release-path `publish-nuget.ps1 --skip-duplicate` remains open. Recovery independently compares retained ZIP entries, omits `--skip-duplicate`, and fails on HTTP 409 (`test_409_push_refuses_without_release_completion_or_success_credit`); that is no release-path false-success fix.
 
+  retarget: 2026-11-15 — Story 30.6 D4; target and reopen trigger are `epic-30-retrospective` (Jérôme Piquot), parity row `nuget-eventual-consistency` in `30-6-cutover/parity-matrix.md`. This remains open as a shared gap; the prior 30.6 implementation trigger is superseded. No release-path fix was implemented.
+
+
 ## Deferred from: Story 30.3 final review — External version floor (2026-11-02)
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-3-guarded-release-dispatch-and-shared-caller-adoption.md`
   summary: Prove a proposed release version is newer than every stable version observed at the external package and image destinations.
   evidence: Final Blind 4 (medium; pre-existing publisher gap). `check-release-destinations.py` invokes the pinned helper's exact-version `validate_destination_absence` but never calls its `validate_version_floor` or `read_external_version_observations`. An unoccupied candidate can therefore pass when an external destination holds a newer stable version; the prior publisher lacked this floor as well. Owner: Story 30.6 release maintainer. Consequence: a stale version may publish if Git tags lag an external destination. Reopen trigger: Story 30.6 cutover parity validates the floor with the complete current set.
+
+  retarget: 2026-11-15 — Story 30.6 D4; target and reopen trigger are `epic-30-retrospective` (Jérôme Piquot), parity row `version-floor` in `30-6-cutover/parity-matrix.md`. This remains open as a shared gap; the prior 30.6 implementation trigger is superseded. No release-path fix was implemented.
+
 
 ## Deferred from: code review of spec-30-3-guarded-release-dispatch-and-shared-caller-adoption.md (2026-11-03)
 
@@ -6063,6 +6072,9 @@ decision: 2026-11-01 keep-open — parked. Reopens only on the trigger: any Prod
   summary: Recheck exact tag absence at the terminal preparation boundary or reconcile an identically bound concurrent tag explicitly.
   evidence: Round 3 Blind 5 (medium; pre-existing). Initial local/remote tag checks precede packing in both baseline and current workflows. Installed semantic-release pushes tags without force before publication, rejecting different tag objects, but Git accepts a matching lightweight tag created concurrently on the same source commit. Owner: Story 30.6 cutover maintainer. Consequence: an initial tag-absence observation can age during preparation. Reopen trigger: Story 30.6 validates terminal tag collision or immutable-tag reconciliation semantics.
 
+  retarget: 2026-11-15 — Story 30.6 D4; target and reopen trigger are `epic-30-retrospective` (Jérôme Piquot), parity row `terminal-tag` in `30-6-cutover/parity-matrix.md`. This remains open as a shared gap; the prior 30.6 implementation trigger is superseded. No release-path fix was implemented.
+
+
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-3-guarded-release-dispatch-and-shared-caller-adoption.md`
   summary: Retain exact prepared package bytes after partial publication failures.
   evidence: Round 3 Blind 7 (medium; pre-existing). Release package upload still requires overall success, as at baseline, while failure evidence uploads only summaries. Owner: Story 30.5 recovery maintainer. Consequence: missing/unpublished prepared package bytes can be lost when the runner disappears, complicating immutable reconciliation. Reopen trigger: Story 30.5 extends failed-release artifact retention.
@@ -6074,6 +6086,9 @@ decision: 2026-11-01 keep-open — parked. Reopens only on the trigger: any Prod
   evidence: Round 3 Blind 8 (medium; pre-existing). Both publisher families can succeed before the GitHub semantic-release plugin fails. The unchanged aggregate remains succeeded, and create-partial-publish-issue.ps1 skips statuses other than partial-publish. Owner: Story 30.5 recovery maintainer. Consequence: a release missing GitHub assets can fail without the expected partial-publish incident. Reopen trigger: Story 30.5 qualifies complete-unit publication and GitHub asset recovery.
   status: open
   handoff: Story 30.6 (owner decision D3, 2026-11-15). The publish-failed and GitHub-plugin incident alert remains open; Story 30.5 implements asset recovery but does not change alert eligibility.
+
+  retarget: 2026-11-15 — Story 30.6 D4; target and reopen trigger are `epic-30-retrospective` (Jérôme Piquot), parity row `github-plugin-incident` in `30-6-cutover/parity-matrix.md`. This remains open as a shared gap; the prior 30.6 implementation trigger is superseded. No release-path fix was implemented.
+
 
 ## Deferred from: code review of spec-30-4-five-image-publication-contract.md (2026-11-03)
 
@@ -6118,6 +6133,9 @@ decision: 2026-11-01 keep-open — parked. Reopens only on the trigger: any Prod
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-4-five-image-publication-contract.md`
   summary: Do not deploy the published v3.0.20 through v3.0.25 Server images; both children of each carry `PATH=/app` (high).
   evidence: Review R3-B1, widened in review round 4 (R4-B1, R4-B3). SDK 10.0.403 multi-RID inner builds rebuild container environment variables with `Split(':')[1]`, so the Server's declared `PATH=/app:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin` shipped as `PATH=/app`. Read-only `docker buildx imagetools inspect` reads on 2026-11-10 show that each of 3.0.20, 3.0.21, 3.0.22, 3.0.23, 3.0.24 and 3.0.25 holds all five two-platform image indexes, and `registry.hexalith.com/memories` returned `PATH=/app` for linux/amd64 and linux/arm64 of every one. The 3.0.20 and 3.0.21 Server children also keep the relative `dotnet` entrypoint, which `PATH=/app` cannot resolve, so they cannot start; 3.0.22 onward use the absolute `/usr/share/dotnet/dotnet`. 3.0.19 pushed no image. The Production overlay's `wget` exec startup, readiness and liveness probes exit 127 on every affected Server image and can never pass; R3-B1 recorded that the live cluster stays Ready only because it runs the older single-platform `71e49b6e` image. The tags stay deployable: the v3.0.23, v3.0.24 and v3.0.25 GitHub releases each carry a `hexalith-memories-production.yaml` asset rendered against their own images, v3.0.25 was then the repository's Latest release (superseded by corrected v3.0.26 on 2026-11-11), and v3.0.20–v3.0.22 have no GitHub release. Published tags are immutable, so nothing was retagged, overwritten or deleted, and no remote action was taken. The fix (`RebindMultiRidContainerEnvironmentVariables` in `Directory.Build.targets`) and a child-versus-deployment-archive runtime-config parity check before the publish preflight and any registry write shipped with the qualified v3.0.26 release from f807701e; its packet proves full PATH and parity on both children. This does not withdraw old assets. Owner action (Jérôme Piquot): mark the v3.0.23, v3.0.24 and v3.0.25 GitHub releases do-not-deploy, and make the Story 30.6 cutover refuse the v3.0.20–v3.0.25 tags. Owner: Jérôme Piquot. Consequence: no v3.0.20–v3.0.25 Server image may be deployed, and the historical affected releases still offer those assets; corrected v3.0.26 has independently qualified children. Reopen trigger: the owner marks the affected GitHub releases do-not-deploy and the Story 30.6 cutover refuses those tags; a later fixed release alone does not close this entry.
+  status: open
+  retarget: 2026-11-15 — D3 satisfies the tag-refusal half through the release rollback rule (v3.0.19–v3.0.25 refused). Remaining owner/reopen trigger: Jérôme Piquot marks the affected GitHub Releases do-not-deploy. No external release edit was performed; a fixed later release does not close this action. See parity row `do-not-deploy`.
+
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-4-five-image-publication-contract.md`
   summary: Align the pre-existing CI-ownership documentation with the current shared CI build timeout and eight-project coverage lane.
@@ -6166,18 +6184,30 @@ decision: 2026-11-01 keep-open — parked. Reopens only on the trigger: any Prod
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-4-five-image-publication-contract.md`
   summary: Amend the Story 30.4 owned paths in `epics.md` to the delivered File Scope, including the edit to the 30.3-owned `CiTestInventoryTests.cs`.
   evidence: Review R6-H2. `epics.md:5805` lists four owned paths. Story 30.4 also edited `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs` (named as Story 30.3's at `epics.md:5754` and in `epic-30-context.md`), `.github/workflows/release.yml`, `.releaserc.json`, `tests/tooling/release_dispatch/release_dispatch_test.py`, `Directory.Build.targets` and `src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj`. The spec records these as declared cross-story edits. The delivered breadth was ratified under the owner's standing review preference and is listed for veto. Owner: Jérôme Piquot. Consequence: the next reader of `epics.md` sees a narrower ownership than the code history. Reopen trigger: the next correct-course or story creation that touches Epic 30 planning text.
+  status: resolved 2026-11-15
+  resolution: Story 30.6 — Dated R6-H2 note at Story 30.4 owned paths points to the delivered File Scope and records the declared cross-story C# inventory edit.
+
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-4-five-image-publication-contract.md`
   summary: Register the Runtime config parity checkpoint in the `epics.md` Story 30.4 checkpoint table.
   evidence: Review R6-H3a. The round-3 loopback (R3-B1) added a 14th row, Runtime config parity, with its own owner, artifact, review state and completion state. `epics.md:5812-5826` still registers only 13 rows. The check corrects the platform/health contract inside the frozen intent, so it is not a hidden slice. Owner: Jérôme Piquot. Consequence: the planning record understates the story's verified contract. Reopen trigger: the next correct-course or story creation that touches Epic 30 planning text.
+  status: resolved 2026-11-15
+  resolution: Story 30.6 — Dated R6-H3a note registers the fourteenth runtime-config checkpoint with owner, exact retained packet/run, review state and completion state.
+
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-4-five-image-publication-contract.md`
   summary: Register a v3.0.20–v3.0.25 tag-refusal criterion in Story 30.6, or rewrite the do-not-deploy reopen trigger so it does not depend on unregistered scope.
   evidence: Review R6-H4. The round-3 do-not-deploy entry's reopen trigger requires that "the Story 30.6 cutover refuses those tags", but Story 30.6 (`epics.md:5860-5894`) has no such acceptance criterion or checkpoint. Owner: Jérôme Piquot. Consequence: the do-not-deploy entry can never close through its own trigger. Reopen trigger: Story 30.6 creation or the next Epic 30 correct-course.
+  status: resolved 2026-11-15
+  resolution: Story 30.6 — D3 release rollback now explicitly refuses v3.0.19–v3.0.25 and the pre-30.3 caller in the runbook and parity matrix. The do-not-deploy entry remains open solely on the owner's external release-marking action.
+
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-4-five-image-publication-contract.md`
   summary: Correct the stale Story 30.4 planning text in `epics.md` against the verified story record.
   evidence: Review R6-P4. `epics.md:5774` reads `Status: backlog`. `:5810` says "All artifacts below are planned; no gate has passed", and all 13 checkpoint rows read `pending | not complete`. The zot "Known risk (carried, not yet re-verified)" at `:5801` was re-verified: authorized Release 43018206370 pushed every image through the skopeo authfile path, so the challenge-response 401 did not block publication. The story's Epic AC Verification table records the corrected values. Owner: Jérôme Piquot. Consequence: the planning artifact contradicts the completed story. Reopen trigger: the next correct-course or story creation that touches Epic 30 planning text.
+  status: resolved 2026-11-15
+  resolution: Story 30.6 — Dated notes at Story 30.4 status, known risk and checkpoint table point to done/reviewed story evidence and the successful skopeo transport without rewriting historic rows.
+
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-4-five-image-publication-contract.md`
   summary: Restore the full `org.opencontainers.image.base.name` label on multi-RID image children.
@@ -6223,6 +6253,9 @@ decision: 2026-11-01 keep-open — parked. Reopens only on the trigger: any Prod
   target: Story 30.6 release cutover maintainer (Jérôme Piquot).
   evidence: Owner decision D3 leaves publish-failed incident alerts out of Story 30.5. `create-partial-publish-issue.ps1` still skips statuses other than partial-publish; the existing all-fail fixture pins that behavior. Consequence: an all-fail post-tag publication may have no incident. Reopen trigger: Story 30.6 implements release-path incident parity. Do not duplicate the separately owned GitHub-plugin failure entry.
 
+  retarget: 2026-11-15 — Story 30.6 D4; target and reopen trigger are `epic-30-retrospective` (Jérôme Piquot), parity row `publish-failed-incident` in `30-6-cutover/parity-matrix.md`. This remains open as a shared gap; the prior 30.6 implementation trigger is superseded. No release-path fix was implemented.
+
+
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-5-partial-release-recovery.md`
   summary: Verify whether an interrupted GitHub CLI release create can leave only the generated recovery packet receipt, then qualify resume from retained recovery-run packet bytes if reachable (unverified medium).
   evidence: Review R1 BH3; current code refuses receipt-only recovery packets, but concurrent CLI upload ordering is not established from local source. An isolated actual CLI interruption fixture or authoritative implementation trace would settle reachability. Ordinary release packet/receipt subsets are handled in Story 30.5.
@@ -6239,12 +6272,17 @@ decision: 2026-11-01 keep-open — parked. Reopens only on the trigger: any Prod
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-5-partial-release-recovery.md`
   summary: Record dated planning corrections in `epics.md` Story 30.5 for the two `corrected` Epic AC claims. The owned paths were widened from two files to the 19 implementation/test/doc paths in the story File Scope, and the activation gate's Builds evidence is now owner-approved for `81c88b34` and `ae77d569` (D2).
   evidence: Code review 2026-11-15 (Historical Slice Guard F6). `_bmad/custom/epic-ac-verification.md` requires a planning-artifact correction or a dated note at the claim. `_bmad-output/planning-artifacts/epics.md:5832` (activation gate) and `:5847` (owned paths) still carry the pre-story text, and `:5830` still reads `Status: backlog`. Editing `epics.md` is outside the Story 30.5 File Scope. Owner: Jérôme Piquot. Consequence: the next reader of `epics.md` sees a two-file ownership claim and an unqualified activation gate that the code no longer matches. Reopen trigger: the next correct-course or epic-planning pass that touches Epic 30, or Story 30.6 creation, whichever comes first.
-  status: open
+  status: resolved 2026-11-15
+  resolution: Story 30.6 — Dated F6 notes at Story 30.5 status, activation gate and owned paths record done, the approved 81c88b34/ae77d569 recovery identities and the delivered File Scope. Historical planning text and evidence remain intact.
+
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-5-partial-release-recovery.md`
   summary: Align the `publish-nuget.ps1` child-summary, `::error` and step-summary guidance with the current Recover Partial Release path.
   evidence: Code review 2026-11-15 (Verification Gap). `tools/publish-nuget.ps1:45-47`, `:91` and `:106` still say "manually reconcile NuGet publication", and `publish_nuget_test.py:472-482` pins that text and asserts "Recover Partial Release" is absent. Story 30.5 changed the aggregate (`publish-release.ps1:196`) and incident guidance, so a current partial publish now carries contradictory guidance in one aggregate summary. `publish-nuget.ps1` is outside the Story 30.5 File Scope. Owner: Jérôme Piquot (Story 30.6 release cutover maintainer). Consequence: operators read contradictory recovery instructions inside one release evidence summary. Reopen trigger: Story 30.6 edits `publish-nuget.ps1` for the D3 `--skip-duplicate` hand-off.
   status: open
+
+  retarget: 2026-11-15 — Story 30.6 D4; target and reopen trigger are `epic-30-retrospective` (Jérôme Piquot), parity row `nuget-child-guidance` in `30-6-cutover/parity-matrix.md`. This remains open as a shared gap; the prior 30.6 implementation trigger is superseded. No release-path fix was implemented.
+
 
 ## Deferred from: Story 30.5 remaining prerequisites and validation (2026-11-15)
 

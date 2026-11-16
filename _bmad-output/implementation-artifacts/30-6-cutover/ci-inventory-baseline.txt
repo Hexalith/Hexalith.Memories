@@ -1,0 +1,7 @@
+xUnit.net v3 In-Process Runner v4.0.3+384aa7f0b4 (64-bit .NET 11.0.0)
+  Discovering: Hexalith.Memories.Cli.Tests
+  Discovered:  Hexalith.Memories.Cli.Tests
+  Starting:    Hexalith.Memories.Cli.Tests
+  Finished:    Hexalith.Memories.Cli.Tests (ID = '1c106464c6518fec59efca475ddcbbef86537c979c80d4d5d1779cd7172149eb')
+=== TEST EXECUTION SUMMARY ===
+   Hexalith.Memories.Cli.Tests  Total: 141, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.322s

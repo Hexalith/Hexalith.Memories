@@ -1,0 +1,11 @@
+{
+  "flat_membership_loss_is_invisible": true,
+  "draft_latest_accepted": true,
+  "short_page_next_is_ignored": true,
+  "parent_page_count_ignored": true,
+  "malformed_snapshot_identical_passes": true,
+  "unsupported_encoding_accepted": true,
+  "concurrent_output_overwritten": true,
+  "descriptor_controls_missing_required_fields": true,
+  "git_checkout_changes_snapshot_bytes": true
+}

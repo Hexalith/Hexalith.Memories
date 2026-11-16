@@ -1,0 +1,6 @@
+test_summary_root_must_be_an_object (publish_nuget_test.IssueHelperReliabilityTests.test_summary_root_must_be_an_object) ... ok
+
+----------------------------------------------------------------------
+Ran 1 test in 3.870s
+
+OK

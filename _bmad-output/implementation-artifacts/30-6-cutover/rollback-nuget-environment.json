@@ -1,0 +1,24 @@
+{
+  "command": [
+    "python3",
+    "-B",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    "tests/tooling/publish_nuget",
+    "-p",
+    "*_test.py",
+    "-v"
+  ],
+  "environment": {
+    "TMPDIR": "/proc/self/cwd",
+    "TMP": "/proc/self/cwd",
+    "TEMP": "/proc/self/cwd",
+    "TERM": "dumb"
+  },
+  "aliasResolvesInsideWrapperWorkspace": true,
+  "exitCode": 1,
+  "seconds": 43.56,
+  "source": "exact v4.0.0 rollback surface; no fixture or publisher edits"
+}

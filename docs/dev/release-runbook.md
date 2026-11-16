@@ -252,8 +252,8 @@ full declared PATH. All ten NuGet 3.0.26 package downloads are publicly availabl
 qualify publication; the declared health checks use Development test authorities and disabled
 lifecycle writes, with no Production lifecycle qualification credit.
 Owner: Jérôme Piquot. Consequence: no v3.0.20–v3.0.25 Server image may be deployed. Reopen
-trigger: the owner marks the affected GitHub releases do-not-deploy and the Story 30.6 cutover
-refuses those tags. The v3.0.26 publication above was a separately authorized guarded release.
+trigger: the owner marks the affected GitHub releases do-not-deploy. Story 30.6 documents
+refusal of v3.0.19–v3.0.25 as rollback targets; the external do-not-deploy action remains open. The v3.0.26 publication above was a separately authorized guarded release.
 Local implementation and review do not authorize another release, publication-flag or protected-setting
 changes, or Production lifecycle writes.
 
@@ -302,6 +302,198 @@ On 2026-11-02, Release run `41495447050` published `v3.0.18` from commit `66822b
 On 2026-11-03, the authorized production configuration was verified with required reviewer `jpiquot`, admin bypass disabled and deployments restricted to branch `main`. Approved frozen Release run `41624526890` on `d7e44d01b66f0800bdb7edca8553934fe44dc145` followed successful push CI `41621265465`. Approval was submitted as `jpiquot` on the user's behalf through the normal production gate, with no bypass; publication stayed frozen.
 
 The source job checks main tip and exact-source push CI before entering production. When publication is enabled, preparation repeats that check after the build; the caller checks once more immediately before login. If main advances or CI cannot be proved at any checkpoint, stop and dispatch again from the new tip after its push CI succeeds. A missing reviewer rule blocks the workflow before the protected job. Never treat a passing workflow declaration or local fixture as proof that the remote approval setting is active.
+
+## Release Cutover Parity
+
+Story 30.6 retroactively compares the guarded caller introduced by Story 30.3
+(`8aee7a1323160cb39d7b1415256dbfdcb032939a`) with its predecessor
+`46667b0d25c707bcdc961d59895bfe5a064bfd12`. D17 retains Memories' caller-owned
+publisher. Adopting Builds `domain-release.yml` is outside this cutover.
+
+The evidence lives in
+[`30-6-cutover/parity-matrix.md`](../../_bmad-output/implementation-artifacts/30-6-cutover/parity-matrix.md),
+[`dry-run.md`](../../_bmad-output/implementation-artifacts/30-6-cutover/dry-run.md) and
+[`rollback-rehearsal.md`](../../_bmad-output/implementation-artifacts/30-6-cutover/rollback-rehearsal.md).
+The inventory remains ten packages and five images. The Release asset set grows from eleven
+to thirteen by adding the release-evidence archive and its receipt. Source/protection checks,
+pinned preparation, destination checks and current retained-byte recovery strengthen the old path.
+Duplicate-response success, external version-floor omission, terminal-tag recheck and incident
+eligibility remain shared gaps with named owners and `epic-30-retrospective` triggers in the matrix.
+The NuGet child-summary wording also remains an explicit hand-off. No release-path fix is implied.
+
+The owner selected dispatched v4.0.0 run
+[43432588932](https://github.com/Hexalith/Hexalith.Memories/actions/runs/43432588932)
+as the controlled rehearsal. It succeeded at source
+`c4ee997702ede948ada5f99eeae7b3782e92003b` with thirteen assets. It and the recorded
+v3.0.19–v3.0.22 failures ran code from before Story 30.5. They do not prove the final 30.4-fix/30.5 source.
+Offline fixtures prove local behavior only. Live proof for the final 30.4-fix/30.5 code remains
+an owner obligation on the next authorized release.
+
+Removal requires a reviewed matrix with zero `regression` rows and passing checkpoint evidence.
+The removal record in the matrix is authoritative. The ordinary developer test command is
+`./tools/test.ps1`. The 2026-11-16 removal retired `tools/test-release.ps1` after the
+coordinator verified zero matrix regressions, the rollback lanes qualified, and all published
+identities remained byte-identical across the complete rehearsal. The C# inventory now guards
+the old runner's absence. The historical container fixture's complete-module fallback is recorded
+in the rehearsal; full-discovery flakes remain retained rather than reported as passing runs.
+
+Before the next owner-dispatched release, Jérôme Piquot records the intended version and exact
+successful-CI source, then captures every published identity. These reads require `gh` authentication
+and registry read credentials in the local Docker credential store. A redirect, 401/403/5xx, timeout
+or unparseable member refuses the entire capture; investigate the named member before proceeding.
+Historical image tags are captured as their exact top-level SHA-256 digest and media type,
+including recognized OCI/Docker single-image manifests and indexes. Capture verifies the original
+response bytes against the registry digest and refuses unknown formats. Existing entries come
+from the before-snapshot; there is no historical allowlist or version cutoff. Only the five new
+version tags in an additive release must be image indexes. Use a fresh directory so prior evidence
+cannot be overwritten:
+
+```bash
+VERSION=4.0.1 # replace with the approved semantic-release candidate
+SOURCE_SHA='REPLACE_WITH_FULL_APPROVED_CURRENT_MAIN_SHA'
+EVIDENCE=artifacts/next-release-$VERSION
+python3 -B tools/release-identity-snapshot.py capture --output "$EVIDENCE/identity-before.json"
+```
+
+Retain this before-snapshot and its `.sha256` receipt before the separately authorized dispatch.
+After the release finishes, capture again and require the additive-only check:
+
+```bash
+python3 -B tools/release-identity-snapshot.py capture --output "$EVIDENCE/identity-after.json"
+python3 -B tools/release-identity-snapshot.py compare "$EVIDENCE/identity-before.json" "$EVIDENCE/identity-after.json" --expect additive --version "$VERSION" --source-sha "$SOURCE_SHA"
+```
+
+The only permitted delta is one new tag peeled to that source, one published Release containing
+exactly the thirteen expected nonempty digested assets, ten new listed package versions and five
+new image-index tags. Latest may stay unchanged or move to this Release. Every prior tag object,
+peeled commit, Release state/asset identity, package listed state and image digest/media type stays unchanged.
+An unexpected delta leaves the checkpoint incomplete. After any publication, continuation is
+retained-byte recovery or a named blocker; never rerun publication to manufacture a passing delta.
+
+| Checkpoint | Owner | Exact command or artifact | Review state | Completion state |
+| --- | --- | --- | --- | --- |
+| Retrospective caller parity and removal | Memories Release Engineer | `30-6-cutover/parity-matrix.md` | reviewed 2026-11-16 | see matrix gate |
+| Next-release before-snapshot | Jérôme Piquot | `capture --output "$EVIDENCE/identity-before.json"` above | pending | obligation; not complete |
+| Final-code live additive proof | Jérôme Piquot | `compare ... --expect additive --version "$VERSION" --source-sha "$SOURCE_SHA"` above | pending | obligation; no live credit |
+
+## Release Rollback
+
+A rollback is a normal reviewed PR restoring the release surface to the **latest fully released
+guarded tag**, currently **v4.0.0**. Re-establish that selection with read-only tag, Release,
+package and image evidence before preparing the PR; a tag alone never qualifies. Refuse
+**v3.0.19–v3.0.25**: v3.0.19–v3.0.22 are partial tags, and the affected v3.0.20–v3.0.25 Server
+images carry the do-not-deploy defect described above. The pre-30.3 caller
+`46667b0d25c707bcdc961d59895bfe5a064bfd12` is never a target: it publishes on push and ignores
+the publication flag. Do not restore a push-triggered caller.
+
+1. Record the blocker, selected guarded tag, fully released evidence and owner in the PR. Capture
+   `identity-before.json` using the snapshot tool. Refuse an ambiguous live read.
+2. From a clean checkout at the PR base, run preparation and all scratch validation inside one
+   foreground `run-with-temp bash` job. Keep that job alive until every child has finished and
+   cleanup completes; retain requested logs outside its private `$TMPDIR`. Materialize both the
+   Memories worktree and a separate worktree of the unchanged **root-declared** Builds gitlink.
+   A plain directory beneath an uninitialized gitlink lets historical fixtures skip and supplies
+   no qualification. From the repository root, inside that wrapper job:
+
+   ```bash
+   SOURCE_ROOT=$PWD
+   BASE_SHA=$(git rev-parse HEAD)
+   BUILDS_SOURCE="$SOURCE_ROOT/references/Hexalith.Builds"
+   BUILDS_SHA=$(git rev-parse "$BASE_SHA:references/Hexalith.Builds")
+   SCRATCH_ROOT="$TMPDIR/memories"
+   git -C "$BUILDS_SOURCE" cat-file -e "$BUILDS_SHA^{commit}"
+   git -C "$BUILDS_SOURCE" cat-file -e 'ae77d5690a9411a2154fa4ed5231edc373942573^{commit}'
+   git -C "$BUILDS_SOURCE" cat-file -e '81c88b34d09d34260b92d7f0928dbbc1c7446baa^{commit}'
+   git worktree add --detach "$SCRATCH_ROOT" "$BASE_SHA"
+   git -C "$BUILDS_SOURCE" worktree add --detach "$SCRATCH_ROOT/references/Hexalith.Builds" "$BUILDS_SHA"
+   git -C "$SCRATCH_ROOT/references/Hexalith.Builds" rev-parse --show-toplevel
+   cd "$SCRATCH_ROOT"
+   ```
+
+   Require every availability check to pass, and the final top-level path to equal the scratch
+   Builds path. The pinned preparation/publication helper and historical recovery commits must
+   already exist in the local root-declared Builds object store; stop with a named blocker if
+   any is absent. Do not fetch or update a dependency, pin, allowlist or nested submodule to
+   manufacture availability. The exact restored path inventory is
+   [`30-6-cutover/rollback-surface.txt`](../../_bmad-output/implementation-artifacts/30-6-cutover/rollback-surface.txt).
+   It covers caller, publisher, recovery tools and their tests, including files absent at the target.
+   Restore only that reviewed surface from the selected tag, with `git restore --source v4.0.0 --worktree -- <paths>`.
+   Dependencies, Builds gitlinks/execution pins and recovery allowlists need their own authorization
+   if a future target would require changes. Check the actual diff before making a PR.
+3. Run `actionlint .github/workflows/release.yml .github/workflows/recover-partial-release.yml`
+   and each of the following exact fixture commands in that worktree, inside the same wrapper
+   job. Require exit 0 **and zero skips for every lane**, including every isolated fallback
+   module; a missing Docker prerequisite or Builds checkout is a blocker, not a passing lane:
+
+   ```bash
+   python3 -B -m unittest discover -s tests/tooling/release_packages -p '*_test.py' -v
+   python3 -B -m unittest discover -s tests/tooling/release_preflight -p '*_test.py' -v
+   python3 -B -m unittest discover -s tests/tooling/release_dispatch -p '*_test.py' -v
+   NUGET_SCRATCH="$TMPDIR/pppppppppppppppppppp"
+   mkdir -p "$NUGET_SCRATCH"
+   TMPDIR="$NUGET_SCRATCH" TMP="$NUGET_SCRATCH" TEMP="$NUGET_SCRATCH" TERM=dumb python3 -B -m unittest discover -s tests/tooling/publish_nuget -p '*_test.py' -v
+   python3 -B -m unittest discover -s tests/tooling/publish_containers -p '*_test.py' -v
+   ```
+
+   The twenty-character padding keeps the exact historical v4.0.0 NuGet diagnostic assertion
+   intact under PowerShell line wrapping; the scratch directory remains beneath the wrapper
+   TMPDIR. The passing rehearsal changed no source, fixture or output.
+
+   Exact v4.0.0 full container discovery can hit its historical HTTP/1.0 fixture race: a
+   bodyless 204 response closes the socket without an explicit `Connection: close`, and
+   the next synchronous DELETE can race that teardown. Current source already fixes the
+   fixture; do not patch the selected rollback target to obtain a pass. Retain the failure
+   log, then use the focused-validation fallback: run each complete module in a fresh
+   Python process, once, with no skipped assertions:
+
+   ```bash
+   for MODULE in partial_release_completion_test.py publication_contract_test.py publish_containers_test.py registry_authorization_test.py release_orchestration_test.py
+   do
+     python3 -B -m unittest discover -s tests/tooling/publish_containers -p "$MODULE" -v || exit 1
+   done
+   ```
+
+   Require the aggregate executed IDs to equal the entire discovered set, with zero skips.
+   The 30.6 rehearsal executed 104/104 exact IDs in those five processes (9/50/26/12/7).
+   `rollback-d6-isolated-modules-verified.json` records that equality against unchanged raw
+   passing logs. Its provenance retains the original ad hoc collector error: that collector
+   duplicated method names in verbose IDs, so its equality check failed even though every
+   test subprocess passed. The verified record reads the canonical parenthesized IDs; no
+   test was rerun or changed for that metadata correction. Record any remaining failed
+   module as a named blocker and keep the rollback checkpoint incomplete.
+
+4. Capture `identity-after-rollback.json` from the read-only destinations, then run:
+
+   ```bash
+   python3 -B tools/release-identity-snapshot.py compare identity-before.json identity-after-rollback.json --expect identical
+   ```
+
+   Require exit 0 and retain both receipts and test logs outside the disposable directory.
+   After every foreground child has finished, remove the scratch Builds worktree **first**, then
+   Memories, using their owning repositories, before the wrapper exits:
+
+   ```bash
+   cd "$SOURCE_ROOT"
+   git -C "$BUILDS_SOURCE" worktree remove --force "$SCRATCH_ROOT/references/Hexalith.Builds"
+   git worktree remove --force "$SCRATCH_ROOT"
+   ```
+
+   Perform that cleanup on failure too, without touching unrelated worktrees. Never push the
+   rehearsal. The checked local diff becomes the reviewable PR;
+   merging or dispatching it requires the ordinary owner-controlled process.
+
+Rolling back to v4.0.0 drops the retained-byte recovery bundles introduced in Story 30.5.
+A subsequent failed release can therefore lack the current-set recovery bytes. Preserve every
+available immutable artifact and record a named blocker when recovery prerequisites are absent.
+After any package, image, tag or Release has been published, a rollback cannot undo that publication:
+continue through qualified recovery or a named blocker. Never delete, retag, overwrite or unlist
+published identities, and never move Latest as part of rollback.
+
+| Checkpoint | Owner | Exact command or artifact | Review state | Completion state |
+| --- | --- | --- | --- | --- |
+| Fully released guarded target and refusals | Memories Maintainer | This rule plus `30-6-cutover/parity-matrix.md` | reviewed 2026-11-16 | documented; live target proof recorded in matrix |
+| Local rollback release lanes | Platform Operations | `30-6-cutover/rollback-rehearsal.md` | reviewed 2026-11-16 | see rehearsal result |
+| Published identities unchanged | Platform Operations | `compare identity-before.json identity-after-rollback.json --expect identical` | reviewed 2026-11-16 | see rehearsal result |
 
 ## Prerequisites
 
@@ -592,7 +784,7 @@ those actions can move the published state away from the CI-recorded audit ancho
   commit.
 - If NuGet publishing partially succeeds, do not delete published packages from nuget.org. There
   are two failure shapes to keep separate:
-  - **HTTP 409 (already published).** The destination preflight refuses an occupied version before tag creation. `dotnet nuget push --skip-duplicate` remains in the publisher for a race after the probe; it does not authorize rerunning a partially published release. Preserve the package summary and follow the retained-byte Recover Partial Release procedure below. The child publisher still emits legacy manual-reconciliation guidance; aligning that guidance belongs to Story 30.6.
+  - **HTTP 409 (already published).** The destination preflight refuses an occupied version before tag creation. `dotnet nuget push --skip-duplicate` remains in the publisher for a race after the probe; it does not authorize rerunning a partially published release. Preserve the package summary and follow the retained-byte Recover Partial Release procedure below. The child publisher still emits legacy manual-reconciliation guidance; the shared-gap parity row re-targets that guidance and duplicate-response handling to `epic-30-retrospective`.
   - **Non-409 failures (auth, network, server error).** `dotnet nuget push` exits non-zero.
     `publish-nuget.ps1` records the failed package, exit code, and sanitized output, then continues
     to later packages where it can still safely invoke `dotnet nuget push`. If a preflight or

@@ -1,0 +1,19 @@
+  Determining projects to restore...
+  Restored /home/administrator/projects/hexalith/memories/src/Hexalith.Memories.Telemetry/Hexalith.Memories.Telemetry.csproj (in 4 ms).
+  Restored /home/administrator/projects/hexalith/memories/src/Hexalith.Memories.Contracts/Hexalith.Memories.Contracts.csproj (in 6 ms).
+  Restored /home/administrator/projects/hexalith/memories/tests/Hexalith.Memories.TestHelpers/Hexalith.Memories.TestHelpers.csproj (in 15 ms).
+  Restored /home/administrator/projects/hexalith/memories/src/Hexalith.Memories.Client.Rest/Hexalith.Memories.Client.Rest.csproj (in 18 ms).
+  Restored /home/administrator/projects/hexalith/memories/src/Hexalith.Memories.Cli/Hexalith.Memories.Cli.csproj (in 26 ms).
+  Restored /home/administrator/projects/hexalith/memories/tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj (in 39 ms).
+  Hexalith.Memories.Contracts -> /tmp/hexalith-job.r1IRQZT5/build/bin/Hexalith.Memories.Contracts/debug/Hexalith.Memories.Contracts.dll
+  Hexalith.Memories.Client.Rest -> /tmp/hexalith-job.r1IRQZT5/build/bin/Hexalith.Memories.Client.Rest/debug/Hexalith.Memories.Client.Rest.dll
+  Hexalith.Memories.Telemetry -> /tmp/hexalith-job.r1IRQZT5/build/bin/Hexalith.Memories.Telemetry/debug/Hexalith.Memories.Telemetry.dll
+  Hexalith.Memories.Cli -> /tmp/hexalith-job.r1IRQZT5/build/bin/Hexalith.Memories.Cli/debug/Hexalith.Memories.Cli.dll
+  Hexalith.Memories.TestHelpers -> /tmp/hexalith-job.r1IRQZT5/build/bin/Hexalith.Memories.TestHelpers/debug/Hexalith.Memories.TestHelpers.dll
+  Hexalith.Memories.Cli.Tests -> /tmp/hexalith-job.r1IRQZT5/build/bin/Hexalith.Memories.Cli.Tests/debug/Hexalith.Memories.Cli.Tests.dll
+
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:05.79

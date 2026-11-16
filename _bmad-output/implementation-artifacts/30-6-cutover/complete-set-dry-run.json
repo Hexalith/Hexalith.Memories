@@ -1,0 +1,323 @@
+{
+  "schemaVersion": "hexalith.memories.builds-publication-qualification.v1",
+  "story": "30-2-pinned-builds-publication-and-recovery-qualification",
+  "checkpoint": "complete-set-dry-run",
+  "result": "pass",
+  "checksResult": "pass",
+  "overallResult": "pass",
+  "synthetic": true,
+  "bindings": {
+    "builds": {
+      "repository": "Hexalith/Hexalith.Builds",
+      "sha": "e2bbbd0893f586e4d447ef8358ff747ea3d34435",
+      "verified": true,
+      "superprojectGitlink": "e2bbbd0893f586e4d447ef8358ff747ea3d34435",
+      "checkout": "e2bbbd0893f586e4d447ef8358ff747ea3d34435",
+      "executedHelpers": {
+        "publish-containers.sh": "7b0b29d552fb38ab20db6c5faf650ac314a8fac17a6b9f43417035d29ef649ed",
+        "oci_registry_validator.py": "3f54edb036642551e64c180b4708a954d84bd55cac381a4459c3f75448488608",
+        "publication_preflight.py": "3da0d1ca20af78b69b8d5868b9a3311b448c53c5fca04f0d0fb8643db59fd196",
+        "smoke-container-platforms.sh": "f11865658a24ecea906da087d8446c7f631dc5a9328e294676534d590ef0e89e",
+        "smoke_container_platforms.py": "7f1161d6f477c77ddf6a1e2f381df03451168565dd8cabc28010ab23db443491"
+      },
+      "readReferences": {
+        "Github/publish-containers/action.yml": "0262e6fee149f91a046830e941e6010bb46fd1a03b7f40341d8ee12cdf70484b",
+        ".github/workflows/domain-release.yml": "4826f5ef4e457930d8aa89c6c8c4c92d9db483787850b4d1f426b5e4f8269ab7",
+        "Github/prepare-domain-release/action.yml": "9a74745084acfb6cc996637cfe29a369675ce20736c6fe7dfc42ccac1cdacbbf"
+      }
+    },
+    "source": {
+      "repository": "Hexalith/Hexalith.Memories",
+      "sha": "fad5ec5efb286a1b4589869a354895acd3aaf55c",
+      "dirty": false
+    },
+    "harness": {
+      "path": "tools/qualify-builds-publication.py",
+      "sha256": "7ec26d9c20be3ef7f6671c6a0de31e025cee1ad51b4a597891466bff4d35b4b9"
+    },
+    "profile": {
+      "path": "tools/builds-publication-qualification.json",
+      "sha256": "b632528563b73bb3dc4956757bea44ea61dc50b95d8aee4f1fc82da585b9680a"
+    }
+  },
+  "release": {
+    "repository": "Hexalith/Hexalith.Memories",
+    "registry": "registry.hexalith.com",
+    "version": "0.0.302",
+    "environment": "production",
+    "authorityGate": "disabled (ordinary protected-environment release posture)",
+    "packageCount": 10,
+    "packageIds": [
+      "Hexalith.Memories.Aspire",
+      "Hexalith.Memories.Contracts",
+      "Hexalith.Memories.Client.Rest",
+      "Hexalith.Memories.Redis",
+      "Hexalith.Memories.Cli",
+      "Hexalith.Memories.Mcp",
+      "Hexalith.Memories.ServiceDefaults",
+      "Hexalith.Memories.EventStore",
+      "Hexalith.Memories.Telemetry",
+      "Hexalith.Memories.EventStoreExtensions"
+    ],
+    "containerProjects": [
+      "src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj|memories",
+      "src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj|memories-mcp",
+      "src/Hexalith.Memories.AccessTelemetry/Hexalith.Memories.AccessTelemetry.csproj|memories-access-telemetry",
+      "src/Hexalith.Memories.AccessTelemetry.Clock/Hexalith.Memories.AccessTelemetry.Clock.csproj|memories-access-telemetry-clock",
+      "src/Hexalith.Memories.DomainService/Hexalith.Memories.DomainService.csproj|memories-domain-service"
+    ]
+  },
+  "checks": [
+    {
+      "name": "preflight-verify-passes",
+      "result": "pass",
+      "detail": {
+        "exitCode": 0,
+        "refusal": null,
+        "refusalLine": null,
+        "stderr": "",
+        "stderrTail": ""
+      }
+    },
+    {
+      "name": "preflight-publish-passes",
+      "result": "pass",
+      "detail": {
+        "exitCode": 0,
+        "refusal": null,
+        "refusalLine": null,
+        "stderr": "",
+        "stderrTail": ""
+      }
+    },
+    {
+      "name": "publisher-completes-the-declared-set",
+      "result": "pass",
+      "detail": {
+        "exitCode": 0,
+        "refusal": null,
+        "refusalLine": null,
+        "stderr": "",
+        "stderrTail": ""
+      }
+    },
+    {
+      "name": "container-preflight-precedes-login-and-every-write",
+      "result": "pass",
+      "detail": {
+        "containerPreflightExit": 6,
+        "logins": [
+          7
+        ],
+        "firstDotnet": 8
+      }
+    },
+    {
+      "name": "one-sdk-publication-per-member-in-declared-order",
+      "result": "pass",
+      "detail": [
+        [
+          "src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj",
+          "memories"
+        ],
+        [
+          "src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj",
+          "memories-mcp"
+        ],
+        [
+          "src/Hexalith.Memories.AccessTelemetry/Hexalith.Memories.AccessTelemetry.csproj",
+          "memories-access-telemetry"
+        ],
+        [
+          "src/Hexalith.Memories.AccessTelemetry.Clock/Hexalith.Memories.AccessTelemetry.Clock.csproj",
+          "memories-access-telemetry-clock"
+        ],
+        [
+          "src/Hexalith.Memories.DomainService/Hexalith.Memories.DomainService.csproj",
+          "memories-domain-service"
+        ]
+      ]
+    },
+    {
+      "name": "one-validate-and-smoke-run-per-member",
+      "result": "pass",
+      "detail": {
+        "validatorRuns": 5,
+        "smokeRuns": 5
+      }
+    },
+    {
+      "name": "every-member-published-and-re-verified",
+      "result": "pass",
+      "detail": [
+        {
+          "repository": "memories",
+          "state": "published",
+          "problems": []
+        },
+        {
+          "repository": "memories-mcp",
+          "state": "published",
+          "problems": []
+        },
+        {
+          "repository": "memories-access-telemetry",
+          "state": "published",
+          "problems": []
+        },
+        {
+          "repository": "memories-access-telemetry-clock",
+          "state": "published",
+          "problems": []
+        },
+        {
+          "repository": "memories-domain-service",
+          "state": "published",
+          "problems": []
+        }
+      ]
+    },
+    {
+      "name": "one-created-instant-for-the-set",
+      "result": "pass",
+      "detail": [
+        "2026-11-15T22:04:36Z"
+      ]
+    },
+    {
+      "name": "derived-set-result-pass",
+      "result": "pass",
+      "detail": {
+        "schema": "hexalith.memories.partial-publication-result.v1",
+        "result": "pass",
+        "success": true,
+        "published": [
+          "memories",
+          "memories-mcp",
+          "memories-access-telemetry",
+          "memories-access-telemetry-clock",
+          "memories-domain-service"
+        ],
+        "ambiguous": [],
+        "notAttempted": [],
+        "rule": "Only fully re-verified members count as published; an ambiguous member is never success."
+      }
+    },
+    {
+      "name": "exception-premise:no-dry-run-mode",
+      "result": "pass",
+      "detail": "publish-containers.sh declares no dry-run switch; the run logged in once and invoked one SDK publication per member."
+    },
+    {
+      "name": "finding-premise:prepare-domain-release-cannot-publish-containers",
+      "result": "pass",
+      "detail": {
+        "path": "references/Hexalith.Builds/Github/prepare-domain-release/action.yml",
+        "sha256": "9a74745084acfb6cc996637cfe29a369675ce20736c6fe7dfc42ccac1cdacbbf"
+      }
+    }
+  ],
+  "observations": {
+    "members": [
+      {
+        "repository": "memories",
+        "project": "src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj",
+        "state": "published",
+        "indexDigest": "sha256:6e4353b7e6b7eaf1a2ffed0eae47805fc1926d048c0fe8f7448226e02666ac03",
+        "created": "2026-11-15T22:04:36Z",
+        "children": {
+          "linux/amd64": "sha256:f9699f89ec544b1a56af273927587a2864ca0da70aec25220b9ef5fbcc4258db",
+          "linux/arm64": "sha256:b34ff3d6297721ceea2f4586149c78e67cd9207f888847e0342d4f2addc03e2d"
+        }
+      },
+      {
+        "repository": "memories-mcp",
+        "project": "src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj",
+        "state": "published",
+        "indexDigest": "sha256:13d4dd58b6e29b6f5bdcea2055c21774044c041e6da91f8297b7d487b2e2e366",
+        "created": "2026-11-15T22:04:36Z",
+        "children": {
+          "linux/amd64": "sha256:987bf8b2a311d1498b36a5c73e64ea482daf8129455853c6c836e53bc26b9b5e",
+          "linux/arm64": "sha256:b0dbb01e75002a30ff59eedd716266ac1a182f4cff2a9ba1e563e6245c00749d"
+        }
+      },
+      {
+        "repository": "memories-access-telemetry",
+        "project": "src/Hexalith.Memories.AccessTelemetry/Hexalith.Memories.AccessTelemetry.csproj",
+        "state": "published",
+        "indexDigest": "sha256:cc6c592a999816bd08b9e073fcac27f980c4de56d2971f4497f0599488efb64d",
+        "created": "2026-11-15T22:04:36Z",
+        "children": {
+          "linux/amd64": "sha256:b6cc78216cf43ece25e3e1cf4cce8c9beaf336bbe0355767d9a9bdfcb11992fb",
+          "linux/arm64": "sha256:881157b585201f76fd012d53f686eb8cdd4464adc2d9088828120ac76b99305b"
+        }
+      },
+      {
+        "repository": "memories-access-telemetry-clock",
+        "project": "src/Hexalith.Memories.AccessTelemetry.Clock/Hexalith.Memories.AccessTelemetry.Clock.csproj",
+        "state": "published",
+        "indexDigest": "sha256:35a449147263d5fb829a5200e1816c27bbbab17a2aee5c0e6baf01a46dd237ef",
+        "created": "2026-11-15T22:04:36Z",
+        "children": {
+          "linux/amd64": "sha256:6179bb9f8ec4da04d62c69d39c0e51e23b8b1f8da0df4b05ad4137674c5ac185",
+          "linux/arm64": "sha256:34d0ca58b99ea2e5c2e25d2d1bbdb05ecd0e14920b507bf6e17717ac5734baa3"
+        }
+      },
+      {
+        "repository": "memories-domain-service",
+        "project": "src/Hexalith.Memories.DomainService/Hexalith.Memories.DomainService.csproj",
+        "state": "published",
+        "indexDigest": "sha256:23b7c01adf26a254e548538d1938cc7b31f9284456ac70afd3bbe5a33732f3de",
+        "created": "2026-11-15T22:04:36Z",
+        "children": {
+          "linux/amd64": "sha256:7d0d80b075a2caef285cef63715ee6b96cac8bf358f495743ebfbd72edfc2010",
+          "linux/arm64": "sha256:331e524260e928d13bba8b4055690871a8c36ea0c25706a6c53f1bb96509b0af"
+        }
+      }
+    ],
+    "registryLogins": 1,
+    "sdkPublications": 5
+  },
+  "findings": [
+    {
+      "code": "provenance-labels-not-emitted",
+      "owner": "30-4-five-image-publication-contract",
+      "summary": "Memories imports no Builds ContainerProvenance targets and its own container labels omit labels the pinned validator requires, so real SDK images would fail validation. The synthetic images model the required labels; real images and health belong to 30.4.",
+      "premiseObserved": true,
+      "evidence": {
+        "files": [
+          "Directory.Build.props",
+          "Directory.Build.targets"
+        ],
+        "missingLabels": [
+          "org.opencontainers.image.url",
+          "org.opencontainers.image.documentation",
+          "org.opencontainers.image.revision",
+          "org.opencontainers.image.created",
+          "org.opencontainers.artifact.created"
+        ]
+      }
+    },
+    {
+      "code": "prepare-domain-release-cannot-publish-containers",
+      "owner": "30-3-guarded-release-dispatch-and-shared-caller-adoption; 30-4-five-image-publication-contract",
+      "summary": "Pinned Github/prepare-domain-release declares no container input and never installs or invokes publish-containers, so container publication stays a caller-owned semantic-release hook.",
+      "premiseObserved": true,
+      "evidence": {
+        "path": "references/Hexalith.Builds/Github/prepare-domain-release/action.yml",
+        "sha256": "9a74745084acfb6cc996637cfe29a369675ce20736c6fe7dfc42ccac1cdacbbf"
+      }
+    }
+  ],
+  "exceptions": [
+    {
+      "code": "no-dry-run-mode",
+      "gap": "The pinned publisher has no dry-run mode; every invocation logs in and publishes.",
+      "callerControl": "This fixture-driven offline harness drives the real pinned helpers with fake network, registry, docker and dotnet seams.",
+      "handedTo": [],
+      "premiseObserved": true,
+      "evidence": "publish-containers.sh declares no dry-run switch; the run logged in once and invoked one SDK publication per member."
+    }
+  ],
+  "reasons": []
+}

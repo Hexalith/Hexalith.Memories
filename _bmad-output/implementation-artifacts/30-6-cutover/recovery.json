@@ -1,0 +1,408 @@
+{
+  "schemaVersion": "hexalith.memories.builds-publication-qualification.v1",
+  "story": "30-2-pinned-builds-publication-and-recovery-qualification",
+  "checkpoint": "recovery",
+  "result": "pass",
+  "checksResult": "pass",
+  "overallResult": "pass",
+  "synthetic": true,
+  "bindings": {
+    "builds": {
+      "repository": "Hexalith/Hexalith.Builds",
+      "sha": "e2bbbd0893f586e4d447ef8358ff747ea3d34435",
+      "verified": true,
+      "superprojectGitlink": "e2bbbd0893f586e4d447ef8358ff747ea3d34435",
+      "checkout": "e2bbbd0893f586e4d447ef8358ff747ea3d34435",
+      "executedHelpers": {
+        "publish-containers.sh": "7b0b29d552fb38ab20db6c5faf650ac314a8fac17a6b9f43417035d29ef649ed",
+        "oci_registry_validator.py": "3f54edb036642551e64c180b4708a954d84bd55cac381a4459c3f75448488608",
+        "publication_preflight.py": "3da0d1ca20af78b69b8d5868b9a3311b448c53c5fca04f0d0fb8643db59fd196",
+        "smoke-container-platforms.sh": "f11865658a24ecea906da087d8446c7f631dc5a9328e294676534d590ef0e89e",
+        "smoke_container_platforms.py": "7f1161d6f477c77ddf6a1e2f381df03451168565dd8cabc28010ab23db443491"
+      },
+      "readReferences": {
+        "Github/publish-containers/action.yml": "0262e6fee149f91a046830e941e6010bb46fd1a03b7f40341d8ee12cdf70484b",
+        ".github/workflows/domain-release.yml": "4826f5ef4e457930d8aa89c6c8c4c92d9db483787850b4d1f426b5e4f8269ab7",
+        "Github/prepare-domain-release/action.yml": "9a74745084acfb6cc996637cfe29a369675ce20736c6fe7dfc42ccac1cdacbbf"
+      }
+    },
+    "source": {
+      "repository": "Hexalith/Hexalith.Memories",
+      "sha": "fad5ec5efb286a1b4589869a354895acd3aaf55c",
+      "dirty": false
+    },
+    "harness": {
+      "path": "tools/qualify-builds-publication.py",
+      "sha256": "7ec26d9c20be3ef7f6671c6a0de31e025cee1ad51b4a597891466bff4d35b4b9"
+    },
+    "profile": {
+      "path": "tools/builds-publication-qualification.json",
+      "sha256": "b632528563b73bb3dc4956757bea44ea61dc50b95d8aee4f1fc82da585b9680a"
+    }
+  },
+  "release": {
+    "repository": "Hexalith/Hexalith.Memories",
+    "registry": "registry.hexalith.com",
+    "version": "0.0.302",
+    "environment": "production",
+    "authorityGate": "disabled (ordinary protected-environment release posture)",
+    "packageCount": 10,
+    "packageIds": [
+      "Hexalith.Memories.Aspire",
+      "Hexalith.Memories.Contracts",
+      "Hexalith.Memories.Client.Rest",
+      "Hexalith.Memories.Redis",
+      "Hexalith.Memories.Cli",
+      "Hexalith.Memories.Mcp",
+      "Hexalith.Memories.ServiceDefaults",
+      "Hexalith.Memories.EventStore",
+      "Hexalith.Memories.Telemetry",
+      "Hexalith.Memories.EventStoreExtensions"
+    ],
+    "containerProjects": [
+      "src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj|memories",
+      "src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj|memories-mcp",
+      "src/Hexalith.Memories.AccessTelemetry/Hexalith.Memories.AccessTelemetry.csproj|memories-access-telemetry",
+      "src/Hexalith.Memories.AccessTelemetry.Clock/Hexalith.Memories.AccessTelemetry.Clock.csproj|memories-access-telemetry-clock",
+      "src/Hexalith.Memories.DomainService/Hexalith.Memories.DomainService.csproj|memories-domain-service"
+    ]
+  },
+  "checks": [
+    {
+      "name": "partial-evidence-available",
+      "result": "pass"
+    },
+    {
+      "name": "observe-created-re-reads:memories",
+      "result": "pass",
+      "detail": {
+        "repository": "memories",
+        "evidenceState": "published",
+        "destination": "occupied",
+        "observeCreated": {
+          "exitCode": 0,
+          "refusal": null,
+          "indexDigest": "sha256:7db0082e23d56df905cdfe52c050fac8c8fd3ce0bc48b129b145ed3ae95e1a32",
+          "matchesInitialReceipt": true
+        },
+        "disposition": "published"
+      }
+    },
+    {
+      "name": "published-member-occupies-destination:memories",
+      "result": "pass",
+      "detail": {
+        "repository": "memories",
+        "evidenceState": "published",
+        "destination": "occupied",
+        "observeCreated": {
+          "exitCode": 0,
+          "refusal": null,
+          "indexDigest": "sha256:7db0082e23d56df905cdfe52c050fac8c8fd3ce0bc48b129b145ed3ae95e1a32",
+          "matchesInitialReceipt": true
+        },
+        "disposition": "published"
+      }
+    },
+    {
+      "name": "observe-created-re-reads:memories-mcp",
+      "result": "pass",
+      "detail": {
+        "repository": "memories-mcp",
+        "evidenceState": "published",
+        "destination": "occupied",
+        "observeCreated": {
+          "exitCode": 0,
+          "refusal": null,
+          "indexDigest": "sha256:87aa764f73a2e8da33a5a463c312696430da51d4a1c4c65d9523f1748ed194cc",
+          "matchesInitialReceipt": true
+        },
+        "disposition": "published"
+      }
+    },
+    {
+      "name": "published-member-occupies-destination:memories-mcp",
+      "result": "pass",
+      "detail": {
+        "repository": "memories-mcp",
+        "evidenceState": "published",
+        "destination": "occupied",
+        "observeCreated": {
+          "exitCode": 0,
+          "refusal": null,
+          "indexDigest": "sha256:87aa764f73a2e8da33a5a463c312696430da51d4a1c4c65d9523f1748ed194cc",
+          "matchesInitialReceipt": true
+        },
+        "disposition": "published"
+      }
+    },
+    {
+      "name": "missing-member-destination-absent:memories-access-telemetry",
+      "result": "pass",
+      "detail": {
+        "repository": "memories-access-telemetry",
+        "evidenceState": "ambiguous",
+        "destination": "absent",
+        "observeCreated": null,
+        "disposition": "missing"
+      }
+    },
+    {
+      "name": "missing-member-destination-absent:memories-access-telemetry-clock",
+      "result": "pass",
+      "detail": {
+        "repository": "memories-access-telemetry-clock",
+        "evidenceState": "not-attempted",
+        "destination": "absent",
+        "observeCreated": null,
+        "disposition": "missing"
+      }
+    },
+    {
+      "name": "missing-member-destination-absent:memories-domain-service",
+      "result": "pass",
+      "detail": {
+        "repository": "memories-domain-service",
+        "evidenceState": "not-attempted",
+        "destination": "absent",
+        "observeCreated": null,
+        "disposition": "missing"
+      }
+    },
+    {
+      "name": "missing-set-is-exact",
+      "result": "pass",
+      "detail": {
+        "published": [
+          "memories",
+          "memories-mcp"
+        ],
+        "missing": [
+          "memories-access-telemetry",
+          "memories-access-telemetry-clock",
+          "memories-domain-service"
+        ],
+        "blocked": []
+      }
+    },
+    {
+      "name": "ambiguous-destination-401-blocks-recovery",
+      "result": "pass",
+      "detail": {
+        "repository": "memories-access-telemetry",
+        "evidenceState": "ambiguous",
+        "destination": "destination-probe-failure",
+        "observeCreated": null,
+        "disposition": "blocked"
+      }
+    },
+    {
+      "name": "ambiguous-destination-503-blocks-recovery",
+      "result": "pass",
+      "detail": {
+        "repository": "memories-access-telemetry",
+        "evidenceState": "ambiguous",
+        "destination": "destination-probe-failure",
+        "observeCreated": null,
+        "disposition": "blocked"
+      }
+    },
+    {
+      "name": "present-but-unverifiable-member-blocks-recovery",
+      "result": "pass",
+      "detail": {
+        "repository": "memories-access-telemetry",
+        "evidenceState": "ambiguous",
+        "destination": "occupied",
+        "observeCreated": {
+          "exitCode": 1,
+          "refusal": "platform-set-mismatch",
+          "indexDigest": null,
+          "matchesInitialReceipt": false
+        },
+        "disposition": "blocked"
+      }
+    },
+    {
+      "name": "present-valid-but-unhealthy-member-blocks-recovery",
+      "result": "pass",
+      "detail": {
+        "repository": "memories-access-telemetry",
+        "evidenceState": "ambiguous",
+        "destination": "occupied",
+        "observeCreated": {
+          "exitCode": 0,
+          "refusal": null,
+          "indexDigest": "sha256:497528ea8e04414b54937295080c1d5a7f19c892c1bd1f937a6501037d567d70",
+          "matchesInitialReceipt": false
+        },
+        "disposition": "blocked"
+      }
+    },
+    {
+      "name": "rerun-refuses-collisions-before-any-write",
+      "result": "pass",
+      "detail": {
+        "exitCode": 1,
+        "refusal": "version-collision",
+        "refusalLine": "[publication-preflight] version-collision: A proposed container tag already exists.",
+        "stderr": "[publication-preflight] version-collision: A proposed container tag already exists.",
+        "stderrTail": "[publication-preflight] version-collision: A proposed container tag already exists.",
+        "writes": 0
+      }
+    },
+    {
+      "name": "fresh-verify-refuses-the-occupied-version",
+      "result": "pass",
+      "detail": {
+        "exitCode": 1,
+        "refusal": "version-not-newer",
+        "refusalLine": "[publication-preflight] version-not-newer: Corrective release version is not newer than oci-registry destination registry.hexalith.com/memories.",
+        "stderr": "[publication-preflight] version-not-newer: Corrective release version is not newer than oci-registry destination registry.hexalith.com/memories.",
+        "stderrTail": "[publication-preflight] version-not-newer: Corrective release version is not newer than oci-registry destination registry.hexalith.com/memories.",
+        "expected": "version-not-newer"
+      }
+    },
+    {
+      "name": "exception-premise:no-missing-only-republish",
+      "result": "pass",
+      "detail": "The pinned publisher rerun refused the occupied set before login or any SDK publication."
+    }
+  ],
+  "observations": {
+    "recoveryDecision": {
+      "published": [
+        "memories",
+        "memories-mcp"
+      ],
+      "missing": [
+        "memories-access-telemetry",
+        "memories-access-telemetry-clock",
+        "memories-domain-service"
+      ],
+      "blocked": [],
+      "missingMemberPublisher": "30-5-partial-release-recovery"
+    },
+    "members": [
+      {
+        "repository": "memories",
+        "evidenceState": "published",
+        "destination": "occupied",
+        "observeCreated": {
+          "exitCode": 0,
+          "refusal": null,
+          "indexDigest": "sha256:7db0082e23d56df905cdfe52c050fac8c8fd3ce0bc48b129b145ed3ae95e1a32",
+          "matchesInitialReceipt": true
+        },
+        "disposition": "published"
+      },
+      {
+        "repository": "memories-mcp",
+        "evidenceState": "published",
+        "destination": "occupied",
+        "observeCreated": {
+          "exitCode": 0,
+          "refusal": null,
+          "indexDigest": "sha256:87aa764f73a2e8da33a5a463c312696430da51d4a1c4c65d9523f1748ed194cc",
+          "matchesInitialReceipt": true
+        },
+        "disposition": "published"
+      },
+      {
+        "repository": "memories-access-telemetry",
+        "evidenceState": "ambiguous",
+        "destination": "absent",
+        "observeCreated": null,
+        "disposition": "missing"
+      },
+      {
+        "repository": "memories-access-telemetry-clock",
+        "evidenceState": "not-attempted",
+        "destination": "absent",
+        "observeCreated": null,
+        "disposition": "missing"
+      },
+      {
+        "repository": "memories-domain-service",
+        "evidenceState": "not-attempted",
+        "destination": "absent",
+        "observeCreated": null,
+        "disposition": "missing"
+      }
+    ],
+    "negativeCases": {
+      "probe-401": {
+        "blocked": [
+          "memories-access-telemetry"
+        ],
+        "member": {
+          "repository": "memories-access-telemetry",
+          "evidenceState": "ambiguous",
+          "destination": "destination-probe-failure",
+          "observeCreated": null,
+          "disposition": "blocked"
+        }
+      },
+      "probe-503": {
+        "blocked": [
+          "memories-access-telemetry"
+        ],
+        "member": {
+          "repository": "memories-access-telemetry",
+          "evidenceState": "ambiguous",
+          "destination": "destination-probe-failure",
+          "observeCreated": null,
+          "disposition": "blocked"
+        }
+      },
+      "validation-failure": {
+        "blocked": [
+          "memories-access-telemetry"
+        ],
+        "member": {
+          "repository": "memories-access-telemetry",
+          "evidenceState": "ambiguous",
+          "destination": "occupied",
+          "observeCreated": {
+            "exitCode": 1,
+            "refusal": "platform-set-mismatch",
+            "indexDigest": null,
+            "matchesInitialReceipt": false
+          },
+          "disposition": "blocked"
+        }
+      },
+      "smoke-failure": {
+        "blocked": [
+          "memories-access-telemetry"
+        ],
+        "member": {
+          "repository": "memories-access-telemetry",
+          "evidenceState": "ambiguous",
+          "destination": "occupied",
+          "observeCreated": {
+            "exitCode": 0,
+            "refusal": null,
+            "indexDigest": "sha256:497528ea8e04414b54937295080c1d5a7f19c892c1bd1f937a6501037d567d70",
+            "matchesInitialReceipt": false
+          },
+          "disposition": "blocked"
+        }
+      }
+    }
+  },
+  "findings": [],
+  "exceptions": [
+    {
+      "code": "no-missing-only-republish",
+      "gap": "The publisher cannot republish only the missing members; a rerun refuses the occupied destinations before any write.",
+      "callerControl": "Caller-owned missing-member publication from immutable evidence.",
+      "handedTo": [
+        "30-5-partial-release-recovery"
+      ],
+      "premiseObserved": true,
+      "evidence": "The pinned publisher rerun refused the occupied set before login or any SDK publication."
+    }
+  ],
+  "reasons": []
+}

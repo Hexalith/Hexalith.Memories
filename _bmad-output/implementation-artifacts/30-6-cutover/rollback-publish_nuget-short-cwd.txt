@@ -1,0 +1,97 @@
+test_blank_create_readback_refuses_to_repeat_a_successful_write (publish_nuget_test.IssueHelperReliabilityTests.test_blank_create_readback_refuses_to_repeat_a_successful_write) ... ok
+test_create_recovery_adds_current_evidence_to_a_preexisting_incident (publish_nuget_test.IssueHelperReliabilityTests.test_create_recovery_adds_current_evidence_to_a_preexisting_incident) ... ok
+test_empty_lookup_output_is_an_empty_collection (publish_nuget_test.IssueHelperReliabilityTests.test_empty_lookup_output_is_an_empty_collection) ... ok
+test_failed_comment_is_reconciled_before_retry (publish_nuget_test.IssueHelperReliabilityTests.test_failed_comment_is_reconciled_before_retry) ... ok
+test_failed_create_is_reconciled_before_retry (publish_nuget_test.IssueHelperReliabilityTests.test_failed_create_is_reconciled_before_retry) ... ok
+test_failed_reconciliation_stops_before_repeating_a_write (publish_nuget_test.IssueHelperReliabilityTests.test_failed_reconciliation_stops_before_repeating_a_write) ... ok
+test_lookup_retry_budget_exhaustion_fails_without_mutations (publish_nuget_test.IssueHelperReliabilityTests.test_lookup_retry_budget_exhaustion_fails_without_mutations) ... ok
+test_lookup_uses_quoted_title_and_explicit_limit_and_exact_match (publish_nuget_test.IssueHelperReliabilityTests.test_lookup_uses_quoted_title_and_explicit_limit_and_exact_match) ... ok
+test_malformed_comment_readback_stops_before_repeating_a_write (publish_nuget_test.IssueHelperReliabilityTests.test_malformed_comment_readback_stops_before_repeating_a_write) ... ok
+test_malformed_lookup_output_fails_before_a_write (publish_nuget_test.IssueHelperReliabilityTests.test_malformed_lookup_output_fails_before_a_write) ... ok
+test_malformed_summary_fails_with_context_before_github (publish_nuget_test.IssueHelperReliabilityTests.test_malformed_summary_fails_with_context_before_github) ... ok
+test_null_artifacts_are_omitted_and_all_null_lists_render_none (publish_nuget_test.IssueHelperReliabilityTests.test_null_artifacts_are_omitted_and_all_null_lists_render_none) ... ok
+test_permanent_failures_are_not_retried (publish_nuget_test.IssueHelperReliabilityTests.test_permanent_failures_are_not_retried) ... ok
+test_rate_limit_403_uses_exponential_minute_backoff (publish_nuget_test.IssueHelperReliabilityTests.test_rate_limit_403_uses_exponential_minute_backoff) ... ok
+test_rate_limited_write_waits_before_readback (publish_nuget_test.IssueHelperReliabilityTests.test_rate_limited_write_waits_before_readback) ... ok
+test_retry_after_is_honored_and_excessive_waits_fail_within_budget (publish_nuget_test.IssueHelperReliabilityTests.test_retry_after_is_honored_and_excessive_waits_fail_within_budget) ... ok
+test_successful_comment_with_lost_response_is_not_repeated (publish_nuget_test.IssueHelperReliabilityTests.test_successful_comment_with_lost_response_is_not_repeated) ... ok
+test_successful_create_with_lost_response_is_not_repeated (publish_nuget_test.IssueHelperReliabilityTests.test_successful_create_with_lost_response_is_not_repeated) ... ok
+test_summary_root_must_be_an_object (publish_nuget_test.IssueHelperReliabilityTests.test_summary_root_must_be_an_object) ... 
+  test_summary_root_must_be_an_object (publish_nuget_test.IssueHelperReliabilityTests.test_summary_root_must_be_an_object) (summary='[{"status":"partial-publish","version":"1.2.3"}]') ... FAIL
+  test_summary_root_must_be_an_object (publish_nuget_test.IssueHelperReliabilityTests.test_summary_root_must_be_an_object) (summary='[]') ... FAIL
+  test_summary_root_must_be_an_object (publish_nuget_test.IssueHelperReliabilityTests.test_summary_root_must_be_an_object) (summary='null') ... FAIL
+  test_summary_root_must_be_an_object (publish_nuget_test.IssueHelperReliabilityTests.test_summary_root_must_be_an_object) (summary='"text"') ... FAIL
+  test_summary_root_must_be_an_object (publish_nuget_test.IssueHelperReliabilityTests.test_summary_root_must_be_an_object) (summary='{}') ... FAIL
+  test_summary_root_must_be_an_object (publish_nuget_test.IssueHelperReliabilityTests.test_summary_root_must_be_an_object) (summary='  ') ... FAIL
+test_terminal_diagnostic_is_preserved_bounded_and_redacted (publish_nuget_test.IssueHelperReliabilityTests.test_terminal_diagnostic_is_preserved_bounded_and_redacted) ... ok
+test_transient_lookup_failure_retries_with_visible_backoff (publish_nuget_test.IssueHelperReliabilityTests.test_transient_lookup_failure_retries_with_visible_backoff) ... ok
+test_write_retry_budget_is_bounded_for_create_and_comment (publish_nuget_test.IssueHelperReliabilityTests.test_write_retry_budget_is_bounded_for_create_and_comment) ... ok
+test_all_packages_fail_yields_publish_failed_status_without_partial_annotation (publish_nuget_test.PublishNuGetTests.test_all_packages_fail_yields_publish_failed_status_without_partial_annotation) ... ok
+test_all_packages_publish_successfully_with_complete_summary (publish_nuget_test.PublishNuGetTests.test_all_packages_publish_successfully_with_complete_summary) ... ok
+test_issue_helper_comments_on_existing_partial_publish_issue (publish_nuget_test.PublishNuGetTests.test_issue_helper_comments_on_existing_partial_publish_issue) ... ok
+test_issue_helper_creates_deterministic_partial_publish_issue (publish_nuget_test.PublishNuGetTests.test_issue_helper_creates_deterministic_partial_publish_issue) ... ok
+test_issue_helper_skips_when_summary_status_is_publish_failed (publish_nuget_test.PublishNuGetTests.test_issue_helper_skips_when_summary_status_is_publish_failed) ... ok
+test_middle_package_failure_still_attempts_later_packages_and_writes_summary (publish_nuget_test.PublishNuGetTests.test_middle_package_failure_still_attempts_later_packages_and_writes_summary) ... ok
+test_missing_catalog_adapter_refuses_publish_before_push (publish_nuget_test.PublishNuGetTests.test_missing_catalog_adapter_refuses_publish_before_push) ... ok
+test_post_probe_duplicate_response_records_success_summary (publish_nuget_test.PublishNuGetTests.test_post_probe_duplicate_response_records_success_summary) ... ok
+test_prepush_validation_failure_writes_non_publish_summary_without_dotnet_push (publish_nuget_test.PublishNuGetTests.test_prepush_validation_failure_writes_non_publish_summary_without_dotnet_push) ... ok
+test_publish_does_not_reprobe_destinations_after_prepare (publish_nuget_test.PublishNuGetTests.test_publish_does_not_reprobe_destinations_after_prepare) ... ok
+
+======================================================================
+FAIL: test_summary_root_must_be_an_object (publish_nuget_test.IssueHelperReliabilityTests.test_summary_root_must_be_an_object) (summary='[{"status":"partial-publish","version":"1.2.3"}]')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/hexalith-job.h3fvZN6T/r/tests/tooling/publish_nuget/publish_nuget_test.py", line 882, in test_summary_root_must_be_an_object
+    self.assertIn("JSON summary object", " ".join(result.stderr.split()))
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'JSON summary object' not found in 'Exception: /tmp/hexalith-job.h3fvZN6T/r/tools/create-partial-publish-issue.ps1:40 Line | 40 | throw "Cannot read publish summary \'$SummaryPath\' as a JSON summa … | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ | Cannot read publish summary | \'/proc/self/cwd/tmp3a66y6p9/publish-summary.json\' as a JSON summary | object. Preserve the original publish failure and summary evidence; | repair or regenerate the summary before rerunning the alert helper.'
+
+======================================================================
+FAIL: test_summary_root_must_be_an_object (publish_nuget_test.IssueHelperReliabilityTests.test_summary_root_must_be_an_object) (summary='[]')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/hexalith-job.h3fvZN6T/r/tests/tooling/publish_nuget/publish_nuget_test.py", line 882, in test_summary_root_must_be_an_object
+    self.assertIn("JSON summary object", " ".join(result.stderr.split()))
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'JSON summary object' not found in 'Exception: /tmp/hexalith-job.h3fvZN6T/r/tools/create-partial-publish-issue.ps1:40 Line | 40 | throw "Cannot read publish summary \'$SummaryPath\' as a JSON summa … | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ | Cannot read publish summary | \'/proc/self/cwd/tmp3a66y6p9/publish-summary.json\' as a JSON summary | object. Preserve the original publish failure and summary evidence; | repair or regenerate the summary before rerunning the alert helper.'
+
+======================================================================
+FAIL: test_summary_root_must_be_an_object (publish_nuget_test.IssueHelperReliabilityTests.test_summary_root_must_be_an_object) (summary='null')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/hexalith-job.h3fvZN6T/r/tests/tooling/publish_nuget/publish_nuget_test.py", line 882, in test_summary_root_must_be_an_object
+    self.assertIn("JSON summary object", " ".join(result.stderr.split()))
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'JSON summary object' not found in 'Exception: /tmp/hexalith-job.h3fvZN6T/r/tools/create-partial-publish-issue.ps1:40 Line | 40 | throw "Cannot read publish summary \'$SummaryPath\' as a JSON summa … | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ | Cannot read publish summary | \'/proc/self/cwd/tmp3a66y6p9/publish-summary.json\' as a JSON summary | object. Preserve the original publish failure and summary evidence; | repair or regenerate the summary before rerunning the alert helper.'
+
+======================================================================
+FAIL: test_summary_root_must_be_an_object (publish_nuget_test.IssueHelperReliabilityTests.test_summary_root_must_be_an_object) (summary='"text"')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/hexalith-job.h3fvZN6T/r/tests/tooling/publish_nuget/publish_nuget_test.py", line 882, in test_summary_root_must_be_an_object
+    self.assertIn("JSON summary object", " ".join(result.stderr.split()))
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'JSON summary object' not found in 'Exception: /tmp/hexalith-job.h3fvZN6T/r/tools/create-partial-publish-issue.ps1:40 Line | 40 | throw "Cannot read publish summary \'$SummaryPath\' as a JSON summa … | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ | Cannot read publish summary | \'/proc/self/cwd/tmp3a66y6p9/publish-summary.json\' as a JSON summary | object. Preserve the original publish failure and summary evidence; | repair or regenerate the summary before rerunning the alert helper.'
+
+======================================================================
+FAIL: test_summary_root_must_be_an_object (publish_nuget_test.IssueHelperReliabilityTests.test_summary_root_must_be_an_object) (summary='{}')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/hexalith-job.h3fvZN6T/r/tests/tooling/publish_nuget/publish_nuget_test.py", line 882, in test_summary_root_must_be_an_object
+    self.assertIn("JSON summary object", " ".join(result.stderr.split()))
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'JSON summary object' not found in 'Exception: /tmp/hexalith-job.h3fvZN6T/r/tools/create-partial-publish-issue.ps1:40 Line | 40 | throw "Cannot read publish summary \'$SummaryPath\' as a JSON summa … | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ | Cannot read publish summary | \'/proc/self/cwd/tmp3a66y6p9/publish-summary.json\' as a JSON summary | object. Preserve the original publish failure and summary evidence; | repair or regenerate the summary before rerunning the alert helper.'
+
+======================================================================
+FAIL: test_summary_root_must_be_an_object (publish_nuget_test.IssueHelperReliabilityTests.test_summary_root_must_be_an_object) (summary='  ')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/hexalith-job.h3fvZN6T/r/tests/tooling/publish_nuget/publish_nuget_test.py", line 882, in test_summary_root_must_be_an_object
+    self.assertIn("JSON summary object", " ".join(result.stderr.split()))
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'JSON summary object' not found in 'Exception: /tmp/hexalith-job.h3fvZN6T/r/tools/create-partial-publish-issue.ps1:40 Line | 40 | throw "Cannot read publish summary \'$SummaryPath\' as a JSON summa … | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ | Cannot read publish summary | \'/proc/self/cwd/tmp3a66y6p9/publish-summary.json\' as a JSON summary | object. Preserve the original publish failure and summary evidence; | repair or regenerate the summary before rerunning the alert helper.'
+
+----------------------------------------------------------------------
+Ran 32 tests in 43.510s
+
+FAILED (failures=6)

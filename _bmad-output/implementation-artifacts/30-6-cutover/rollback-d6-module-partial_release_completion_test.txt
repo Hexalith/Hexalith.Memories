@@ -1,0 +1,14 @@
+test_completion_creates_verified_release_closes_issue_and_is_idempotent (partial_release_completion_test.PartialReleaseCompletionTests.test_completion_creates_verified_release_closes_issue_and_is_idempotent) ... ok
+test_deployment_missing_summary_image_fails_before_release_create (partial_release_completion_test.PartialReleaseCompletionTests.test_deployment_missing_summary_image_fails_before_release_create) ... ok
+test_existing_release_asset_conflict_fails_before_incident_closure (partial_release_completion_test.PartialReleaseCompletionTests.test_existing_release_asset_conflict_fails_before_incident_closure) ... ok
+test_historical_two_image_unit_completes_without_access_telemetry (partial_release_completion_test.PartialReleaseCompletionTests.test_historical_two_image_unit_completes_without_access_telemetry) ... ok
+test_mixed_tagged_manifest_refuses_before_package_reads (partial_release_completion_test.PartialReleaseCompletionTests.test_mixed_tagged_manifest_refuses_before_package_reads) ... ok
+test_new_catalog_unit_completes_with_ten_packages_and_domain_service (partial_release_completion_test.PartialReleaseCompletionTests.test_new_catalog_unit_completes_with_ten_packages_and_domain_service) ... ok
+test_new_catalog_unit_refuses_missing_domain_service_before_package_reads (partial_release_completion_test.PartialReleaseCompletionTests.test_new_catalog_unit_refuses_missing_domain_service_before_package_reads) ... ok
+test_nine_package_id_manifest_cannot_use_historical_recovery (partial_release_completion_test.PartialReleaseCompletionTests.test_nine_package_id_manifest_cannot_use_historical_recovery) ... ok
+test_workflow_staged_tooling_requires_current_manifest_and_reads_historical_tag (partial_release_completion_test.PartialReleaseCompletionTests.test_workflow_staged_tooling_requires_current_manifest_and_reads_historical_tag) ... ok
+
+----------------------------------------------------------------------
+Ran 9 tests in 13.279s
+
+OK

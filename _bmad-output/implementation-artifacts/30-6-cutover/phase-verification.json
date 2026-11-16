@@ -1,0 +1,409 @@
+{
+  "schemaVersion": "hexalith.memories.builds-publication-qualification.v1",
+  "story": "30-2-pinned-builds-publication-and-recovery-qualification",
+  "checkpoint": "phase-verification",
+  "result": "pass",
+  "checksResult": "pass",
+  "overallResult": "pass",
+  "synthetic": true,
+  "bindings": {
+    "builds": {
+      "repository": "Hexalith/Hexalith.Builds",
+      "sha": "e2bbbd0893f586e4d447ef8358ff747ea3d34435",
+      "verified": true,
+      "superprojectGitlink": "e2bbbd0893f586e4d447ef8358ff747ea3d34435",
+      "checkout": "e2bbbd0893f586e4d447ef8358ff747ea3d34435",
+      "executedHelpers": {
+        "publish-containers.sh": "7b0b29d552fb38ab20db6c5faf650ac314a8fac17a6b9f43417035d29ef649ed",
+        "oci_registry_validator.py": "3f54edb036642551e64c180b4708a954d84bd55cac381a4459c3f75448488608",
+        "publication_preflight.py": "3da0d1ca20af78b69b8d5868b9a3311b448c53c5fca04f0d0fb8643db59fd196",
+        "smoke-container-platforms.sh": "f11865658a24ecea906da087d8446c7f631dc5a9328e294676534d590ef0e89e",
+        "smoke_container_platforms.py": "7f1161d6f477c77ddf6a1e2f381df03451168565dd8cabc28010ab23db443491"
+      },
+      "readReferences": {
+        "Github/publish-containers/action.yml": "0262e6fee149f91a046830e941e6010bb46fd1a03b7f40341d8ee12cdf70484b",
+        ".github/workflows/domain-release.yml": "4826f5ef4e457930d8aa89c6c8c4c92d9db483787850b4d1f426b5e4f8269ab7",
+        "Github/prepare-domain-release/action.yml": "9a74745084acfb6cc996637cfe29a369675ce20736c6fe7dfc42ccac1cdacbbf"
+      }
+    },
+    "source": {
+      "repository": "Hexalith/Hexalith.Memories",
+      "sha": "fad5ec5efb286a1b4589869a354895acd3aaf55c",
+      "dirty": false
+    },
+    "harness": {
+      "path": "tools/qualify-builds-publication.py",
+      "sha256": "7ec26d9c20be3ef7f6671c6a0de31e025cee1ad51b4a597891466bff4d35b4b9"
+    },
+    "profile": {
+      "path": "tools/builds-publication-qualification.json",
+      "sha256": "b632528563b73bb3dc4956757bea44ea61dc50b95d8aee4f1fc82da585b9680a"
+    }
+  },
+  "release": {
+    "repository": "Hexalith/Hexalith.Memories",
+    "registry": "registry.hexalith.com",
+    "version": "0.0.302",
+    "environment": "production",
+    "authorityGate": "disabled (ordinary protected-environment release posture)",
+    "packageCount": 10,
+    "packageIds": [
+      "Hexalith.Memories.Aspire",
+      "Hexalith.Memories.Contracts",
+      "Hexalith.Memories.Client.Rest",
+      "Hexalith.Memories.Redis",
+      "Hexalith.Memories.Cli",
+      "Hexalith.Memories.Mcp",
+      "Hexalith.Memories.ServiceDefaults",
+      "Hexalith.Memories.EventStore",
+      "Hexalith.Memories.Telemetry",
+      "Hexalith.Memories.EventStoreExtensions"
+    ],
+    "containerProjects": [
+      "src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj|memories",
+      "src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj|memories-mcp",
+      "src/Hexalith.Memories.AccessTelemetry/Hexalith.Memories.AccessTelemetry.csproj|memories-access-telemetry",
+      "src/Hexalith.Memories.AccessTelemetry.Clock/Hexalith.Memories.AccessTelemetry.Clock.csproj|memories-access-telemetry-clock",
+      "src/Hexalith.Memories.DomainService/Hexalith.Memories.DomainService.csproj|memories-domain-service"
+    ]
+  },
+  "checks": [
+    {
+      "name": "dry-run-evidence-available",
+      "result": "pass"
+    },
+    {
+      "name": "one-record-per-phase-for-the-whole-set",
+      "result": "pass",
+      "detail": [
+        "publication-identity.json",
+        "publication-preflight.container.json",
+        "publication-preflight.publish.json",
+        "publication-preflight.verify.json"
+      ]
+    },
+    {
+      "name": "verify-record-binds-the-frozen-identity",
+      "result": "pass",
+      "detail": {
+        "identitySha256": "895949fb0a4545ba32749a2043bf3dbaf3bfe4e8a7244869910fc99c1bddc35e"
+      }
+    },
+    {
+      "name": "publish-record-binds-the-frozen-identity",
+      "result": "pass",
+      "detail": {
+        "identitySha256": "895949fb0a4545ba32749a2043bf3dbaf3bfe4e8a7244869910fc99c1bddc35e"
+      }
+    },
+    {
+      "name": "container-record-binds-the-frozen-identity",
+      "result": "pass",
+      "detail": {
+        "identitySha256": "895949fb0a4545ba32749a2043bf3dbaf3bfe4e8a7244869910fc99c1bddc35e"
+      }
+    },
+    {
+      "name": "frozen-identity-binds:builds-workflow-and-action-sha",
+      "result": "pass"
+    },
+    {
+      "name": "frozen-identity-binds:builds-executed-helper-hashes",
+      "result": "pass"
+    },
+    {
+      "name": "frozen-identity-binds:memories-source",
+      "result": "pass"
+    },
+    {
+      "name": "frozen-identity-binds:container-repository-set",
+      "result": "pass"
+    },
+    {
+      "name": "frozen-identity-binds:package-inventory",
+      "result": "pass"
+    },
+    {
+      "name": "frozen-identity-binds:release-identity",
+      "result": "pass"
+    },
+    {
+      "name": "one-distinct-evidence-directory-per-member",
+      "result": "pass",
+      "detail": [
+        "memories",
+        "memories-access-telemetry",
+        "memories-access-telemetry-clock",
+        "memories-domain-service",
+        "memories-mcp"
+      ]
+    },
+    {
+      "name": "per-image-verification-never-collides",
+      "result": "pass",
+      "detail": {
+        "validatorDirectories": 5,
+        "preflightRuns": 3
+      }
+    },
+    {
+      "name": "sequence-verify-passes",
+      "result": "pass",
+      "detail": {
+        "exitCode": 0,
+        "refusal": null,
+        "refusalLine": null,
+        "stderr": "",
+        "stderrTail": ""
+      }
+    },
+    {
+      "name": "sequence-publish-passes",
+      "result": "pass",
+      "detail": {
+        "exitCode": 0,
+        "refusal": null,
+        "refusalLine": null,
+        "stderr": "",
+        "stderrTail": ""
+      }
+    },
+    {
+      "name": "sequence-container-passes",
+      "result": "pass",
+      "detail": {
+        "exitCode": 0,
+        "refusal": null,
+        "refusalLine": null,
+        "stderr": "",
+        "stderrTail": ""
+      }
+    },
+    {
+      "name": "replayed-verify-refused",
+      "result": "pass",
+      "detail": {
+        "exitCode": 1,
+        "refusal": "preflight-phase-collision",
+        "refusalLine": "[publication-preflight] preflight-phase-collision: Publication preflight phase evidence already exists.",
+        "stderr": "[publication-preflight] preflight-phase-collision: Publication preflight phase evidence already exists.",
+        "stderrTail": "[publication-preflight] preflight-phase-collision: Publication preflight phase evidence already exists.",
+        "expected": "preflight-phase-collision"
+      }
+    },
+    {
+      "name": "replayed-publish-refused",
+      "result": "pass",
+      "detail": {
+        "exitCode": 1,
+        "refusal": "preflight-phase-collision",
+        "refusalLine": "[publication-preflight] preflight-phase-collision: Publication preflight phase evidence already exists.",
+        "stderr": "[publication-preflight] preflight-phase-collision: Publication preflight phase evidence already exists.",
+        "stderrTail": "[publication-preflight] preflight-phase-collision: Publication preflight phase evidence already exists.",
+        "expected": "preflight-phase-collision"
+      }
+    },
+    {
+      "name": "replayed-container-refused",
+      "result": "pass",
+      "detail": {
+        "exitCode": 1,
+        "refusal": "preflight-phase-collision",
+        "refusalLine": "[publication-preflight] preflight-phase-collision: Publication preflight phase evidence already exists.",
+        "stderr": "[publication-preflight] preflight-phase-collision: Publication preflight phase evidence already exists.",
+        "stderrTail": "[publication-preflight] preflight-phase-collision: Publication preflight phase evidence already exists.",
+        "expected": "preflight-phase-collision"
+      }
+    },
+    {
+      "name": "unsupported-phase-refused",
+      "result": "pass",
+      "detail": {
+        "exitCode": 2,
+        "refusal": null,
+        "refusalLine": null,
+        "stderr": "usage: publication_preflight.py [-h] --repository REPOSITORY --version VERSION | --source-sha SOURCE_SHA | [--source-branch SOURCE_BRANCH] | [--source-ci-workflow SOURCE_CI_WORKFLOW] | --container-repository CONTAINER_REPOSITORIES | --builds-execution-sha BUILDS_EXECUTION_SHA | --environment-name ENVIRONMENT_NAME | [--authority-issue-url AUTHORITY_ISSUE_URL] | [--authority-owner AUTHORITY_OWNER] | --package-manifest PACKAGE_MANIFEST | --expected-package-count EXPECTED_PACKAGE_COUNT | --contract-directory CONTRACT_DIRECTORY | --evidence-directory EVIDENCE_DIRECTORY | --phase {verify,publish,...",
+        "stderrTail": "..._BRANCH] | [--source-ci-workflow SOURCE_CI_WORKFLOW] | --container-repository CONTAINER_REPOSITORIES | --builds-execution-sha BUILDS_EXECUTION_SHA | --environment-name ENVIRONMENT_NAME | [--authority-issue-url AUTHORITY_ISSUE_URL] | [--authority-owner AUTHORITY_OWNER] | --package-manifest PACKAGE_MANIFEST | --expected-package-count EXPECTED_PACKAGE_COUNT | --contract-directory CONTRACT_DIRECTORY | --evidence-directory EVIDENCE_DIRECTORY | --phase {verify,publish,container} | publication_preflight.py: error: argument --phase: invalid choice: 'recover' (choose from verify, publish, container)"
+      }
+    },
+    {
+      "name": "repeated-verification-reproduces-the-identity",
+      "result": "pass",
+      "detail": {
+        "dryRun": "895949fb0a4545ba32749a2043bf3dbaf3bfe4e8a7244869910fc99c1bddc35e",
+        "repeated": "895949fb0a4545ba32749a2043bf3dbaf3bfe4e8a7244869910fc99c1bddc35e"
+      }
+    },
+    {
+      "name": "container-before-verify-refused",
+      "result": "pass",
+      "detail": {
+        "exitCode": 1,
+        "refusal": "frozen-identity-missing",
+        "refusalLine": "[publication-preflight] frozen-identity-missing: Frozen publication identity is unavailable.",
+        "stderr": "[publication-preflight] frozen-identity-missing: Frozen publication identity is unavailable.",
+        "stderrTail": "[publication-preflight] frozen-identity-missing: Frozen publication identity is unavailable.",
+        "expected": "frozen-identity-missing"
+      }
+    },
+    {
+      "name": "order-verify-passes",
+      "result": "pass"
+    },
+    {
+      "name": "container-without-publish-refused",
+      "result": "pass",
+      "detail": {
+        "exitCode": 1,
+        "refusal": "preflight-sequence-invalid",
+        "refusalLine": "[publication-preflight] preflight-sequence-invalid: A required earlier publication preflight phase is missing.",
+        "stderr": "[publication-preflight] preflight-sequence-invalid: A required earlier publication preflight phase is missing.",
+        "stderrTail": "[publication-preflight] preflight-sequence-invalid: A required earlier publication preflight phase is missing.",
+        "expected": "preflight-sequence-invalid"
+      }
+    },
+    {
+      "name": "tamper-verify-passes",
+      "result": "pass"
+    },
+    {
+      "name": "changed-frozen-identity-refused",
+      "result": "pass",
+      "detail": {
+        "exitCode": 1,
+        "refusal": "publication-identity-changed",
+        "refusalLine": "[publication-preflight] publication-identity-changed: Current publication identity differs from the frozen verify phase.",
+        "stderr": "[publication-preflight] publication-identity-changed: Current publication identity differs from the frozen verify phase.",
+        "stderrTail": "[publication-preflight] publication-identity-changed: Current publication identity differs from the frozen verify phase.",
+        "expected": "publication-identity-changed"
+      }
+    },
+    {
+      "name": "collision-verify-passes",
+      "result": "pass"
+    },
+    {
+      "name": "second-frozen-identity-refused",
+      "result": "pass",
+      "detail": {
+        "exitCode": 1,
+        "refusal": "frozen-identity-collision",
+        "refusalLine": "[publication-preflight] frozen-identity-collision: Frozen publication identity already exists.",
+        "stderr": "[publication-preflight] frozen-identity-collision: Frozen publication identity already exists.",
+        "stderrTail": "[publication-preflight] frozen-identity-collision: Frozen publication identity already exists.",
+        "expected": "frozen-identity-collision"
+      }
+    },
+    {
+      "name": "nuget-package-already-published:clean-verify-passes",
+      "result": "pass"
+    },
+    {
+      "name": "nuget-package-already-published:publish-phase-refused",
+      "result": "pass",
+      "detail": {
+        "exitCode": 1,
+        "refusal": "version-not-newer",
+        "refusalLine": "[publication-preflight] version-not-newer: Corrective release version is not newer than nuget destination Hexalith.Memories.Aspire.",
+        "stderr": "[publication-preflight] version-not-newer: Corrective release version is not newer than nuget destination Hexalith.Memories.Aspire.",
+        "stderrTail": "[publication-preflight] version-not-newer: Corrective release version is not newer than nuget destination Hexalith.Memories.Aspire.",
+        "expected": "version-not-newer"
+      }
+    },
+    {
+      "name": "nuget-package-already-published:fresh-verify-refused",
+      "result": "pass",
+      "detail": {
+        "exitCode": 1,
+        "refusal": "version-not-newer",
+        "refusalLine": "[publication-preflight] version-not-newer: Corrective release version is not newer than nuget destination Hexalith.Memories.Aspire.",
+        "stderr": "[publication-preflight] version-not-newer: Corrective release version is not newer than nuget destination Hexalith.Memories.Aspire.",
+        "stderrTail": "[publication-preflight] version-not-newer: Corrective release version is not newer than nuget destination Hexalith.Memories.Aspire.",
+        "expected": "version-not-newer"
+      }
+    },
+    {
+      "name": "nuget-package-already-published:refused-before-any-write",
+      "result": "pass",
+      "detail": {
+        "publisher": {
+          "exitCode": 1,
+          "refusal": "preflight-sequence-invalid",
+          "refusalLine": "[publication-preflight] preflight-sequence-invalid: A required earlier publication preflight phase is missing.",
+          "stderr": "[publication-preflight] preflight-sequence-invalid: A required earlier publication preflight phase is missing.",
+          "stderrTail": "[publication-preflight] preflight-sequence-invalid: A required earlier publication preflight phase is missing."
+        },
+        "writes": 0
+      }
+    },
+    {
+      "name": "nuget-package-probe-503:clean-verify-passes",
+      "result": "pass"
+    },
+    {
+      "name": "nuget-package-probe-503:publish-phase-refused",
+      "result": "pass",
+      "detail": {
+        "exitCode": 1,
+        "refusal": "destination-probe-failure",
+        "refusalLine": "[publication-preflight] destination-probe-failure: NuGet destination absence could not be proved.",
+        "stderr": "[publication-preflight] destination-probe-failure: NuGet destination absence could not be proved.",
+        "stderrTail": "[publication-preflight] destination-probe-failure: NuGet destination absence could not be proved.",
+        "expected": "destination-probe-failure"
+      }
+    },
+    {
+      "name": "nuget-package-probe-503:fresh-verify-refused",
+      "result": "pass",
+      "detail": {
+        "exitCode": 1,
+        "refusal": "destination-probe-failure",
+        "refusalLine": "[publication-preflight] destination-probe-failure: NuGet destination absence could not be proved.",
+        "stderr": "[publication-preflight] destination-probe-failure: NuGet destination absence could not be proved.",
+        "stderrTail": "[publication-preflight] destination-probe-failure: NuGet destination absence could not be proved.",
+        "expected": "destination-probe-failure"
+      }
+    },
+    {
+      "name": "nuget-package-probe-503:refused-before-any-write",
+      "result": "pass",
+      "detail": {
+        "publisher": {
+          "exitCode": 1,
+          "refusal": "preflight-sequence-invalid",
+          "refusalLine": "[publication-preflight] preflight-sequence-invalid: A required earlier publication preflight phase is missing.",
+          "stderr": "[publication-preflight] preflight-sequence-invalid: A required earlier publication preflight phase is missing.",
+          "stderrTail": "[publication-preflight] preflight-sequence-invalid: A required earlier publication preflight phase is missing."
+        },
+        "writes": 0
+      }
+    }
+  ],
+  "observations": {
+    "frozenIdentitySha256": "895949fb0a4545ba32749a2043bf3dbaf3bfe4e8a7244869910fc99c1bddc35e",
+    "memberEvidenceDirectories": [
+      "memories",
+      "memories-access-telemetry",
+      "memories-access-telemetry-clock",
+      "memories-domain-service",
+      "memories-mcp"
+    ],
+    "nugetDestinations": {
+      "package-already-published": {
+        "package": "Hexalith.Memories.Aspire",
+        "publish": "version-not-newer",
+        "freshVerify": "version-not-newer",
+        "publisher": "preflight-sequence-invalid"
+      },
+      "package-probe-503": {
+        "package": "Hexalith.Memories.Aspire",
+        "publish": "destination-probe-failure",
+        "freshVerify": "destination-probe-failure",
+        "publisher": "preflight-sequence-invalid"
+      }
+    }
+  },
+  "findings": [],
+  "exceptions": [],
+  "reasons": []
+}

@@ -1,0 +1,53 @@
+{
+  "base": "fad5ec5efb286a1b4589869a354895acd3aaf55c",
+  "environment": {
+    "TEMP": "same as TMPDIR",
+    "TERM": "dumb",
+    "TMP": "same as TMPDIR",
+    "TMPDIR": "wrapper-private-TMPDIR/<p repeated paddingCharacters>"
+  },
+  "results": [
+    {
+      "artifact": "rollback-nuget-padding-20-targeted.txt",
+      "command": [
+        "python3",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests/tooling/publish_nuget",
+        "-p",
+        "*_test.py",
+        "-v",
+        "-k",
+        "test_summary_root_must_be_an_object"
+      ],
+      "exitCode": 0,
+      "paddingCharacters": 20,
+      "phase": "targeted",
+      "seconds": 3.91
+    },
+    {
+      "artifact": "rollback-publish_nuget-padded.txt",
+      "command": [
+        "python3",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests/tooling/publish_nuget",
+        "-p",
+        "*_test.py",
+        "-v"
+      ],
+      "exitCode": 0,
+      "paddingCharacters": 20,
+      "phase": "full",
+      "seconds": 43.27
+    }
+  ],
+  "source": "exact restored release surface; no source/test edits or output normalization",
+  "target": "v4.0.0"
+}

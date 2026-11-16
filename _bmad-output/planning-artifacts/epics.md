@@ -5773,6 +5773,8 @@ So that no release can be published from an unverified source, an unprotected en
 
 **Status:** backlog. **Owner:** Memories Maintainer.
 
+**Dated correction (2026-11-15, Story 30.6):** The historical backlog label and planned checkpoint table below predate implementation. `spec-30-4-five-image-publication-contract.md` and `sprint-status.yaml` now record done. Their reviewed checkpoint evidence is authoritative; no historical pending cell below grants or withdraws live credit.
+
 **Historical alias:** Former Story 30.3, Four-Image Publication Contract. **Activation gate:** Stories 30.2 and 30.3 must complete, including owner-approved frozen multi-container publication identity and repeated per-container verification without phase collisions. Candidate support being present never establishes qualification.
 
 As a maintainer,
@@ -5800,9 +5802,13 @@ So that every shipped container has a provable identity, platform set, and healt
 
 **Known risk (carried, not yet re-verified):** a prior investigation recorded that the zot registry rejected challenge-response push authentication - Docker and skopeo pushes returned 401 while a preemptive single-connection preflight probe succeeded - and suspected a registry-side replica/state issue requiring server-side diagnosis. Re-verify this against the current registry before treating the publish path as green; if it reproduces, record it as an accepted blocker per the acceptance criterion above.
 
+**Dated correction (2026-11-15, Story 30.6):** Authorized v3.0.24/v3.0.25 runs `42108808279`/`42134622308` and corrected v3.0.26 run `43018206370` published all five images through the skopeo authfile path; the prior challenge-response concern did not block that transport. Server-side immutability/race policy remains unproved and separately owned. These historical runs do not prove final Story 30.5 code.
+
 **Implementation evidence:** The story file must carry a checkpoint table in which every row has an accountable owner, an exact evidence command or artifact, a review state, and a completion state. Required rows: the five declared mappings; per-image platform verification; per-image health verification; and the recorded registry authorization mode with any named blocker.
 
 **Owned paths:** `tools/publish-containers.ps1`, `tools/verify-container-registry.ps1`, the four `tests/tooling/publish_containers/*` suites, and the five-image expansion of `docs/dev/release-runbook.md`.
+
+**Dated correction (2026-11-15, Story 30.6; R6-H2):** Delivered ownership is the File Scope of `spec-30-4-five-image-publication-contract.md`, including `.github/workflows/release.yml`, `.releaserc.json`, `tests/tooling/release_dispatch/release_dispatch_test.py`, `Directory.Build.targets`, `src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj` and the declared cross-story edit to `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs`. The narrower original list remains historical.
 
 **Downstream obligation:** Preserve `server.tar.gz`, `mcp.tar.gz`, `access-telemetry.tar.gz`, and `access-telemetry-clock.tar.gz` plus the current `domain-service.tar.gz` from one reviewed source SHA. The historical first four remain Story 27.3 deployment-verification inputs. Story 30.4's status and activation gate remain independent from that lane.
 
@@ -5825,11 +5831,21 @@ So that every shipped container has a provable identity, platform set, and healt
 | Recorded registry authorization | Memories Release Engineer | Registry authorization mode and named blocker record | pending | not complete |
 | Deployment archive compatibility | Memories Release Engineer | Stable archive same-source fixture and Story 27.3 input compatibility result | pending | not complete |
 
+**Dated correction (2026-11-15, Story 30.6; R6-H3a):** Register the delivered fourteenth checkpoint, Runtime config parity, without rewriting the historical planned rows above.
+
+| Checkpoint | Owner | Evidence command or artifact | Review state | Completion state |
+| --- | --- | --- | --- | --- |
+| Runtime config parity | Memories Release Engineer | Story 30.4 checkpoint table and v3.0.26 run `43018206370`, packet SHA-256 `f3819e67d3f246e0a5c56dcf854ca34231cb8453753a047b89495541195d70d2` | reviewed in Story 30.4 | complete for that released source; six runtime fields agree across archive and both children |
+
 ### Story 30.5: Partial-Release Recovery
 
 **Status:** backlog. **Owner:** Memories Maintainer.
 
+**Dated correction (2026-11-15, Story 30.6; F6):** The label above and planned table below are historical. The Story 30.5 spec and sprint status now record done, with its reviewed local recovery evidence. This does not supply live proof of final recovery code.
+
 **Historical alias:** Former Story 30.4. **Activation gate:** Story 30.4 must complete and the owner-approved Builds revision must emit qualified immutable evidence sufficient for partial-release recovery.
+
+**Dated correction (2026-11-15, Story 30.6; F6):** Story 30.5 D2 explicitly approves immutable recovery evidence from Builds `81c88b34d09d34260b92d7f0928dbbc1c7446baa` and `ae77d5690a9411a2154fa4ed5231edc373942573`. Current-set recovery requires retained, hash-bound prepared bytes and production/exact-source authorization; this correction changes no execution pin or allowlist.
 
 As a maintainer,
 I want a publish run that fails after some images are pushed to recover deterministically,
@@ -5845,6 +5861,8 @@ So that a partial release is completed exactly once without overwriting or retag
 **Implementation evidence:** The story file must carry a checkpoint table in which every row has an accountable owner, an exact evidence command or artifact, a review state, and a completion state. Required rows: an exercised partial-failure scenario; the source/version/inventory proof; the skip-already-published result; and a negative proof that an ambiguous destination response fails rather than passes.
 
 **Owned paths:** `.github/workflows/recover-partial-release.yml`, `tools/complete-partial-release.ps1`.
+
+**Dated correction (2026-11-15, Story 30.6; F6):** The final Story 30.5 File Scope is authoritative for delivered ownership: nineteen implementation/test/doc paths plus the spec and sprint status (twenty-one changed files). It includes retained-byte capture/validation, caller failure retention, recovery tooling, Python and C# fixtures and the runbook, beyond the two original paths above.
 
 
 **Checkpoint evidence:** All artifacts below are planned; no gate has passed. Each independently verifiable gate has its own row.
@@ -5869,6 +5887,8 @@ So that cutover cannot lose a capability and rollback cannot alter anything alre
 
 **Acceptance Criteria:**
 
+**Dated correction (2026-11-15, owner D1–D4):** Story 30.6 retroactively proves the Story 30.3 caller cutover (`8aee7a13`) against `46667b0d`; D17 retains the caller-owned publisher. v4.0.0 dispatched run `43432588932` is the controlled rehearsal and v3.0.19–v3.0.22 supply live failure evidence, all labelled pre-30.5; they do not prove the final 30.4-fix/30.5 source. Final-code live proof remains the next owner-dispatched additive-snapshot obligation. Retirement concerns only the uninvoked `tools/test-release.ps1` after zero-regression parity. Rollback is a normal PR restoring the latest fully released guarded release surface, currently v4.0.0; refuse v3.0.19–v3.0.25 and the push-triggered pre-30.3 caller. No published identity or Latest may change. The original wording below remains historical.
+
 **Given** the existing caller and retained custom publisher,
 **When** migration is cut over,
 **Then** a dry run and controlled release rehearsal prove ten-package, five-image, GitHub Release asset, OIDC/registry authorization, failure, and recovery parity
@@ -5878,6 +5898,8 @@ So that cutover cannot lose a capability and rollback cannot alter anything alre
 **Implementation evidence:** The story file must carry a checkpoint table in which every row has an accountable owner, an exact evidence command or artifact, a review state, and a completion state. Required rows: the dry-run result; the controlled rehearsal result; the lane-by-lane parity comparison; the old-path removal, gated on parity; and a rollback proof showing no published version or mutable tag changed.
 
 **Owned paths:** the cutover and rollback sections of `docs/dev/release-runbook.md`.
+
+**Dated correction (2026-11-15, owner D5):** The approved Story 30.6 spec File Scope adds one read-only snapshot tool, its fixtures/CI wiring, reviewed Markdown/evidence artifacts, the parity-gated script removal and inventory/doc edits, and the ledger/planning/status records. No matrix validator or scripted rollback-target check is authorized. The spec checkpoint table supersedes the historical planned table below.
 
 **Checkpoint evidence:** All artifacts below are planned; no gate has passed. Each independently verifiable gate has its own row.
 

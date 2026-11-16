@@ -83,6 +83,7 @@ MANDATORY_COMMANDS = {
     ('test-unit-contract', 'Run coverage gate fixtures'): 'python3 -m unittest discover -s tests/tooling/coverage_gate -p "*_test.py"',
     ('test-unit-contract', 'Run published host profile fixtures'): 'python3 -m unittest discover -s tests/tooling/published_host_profile -p "*_test.py"',
     ('test-unit-contract', 'Run release package fixtures'): 'python3 -m unittest discover -s tests/tooling/release_packages -p "*_test.py"',
+    ('test-unit-contract', 'Run release identity snapshot fixtures'): 'python3 -m unittest discover -s tests/tooling/release_cutover -p "*_test.py"',
     ('test-unit-contract', 'Run NuGet publish fixtures'): 'python3 -m unittest discover -s tests/tooling/publish_nuget -p "*_test.py"',
     ('test-unit-contract', 'Run container publish fixtures'): 'python3 -m unittest discover -s tests/tooling/publish_containers -p "*_test.py"',
     ('test-unit-contract', 'Run Builds publication qualification fixtures'): 'python3 -m unittest discover -s tests/tooling/builds_publication_qualification -p "*_test.py"',

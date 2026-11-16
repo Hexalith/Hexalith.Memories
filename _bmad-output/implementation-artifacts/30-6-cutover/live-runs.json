@@ -1,0 +1,242 @@
+[
+  {
+    "command": [
+      "gh",
+      "run",
+      "list",
+      "--repo",
+      "Hexalith/Hexalith.Memories",
+      "--workflow",
+      "release.yml",
+      "--commit",
+      "c4ee997702ede948ada5f99eeae7b3782e92003b",
+      "--json",
+      "databaseId,headSha,event,conclusion,status,url,createdAt,updatedAt",
+      "--limit",
+      "100"
+    ],
+    "runs": [
+      {
+        "conclusion": "success",
+        "createdAt": "2026-11-13T13:18:50Z",
+        "databaseId": 43432588932,
+        "event": "workflow_dispatch",
+        "headSha": "c4ee997702ede948ada5f99eeae7b3782e92003b",
+        "status": "completed",
+        "updatedAt": "2026-11-13T13:38:03Z",
+        "url": "https://github.com/Hexalith/Hexalith.Memories/actions/runs/43432588932"
+      }
+    ],
+    "sourceSha": "c4ee997702ede948ada5f99eeae7b3782e92003b"
+  },
+  {
+    "command": [
+      "gh",
+      "run",
+      "list",
+      "--repo",
+      "Hexalith/Hexalith.Memories",
+      "--workflow",
+      "release.yml",
+      "--commit",
+      "d9d61d8a95c7dc8827acf68ae723859711703729",
+      "--json",
+      "databaseId,headSha,event,conclusion,status,url,createdAt,updatedAt",
+      "--limit",
+      "100"
+    ],
+    "runs": [
+      {
+        "conclusion": "failure",
+        "createdAt": "2026-11-03T06:19:00Z",
+        "databaseId": 41589105475,
+        "event": "workflow_dispatch",
+        "headSha": "d9d61d8a95c7dc8827acf68ae723859711703729",
+        "status": "completed",
+        "updatedAt": "2026-11-03T06:19:48Z",
+        "url": "https://github.com/Hexalith/Hexalith.Memories/actions/runs/41589105475"
+      }
+    ],
+    "sourceSha": "d9d61d8a95c7dc8827acf68ae723859711703729"
+  },
+  {
+    "command": [
+      "gh",
+      "run",
+      "list",
+      "--repo",
+      "Hexalith/Hexalith.Memories",
+      "--workflow",
+      "release.yml",
+      "--commit",
+      "10ac2d676f8a61dc5359d46574b9709db28012a5",
+      "--json",
+      "databaseId,headSha,event,conclusion,status,url,createdAt,updatedAt",
+      "--limit",
+      "100"
+    ],
+    "runs": [
+      {
+        "conclusion": "failure",
+        "createdAt": "2026-11-03T22:34:17Z",
+        "databaseId": 41731951859,
+        "event": "workflow_dispatch",
+        "headSha": "10ac2d676f8a61dc5359d46574b9709db28012a5",
+        "status": "completed",
+        "updatedAt": "2026-11-03T22:51:51Z",
+        "url": "https://github.com/Hexalith/Hexalith.Memories/actions/runs/41731951859"
+      }
+    ],
+    "sourceSha": "10ac2d676f8a61dc5359d46574b9709db28012a5"
+  },
+  {
+    "command": [
+      "gh",
+      "run",
+      "list",
+      "--repo",
+      "Hexalith/Hexalith.Memories",
+      "--workflow",
+      "release.yml",
+      "--commit",
+      "49c913da13a8041fa70f87de40ffd44f19877f87",
+      "--json",
+      "databaseId,headSha,event,conclusion,status,url,createdAt,updatedAt",
+      "--limit",
+      "100"
+    ],
+    "runs": [
+      {
+        "conclusion": "failure",
+        "createdAt": "2026-11-03T23:21:31Z",
+        "databaseId": 41738504412,
+        "event": "workflow_dispatch",
+        "headSha": "49c913da13a8041fa70f87de40ffd44f19877f87",
+        "status": "completed",
+        "updatedAt": "2026-11-03T23:33:03Z",
+        "url": "https://github.com/Hexalith/Hexalith.Memories/actions/runs/41738504412"
+      }
+    ],
+    "sourceSha": "49c913da13a8041fa70f87de40ffd44f19877f87"
+  },
+  {
+    "command": [
+      "gh",
+      "run",
+      "list",
+      "--repo",
+      "Hexalith/Hexalith.Memories",
+      "--workflow",
+      "release.yml",
+      "--commit",
+      "4536ae937e017d83f08e3b68ea6ab88025b013db",
+      "--json",
+      "databaseId,headSha,event,conclusion,status,url,createdAt,updatedAt",
+      "--limit",
+      "100"
+    ],
+    "runs": [
+      {
+        "conclusion": "failure",
+        "createdAt": "2026-11-04T00:01:07Z",
+        "databaseId": 41743620863,
+        "event": "workflow_dispatch",
+        "headSha": "4536ae937e017d83f08e3b68ea6ab88025b013db",
+        "status": "completed",
+        "updatedAt": "2026-11-04T00:16:22Z",
+        "url": "https://github.com/Hexalith/Hexalith.Memories/actions/runs/41743620863"
+      }
+    ],
+    "sourceSha": "4536ae937e017d83f08e3b68ea6ab88025b013db"
+  },
+  {
+    "command": [
+      "gh",
+      "run",
+      "list",
+      "--repo",
+      "Hexalith/Hexalith.Memories",
+      "--workflow",
+      "release.yml",
+      "--commit",
+      "0433b4946e4f22b549ae88899b0ea44adbc62e73",
+      "--json",
+      "databaseId,headSha,event,conclusion,status,url,createdAt,updatedAt",
+      "--limit",
+      "100"
+    ],
+    "runs": [
+      {
+        "conclusion": "failure",
+        "createdAt": "2026-11-04T00:43:53Z",
+        "databaseId": 41748998467,
+        "event": "workflow_dispatch",
+        "headSha": "0433b4946e4f22b549ae88899b0ea44adbc62e73",
+        "status": "completed",
+        "updatedAt": "2026-11-04T01:11:25Z",
+        "url": "https://github.com/Hexalith/Hexalith.Memories/actions/runs/41748998467"
+      }
+    ],
+    "sourceSha": "0433b4946e4f22b549ae88899b0ea44adbc62e73"
+  },
+  {
+    "command": [
+      "gh",
+      "run",
+      "list",
+      "--repo",
+      "Hexalith/Hexalith.Memories",
+      "--workflow",
+      "release.yml",
+      "--commit",
+      "4f32c5d7417217cf99d37952fa0adb8a7a032784",
+      "--json",
+      "databaseId,headSha,event,conclusion,status,url,createdAt,updatedAt",
+      "--limit",
+      "100"
+    ],
+    "runs": [
+      {
+        "conclusion": "failure",
+        "createdAt": "2026-11-04T01:57:41Z",
+        "databaseId": 41757558329,
+        "event": "workflow_dispatch",
+        "headSha": "4f32c5d7417217cf99d37952fa0adb8a7a032784",
+        "status": "completed",
+        "updatedAt": "2026-11-04T02:21:31Z",
+        "url": "https://github.com/Hexalith/Hexalith.Memories/actions/runs/41757558329"
+      }
+    ],
+    "sourceSha": "4f32c5d7417217cf99d37952fa0adb8a7a032784"
+  },
+  {
+    "command": [
+      "gh",
+      "run",
+      "list",
+      "--repo",
+      "Hexalith/Hexalith.Memories",
+      "--workflow",
+      "release.yml",
+      "--commit",
+      "f2c1d8a813e7a03d8f3ac5e1217c283fe8af33bb",
+      "--json",
+      "databaseId,headSha,event,conclusion,status,url,createdAt,updatedAt",
+      "--limit",
+      "100"
+    ],
+    "runs": [
+      {
+        "conclusion": "failure",
+        "createdAt": "2026-11-11T11:27:24Z",
+        "databaseId": 43012088139,
+        "event": "workflow_dispatch",
+        "headSha": "f2c1d8a813e7a03d8f3ac5e1217c283fe8af33bb",
+        "status": "completed",
+        "updatedAt": "2026-11-11T11:35:15Z",
+        "url": "https://github.com/Hexalith/Hexalith.Memories/actions/runs/43012088139"
+      }
+    ],
+    "sourceSha": "f2c1d8a813e7a03d8f3ac5e1217c283fe8af33bb"
+  }
+]

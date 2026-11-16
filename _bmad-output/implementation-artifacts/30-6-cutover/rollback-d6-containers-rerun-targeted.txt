@@ -1,0 +1,6 @@
+test_probe_verifies_and_cancels_all_repository_upload_sessions (registry_authorization_test.RegistryAuthorizationTests.test_probe_verifies_and_cancels_all_repository_upload_sessions) ... ok
+
+----------------------------------------------------------------------
+Ran 1 test in 1.161s
+
+OK

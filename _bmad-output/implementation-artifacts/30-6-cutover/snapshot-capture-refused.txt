@@ -1,0 +1,5 @@
+Command: python3 -B tools/release-identity-snapshot.py capture --output _bmad-output/implementation-artifacts/30-6-cutover/identity-before.json
+Observed: 2026-11-15, implementation at base fad5ec5efb286a1b4589869a354895acd3aaf55c
+Exit: 1
+[release-identity] refused: registry memories:0.0.0-preview.0.474: not an image index
+No snapshot or receipt was written. No publication or setting was changed.

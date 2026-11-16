@@ -1,0 +1,31 @@
+{
+  "command": [
+    "python3",
+    "-B",
+    "tools/release-identity-snapshot.py",
+    "capture",
+    "--output",
+    "_bmad-output/implementation-artifacts/30-6-cutover/identity-post-review.json"
+  ],
+  "startedAtUtc": "2026-11-15T23:55:16.583097+00:00",
+  "finishedAtUtc": "2026-11-15T23:56:52.395541+00:00",
+  "exitCode": 0,
+  "stdout": "[release-identity] captured _bmad-output/implementation-artifacts/30-6-cutover/identity-post-review.json\n",
+  "stderr": "",
+  "toolSha256": "6bd754f0ba3a99b87e6c97f427d73c46b3602bfcf8cced576b2daa9eef2bd9ff",
+  "comparison": {
+    "command": [
+      "python3",
+      "-B",
+      "tools/release-identity-snapshot.py",
+      "compare",
+      "_bmad-output/implementation-artifacts/30-6-cutover/identity-before.json",
+      "_bmad-output/implementation-artifacts/30-6-cutover/identity-post-review.json",
+      "--expect",
+      "identical"
+    ],
+    "exitCode": 0,
+    "stdout": "[release-identity] pass: identical\n",
+    "stderr": ""
+  }
+}

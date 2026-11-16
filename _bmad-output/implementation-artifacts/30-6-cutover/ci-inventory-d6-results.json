@@ -1,0 +1,23 @@
+{
+  "buildCommand": [
+    "dotnet",
+    "build",
+    "tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj",
+    "--configuration",
+    "Debug",
+    "-p:UseHexalithProjectReferences=true",
+    "--artifacts-path",
+    "/tmp/hexalith-job.QFeUt8K0/build",
+    "-m:1"
+  ],
+  "buildExitCode": 0,
+  "testClass": "Hexalith.Memories.Cli.Tests.Ci.CiTestInventoryTests",
+  "testCommand": [
+    "dotnet",
+    "exec",
+    "/tmp/hexalith-job.QFeUt8K0/build/bin/Hexalith.Memories.Cli.Tests/debug/Hexalith.Memories.Cli.Tests.dll",
+    "-class",
+    "Hexalith.Memories.Cli.Tests.Ci.CiTestInventoryTests"
+  ],
+  "testExitCode": 0
+}
