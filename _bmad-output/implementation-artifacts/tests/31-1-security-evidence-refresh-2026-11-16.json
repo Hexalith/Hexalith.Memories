@@ -1,0 +1,2250 @@
+{
+  "title": "Story 31.1 technical evidence refresh",
+  "created_utc": "2026-11-16T21:31:49Z",
+  "requested_by_user": "do evidence",
+  "author": {
+    "name": "Codex",
+    "kind": "AI assistant",
+    "independent_human_signoff": false
+  },
+  "source_commit": "14d7ea4fc0b149e4545b37e7ea75ce20d9e5ddd8",
+  "input_sha256": {
+    "Directory.Build.props": "3baaecf709945df422e2c414ecf2e07aa8e8e57b3214adf83dba4d76dcd555f9",
+    "Directory.Build.targets": "548292ffe6529035a55fafe592a9d2a5000e5153a810e204b63546d2bac97bf1",
+    "_bmad-output/implementation-artifacts/31-1-openbao-platform-hardening-and-documentation.md": "6ac05462ebf07f045522d3c4c2e335a7d47fc9a6aece5d6281767e3a94fce4cb",
+    "_bmad-output/implementation-artifacts/epic-31-context.md": "951a7379423b9093851e392d05a5751c08318d0b0d734d2decf4d9a8979bef57",
+    "_bmad-output/implementation-artifacts/spec-31-1-openbao-security-guard-remediation.md": "48ec387959b6bf9f2db94d645e8d7ab1b3581e9c0c581b0f67070d121cdd2945",
+    "_bmad-output/implementation-artifacts/sprint-status.yaml": "a1bcd03d34bda41edbceba169a1a83948fbf1a57ee70a8c2a26c5967d12677e8",
+    "_bmad-output/implementation-artifacts/tests/31-1-assistant-security-evaluation-2026-11-16.json": "41dfcc14874d4fece9a0d93b9f3f45ee3aae69b3ebfa1a03b69adc1c7853b016",
+    "_bmad-output/implementation-artifacts/tests/31-1-assistant-security-evaluation-2026-11-16.md": "140e7ec7c0b0f8163a099e9c3dfa3617f6bbb7b636246b3abe374c226e95c911",
+    "_bmad-output/implementation-artifacts/tests/31-1-openbao-platform-evidence.md": "81c77becd6cb7678607a8f5a52fc156b55866154487b0d3f94573401c3f2d06e",
+    "_bmad-output/planning-artifacts/epics.md": "9c69f552b1e4431279f49522bb2faabd27da7aa71104710a967d16081a6b15b8",
+    "deploy/openbao/namespace.yaml": "8844e38ab62789fc93ae748fd49073e9c9e9b38860f7877130ba96e49fa11c4a",
+    "deploy/openbao/service-account-hardening.yaml": "44571c24d6b7383428bb1fa0da1f30843e289fa722984f90fa86caf959d6b039",
+    "deploy/openbao/smoke-test.yaml": "c1f4eb2c21b82a0544eb81bab189275d6edf15864932e51c481d47354dedeee7",
+    "deploy/openbao/values.yaml": "4d6e8909695100901be5008b5a4cd11d108ee03b495d26243d23a22ab25a0caa",
+    "docs/governance/openbao-independent-security-review.md": "7f01d34bb0012745c1dc899b7e57d6cd1a6fa5980a10cdad29c8750b4da3b66d",
+    "docs/operations/openbao.md": "bd29e76da4ab3de5912f5f79fa22e1119d22890e2861edfb00d238b0f5254bbc",
+    "global.json": "0fc60742a00d478b30414aef208956b25eb47004972163f6b737cfdba4d14e77",
+    "tests/Hexalith.Memories.Server.Tests/Deployment/OpenBaoPlatformDocumentationTests.SecurityControls.cs": "96ce45cb0d9b74ca97a3f937d277afba9ed242c652aca0de44c7ab2008f406f5",
+    "tests/Hexalith.Memories.Server.Tests/Deployment/OpenBaoPlatformDocumentationTests.SecurityGuards.cs": "e8aacb55b64d022751b268b0916daeaaf75246ae42c77fc98e086aac38b36ccf",
+    "tests/Hexalith.Memories.Server.Tests/Deployment/OpenBaoPlatformDocumentationTests.cs": "817d5fb7fbeded2ae3eeea273446592b764642d26aae3f3dce8129f5fabc8eea",
+    "tests/Hexalith.Memories.Server.Tests/Deployment/ProductionDeploymentArtifactsTests.cs": "a50e824d8bee18b8db5bf4a675433a092b1d701b8fddf31b983922fa78ce1087",
+    "tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj": "d8d96c15f95f024dd1ddf3171c139cf7581cad31ca9663f7967976791b7e1d8e"
+  },
+  "observation_window": {
+    "start_utc": "2026-11-16T21:25:55.967983+00:00",
+    "end_utc": "2026-11-16T21:29:18.976886+00:00"
+  },
+  "target": {
+    "context": "jpiquot@local",
+    "namespace": "openbao",
+    "release": "hexalith-keys",
+    "application_namespace": "hexalith-memories"
+  },
+  "technical_decision": "changes requested",
+  "mandatory_checkpoint_states": {
+    "C4b": "pending / not complete",
+    "C5b": "pending / not complete",
+    "C7": "pending / not complete"
+  },
+  "parent_story_status": "in-progress",
+  "fresh_verification": {
+    "documentation": {
+      "total": 106,
+      "errors": 0,
+      "failed": 0,
+      "skipped": 0,
+      "not_run": 0
+    },
+    "deployment_regression": {
+      "total": 1,
+      "errors": 0,
+      "failed": 0,
+      "skipped": 0,
+      "not_run": 0
+    },
+    "build": {
+      "warnings": 0,
+      "errors": 0,
+      "configuration": "Debug",
+      "source_references": true,
+      "nuget_audit_enabled": true,
+      "elapsed": "00:01:07.52"
+    },
+    "command": "run-with-temp bash artifacts/story-31-1/guard-remediation-2026-11-16/verify.sh evidence-refresh-2125",
+    "assembly_commands": [
+      "dotnet exec \"$assembly\" -class Hexalith.Memories.Server.Tests.Deployment.OpenBaoPlatformDocumentationTests -parallel none -noLogo",
+      "dotnet exec \"$assembly\" -method Hexalith.Memories.Server.Tests.Deployment.ProductionDeploymentArtifactsTests.OpenBaoDeploymentProfile_IsPinnedTlsOnlyPersistentAndInternal -parallel none -noLogo"
+    ],
+    "build_command": "dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --configuration Debug -p:UseHexalithProjectReferences=true --artifacts-path \"$TMPDIR/build\" --disable-build-servers -m:1 /nr:false -p:MinVerVersionOverride=1.0.0",
+    "log_sha256": {
+      "build.log": "243831904ae6f887846547d1d2fc369d2305527ec1f6bc7e406a3d348f288676",
+      "methods.log": "9ccfa74ccb3435ab895e44ba83c0f553c55484ab96718c3b7c6e22af156352b6",
+      "regression.log": "803c2f9c2c277b34b7dd5956a576c6cc9cd9fcb4e7af69980ffe16dbfbdef7e4",
+      "tests.log": "417698669e7cb61b9d9b0e4cbfd3731f76ecc6ef3e9a2c673d758e337bc77103"
+    }
+  },
+  "historical_integrity": {
+    "source_sha256": {
+      "tests/Hexalith.Memories.Server.Tests/Deployment/OpenBaoPlatformDocumentationTests.SecurityControls.cs": true,
+      "tests/Hexalith.Memories.Server.Tests/Deployment/OpenBaoPlatformDocumentationTests.SecurityGuards.cs": true,
+      "tests/Hexalith.Memories.Server.Tests/Deployment/OpenBaoPlatformDocumentationTests.cs": true
+    },
+    "evidence_sha256": {
+      "artifacts/story-31-1/guard-remediation-2026-11-16/parent-verification.json": true,
+      "artifacts/story-31-1/guard-remediation-2026-11-16/parent-final-build.log": true,
+      "artifacts/story-31-1/guard-remediation-2026-11-16/parent-final-tests.log": true,
+      "artifacts/story-31-1/guard-remediation-2026-11-16/parent-final-regression.log": true,
+      "artifacts/story-31-1/guard-remediation-2026-11-16/parent-final-methods.log": true
+    },
+    "resulting_document_sha256": {
+      "docs/governance/openbao-independent-security-review.md": true,
+      "_bmad-output/implementation-artifacts/spec-31-1-openbao-security-guard-remediation.md": true,
+      "_bmad-output/implementation-artifacts/31-1-openbao-platform-hardening-and-documentation.md": true
+    },
+    "attested_prefixes": {
+      "_bmad-output/implementation-artifacts/spec-31-1-openbao-security-guard-remediation.md": true,
+      "docs/governance/openbao-independent-security-review.md": true
+    }
+  },
+  "upstream_advisories": [
+    {
+      "id": "GHSA-gf3j-hm38-jhh5",
+      "patches": [
+        "2.6.4",
+        "2.7.1"
+      ],
+      "question": "Kubernetes auth enablement and renewable token usage are unverified.",
+      "url": "https://github.com/openbao/openbao/security/advisories/GHSA-gf3j-hm38-jhh5",
+      "checked_on": "2026-11-16",
+      "finding": "Measured 2.6.2 is within the published affected version range; deployment-specific exploitability is unverified."
+    },
+    {
+      "id": "GHSA-q74w-hv5x-6hxf",
+      "patches": [
+        "2.6.4",
+        "2.7.1"
+      ],
+      "question": "Affected root/rekey endpoints are default-disabled in these versions; loaded configuration remains unverified.",
+      "url": "https://github.com/openbao/openbao/security/advisories/GHSA-q74w-hv5x-6hxf",
+      "checked_on": "2026-11-16",
+      "finding": "Measured 2.6.2 is within the published affected version range; deployment-specific exploitability is unverified."
+    },
+    {
+      "id": "GHSA-5pmx-2p74-x478",
+      "patches": [
+        "2.6.5",
+        "2.7.2"
+      ],
+      "question": "Transit import and affected policy settings are unverified; upstream declares the 2.6 series unsupported.",
+      "url": "https://github.com/openbao/openbao/security/advisories/GHSA-5pmx-2p74-x478",
+      "checked_on": "2026-11-16",
+      "finding": "Measured 2.6.2 is within the published affected version range; deployment-specific exploitability is unverified."
+    },
+    {
+      "id": "GHSA-q824-44ff-f5j5",
+      "patches": [
+        "2.6.5",
+        "2.7.2"
+      ],
+      "question": "OIDC public-client credentials-grant settings are unverified; upstream declares the 2.6 series unsupported.",
+      "url": "https://github.com/openbao/openbao/security/advisories/GHSA-q824-44ff-f5j5",
+      "checked_on": "2026-11-16",
+      "finding": "Measured 2.6.2 is within the published affected version range; deployment-specific exploitability is unverified."
+    },
+    {
+      "id": "GHSA-8xxq-mq9m-xmhw",
+      "patches": [
+        "2.6.3",
+        "2.7.0 built-ins",
+        "2.7.1 SDK"
+      ],
+      "question": "Relevant parameter exposure and independently built plugins remain unverified.",
+      "url": "https://github.com/openbao/openbao/security/advisories/GHSA-8xxq-mq9m-xmhw",
+      "checked_on": "2026-11-16",
+      "finding": "Measured 2.6.2 is within the published affected version range; deployment-specific exploitability is unverified."
+    }
+  ],
+  "observations": {
+    "application-pods.json": {
+      "started_utc": "2026-11-16T21:25:55.976353+00:00",
+      "finished_utc": "2026-11-16T21:25:56.116248+00:00",
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "hexalith-memories",
+        "get",
+        "pods",
+        "-o",
+        "json"
+      ],
+      "exit_code": 0,
+      "observation": [
+        {
+          "name": "access-telemetry-postgresql-0",
+          "phase": "Running",
+          "containers": [
+            "postgresql"
+          ]
+        },
+        {
+          "name": "falkordb-0",
+          "phase": "Running",
+          "containers": [
+            "falkordb"
+          ]
+        },
+        {
+          "name": "memories-675fd5d64-5zqpv",
+          "phase": "Running",
+          "containers": [
+            "memories",
+            "daprd"
+          ]
+        },
+        {
+          "name": "memories-675fd5d64-jtd8v",
+          "phase": "Running",
+          "containers": [
+            "memories",
+            "daprd"
+          ]
+        },
+        {
+          "name": "memories-access-telemetry-cb49f44d-cscb4",
+          "phase": "Running",
+          "containers": [
+            "lifecycle",
+            "daprd"
+          ]
+        },
+        {
+          "name": "memories-mcp-55d65d86d6-hh6mr",
+          "phase": "Running",
+          "containers": [
+            "memories-mcp",
+            "daprd"
+          ]
+        },
+        {
+          "name": "memories-mcp-55d65d86d6-rrd7z",
+          "phase": "Running",
+          "containers": [
+            "memories-mcp",
+            "daprd"
+          ]
+        },
+        {
+          "name": "postgresql-tls-reloader-29914283-5545w",
+          "phase": "Succeeded",
+          "containers": [
+            "reloader"
+          ]
+        },
+        {
+          "name": "postgresql-tls-reloader-29914343-7bp8l",
+          "phase": "Succeeded",
+          "containers": [
+            "reloader"
+          ]
+        },
+        {
+          "name": "postgresql-tls-reloader-29914403-t4bvc",
+          "phase": "Succeeded",
+          "containers": [
+            "reloader"
+          ]
+        },
+        {
+          "name": "redis-stack-0",
+          "phase": "Running",
+          "containers": [
+            "redis"
+          ]
+        }
+      ]
+    },
+    "audit-file-metadata-0.json": {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "openbao",
+        "exec",
+        "hexalith-keys-0",
+        "-c",
+        "openbao",
+        "--",
+        "env",
+        "-i",
+        "PATH=/usr/bin:/bin",
+        "HOME=/nonexistent",
+        "/bin/busybox",
+        "stat",
+        "-c",
+        "%s|%Y|%a|%u|%g",
+        "/openbao/audit/openbao-audit.json"
+      ],
+      "started_utc": "2026-11-16T21:29:18.578886+00:00",
+      "finished_utc": "2026-11-16T21:29:18.976886+00:00",
+      "exit_code": 0,
+      "observation": {
+        "size_bytes": "8625453",
+        "mtime_epoch": "1794702602",
+        "mode_octal": "600",
+        "uid": "100",
+        "gid": "1000"
+      },
+      "limit": "File metadata only; does not prove active audit-device configuration, correlated writes, rotation or failure handling"
+    },
+    "audit-file-metadata-1.json": {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "openbao",
+        "exec",
+        "hexalith-keys-1",
+        "-c",
+        "openbao",
+        "--",
+        "env",
+        "-i",
+        "PATH=/usr/bin:/bin",
+        "HOME=/nonexistent",
+        "/bin/busybox",
+        "stat",
+        "-c",
+        "%s|%Y|%a|%u|%g",
+        "/openbao/audit/openbao-audit.json"
+      ],
+      "started_utc": "2026-11-16T21:29:18.580261+00:00",
+      "finished_utc": "2026-11-16T21:29:18.798295+00:00",
+      "exit_code": 0,
+      "observation": {
+        "size_bytes": "3384889",
+        "mtime_epoch": "1794864493",
+        "mode_octal": "600",
+        "uid": "100",
+        "gid": "1000"
+      },
+      "limit": "File metadata only; does not prove active audit-device configuration, correlated writes, rotation or failure handling"
+    },
+    "audit-file-metadata-2.json": {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "openbao",
+        "exec",
+        "hexalith-keys-2",
+        "-c",
+        "openbao",
+        "--",
+        "env",
+        "-i",
+        "PATH=/usr/bin:/bin",
+        "HOME=/nonexistent",
+        "/bin/busybox",
+        "stat",
+        "-c",
+        "%s|%Y|%a|%u|%g",
+        "/openbao/audit/openbao-audit.json"
+      ],
+      "started_utc": "2026-11-16T21:29:18.581335+00:00",
+      "finished_utc": "2026-11-16T21:29:18.849549+00:00",
+      "exit_code": 0,
+      "observation": {
+        "size_bytes": "46023074",
+        "mtime_epoch": "1794864493",
+        "mode_octal": "600",
+        "uid": "100",
+        "gid": "1000"
+      },
+      "limit": "File metadata only; does not prove active audit-device configuration, correlated writes, rotation or failure handling"
+    },
+    "auth-delegator-role.json": {
+      "started_utc": "2026-11-16T21:25:56.116426+00:00",
+      "finished_utc": "2026-11-16T21:25:56.239967+00:00",
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "get",
+        "clusterrole",
+        "system:auth-delegator",
+        "-o",
+        "json"
+      ],
+      "exit_code": 0,
+      "observation": {
+        "name": "system:auth-delegator",
+        "rules": [
+          {
+            "apiGroups": [
+              "authentication.k8s.io"
+            ],
+            "resources": [
+              "tokenreviews"
+            ],
+            "verbs": [
+              "create"
+            ]
+          },
+          {
+            "apiGroups": [
+              "authorization.k8s.io"
+            ],
+            "resources": [
+              "subjectaccessreviews"
+            ],
+            "verbs": [
+              "create"
+            ]
+          }
+        ]
+      }
+    },
+    "capability-memories-675fd5d64-5zqpv.json": {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "hexalith-memories",
+        "exec",
+        "memories-675fd5d64-5zqpv",
+        "-c",
+        "memories",
+        "--",
+        "env",
+        "-i",
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "HOME=/nonexistent",
+        "/bin/sh",
+        "-c",
+        "for tool in busybox curl wget; do command -v \"$tool\" || true; done"
+      ],
+      "started_utc": "2026-11-16T21:27:04.294828+00:00",
+      "finished_utc": "2026-11-16T21:27:04.454400+00:00",
+      "exit_code": 0,
+      "observation": {
+        "executable_paths": [
+          "/bin/busybox",
+          "/usr/bin/wget"
+        ]
+      }
+    },
+    "capability-memories-mcp-55d65d86d6-hh6mr.json": {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "hexalith-memories",
+        "exec",
+        "memories-mcp-55d65d86d6-hh6mr",
+        "-c",
+        "memories-mcp",
+        "--",
+        "env",
+        "-i",
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "HOME=/nonexistent",
+        "/bin/sh",
+        "-c",
+        "for tool in busybox curl wget; do command -v \"$tool\" || true; done"
+      ],
+      "started_utc": "2026-11-16T21:27:03.259087+00:00",
+      "finished_utc": "2026-11-16T21:27:03.465519+00:00",
+      "exit_code": 0,
+      "observation": {
+        "executable_paths": [
+          "/bin/busybox",
+          "/usr/bin/wget"
+        ]
+      }
+    },
+    "capability-redis-stack-0.json": {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "hexalith-memories",
+        "exec",
+        "redis-stack-0",
+        "-c",
+        "redis",
+        "--",
+        "env",
+        "-i",
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "HOME=/nonexistent",
+        "/bin/sh",
+        "-c",
+        "for tool in busybox curl wget; do command -v \"$tool\" || true; done"
+      ],
+      "started_utc": "2026-11-16T21:27:04.126913+00:00",
+      "finished_utc": "2026-11-16T21:27:04.294612+00:00",
+      "exit_code": 0,
+      "observation": {
+        "executable_paths": []
+      }
+    },
+    "cluster-role-bindings.json": {
+      "started_utc": "2026-11-16T21:25:56.089004+00:00",
+      "finished_utc": "2026-11-16T21:25:56.256973+00:00",
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "get",
+        "clusterrolebindings",
+        "-o",
+        "json"
+      ],
+      "exit_code": 0,
+      "observation": [
+        {
+          "name": "hexalith-keys-server-binding",
+          "role_ref": {
+            "apiGroup": "rbac.authorization.k8s.io",
+            "kind": "ClusterRole",
+            "name": "system:auth-delegator"
+          },
+          "subjects": [
+            {
+              "kind": "ServiceAccount",
+              "name": "hexalith-keys",
+              "namespace": "openbao"
+            }
+          ]
+        },
+        {
+          "name": "hexalith-keys-tokenreview",
+          "role_ref": {
+            "apiGroup": "rbac.authorization.k8s.io",
+            "kind": "ClusterRole",
+            "name": "system:auth-delegator"
+          },
+          "subjects": [
+            {
+              "kind": "ServiceAccount",
+              "name": "hexalith-keys",
+              "namespace": "openbao"
+            }
+          ]
+        }
+      ]
+    },
+    "extended-capability-memories-mcp-55d65d86d6-hh6mr.json": {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "hexalith-memories",
+        "exec",
+        "memories-mcp-55d65d86d6-hh6mr",
+        "-c",
+        "memories-mcp",
+        "--",
+        "env",
+        "-i",
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "HOME=/nonexistent",
+        "/bin/sh",
+        "-c",
+        "for tool in bash openssl python3 python node; do command -v \"$tool\" || true; done"
+      ],
+      "observed_utc": "2026-11-16T21:27:40.455819+00:00",
+      "exit_code": 0,
+      "executable_paths": []
+    },
+    "extended-capability-redis-stack-0.json": {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "hexalith-memories",
+        "exec",
+        "redis-stack-0",
+        "-c",
+        "redis",
+        "--",
+        "env",
+        "-i",
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "HOME=/nonexistent",
+        "/bin/sh",
+        "-c",
+        "for tool in bash openssl python3 python node; do command -v \"$tool\" || true; done"
+      ],
+      "observed_utc": "2026-11-16T21:27:40.223094+00:00",
+      "exit_code": 0,
+      "executable_paths": [
+        "/usr/bin/bash",
+        "/usr/bin/python3"
+      ]
+    },
+    "namespace.json": {
+      "started_utc": "2026-11-16T21:25:55.979073+00:00",
+      "finished_utc": "2026-11-16T21:25:56.047583+00:00",
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "get",
+        "namespace",
+        "openbao",
+        "-o",
+        "json"
+      ],
+      "exit_code": 0,
+      "observation": {
+        "name": "openbao",
+        "labels": {
+          "kubernetes.io/metadata.name": "openbao",
+          "pod-security.kubernetes.io/audit": "restricted",
+          "pod-security.kubernetes.io/audit-version": "latest",
+          "pod-security.kubernetes.io/enforce": "restricted",
+          "pod-security.kubernetes.io/enforce-version": "latest",
+          "pod-security.kubernetes.io/warn": "restricted",
+          "pod-security.kubernetes.io/warn-version": "latest"
+        },
+        "ownership": {
+          "hexalith.io/platform-owner": "jpiquot",
+          "hexalith.io/security-reviewer": "murat-tea-for-jpiquot"
+        }
+      }
+    },
+    "network-policies.json": {
+      "started_utc": "2026-11-16T21:25:55.976836+00:00",
+      "finished_utc": "2026-11-16T21:25:56.088848+00:00",
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "openbao",
+        "get",
+        "networkpolicies",
+        "-o",
+        "json"
+      ],
+      "exit_code": 0,
+      "observation": [
+        {
+          "name": "deployment-seal-external",
+          "spec": {
+            "ingress": [
+              {
+                "from": [
+                  {
+                    "namespaceSelector": {
+                      "matchLabels": {
+                        "kubernetes.io/metadata.name": "traefik"
+                      }
+                    },
+                    "podSelector": {
+                      "matchLabels": {
+                        "app.kubernetes.io/name": "traefik"
+                      }
+                    }
+                  },
+                  {
+                    "ipBlock": {
+                      "cidr": "192.168.1.30/32"
+                    }
+                  }
+                ],
+                "ports": [
+                  {
+                    "port": 8200,
+                    "protocol": "TCP"
+                  }
+                ]
+              }
+            ],
+            "podSelector": {
+              "matchLabels": {
+                "app.kubernetes.io/instance": "hexalith-keys",
+                "app.kubernetes.io/name": "openbao",
+                "component": "server"
+              }
+            },
+            "policyTypes": [
+              "Ingress"
+            ]
+          }
+        },
+        {
+          "name": "ext-secrets-1-custody-provider-29a4ace57e04",
+          "spec": {
+            "ingress": [
+              {
+                "from": [
+                  {
+                    "namespaceSelector": {
+                      "matchLabels": {
+                        "kubernetes.io/metadata.name": "ext-secrets-1-isolated"
+                      }
+                    },
+                    "podSelector": {
+                      "matchExpressions": [
+                        {
+                          "key": "app",
+                          "operator": "In",
+                          "values": [
+                            "inventory",
+                            "ext-secrets-1-custody"
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "ports": [
+                  {
+                    "port": 8200,
+                    "protocol": "TCP"
+                  }
+                ]
+              }
+            ],
+            "podSelector": {
+              "matchLabels": {
+                "app.kubernetes.io/instance": "hexalith-keys",
+                "app.kubernetes.io/name": "openbao",
+                "component": "server"
+              }
+            },
+            "policyTypes": [
+              "Ingress"
+            ]
+          }
+        },
+        {
+          "name": "hexalith-keys",
+          "spec": {
+            "ingress": [
+              {
+                "from": [
+                  {
+                    "namespaceSelector": {
+                      "matchLabels": {
+                        "kubernetes.io/metadata.name": "hexalith-memories"
+                      }
+                    }
+                  },
+                  {
+                    "namespaceSelector": {
+                      "matchLabels": {
+                        "kubernetes.io/metadata.name": "cert-manager"
+                      }
+                    }
+                  }
+                ],
+                "ports": [
+                  {
+                    "port": 8200,
+                    "protocol": "TCP"
+                  }
+                ]
+              },
+              {
+                "from": [
+                  {
+                    "podSelector": {
+                      "matchLabels": {
+                        "app.kubernetes.io/instance": "hexalith-keys",
+                        "app.kubernetes.io/name": "openbao"
+                      }
+                    }
+                  }
+                ],
+                "ports": [
+                  {
+                    "port": 8200,
+                    "protocol": "TCP"
+                  },
+                  {
+                    "port": 8201,
+                    "protocol": "TCP"
+                  }
+                ]
+              }
+            ],
+            "podSelector": {
+              "matchLabels": {
+                "app.kubernetes.io/instance": "hexalith-keys",
+                "app.kubernetes.io/name": "openbao"
+              }
+            },
+            "policyTypes": [
+              "Ingress"
+            ]
+          }
+        }
+      ]
+    },
+    "nodes.json": {
+      "started_utc": "2026-11-16T21:25:55.967983+00:00",
+      "finished_utc": "2026-11-16T21:25:56.087272+00:00",
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "get",
+        "nodes",
+        "-o",
+        "json"
+      ],
+      "exit_code": 0,
+      "observation": [
+        {
+          "name": "node1",
+          "version": "v1.34.9"
+        }
+      ]
+    },
+    "peer-0-dns-name.json": {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "openbao",
+        "exec",
+        "hexalith-keys-0",
+        "-c",
+        "openbao",
+        "--",
+        "env",
+        "-i",
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "HOME=/nonexistent",
+        "bao",
+        "status",
+        "-format=json",
+        "-address=https://hexalith-keys-0.hexalith-keys-internal.openbao.svc.cluster.local:8200",
+        "-ca-cert=/openbao/userconfig/openbao-server-tls/ca.crt",
+        "-tls-skip-verify=false"
+      ],
+      "started_utc": "2026-11-16T21:27:02.308647+00:00",
+      "finished_utc": "2026-11-16T21:27:02.831743+00:00",
+      "exit_code": 0,
+      "observation": {
+        "status": {
+          "type": "static",
+          "recovery_seal_type": "shamir",
+          "initialized": true,
+          "sealed": false,
+          "storage_type": "raft",
+          "version": "2.6.2",
+          "ha_enabled": true,
+          "ha_mode": null,
+          "t": 2,
+          "n": 3
+        }
+      }
+    },
+    "peer-0-service-name-control.json": {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "openbao",
+        "exec",
+        "hexalith-keys-0",
+        "-c",
+        "openbao",
+        "--",
+        "env",
+        "-i",
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "HOME=/nonexistent",
+        "bao",
+        "status",
+        "-format=json",
+        "-address=https://hexalith-keys-0.hexalith-keys-internal.openbao.svc.cluster.local:8200",
+        "-ca-cert=/openbao/userconfig/openbao-server-tls/ca.crt",
+        "-tls-skip-verify=false",
+        "-tls-server-name=hexalith-keys.openbao.svc.cluster.local"
+      ],
+      "started_utc": "2026-11-16T21:27:02.311196+00:00",
+      "finished_utc": "2026-11-16T21:27:02.759342+00:00",
+      "exit_code": 0,
+      "observation": {
+        "status": {
+          "type": "static",
+          "recovery_seal_type": "shamir",
+          "initialized": true,
+          "sealed": false,
+          "storage_type": "raft",
+          "version": "2.6.2",
+          "ha_enabled": true,
+          "ha_mode": null,
+          "t": 2,
+          "n": 3
+        }
+      }
+    },
+    "peer-1-dns-name.json": {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "openbao",
+        "exec",
+        "hexalith-keys-1",
+        "-c",
+        "openbao",
+        "--",
+        "env",
+        "-i",
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "HOME=/nonexistent",
+        "bao",
+        "status",
+        "-format=json",
+        "-address=https://hexalith-keys-1.hexalith-keys-internal.openbao.svc.cluster.local:8200",
+        "-ca-cert=/openbao/userconfig/openbao-server-tls/ca.crt",
+        "-tls-skip-verify=false"
+      ],
+      "started_utc": "2026-11-16T21:27:02.313838+00:00",
+      "finished_utc": "2026-11-16T21:27:02.680029+00:00",
+      "exit_code": 1,
+      "observation": {
+        "failure": "x509 certificate hostname mismatch; response discarded"
+      }
+    },
+    "peer-1-service-name-control.json": {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "openbao",
+        "exec",
+        "hexalith-keys-1",
+        "-c",
+        "openbao",
+        "--",
+        "env",
+        "-i",
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "HOME=/nonexistent",
+        "bao",
+        "status",
+        "-format=json",
+        "-address=https://hexalith-keys-1.hexalith-keys-internal.openbao.svc.cluster.local:8200",
+        "-ca-cert=/openbao/userconfig/openbao-server-tls/ca.crt",
+        "-tls-skip-verify=false",
+        "-tls-server-name=hexalith-keys.openbao.svc.cluster.local"
+      ],
+      "started_utc": "2026-11-16T21:27:02.680312+00:00",
+      "finished_utc": "2026-11-16T21:27:03.026405+00:00",
+      "exit_code": 0,
+      "observation": {
+        "status": {
+          "type": "static",
+          "recovery_seal_type": "shamir",
+          "initialized": true,
+          "sealed": false,
+          "storage_type": "raft",
+          "version": "2.6.2",
+          "ha_enabled": true,
+          "ha_mode": null,
+          "t": 2,
+          "n": 3
+        }
+      }
+    },
+    "peer-2-dns-name.json": {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "openbao",
+        "exec",
+        "hexalith-keys-2",
+        "-c",
+        "openbao",
+        "--",
+        "env",
+        "-i",
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "HOME=/nonexistent",
+        "bao",
+        "status",
+        "-format=json",
+        "-address=https://hexalith-keys-2.hexalith-keys-internal.openbao.svc.cluster.local:8200",
+        "-ca-cert=/openbao/userconfig/openbao-server-tls/ca.crt",
+        "-tls-skip-verify=false"
+      ],
+      "started_utc": "2026-11-16T21:27:02.759698+00:00",
+      "finished_utc": "2026-11-16T21:27:03.138388+00:00",
+      "exit_code": 1,
+      "observation": {
+        "failure": "x509 certificate hostname mismatch; response discarded"
+      }
+    },
+    "peer-2-service-name-control.json": {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "openbao",
+        "exec",
+        "hexalith-keys-2",
+        "-c",
+        "openbao",
+        "--",
+        "env",
+        "-i",
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "HOME=/nonexistent",
+        "bao",
+        "status",
+        "-format=json",
+        "-address=https://hexalith-keys-2.hexalith-keys-internal.openbao.svc.cluster.local:8200",
+        "-ca-cert=/openbao/userconfig/openbao-server-tls/ca.crt",
+        "-tls-skip-verify=false",
+        "-tls-server-name=hexalith-keys.openbao.svc.cluster.local"
+      ],
+      "started_utc": "2026-11-16T21:27:02.832144+00:00",
+      "finished_utc": "2026-11-16T21:27:03.258493+00:00",
+      "exit_code": 0,
+      "observation": {
+        "status": {
+          "type": "static",
+          "recovery_seal_type": "shamir",
+          "initialized": true,
+          "sealed": false,
+          "storage_type": "raft",
+          "version": "2.6.2",
+          "ha_enabled": true,
+          "ha_mode": null,
+          "t": 2,
+          "n": 3
+        }
+      }
+    },
+    "persistent-volumes.json": {
+      "started_utc": "2026-11-16T21:25:56.135183+00:00",
+      "finished_utc": "2026-11-16T21:25:56.246499+00:00",
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "openbao",
+        "get",
+        "pvc",
+        "-o",
+        "json"
+      ],
+      "exit_code": 0,
+      "observation": [
+        {
+          "name": "audit-hexalith-keys-0",
+          "phase": "Bound",
+          "capacity": {
+            "storage": "10Gi"
+          },
+          "storage_class": "openebs-hostpath-retain"
+        },
+        {
+          "name": "audit-hexalith-keys-1",
+          "phase": "Bound",
+          "capacity": {
+            "storage": "10Gi"
+          },
+          "storage_class": "openebs-hostpath-retain"
+        },
+        {
+          "name": "audit-hexalith-keys-2",
+          "phase": "Bound",
+          "capacity": {
+            "storage": "10Gi"
+          },
+          "storage_class": "openebs-hostpath-retain"
+        },
+        {
+          "name": "data-hexalith-keys-0",
+          "phase": "Bound",
+          "capacity": {
+            "storage": "10Gi"
+          },
+          "storage_class": "openebs-hostpath-retain"
+        },
+        {
+          "name": "data-hexalith-keys-1",
+          "phase": "Bound",
+          "capacity": {
+            "storage": "10Gi"
+          },
+          "storage_class": "openebs-hostpath-retain"
+        },
+        {
+          "name": "data-hexalith-keys-2",
+          "phase": "Bound",
+          "capacity": {
+            "storage": "10Gi"
+          },
+          "storage_class": "openebs-hostpath-retain"
+        },
+        {
+          "name": "openbao-snapshots",
+          "phase": "Bound",
+          "capacity": {
+            "storage": "2Gi"
+          },
+          "storage_class": "openebs-hostpath-retain"
+        }
+      ]
+    },
+    "redis-source-http.json": {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "hexalith-memories",
+        "exec",
+        "redis-stack-0",
+        "-c",
+        "redis",
+        "--",
+        "env",
+        "-i",
+        "PATH=/usr/bin:/bin",
+        "HOME=/nonexistent",
+        "/usr/bin/python3",
+        "-c",
+        "\nimport datetime,http.client,json,ssl\nhost=\"hexalith-keys.openbao.svc.cluster.local\"\nout={\"source_pod\":\"redis-stack-0\",\"source_container\":\"redis\",\"credentials\":\"none; clean environment; no Authorization or token headers\", \"response_bodies\":\"not read\", \"requests\":[]}\nfor verify in [True,False]:\n    for path in ([\"/v1/sys/health?standbyok=true\"] if verify else [\"/v1/sys/health?standbyok=true\",\"/v1/sys/mounts\",\"/v1/auth/token/lookup-self\"]):\n        c=ssl.create_default_context() if verify else ssl._create_unverified_context()\n        conn=http.client.HTTPSConnection(host,8200,context=c,timeout=6)\n        item={\"path\":path,\"certificate_verification\":verify,\"started_utc\":datetime.datetime.now(datetime.timezone.utc).isoformat()}\n        try:\n            conn.request(\"GET\",path,headers={\"Connection\":\"close\"})\n            response=conn.getresponse()\n            item[\"http_status\"]=response.status\n            response.close()\n        except Exception as e:\n            item[\"failure_type\"]=type(e).__name__\n        finally:\n            conn.close()\n            item[\"finished_utc\"]=datetime.datetime.now(datetime.timezone.utc).isoformat()\n            out[\"requests\"].append(item)\nout[\"limits\"]=\"Unverified TLS requests prove source-pod transport/HTTP and credential-free denial only; no CA identity, negative NetworkPolicy, authenticated ACL, cross-prefix or audit-write proof\"\nprint(json.dumps(out))\n"
+      ],
+      "started_utc": "2026-11-16T21:28:12.059077+00:00",
+      "finished_utc": "2026-11-16T21:28:12.507631+00:00",
+      "exit_code": 0,
+      "observation": {
+        "source_pod": "redis-stack-0",
+        "source_container": "redis",
+        "credentials": "none; clean environment; no Authorization or token headers",
+        "response_bodies": "not read",
+        "requests": [
+          {
+            "path": "/v1/sys/health?standbyok=true",
+            "certificate_verification": true,
+            "started_utc": "2026-11-16T21:28:13.335654+00:00",
+            "failure_type": "SSLCertVerificationError",
+            "finished_utc": "2026-11-16T21:28:13.353915+00:00"
+          },
+          {
+            "path": "/v1/sys/health?standbyok=true",
+            "certificate_verification": false,
+            "started_utc": "2026-11-16T21:28:13.354259+00:00",
+            "http_status": 200,
+            "finished_utc": "2026-11-16T21:28:13.367017+00:00"
+          },
+          {
+            "path": "/v1/sys/mounts",
+            "certificate_verification": false,
+            "started_utc": "2026-11-16T21:28:13.367634+00:00",
+            "http_status": 403,
+            "finished_utc": "2026-11-16T21:28:13.381098+00:00"
+          },
+          {
+            "path": "/v1/auth/token/lookup-self",
+            "certificate_verification": false,
+            "started_utc": "2026-11-16T21:28:13.381696+00:00",
+            "http_status": 403,
+            "finished_utc": "2026-11-16T21:28:13.394655+00:00"
+          }
+        ],
+        "limits": "Unverified TLS requests prove source-pod transport/HTTP and credential-free denial only; no CA identity, negative NetworkPolicy, authenticated ACL, cross-prefix or audit-write proof"
+      }
+    },
+    "role-bindings.json": {
+      "started_utc": "2026-11-16T21:25:56.087596+00:00",
+      "finished_utc": "2026-11-16T21:25:56.227027+00:00",
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "openbao",
+        "get",
+        "rolebindings",
+        "-o",
+        "json"
+      ],
+      "exit_code": 0,
+      "observation": [
+        {
+          "name": "deployment-seal-runner",
+          "role_ref": {
+            "apiGroup": "rbac.authorization.k8s.io",
+            "kind": "Role",
+            "name": "deployment-seal-runner"
+          },
+          "subjects": [
+            {
+              "kind": "ServiceAccount",
+              "name": "deployment-seal-runner",
+              "namespace": "openbao"
+            }
+          ]
+        },
+        {
+          "name": "hexalith-keys-discovery-rolebinding",
+          "role_ref": {
+            "apiGroup": "rbac.authorization.k8s.io",
+            "kind": "Role",
+            "name": "hexalith-keys-discovery-role"
+          },
+          "subjects": [
+            {
+              "kind": "ServiceAccount",
+              "name": "hexalith-keys",
+              "namespace": "openbao"
+            }
+          ]
+        }
+      ]
+    },
+    "roles.json": {
+      "started_utc": "2026-11-16T21:25:56.065825+00:00",
+      "finished_utc": "2026-11-16T21:25:56.142123+00:00",
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "openbao",
+        "get",
+        "roles",
+        "-o",
+        "json"
+      ],
+      "exit_code": 0,
+      "observation": [
+        {
+          "name": "deployment-seal-runner",
+          "rules": [
+            {
+              "apiGroups": [
+                ""
+              ],
+              "resourceNames": [
+                "deployment-seal-transit"
+              ],
+              "resources": [
+                "services"
+              ],
+              "verbs": [
+                "get",
+                "patch",
+                "update"
+              ]
+            },
+            {
+              "apiGroups": [
+                ""
+              ],
+              "resourceNames": [
+                "deployment-seal-ca"
+              ],
+              "resources": [
+                "configmaps"
+              ],
+              "verbs": [
+                "get"
+              ]
+            },
+            {
+              "apiGroups": [
+                "networking.k8s.io"
+              ],
+              "resourceNames": [
+                "deployment-seal-external"
+              ],
+              "resources": [
+                "networkpolicies"
+              ],
+              "verbs": [
+                "get",
+                "patch",
+                "update"
+              ]
+            },
+            {
+              "apiGroups": [
+                "traefik.io"
+              ],
+              "resourceNames": [
+                "deployment-seal-transit"
+              ],
+              "resources": [
+                "ingressroutetcps"
+              ],
+              "verbs": [
+                "get",
+                "patch",
+                "update"
+              ]
+            },
+            {
+              "apiGroups": [
+                "traefik.io"
+              ],
+              "resourceNames": [
+                "deployment-seal-client-allowlist"
+              ],
+              "resources": [
+                "middlewaretcps"
+              ],
+              "verbs": [
+                "get",
+                "patch",
+                "update"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "hexalith-keys-discovery-role",
+          "rules": [
+            {
+              "apiGroups": [
+                ""
+              ],
+              "resources": [
+                "pods"
+              ],
+              "verbs": [
+                "get",
+                "watch",
+                "list",
+                "update",
+                "patch"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "server-pods.json": {
+      "started_utc": "2026-11-16T21:25:55.970977+00:00",
+      "finished_utc": "2026-11-16T21:25:56.134652+00:00",
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "openbao",
+        "get",
+        "pods",
+        "-l",
+        "app.kubernetes.io/instance=hexalith-keys",
+        "-o",
+        "json"
+      ],
+      "exit_code": 0,
+      "observation": [
+        {
+          "name": "hexalith-keys-0",
+          "node": "node1",
+          "phase": "Running",
+          "service_account": "hexalith-keys",
+          "automount_service_account_token": true,
+          "pod_security_context": {
+            "fsGroup": 1000,
+            "fsGroupChangePolicy": "OnRootMismatch",
+            "runAsGroup": 1000,
+            "runAsNonRoot": true,
+            "runAsUser": 100,
+            "seccompProfile": {
+              "type": "RuntimeDefault"
+            }
+          },
+          "ready": [
+            true
+          ],
+          "image_ids": [
+            "quay.io/openbao/openbao@sha256:11fd73a2102cda9c55d5d881a8c3210303146a7ec1e8ac76f526e175c6d24641"
+          ],
+          "containers": [
+            {
+              "name": "openbao",
+              "image": "quay.io/openbao/openbao:2.6.2@sha256:11fd73a2102cda9c55d5d881a8c3210303146a7ec1e8ac76f526e175c6d24641",
+              "security_context": {
+                "allowPrivilegeEscalation": false,
+                "capabilities": {
+                  "drop": [
+                    "ALL"
+                  ]
+                },
+                "readOnlyRootFilesystem": true
+              },
+              "readiness_status_command": [
+                "bao",
+                "status"
+              ],
+              "liveness": {
+                "scheme": "HTTPS",
+                "port": 8200,
+                "health_path": "/v1/sys/health?standbyok=true&sealedcode=204&uninitcode=204"
+              },
+              "env_names_only": [
+                "HOST_IP",
+                "POD_IP",
+                "BAO_K8S_POD_NAME",
+                "BAO_K8S_NAMESPACE",
+                "BAO_ADDR",
+                "BAO_API_ADDR",
+                "SKIP_CHOWN",
+                "SKIP_SETCAP",
+                "HOSTNAME",
+                "BAO_CLUSTER_ADDR",
+                "BAO_RAFT_NODE_ID",
+                "HOME",
+                "BAO_LOG_LEVEL",
+                "BAO_LOG_FORMAT",
+                "BAO_CACERT"
+              ],
+              "volume_mounts": [
+                {
+                  "name": "audit",
+                  "path": "/openbao/audit",
+                  "read_only": null
+                },
+                {
+                  "name": "data",
+                  "path": "/openbao/data",
+                  "read_only": null
+                },
+                {
+                  "name": "config",
+                  "path": "/openbao/config",
+                  "read_only": null
+                },
+                {
+                  "name": "openbao-server-tls",
+                  "path": "/openbao/userconfig/openbao-server-tls",
+                  "read_only": true
+                },
+                {
+                  "name": "openbao-seal",
+                  "path": "/openbao/userconfig/openbao-seal",
+                  "read_only": true
+                },
+                {
+                  "name": "tmp",
+                  "path": "/tmp",
+                  "read_only": null
+                },
+                {
+                  "name": "home",
+                  "path": "/home/openbao",
+                  "read_only": null
+                },
+                {
+                  "name": "kube-api-access-b49k2",
+                  "path": "/var/run/secrets/kubernetes.io/serviceaccount",
+                  "read_only": true
+                }
+              ]
+            }
+          ],
+          "secret_volumes": [
+            {
+              "name": "openbao-server-tls",
+              "secret_name": "openbao-server-tls",
+              "default_mode": 288
+            },
+            {
+              "name": "openbao-seal",
+              "secret_name": "openbao-seal",
+              "default_mode": 288
+            }
+          ],
+          "pvc_volumes": [
+            {
+              "name": "data",
+              "claim": "data-hexalith-keys-0"
+            },
+            {
+              "name": "audit",
+              "claim": "audit-hexalith-keys-0"
+            }
+          ]
+        },
+        {
+          "name": "hexalith-keys-1",
+          "node": "node1",
+          "phase": "Running",
+          "service_account": "hexalith-keys",
+          "automount_service_account_token": true,
+          "pod_security_context": {
+            "fsGroup": 1000,
+            "fsGroupChangePolicy": "OnRootMismatch",
+            "runAsGroup": 1000,
+            "runAsNonRoot": true,
+            "runAsUser": 100,
+            "seccompProfile": {
+              "type": "RuntimeDefault"
+            }
+          },
+          "ready": [
+            true
+          ],
+          "image_ids": [
+            "quay.io/openbao/openbao@sha256:11fd73a2102cda9c55d5d881a8c3210303146a7ec1e8ac76f526e175c6d24641"
+          ],
+          "containers": [
+            {
+              "name": "openbao",
+              "image": "quay.io/openbao/openbao:2.6.2@sha256:11fd73a2102cda9c55d5d881a8c3210303146a7ec1e8ac76f526e175c6d24641",
+              "security_context": {
+                "allowPrivilegeEscalation": false,
+                "capabilities": {
+                  "drop": [
+                    "ALL"
+                  ]
+                },
+                "readOnlyRootFilesystem": true
+              },
+              "readiness_status_command": [
+                "bao",
+                "status"
+              ],
+              "liveness": {
+                "scheme": "HTTPS",
+                "port": 8200,
+                "health_path": "/v1/sys/health?standbyok=true&sealedcode=204&uninitcode=204"
+              },
+              "env_names_only": [
+                "HOST_IP",
+                "POD_IP",
+                "BAO_K8S_POD_NAME",
+                "BAO_K8S_NAMESPACE",
+                "BAO_ADDR",
+                "BAO_API_ADDR",
+                "SKIP_CHOWN",
+                "SKIP_SETCAP",
+                "HOSTNAME",
+                "BAO_CLUSTER_ADDR",
+                "BAO_RAFT_NODE_ID",
+                "HOME",
+                "BAO_LOG_LEVEL",
+                "BAO_LOG_FORMAT",
+                "BAO_CACERT"
+              ],
+              "volume_mounts": [
+                {
+                  "name": "audit",
+                  "path": "/openbao/audit",
+                  "read_only": null
+                },
+                {
+                  "name": "data",
+                  "path": "/openbao/data",
+                  "read_only": null
+                },
+                {
+                  "name": "config",
+                  "path": "/openbao/config",
+                  "read_only": null
+                },
+                {
+                  "name": "openbao-server-tls",
+                  "path": "/openbao/userconfig/openbao-server-tls",
+                  "read_only": true
+                },
+                {
+                  "name": "openbao-seal",
+                  "path": "/openbao/userconfig/openbao-seal",
+                  "read_only": true
+                },
+                {
+                  "name": "tmp",
+                  "path": "/tmp",
+                  "read_only": null
+                },
+                {
+                  "name": "home",
+                  "path": "/home/openbao",
+                  "read_only": null
+                },
+                {
+                  "name": "kube-api-access-p6425",
+                  "path": "/var/run/secrets/kubernetes.io/serviceaccount",
+                  "read_only": true
+                }
+              ]
+            }
+          ],
+          "secret_volumes": [
+            {
+              "name": "openbao-server-tls",
+              "secret_name": "openbao-server-tls",
+              "default_mode": 288
+            },
+            {
+              "name": "openbao-seal",
+              "secret_name": "openbao-seal",
+              "default_mode": 288
+            }
+          ],
+          "pvc_volumes": [
+            {
+              "name": "data",
+              "claim": "data-hexalith-keys-1"
+            },
+            {
+              "name": "audit",
+              "claim": "audit-hexalith-keys-1"
+            }
+          ]
+        },
+        {
+          "name": "hexalith-keys-2",
+          "node": "node1",
+          "phase": "Running",
+          "service_account": "hexalith-keys",
+          "automount_service_account_token": true,
+          "pod_security_context": {
+            "fsGroup": 1000,
+            "fsGroupChangePolicy": "OnRootMismatch",
+            "runAsGroup": 1000,
+            "runAsNonRoot": true,
+            "runAsUser": 100,
+            "seccompProfile": {
+              "type": "RuntimeDefault"
+            }
+          },
+          "ready": [
+            true
+          ],
+          "image_ids": [
+            "quay.io/openbao/openbao@sha256:11fd73a2102cda9c55d5d881a8c3210303146a7ec1e8ac76f526e175c6d24641"
+          ],
+          "containers": [
+            {
+              "name": "openbao",
+              "image": "quay.io/openbao/openbao:2.6.2@sha256:11fd73a2102cda9c55d5d881a8c3210303146a7ec1e8ac76f526e175c6d24641",
+              "security_context": {
+                "allowPrivilegeEscalation": false,
+                "capabilities": {
+                  "drop": [
+                    "ALL"
+                  ]
+                },
+                "readOnlyRootFilesystem": true
+              },
+              "readiness_status_command": [
+                "bao",
+                "status"
+              ],
+              "liveness": {
+                "scheme": "HTTPS",
+                "port": 8200,
+                "health_path": "/v1/sys/health?standbyok=true&sealedcode=204&uninitcode=204"
+              },
+              "env_names_only": [
+                "HOST_IP",
+                "POD_IP",
+                "BAO_K8S_POD_NAME",
+                "BAO_K8S_NAMESPACE",
+                "BAO_ADDR",
+                "BAO_API_ADDR",
+                "SKIP_CHOWN",
+                "SKIP_SETCAP",
+                "HOSTNAME",
+                "BAO_CLUSTER_ADDR",
+                "BAO_RAFT_NODE_ID",
+                "HOME",
+                "BAO_LOG_LEVEL",
+                "BAO_LOG_FORMAT",
+                "BAO_CACERT"
+              ],
+              "volume_mounts": [
+                {
+                  "name": "audit",
+                  "path": "/openbao/audit",
+                  "read_only": null
+                },
+                {
+                  "name": "data",
+                  "path": "/openbao/data",
+                  "read_only": null
+                },
+                {
+                  "name": "config",
+                  "path": "/openbao/config",
+                  "read_only": null
+                },
+                {
+                  "name": "openbao-server-tls",
+                  "path": "/openbao/userconfig/openbao-server-tls",
+                  "read_only": true
+                },
+                {
+                  "name": "openbao-seal",
+                  "path": "/openbao/userconfig/openbao-seal",
+                  "read_only": true
+                },
+                {
+                  "name": "tmp",
+                  "path": "/tmp",
+                  "read_only": null
+                },
+                {
+                  "name": "home",
+                  "path": "/home/openbao",
+                  "read_only": null
+                },
+                {
+                  "name": "kube-api-access-zlh6z",
+                  "path": "/var/run/secrets/kubernetes.io/serviceaccount",
+                  "read_only": true
+                }
+              ]
+            }
+          ],
+          "secret_volumes": [
+            {
+              "name": "openbao-server-tls",
+              "secret_name": "openbao-server-tls",
+              "default_mode": 288
+            },
+            {
+              "name": "openbao-seal",
+              "secret_name": "openbao-seal",
+              "default_mode": 288
+            }
+          ],
+          "pvc_volumes": [
+            {
+              "name": "data",
+              "claim": "data-hexalith-keys-2"
+            },
+            {
+              "name": "audit",
+              "claim": "audit-hexalith-keys-2"
+            }
+          ]
+        }
+      ]
+    },
+    "service-account.json": {
+      "started_utc": "2026-11-16T21:25:56.047957+00:00",
+      "finished_utc": "2026-11-16T21:25:56.150012+00:00",
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "openbao",
+        "get",
+        "serviceaccount",
+        "hexalith-keys",
+        "-o",
+        "json"
+      ],
+      "exit_code": 0,
+      "observation": {
+        "name": "hexalith-keys",
+        "automount_service_account_token": false
+      }
+    },
+    "services.json": {
+      "started_utc": "2026-11-16T21:25:55.977667+00:00",
+      "finished_utc": "2026-11-16T21:25:56.065589+00:00",
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "openbao",
+        "get",
+        "services",
+        "-o",
+        "json"
+      ],
+      "exit_code": 0,
+      "observation": [
+        {
+          "name": "deployment-seal-transit",
+          "type": "NodePort",
+          "selector": {
+            "app.kubernetes.io/instance": "hexalith-keys",
+            "app.kubernetes.io/name": "openbao",
+            "component": "server",
+            "openbao-active": "true"
+          },
+          "ports": [
+            {
+              "appProtocol": "HTTPS",
+              "name": "https",
+              "nodePort": 30820,
+              "port": 8200,
+              "protocol": "TCP",
+              "targetPort": 8200
+            }
+          ]
+        },
+        {
+          "name": "hexalith-keys",
+          "type": "ClusterIP",
+          "selector": {
+            "app.kubernetes.io/instance": "hexalith-keys",
+            "app.kubernetes.io/name": "openbao",
+            "component": "server"
+          },
+          "ports": [
+            {
+              "appProtocol": "HTTPS",
+              "name": "https",
+              "port": 8200,
+              "protocol": "TCP",
+              "targetPort": 8200
+            },
+            {
+              "name": "https-internal",
+              "port": 8201,
+              "protocol": "TCP",
+              "targetPort": 8201
+            }
+          ]
+        },
+        {
+          "name": "hexalith-keys-active",
+          "type": "ClusterIP",
+          "selector": {
+            "app.kubernetes.io/instance": "hexalith-keys",
+            "app.kubernetes.io/name": "openbao",
+            "component": "server",
+            "openbao-active": "true"
+          },
+          "ports": [
+            {
+              "appProtocol": "HTTPS",
+              "name": "https",
+              "port": 8200,
+              "protocol": "TCP",
+              "targetPort": 8200
+            },
+            {
+              "name": "https-internal",
+              "port": 8201,
+              "protocol": "TCP",
+              "targetPort": 8201
+            }
+          ]
+        },
+        {
+          "name": "hexalith-keys-internal",
+          "type": "ClusterIP",
+          "selector": {
+            "app.kubernetes.io/instance": "hexalith-keys",
+            "app.kubernetes.io/name": "openbao",
+            "component": "server"
+          },
+          "ports": [
+            {
+              "appProtocol": "HTTPS",
+              "name": "https",
+              "port": 8200,
+              "protocol": "TCP",
+              "targetPort": 8200
+            },
+            {
+              "name": "https-internal",
+              "port": 8201,
+              "protocol": "TCP",
+              "targetPort": 8201
+            }
+          ]
+        },
+        {
+          "name": "hexalith-keys-standby",
+          "type": "ClusterIP",
+          "selector": {
+            "app.kubernetes.io/instance": "hexalith-keys",
+            "app.kubernetes.io/name": "openbao",
+            "component": "server",
+            "openbao-active": "false"
+          },
+          "ports": [
+            {
+              "appProtocol": "HTTPS",
+              "name": "https",
+              "port": 8200,
+              "protocol": "TCP",
+              "targetPort": 8200
+            },
+            {
+              "name": "https-internal",
+              "port": 8201,
+              "protocol": "TCP",
+              "targetPort": 8201
+            }
+          ]
+        }
+      ]
+    },
+    "snapshot-cronjob.json": {
+      "started_utc": "2026-11-16T21:25:56.142373+00:00",
+      "finished_utc": "2026-11-16T21:25:56.264783+00:00",
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "openbao",
+        "get",
+        "cronjobs",
+        "-o",
+        "json"
+      ],
+      "exit_code": 0,
+      "observation": [
+        {
+          "name": "openbao-raft-snapshot",
+          "schedule": "30 0 * * *",
+          "suspend": false,
+          "last_successful_time": "2026-11-16T00:30:05Z",
+          "service_account": "openbao-snapshot"
+        }
+      ]
+    },
+    "source-memories-675fd5d64-5zqpv-health.json": {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "hexalith-memories",
+        "exec",
+        "memories-675fd5d64-5zqpv",
+        "-c",
+        "memories",
+        "--",
+        "env",
+        "-i",
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "HOME=/nonexistent",
+        "/bin/busybox",
+        "wget",
+        "-S",
+        "-O",
+        "/dev/null",
+        "-T",
+        "5",
+        "-Y",
+        "off",
+        "https://hexalith-keys.openbao.svc.cluster.local:8200/v1/sys/health?standbyok=true"
+      ],
+      "started_utc": "2026-11-16T21:27:04.454635+00:00",
+      "finished_utc": "2026-11-16T21:27:04.637575+00:00",
+      "exit_code": 1,
+      "observation": {
+        "http_statuses": [],
+        "tls_verification": "not established by BusyBox wget; use separate CA-verifying peer probes",
+        "tls_validation_unimplemented_warning": false,
+        "response_body": "discarded to /dev/null",
+        "credentials": "none; environment cleared; BusyBox applet has no config loader",
+        "evidence_limit": "One source/endpoint observation; no authenticated ACL, cross-prefix, negative-CNI or audit-write proof"
+      }
+    },
+    "source-memories-675fd5d64-5zqpv-mounts-denial.json": {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "hexalith-memories",
+        "exec",
+        "memories-675fd5d64-5zqpv",
+        "-c",
+        "memories",
+        "--",
+        "env",
+        "-i",
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "HOME=/nonexistent",
+        "/bin/busybox",
+        "wget",
+        "-S",
+        "-O",
+        "/dev/null",
+        "-T",
+        "5",
+        "-Y",
+        "off",
+        "https://hexalith-keys.openbao.svc.cluster.local:8200/v1/sys/mounts"
+      ],
+      "started_utc": "2026-11-16T21:27:04.637824+00:00",
+      "finished_utc": "2026-11-16T21:27:04.807689+00:00",
+      "exit_code": 1,
+      "observation": {
+        "http_statuses": [],
+        "tls_verification": "not established by BusyBox wget; use separate CA-verifying peer probes",
+        "tls_validation_unimplemented_warning": false,
+        "response_body": "discarded to /dev/null",
+        "credentials": "none; environment cleared; BusyBox applet has no config loader",
+        "evidence_limit": "One source/endpoint observation; no authenticated ACL, cross-prefix, negative-CNI or audit-write proof"
+      }
+    },
+    "source-memories-675fd5d64-5zqpv-token-denial.json": {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "hexalith-memories",
+        "exec",
+        "memories-675fd5d64-5zqpv",
+        "-c",
+        "memories",
+        "--",
+        "env",
+        "-i",
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "HOME=/nonexistent",
+        "/bin/busybox",
+        "wget",
+        "-S",
+        "-O",
+        "/dev/null",
+        "-T",
+        "5",
+        "-Y",
+        "off",
+        "https://hexalith-keys.openbao.svc.cluster.local:8200/v1/auth/token/lookup-self"
+      ],
+      "started_utc": "2026-11-16T21:27:04.807905+00:00",
+      "finished_utc": "2026-11-16T21:27:04.977897+00:00",
+      "exit_code": 1,
+      "observation": {
+        "http_statuses": [],
+        "tls_verification": "not established by BusyBox wget; use separate CA-verifying peer probes",
+        "tls_validation_unimplemented_warning": false,
+        "response_body": "discarded to /dev/null",
+        "credentials": "none; environment cleared; BusyBox applet has no config loader",
+        "evidence_limit": "One source/endpoint observation; no authenticated ACL, cross-prefix, negative-CNI or audit-write proof"
+      }
+    },
+    "source-memories-mcp-55d65d86d6-hh6mr-health.json": {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "hexalith-memories",
+        "exec",
+        "memories-mcp-55d65d86d6-hh6mr",
+        "-c",
+        "memories-mcp",
+        "--",
+        "env",
+        "-i",
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "HOME=/nonexistent",
+        "/bin/busybox",
+        "wget",
+        "-S",
+        "-O",
+        "/dev/null",
+        "-T",
+        "5",
+        "-Y",
+        "off",
+        "https://hexalith-keys.openbao.svc.cluster.local:8200/v1/sys/health?standbyok=true"
+      ],
+      "started_utc": "2026-11-16T21:27:03.468816+00:00",
+      "finished_utc": "2026-11-16T21:27:03.709786+00:00",
+      "exit_code": 1,
+      "observation": {
+        "http_statuses": [],
+        "tls_verification": "not established by BusyBox wget; use separate CA-verifying peer probes",
+        "tls_validation_unimplemented_warning": false,
+        "response_body": "discarded to /dev/null",
+        "credentials": "none; environment cleared; BusyBox applet has no config loader",
+        "evidence_limit": "One source/endpoint observation; no authenticated ACL, cross-prefix, negative-CNI or audit-write proof"
+      }
+    },
+    "source-memories-mcp-55d65d86d6-hh6mr-mounts-denial.json": {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "hexalith-memories",
+        "exec",
+        "memories-mcp-55d65d86d6-hh6mr",
+        "-c",
+        "memories-mcp",
+        "--",
+        "env",
+        "-i",
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "HOME=/nonexistent",
+        "/bin/busybox",
+        "wget",
+        "-S",
+        "-O",
+        "/dev/null",
+        "-T",
+        "5",
+        "-Y",
+        "off",
+        "https://hexalith-keys.openbao.svc.cluster.local:8200/v1/sys/mounts"
+      ],
+      "started_utc": "2026-11-16T21:27:03.710581+00:00",
+      "finished_utc": "2026-11-16T21:27:03.907301+00:00",
+      "exit_code": 1,
+      "observation": {
+        "http_statuses": [],
+        "tls_verification": "not established by BusyBox wget; use separate CA-verifying peer probes",
+        "tls_validation_unimplemented_warning": false,
+        "response_body": "discarded to /dev/null",
+        "credentials": "none; environment cleared; BusyBox applet has no config loader",
+        "evidence_limit": "One source/endpoint observation; no authenticated ACL, cross-prefix, negative-CNI or audit-write proof"
+      }
+    },
+    "source-memories-mcp-55d65d86d6-hh6mr-token-denial.json": {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "hexalith-memories",
+        "exec",
+        "memories-mcp-55d65d86d6-hh6mr",
+        "-c",
+        "memories-mcp",
+        "--",
+        "env",
+        "-i",
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "HOME=/nonexistent",
+        "/bin/busybox",
+        "wget",
+        "-S",
+        "-O",
+        "/dev/null",
+        "-T",
+        "5",
+        "-Y",
+        "off",
+        "https://hexalith-keys.openbao.svc.cluster.local:8200/v1/auth/token/lookup-self"
+      ],
+      "started_utc": "2026-11-16T21:27:03.907554+00:00",
+      "finished_utc": "2026-11-16T21:27:04.126691+00:00",
+      "exit_code": 1,
+      "observation": {
+        "http_statuses": [],
+        "tls_verification": "not established by BusyBox wget; use separate CA-verifying peer probes",
+        "tls_validation_unimplemented_warning": false,
+        "response_body": "discarded to /dev/null",
+        "credentials": "none; environment cleared; BusyBox applet has no config loader",
+        "evidence_limit": "One source/endpoint observation; no authenticated ACL, cross-prefix, negative-CNI or audit-write proof"
+      }
+    },
+    "standard-ingress.json": {
+      "started_utc": "2026-11-16T21:25:56.151248+00:00",
+      "finished_utc": "2026-11-16T21:25:56.226080+00:00",
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "openbao",
+        "get",
+        "ingress",
+        "-o",
+        "json"
+      ],
+      "exit_code": 0,
+      "observation": []
+    },
+    "traefik-routes.json": {
+      "started_utc": "2026-11-16T21:25:56.226318+00:00",
+      "finished_utc": "2026-11-16T21:25:56.352785+00:00",
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "get",
+        "ingressroute.traefik.io",
+        "-A",
+        "-o",
+        "json"
+      ],
+      "exit_code": 0,
+      "observation": []
+    },
+    "wget-failure-classification.json": {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "hexalith-memories",
+        "exec",
+        "memories-mcp-55d65d86d6-hh6mr",
+        "-c",
+        "memories-mcp",
+        "--",
+        "env",
+        "-i",
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "HOME=/nonexistent",
+        "/bin/busybox",
+        "wget",
+        "-S",
+        "-O",
+        "/dev/null",
+        "-T",
+        "5",
+        "-Y",
+        "off",
+        "https://hexalith-keys.openbao.svc.cluster.local:8200/v1/sys/health?standbyok=true"
+      ],
+      "observed_utc": "2026-11-16T21:27:40.810183+00:00",
+      "exit_code": 1,
+      "known_diagnostic_categories": [
+        "ssl_client",
+        "certificate"
+      ],
+      "raw_output": "discarded"
+    }
+  },
+  "report_path": "_bmad-output/implementation-artifacts/tests/31-1-security-evidence-refresh-2026-11-16.md",
+  "local_bundle": "artifacts/story-31-1/evidence-refresh-2026-11-16-2125/evidence-bundle.zip",
+  "limits": [
+    "No independent authority or owner approval is inferred from this evidence request.",
+    "No Secret object or credential/private-key/audit-log contents were read; public CA use remained inside bao status.",
+    "No live configuration, certificates, workloads, credentials or routing changed; no deployment or smoke Job was created.",
+    "Redis transport checks disabled certificate verification explicitly; their results establish no CA identity or authenticated isolation.",
+    "No authenticated ACL/cross-prefix, negative CNI, correlated audit-write/rotation, failover/restore or external custody result is claimed.",
+    "Source-pod BusyBox failures yielded no HTTP result and supply no network-denial proof.",
+    "Fresh tests cover the documentation class and pinned deployment regression only."
+  ]
+}

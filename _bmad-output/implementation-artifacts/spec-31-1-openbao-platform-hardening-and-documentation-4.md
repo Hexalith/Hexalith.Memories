@@ -38,16 +38,16 @@ context:
 
 ## Open Questions
 
-1. Which input should this run use? **Independent signed evaluation available:** provide its repository path or durable reference, evaluator identity, date and independence so the existing closeout can proceed. **No independent evaluation available:** retain this draft and all pending gates. **Redirect to local remediation:** explicitly change scope to the two recorded Memories guard defects (EVAL-03 diagnostic disclosure and EVAL-04 appointment/partial-signature handling); prepare that implementation without claiming independent approval. The owner-attested assistant report does not resolve the external closeout dependency.
+1. Is an authentic independent signed evaluation now available for C4b/C5b/C7? **Available:** provide its repository path or durable reference, evaluator identity, date, independence and covered checkpoint outcomes so verification and closeout can proceed. **Not yet available:** retain this draft and the pending gates; Administrator remains accountable for scheduling. EVAL-03/EVAL-04 remediation is already complete in its separate spec and is no longer a proposed alternative. The owner-attested assistant report does not resolve the independent-evidence dependency.
 
 ## Code Map
 
 - Evidence section 4 is authoritative; sections 9.1/9.3 hold today's profile/smoke evidence; section 9.4 is the current unsigned summary.
 - The parent story holds separate C4b/C5b/C7 rows, cumulative File List and append-only phase ledger. All implementation tasks are checked.
 - The runbook reviewer header, Named divergences and limitation narrative must follow authentic evidence; preserve its runtime Secret inventory.
-- `tests/Hexalith.Memories.Server.Tests/Deployment/OpenBaoPlatformDocumentationTests.cs`: reuse `ValidateCurrentSecurityRecords`, its independent signed control and `PlatformEvidence_RecordsExecutedSmokeTestAndReviewerState`. Existing guards cover wholly unsigned and wholly signed records; assigned-but-unsigned and partial-signature states are known defects. The current closeout scope plans execution only; remediation requires an explicit scope decision.
+- `tests/Hexalith.Memories.Server.Tests/Deployment/OpenBaoPlatformDocumentationTests.cs` and its `SecurityGuards` / `SecurityControls` partial files: reuse `ValidateCurrentSecurityRecords`, `ValidateSecurityReviewerEvidence` and the unsigned, independent-appointment, per-checkpoint and whole-review controls. The completed EVAL-03/EVAL-04 remediation supports separate checkpoint authorities and dates and keeps failure diagnostics secret-safe. This closeout scope executes the existing guards against authentic resulting records; no further guard implementation is planned.
 - `docs/governance/openbao-independent-security-review.md`: prepared evaluator handoff, exact measured-profile references, existing technical findings and required signed-return fields. This supporting document supplies no independent approval.
-- `_bmad-output/implementation-artifacts/tests/31-1-assistant-security-evaluation-2026-11-16.md` and its JSON companion: owner-requested direct assistant evaluation, live peer-DNS TLS defect, unauthenticated-denial controls and executable reproductions of the diagnostic/review-state defects. Overall technical outcome: changes requested; no independent signature.
+- `_bmad-output/implementation-artifacts/tests/31-1-assistant-security-evaluation-2026-11-16.md` and its JSON companion: owner-requested direct assistant evaluation, live peer-DNS TLS defect, unauthenticated-denial controls and executable reproductions of the diagnostic/review-state defects. Overall technical outcome: changes requested; no independent signature. Preserve both attested files byte-for-byte; record later remediation in the separate remediation spec and handoff.
 
 ## Tasks & Acceptance
 
@@ -127,6 +127,39 @@ parent-story status, waiver or Story 31.2 activation criterion changed during th
 history. The separate implementation spec `spec-31-1-openbao-security-guard-remediation.md` carries
 that work; this draft and its independent-evaluation dependency remain pending.
 
+2026-11-16T21:20:29Z: Resumed Story 31.1 planning at `14d7ea4fc0b149e4545b37e7ea75ce20d9e5ddd8` after the completed
+EVAL-03/EVAL-04 remediation. Verified the current guard-source, recorded build/test logs, completed
+remediation records and attested prefixes against `technical-signoff.json`; all hashes match. Its
+recorded Debug/source build has zero warnings/errors, with 106 documentation cases and one pinned
+deployment regression passing without skips. No build or test rerun is claimed by this resumption.
+
+Repository investigation and bounded Outlook/Teams searches found no new independent signed return.
+Outlook returned the existing evaluator-nomination coordination messages; Teams returned no matching
+messages under the selected date filter. These searches do not establish that no external record
+exists. The authoritative evidence and parent checkpoint rows still record C4b/C5b/C7 pending,
+without completion dates, and the independent evaluator unassigned. The sole remaining intent gap
+is the authentic independent evaluation reference. No irreversible action is planned; the current
+footprint is this existing closeout draft, with no new callable surface. Preserve the previously
+approved full history, frozen intent, immutable reports, parent/epic/sprint states and Story 31.2
+activation gate. Further Platform Operations findings require a separate scope decision.
+
+2026-11-16: The user's “do evidence” instruction authorized fresh technical collection and local
+verification. Created `tests/31-1-security-evidence-refresh-2026-11-16.md` and its structured companion
+beside this draft. Fifteen metadata projections, six CA-verifying peer/control probes, new direct
+source-Pod HTTP checks and three audit-file metadata checks are recorded with exact arguments and
+UTC timestamps. The fresh Debug/source build passed with zero warnings/errors; all 106 documentation
+cases and the pinned deployment regression passed without skips. Direct redis-stack-0 transport
+returns health 200 and two unauthenticated 403s with certificate verification explicitly disabled;
+its default trust-store attempt fails. Pod-1/Pod-2 DNS identity failures remain reproducible while
+Service-name controls pass. Technical outcome remains changes requested.
+
+The new evidence ZIP, input snapshots, scripts, logs and SHA-256 manifest are retained under
+`artifacts/story-31-1/evidence-refresh-2026-11-16-2125/`. Prior attested report bytes, checkpoint rows,
+parent/epic/sprint states, waiver and Story 31.2 activation rules are preserved. This completes the
+requested technical-evidence work; it does not supply an independent human authority or resolve the
+remaining independent signed-return question. No deployment, credential read, external message,
+staging, commit or push was performed.
+
 ## Spec Change Log
 
 - 2026-11-16: Added the independent-review handoff and search outcome as preparation only; preserved the frozen intent and pending signed-evidence dependency.
@@ -135,11 +168,15 @@ that work; this draft and its independent-evaluation dependency remain pending.
 - 2026-11-16: Added Codex's dated non-cryptographic author attestation and content digest at the owner's request; preserved the changes-requested outcome and pending independent-signature gates.
 - 2026-11-16: Recorded Jérôme Piquot's explicit nominative owner approval and follow-up confirmation verbatim, with provenance and report-version hashes; preserved remediation findings, independent-signature gates and draft closeout status.
 
+- 2026-11-16: Resumed closeout after completed guard remediation; updated the current Code Map, remaining evidence question and expected verification count while preserving all historical entries and the frozen intent. No independent-evidence gate changed.
+
+- 2026-11-16: Completed the requested fresh technical evidence and verification in a separate report/companion and integrity bundle; preserved the closeout draft, frozen intent and independent-signature dependency.
+
 ## Review Triage Log
 
 ## Verification
 
-Use `run-with-temp` to build Server.Tests in Debug with source references and disposable artifacts; retain useful logs outside TMPDIR. Copy the solution marker and required records/manifests into the temporary root for test discovery. Invoke the built assembly with `-class Hexalith.Memories.Server.Tests.Deployment.OpenBaoPlatformDocumentationTests -parallel none -noLogo`, then method `ProductionDeploymentArtifactsTests.OpenBaoDeploymentProfile_IsPinnedTlsOnlyPersistentAndInternal`. Expected: 18 documentation cases and one regression pass without skips. Run `git diff --check`; compare checkpoint/status changes to the signed source. Existing synthetic controls cover independent closure, owner-persona rejection and stale-summary refusal; fixture signatures supply no real approval.
+Use `run-with-temp` to build Server.Tests in Debug with source references and disposable artifacts; retain useful logs outside TMPDIR. Copy the solution marker and required records/manifests into the temporary root for test discovery. Invoke the built assembly with `-class Hexalith.Memories.Server.Tests.Deployment.OpenBaoPlatformDocumentationTests -parallel none -noLogo`, then method `ProductionDeploymentArtifactsTests.OpenBaoDeploymentProfile_IsPinnedTlsOnlyPersistentAndInternal`. Expected after the completed guard remediation: 106 documentation cases and one regression pass without skips. The earlier 18-case preparation result below remains historical. Run `git diff --check`; compare checkpoint/status changes to the signed source. Existing synthetic controls cover independent closure, owner-persona rejection and stale-summary refusal; fixture signatures supply no real approval.
 
 Preparation verification executed on 2026-11-16 against source commit
 `5c1c22583fb4037997b266942a4fd4e05a245ebf`: disposable Debug/source-reference Server.Tests
