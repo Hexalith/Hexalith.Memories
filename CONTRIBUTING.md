@@ -1,5 +1,11 @@
 # Contributing
 
+This checkout prepares migration to Hexalith.CiCd. Root npm release tooling and
+module story/evidence hooks have been retired. References below to those old
+automated gates describe the previous process; keep the human scope/review
+conventions, and use the product checks and project inventories documented here.
+Shared adoption and hosted release qualification await the released prerequisites.
+
 ## Setup
 
 Clone with root-declared submodules under `references/` or initialize them before restoring:
@@ -106,38 +112,10 @@ If `git interpret-trailers` is unavailable (Git missing or not on `PATH`), the v
 a clean validation error that names the missing tool and points at the install/`PATH` fix; it does
 not emit a Python `FileNotFoundError` traceback.
 
-Install the repo-managed hooks per clone:
-
-```powershell
-git config core.hooksPath .githooks
-```
-
-Do not use `--global`; this repository's hooks are intentionally project-local. The `pre-commit` hook
-checks the staged file list immediately when the branch supplies an owner. When no owner source is
-available before the commit message exists, it prints a deferral diagnostic and lets `commit-msg`
-perform the definitive check; malformed, multiple, conflicting, or resolved-but-out-of-scope owner
-metadata is never deferred. The `commit-msg` hook first runs `commitlint --edit` against the proposed
-message, then validates `Story:`, `Story-Key:`, and `Scope-Override:` trailers against the same staged
-file list. This makes a valid `Story-Key:` trailer usable on `main` while a changed commit with neither
-a trailer nor an owner-named branch still fails before creation.
-
-The commitlint step rejects the commit when `node_modules/.bin/commitlint` is missing or not
-executable; run `npm ci` after cloning and before committing. The pinned policy disables built-in
-message ignores, so merge, revert, fixup/squash and version-only subjects must satisfy the same
-Conventional Commit rules. Use a subject such as `revert: Restore the previous behavior` for a
-revert. CI validates PR commits and the exact PR title, including on title edits. Each `main` push
-has its own commitlint concurrency group so later pushes cannot cancel its running or queued
-range check; newer PR runs may supersede earlier runs on the same ref.
-
-CI runs the same Python validator without the local deferral mode against PR and non-`main` push
-diffs, using the PR source branch and the real head commit message rather than the synthetic merge
-commit.
-
-Local hook and direct CLI runs treat an empty changed-file list as a successful no-op (e.g., a
-`pre-commit` invocation with nothing staged). CI does not — the `story-file-scope` workflow job
-fails loudly when its computed changed-file list is empty, when `origin/main` resolves to the same
-commit as `HEAD`, or when the comparison base cannot be fetched. Fetch failures name the failed
-operation in the diagnostic instead of degrading to a "every file in HEAD" fallback.
+The repository-managed story/evidence hooks are retired. Conventional Commit
+validation belongs to the shared Builds guard; no root `npm ci` installation is
+required. Story scope and negative evidence remain human review information,
+without local story trailers or a module CI workflow enforcing those ledgers.
 
 Use `Scope-Override:` only for narrow, audited exceptions:
 
@@ -390,14 +368,10 @@ Release versions are computed from commit messages on `main`.
 | `feat: change API` with `BREAKING CHANGE:` footer | Major release |
 | `docs:`, `test:`, `chore:` | No package release by default |
 
-For local validation:
-
-```powershell
-npx commitlint --from <base> --to HEAD
-```
-
-Story 11.1 owns PR check enforcement and branch protection. Until it lands, treat local commitlint
-validation as required release hygiene.
+Commit messages use the shared Builds commit policy. After adoption, run
+`python3 references/Hexalith.Builds/check.py` before every push. Preparation
+pushes require the separately approved exact-input verification procedure;
+the removed root npm manifest is not a commit-validation entrypoint.
 
 ## Tests
 
@@ -665,7 +639,7 @@ Required release secrets:
 GitHub provides `GITHUB_TOKEN` automatically. Do not store NuGet API keys in `NuGet.config`, `.npmrc`,
 workflow literals, logs, or local documentation.
 
-Before changing release automation, run:
+CI/CD automation is owned by Hexalith.CiCd. For local product package checks, run:
 
 ```powershell
 ./tools/validate-release-packages.ps1
@@ -673,12 +647,10 @@ Before changing release automation, run:
 ./tools/pack-release.ps1 -Version 0.0.1-ci -OutputDirectory artifacts/packages/test -PackageOnly
 python3 -m unittest discover -s tests/tooling/release_dispatch -p '*_test.py'
 python3 -m unittest discover -s tests/tooling/release_preflight -p '*_test.py'
-npm ci
-$env:HEXALITH_RELEASE_CLASSIFICATION_ONLY = 'true'
-try { npm run release:dry-run } finally { Remove-Item Env:HEXALITH_RELEASE_CLASSIFICATION_ONLY }
 ```
 
-The dry run needs an authorized `GH_TOKEN` or `GITHUB_TOKEN`, but its classification mode does not need the pinned Builds checkout and does not run prepare or publish hooks.
+After authenticated adoption, the central nightly process owns publication.
+Root semantic-release dry-run commands are retired with the root Node tooling.
 
 Do not run a real `dotnet nuget push` locally. Publishing is CI-only.
 

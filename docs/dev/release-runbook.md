@@ -1,14 +1,19 @@
 # Release Runbook
 
-This runbook records the observed first release path (`v1.2.0`, 2026-04-30) and the repeatable
-path for the next release. Package and container publishing remains CI-only. Do not publish release
-artifacts from a workstation.
+This runbook preserves the observed first release (`v1.2.0`, 2026-04-30)
+and legacy release procedures for forensic comparison. Migration preparation
+removes root npm release tooling and local story/evidence hooks; historical
+commands for that tooling below no longer apply to this checkout. After
+adoption, Hexalith.CiCd's central nightly process owns publication. Adoption
+and its hosted qualification still await released prerequisites. Product
+package/container checks and retained release evidence remain applicable.
+Publishing remains CI-only; do not publish release artifacts from a workstation.
 
 ## Current Dependency Maintenance (2026-11-13)
 
-The current SDK is 11.0.100. Root release tooling selects `@semantic-release/github` 12.0.11;
-web E2E selects Node typings 26.6.6 and retains the current Node LTS runtime lane. Keep the npm
-manifests and their lockfiles together when refreshing these selections.
+The current SDK is 11.0.100. Web E2E retains Node typings 26.6.6 and its own
+manifest/lockfile in `tests/Hexalith.Memories.Web.E2E`. Keep that browser workspace
+intact when refreshing its dependencies; root release npm tooling is retired.
 
 FrontComposer retains its supported net10 project surfaces. Its shared Builds catalog view selects
 OpenIdConnect 10.0.15 for the exact Shell-dependent project identities, including transitive central
