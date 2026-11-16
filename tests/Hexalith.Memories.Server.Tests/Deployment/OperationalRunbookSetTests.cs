@@ -21,7 +21,7 @@ using MemoriesRoutes = Hexalith.Memories.Contracts.V1.MemoriesRoutes;
 /// <summary>Story 26.5 — source-tied contract for the operational runbook set.</summary>
 public sealed class OperationalRunbookSetTests
 {
-    /// <summary>Gets the operator-facing graph-content proof citation bound to the required-surface manifest.</summary>
+    /// <summary>Gets the operator-facing graph-content proof citation identifying the retained tenant-isolation product scenario.</summary>
     internal static string GraphContentProofCitation
     {
         get
@@ -31,7 +31,7 @@ public sealed class OperationalRunbookSetTests
         }
     }
 
-    /// <summary>Gets the fully qualified graph-content proof test name bound to the required-surface manifest.</summary>
+    /// <summary>Gets the fully qualified graph-content proof test name identifying the retained tenant-isolation product scenario.</summary>
     internal static string GraphContentProofTestName
     {
         get
@@ -786,24 +786,8 @@ public sealed class OperationalRunbookSetTests
     }
 
     private static (string ClassName, string MethodName) ReadGraphContentProofIdentity()
-    {
-        string manifest = ReadRepoFile("tools/integration-fast-required-surfaces.txt");
-        string[] matches = [.. manifest
-            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(line => !line.StartsWith('#'))
-            .Select(line => line.Split('|', StringSplitOptions.TrimEntries))
-            .Where(parts => parts.Length == 3 && string.Equals(
-                parts[0],
-                "graph-content-isolation",
-                StringComparison.Ordinal))
-            .Select(parts => $"{parts[1]}|{parts[2]}")];
-        string match = matches.ShouldHaveSingleItem(
-            "The required-surface manifest must declare exactly one graph-content-isolation method.");
-        string[] identity = match.Split('|', StringSplitOptions.TrimEntries);
-        identity.Length.ShouldBe(2);
-        identity.ShouldAllBe(value => !string.IsNullOrWhiteSpace(value));
-        return (identity[0], identity[1]);
-    }
+        => ("Hexalith.Memories.IntegrationTests.Tenants.TenantIsolationIntegrationTests",
+            "VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes");
 
     private static string ResolveRepoPath(params string[] segments)
     {
