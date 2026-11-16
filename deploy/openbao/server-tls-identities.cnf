@@ -1,0 +1,35 @@
+# EVAL-01 proposed server CSR/issuance extensions. Public configuration only.
+# Platform Operations must integrate this into the EXISTING issuing procedure.
+# This file is not a Certificate resource and does not install or renew a Secret.
+# Preserve the existing CA, validity policy, key custody and all existing SANs.
+[req]
+prompt = no
+distinguished_name = subject
+req_extensions = server_identity
+
+[subject]
+CN = hexalith-keys.openbao.svc.cluster.local
+O = Hexalith
+
+[server_identity]
+subjectAltName = @names
+
+[names]
+DNS.1 = hexalith-keys
+DNS.2 = hexalith-keys.openbao
+DNS.3 = hexalith-keys.openbao.svc
+DNS.4 = hexalith-keys.openbao.svc.cluster.local
+DNS.5 = hexalith-keys-0.hexalith-keys-internal
+DNS.6 = hexalith-keys-0.hexalith-keys-internal.openbao
+DNS.7 = hexalith-keys-0.hexalith-keys-internal.openbao.svc
+DNS.8 = hexalith-keys-0.hexalith-keys-internal.openbao.svc.cluster.local
+DNS.9 = localhost
+DNS.10 = hexalith-keys-1.hexalith-keys-internal
+DNS.11 = hexalith-keys-1.hexalith-keys-internal.openbao
+DNS.12 = hexalith-keys-1.hexalith-keys-internal.openbao.svc
+DNS.13 = hexalith-keys-1.hexalith-keys-internal.openbao.svc.cluster.local
+DNS.14 = hexalith-keys-2.hexalith-keys-internal
+DNS.15 = hexalith-keys-2.hexalith-keys-internal.openbao
+DNS.16 = hexalith-keys-2.hexalith-keys-internal.openbao.svc
+DNS.17 = hexalith-keys-2.hexalith-keys-internal.openbao.svc.cluster.local
+IP.1 = 127.0.0.1

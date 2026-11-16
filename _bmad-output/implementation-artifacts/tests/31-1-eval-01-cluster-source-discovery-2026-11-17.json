@@ -1,0 +1,353 @@
+{
+  "title": "EVAL-01 cluster-side source discovery after owner instruction",
+  "prepared_local_date": "2026-11-17 Europe/Paris",
+  "created_utc": "2026-11-16T23:42:35.610906+00:00",
+  "source_revision": "341ae091bc9a94bfab0c7741314419713188ae8d",
+  "user_direction": "get it in 192.168.1.30 withkubectl",
+  "scope": "Read-only discovery of TLS issuer/provisioning ownership; EVAL-01 only",
+  "queries": {
+    "configured_endpoint": {
+      "command": [
+        "kubectl",
+        "config",
+        "view",
+        "-o",
+        "jsonpath={range .clusters[*]}{.name}{\" \"}{.cluster.server}{\"\\n\"}{end}{range .contexts[*]}{.name}{\" \"}{.context.cluster}{\"\\n\"}{end}"
+      ],
+      "started_utc": "2026-11-16T23:42:33.582601+00:00",
+      "exit_code": 0,
+      "selected_output": "local https://192.168.1.30:6443\njpiquot@local local\n",
+      "finished_utc": "2026-11-16T23:42:33.627831+00:00"
+    },
+    "nodes": {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "get",
+        "nodes",
+        "-o",
+        "custom-columns=NAME:.metadata.name,INTERNAL-IP:.status.addresses[0].address"
+      ],
+      "started_utc": "2026-11-16T23:42:33.627853+00:00",
+      "exit_code": 0,
+      "selected_output": "NAME    INTERNAL-IP\nnode1   192.168.1.30\n",
+      "finished_utc": "2026-11-16T23:42:33.702132+00:00"
+    },
+    "certificate_owners": {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "get",
+        "certificates.cert-manager.io",
+        "-A",
+        "-o",
+        "custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name,SECRET:.spec.secretName,ISSUER:.spec.issuerRef.name,ISSUER-KIND:.spec.issuerRef.kind"
+      ],
+      "started_utc": "2026-11-16T23:42:33.702151+00:00",
+      "exit_code": 0,
+      "selected_output": "NAMESPACE                NAME                                SECRET                                  ISSUER                       ISSUER-KIND\ncnpg-system              barman-cloud-client                 barman-cloud-client-tls                 selfsigned-issuer            Issuer\ncnpg-system              barman-cloud-server                 barman-cloud-server-tls                 selfsigned-issuer            Issuer\next-secrets-1-isolated   ext-secrets-1-registry-idp          ext-secrets-1-registry-idp-tls          ext-secrets-1-registry-pki   Issuer\nforgejo                  forgejo-letsencrypt                 forgejo-letsencrypt-tls                 letsencrypt-prod-http01      ClusterIssuer\nhexalith-memories        access-telemetry-postgresql         access-telemetry-postgresql-tls         openbao-internal-pki         ClusterIssuer\nkeycloak                 keycloak-letsencrypt                keycloak-letsencrypt-tls                letsencrypt-prod-http01      ClusterIssuer\nkube-system              metrics-server-ca                   metrics-server-ca                       metrics-server-bootstrap     Issuer\nkube-system              metrics-server-tls                  metrics-server-tls                      metrics-server-ca            Issuer\nkubesphere-system        kubesphere-console-letsencrypt      kubesphere-console-letsencrypt-tls      letsencrypt-prod-http01      ClusterIssuer\nllm                      llm-letsencrypt                     llm-letsencrypt-tls                     letsencrypt-prod-http01      ClusterIssuer\nrecovery-4-0-bao         bao-restore-ca                      bao-restore-ca                          selfsigned                   Issuer\nrecovery-4-0-bao         bao-restore-tls                     bao-restore-tls                         restore-ca                   Issuer\nregistry-distribution    distribution-registry-letsencrypt   distribution-registry-letsencrypt-tls   letsencrypt-prod-http01      ClusterIssuer\nregistry-private         private-registry-letsencrypt        private-registry-letsencrypt-tls        letsencrypt-prod-http01      ClusterIssuer\nstalwart                 stalwart-web-letsencrypt            stalwart-web-letsencrypt-tls            letsencrypt-prod-http01      ClusterIssuer\n",
+      "finished_utc": "2026-11-16T23:42:33.936437+00:00"
+    },
+    "namespaced_issuers": {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "get",
+        "issuers.cert-manager.io",
+        "-A",
+        "-o",
+        "custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name,CA-SECRET:.spec.ca.secretName"
+      ],
+      "started_utc": "2026-11-16T23:42:33.936456+00:00",
+      "exit_code": 0,
+      "selected_output": "NAMESPACE                NAME                         CA-SECRET\ncnpg-system              selfsigned-issuer            <none>\next-secrets-1-isolated   ext-secrets-1-registry-pki   <none>\nkube-system              metrics-server-bootstrap     <none>\nkube-system              metrics-server-ca            metrics-server-ca\nkubesphere-system        self-signed                  <none>\nrecovery-4-0-bao         restore-ca                   bao-restore-ca\nrecovery-4-0-bao         selfsigned                   <none>\n",
+      "finished_utc": "2026-11-16T23:42:34.103188+00:00"
+    },
+    "cluster_issuers": {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "get",
+        "clusterissuers.cert-manager.io",
+        "-o",
+        "custom-columns=NAME:.metadata.name,CA-SECRET:.spec.ca.secretName"
+      ],
+      "started_utc": "2026-11-16T23:42:34.103209+00:00",
+      "exit_code": 0,
+      "selected_output": "NAME                         CA-SECRET\nletsencrypt-prod-http01      <none>\nletsencrypt-staging-http01   <none>\nopenbao-internal-pki         <none>\n",
+      "finished_utc": "2026-11-16T23:42:34.307399+00:00"
+    },
+    "openbao_secret_names_types": {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "openbao",
+        "get",
+        "secrets",
+        "-o",
+        "custom-columns=NAME:.metadata.name,TYPE:.type"
+      ],
+      "started_utc": "2026-11-16T23:42:34.307426+00:00",
+      "exit_code": 0,
+      "selected_output": "NAME                                   TYPE\ndeployment-seal-runner-token           kubernetes.io/service-account-token\nhexalith-keys-pki                      Opaque\nopenbao-operator-credentials           Opaque\nopenbao-seal                           Opaque\nopenbao-server-tls                     kubernetes.io/tls\nsh.helm.release.v1.hexalith-keys.v1    helm.sh/release.v1\nsh.helm.release.v1.hexalith-keys.v10   helm.sh/release.v1\nsh.helm.release.v1.hexalith-keys.v2    helm.sh/release.v1\nsh.helm.release.v1.hexalith-keys.v3    helm.sh/release.v1\nsh.helm.release.v1.hexalith-keys.v4    helm.sh/release.v1\nsh.helm.release.v1.hexalith-keys.v5    helm.sh/release.v1\nsh.helm.release.v1.hexalith-keys.v6    helm.sh/release.v1\nsh.helm.release.v1.hexalith-keys.v7    helm.sh/release.v1\nsh.helm.release.v1.hexalith-keys.v8    helm.sh/release.v1\nsh.helm.release.v1.hexalith-keys.v9    helm.sh/release.v1\n",
+      "finished_utc": "2026-11-16T23:42:34.553770+00:00"
+    },
+    "openbao_config_job_names": {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "openbao",
+        "get",
+        "configmaps,jobs,cronjobs",
+        "-o",
+        "name"
+      ],
+      "started_utc": "2026-11-16T23:42:34.553798+00:00",
+      "exit_code": 0,
+      "selected_output": "configmap/deployment-seal-ca\nconfigmap/hexalith-keys-config\nconfigmap/kube-root-ca.crt\njob.batch/openbao-raft-snapshot-29911710\njob.batch/openbao-raft-snapshot-29913150\ncronjob.batch/openbao-raft-snapshot\n",
+      "finished_utc": "2026-11-16T23:42:34.713569+00:00"
+    },
+    "configmap_ownership": {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "openbao",
+        "get",
+        "configmap",
+        "hexalith-keys-config",
+        "-o",
+        "jsonpath={.metadata.labels}{\"\\n\"}{range .metadata.managedFields[*]}{.manager}{\" \"}{.operation}{\" \"}{.time}{\"\\n\"}{end}"
+      ],
+      "started_utc": "2026-11-16T23:42:34.713590+00:00",
+      "exit_code": 0,
+      "selected_output": "{\"app.kubernetes.io/instance\":\"hexalith-keys\",\"app.kubernetes.io/managed-by\":\"Helm\",\"app.kubernetes.io/name\":\"openbao\",\"helm.sh/chart\":\"openbao-0.29.5\"}\nhelm Apply 2026-07-19T13:39:18Z\nkubectl-client-side-apply Update 2026-07-20T20:29:00Z\nhelm Update 2026-09-22T13:02:09Z\n",
+      "finished_utc": "2026-11-16T23:42:34.837073+00:00"
+    },
+    "statefulset_ownership": {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "openbao",
+        "get",
+        "statefulset",
+        "hexalith-keys",
+        "-o",
+        "jsonpath={.metadata.labels}{\"\\n\"}{range .metadata.managedFields[*]}{.manager}{\" \"}{.operation}{\" \"}{.time}{\"\\n\"}{end}"
+      ],
+      "started_utc": "2026-11-16T23:42:34.837095+00:00",
+      "exit_code": 0,
+      "selected_output": "{\"app.kubernetes.io/instance\":\"hexalith-keys\",\"app.kubernetes.io/managed-by\":\"Helm\",\"app.kubernetes.io/name\":\"openbao\"}\nhelm Apply 2026-07-19T13:39:18Z\nkubectl-patch Update 2026-07-20T12:48:47Z\nhelm Update 2026-09-22T13:02:09Z\nkube-controller-manager Update 2026-09-25T10:49:29Z\n",
+      "finished_utc": "2026-11-16T23:42:34.991266+00:00"
+    },
+    "clusterissuer_public_configuration": {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "get",
+        "clusterissuer",
+        "openbao-internal-pki",
+        "-o",
+        "jsonpath={.spec.vault.server}{\"\\n\"}{.spec.vault.path}{\"\\n\"}{.spec.vault.caBundleSecretRef}{\"\\n\"}{.spec.vault.auth.kubernetes.mountPath}{\"\\n\"}{.spec.vault.auth.kubernetes.role}{\"\\n\"}{.spec.vault.auth.kubernetes.serviceAccountRef.name}{\"\\n\"}{range .status.conditions[*]}{.type}{\" \"}{.status}{\" \"}{.reason}{\"\\n\"}{end}"
+      ],
+      "started_utc": "2026-11-16T23:42:34.991287+00:00",
+      "exit_code": 0,
+      "selected_output": "https://hexalith-keys.openbao.svc.cluster.local:8200\npki-int/sign/hexalith-memories-services\n{\"key\":\"ca.crt\",\"name\":\"openbao-client-ca\"}\n/v1/auth/kubernetes\ncert-manager-internal-pki\nopenbao-pki-issuer\nReady True VaultVerified\n",
+      "finished_utc": "2026-11-16T23:42:35.096153+00:00"
+    },
+    "memories_certificate": {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "hexalith-memories",
+        "get",
+        "certificate",
+        "access-telemetry-postgresql",
+        "-o",
+        "jsonpath={.spec.issuerRef}{\"\\n\"}{.spec.commonName}{\"\\n\"}{.spec.dnsNames}{\"\\n\"}{.spec.secretName}{\"\\n\"}{.status.notAfter}{\"\\n\"}"
+      ],
+      "started_utc": "2026-11-16T23:42:35.096173+00:00",
+      "exit_code": 0,
+      "selected_output": "{\"group\":\"cert-manager.io\",\"kind\":\"ClusterIssuer\",\"name\":\"openbao-internal-pki\"}\naccess-telemetry-postgresql.hexalith-memories.svc.cluster.local\n[\"access-telemetry-postgresql\",\"access-telemetry-postgresql.hexalith-memories\",\"access-telemetry-postgresql.hexalith-memories.svc\",\"access-telemetry-postgresql.hexalith-memories.svc.cluster.local\",\"access-telemetry-postgresql-0.access-telemetry-postgresql-headless\",\"access-telemetry-postgresql-0.access-telemetry-postgresql-headless.hexalith-memories.svc\",\"access-telemetry-postgresql-0.access-telemetry-postgresql-headless.hexalith-memories.svc.cluster.local\"]\naccess-telemetry-postgresql-tls\n2026-11-27T20:27:46Z\n",
+      "finished_utc": "2026-11-16T23:42:35.268158+00:00"
+    },
+    "kubesphere_releases": {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "get",
+        "applicationreleases.application.kubesphere.io",
+        "-A",
+        "-o",
+        "custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name"
+      ],
+      "started_utc": "2026-11-16T23:42:35.268186+00:00",
+      "exit_code": 0,
+      "selected_output": "NAMESPACE   NAME\n",
+      "finished_utc": "2026-11-16T23:42:35.386279+00:00"
+    },
+    "kubernetes_applications": {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "get",
+        "applications.app.k8s.io",
+        "-A",
+        "-o",
+        "custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name"
+      ],
+      "started_utc": "2026-11-16T23:42:35.386294+00:00",
+      "exit_code": 0,
+      "selected_output": "NAMESPACE   NAME\n",
+      "finished_utc": "2026-11-16T23:42:35.524092+00:00"
+    },
+    "api_resources": {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "api-resources",
+        "--verbs=list",
+        "-o",
+        "name"
+      ],
+      "started_utc": "2026-11-16T23:42:35.524119+00:00",
+      "exit_code": 0,
+      "selected_output": "componentstatuses\nconfigmaps\nendpoints\nevents\nlimitranges\nnamespaces\nnodes\npersistentvolumeclaims\npersistentvolumes\npods\npodtemplates\nreplicationcontrollers\nresourcequotas\nsecrets\nserviceaccounts\nservices\nchallenges.acme.cert-manager.io\norders.acme.cert-manager.io\nmutatingwebhookconfigurations.admissionregistration.k8s.io\nvalidatingadmissionpolicies.admissionregistration.k8s.io\nvalidatingadmissionpolicybindings.admissionregistration.k8s.io\nvalidatingwebhookconfigurations.admissionregistration.k8s.io\ncustomresourcedefinitions.apiextensions.k8s.io\napiservices.apiregistration.k8s.io\napplications.app.k8s.io\napplicationreleases.application.kubesphere.io\napplications.application.kubesphere.io\napplicationversions.application.kubesphere.io\ncategories.application.kubesphere.io\nrepos.application.kubesphere.io\ncontrollerrevisions.apps\ndaemonsets.apps\ndeployments.apps\nreplicasets.apps\nstatefulsets.apps\nhorizontalpodautoscalers.autoscaling\nobjectstores.barmancloud.cnpg.io\ncronjobs.batch\njobs.batch\ncertificaterequests.cert-manager.io\ncertificates.cert-manager.io\nclusterissuers.cert-manager.io\nissuers.cert-manager.io\ncertificatesigningrequests.certificates.k8s.io\nclusters.cluster.kubesphere.io\nlabels.cluster.kubesphere.io\nleases.coordination.k8s.io\nbgpconfigurations.crd.projectcalico.org\nbgpfilters.crd.projectcalico.org\nbgppeers.crd.projectcalico.org\nblockaffinities.crd.projectcalico.org\ncaliconodestatuses.crd.projectcalico.org\nclusterinformations.crd.projectcalico.org\nfelixconfigurations.crd.projectcalico.org\nglobalnetworkpolicies.crd.projectcalico.org\nglobalnetworksets.crd.projectcalico.org\nhostendpoints.crd.projectcalico.org\nipamblocks.crd.projectcalico.org\nipamconfigs.crd.projectcalico.org\nipamhandles.crd.projectcalico.org\nippools.crd.projectcalico.org\nipreservations.crd.projectcalico.org\nkubecontrollersconfigurations.crd.projectcalico.org\nnetworkpolicies.crd.projectcalico.org\nnetworksets.crd.projectcalico.org\nstagedglobalnetworkpolicies.crd.projectcalico.org\nstagedkubernetesnetworkpolicies.crd.projectcalico.org\nstagednetworkpolicies.crd.projectcalico.org\ntiers.crd.projectcalico.org\ncomponents.dapr.io\nconfigurations.dapr.io\nhttpendpoints.dapr.io\nmcpservers.dapr.io\nresiliencies.dapr.io\nsubscriptions.dapr.io\nworkflowaccesspolicies.dapr.io\nendpointslices.discovery.k8s.io\nevents.events.k8s.io\napiservices.extensions.kubesphere.io\nextensionentries.extensions.kubesphere.io\njsbundles.extensions.kubesphere.io\nreverseproxies.extensions.kubesphere.io\nflowschemas.flowcontrol.apiserver.k8s.io\nprioritylevelconfigurations.flowcontrol.apiserver.k8s.io\ningressclassscopes.gateway.kubesphere.io\naccesscontrolpolicies.hub.traefik.io\naiservices.hub.traefik.io\napiauths.hub.traefik.io\napibundles.hub.traefik.io\napicatalogitems.hub.traefik.io\napiplans.hub.traefik.io\napiportalauths.hub.traefik.io\napiportals.hub.traefik.io\napiratelimits.hub.traefik.io\napis.hub.traefik.io\napiversions.hub.traefik.io\ncontentitems.hub.traefik.io\nmanagedapplications.hub.traefik.io\nmanagedsubscriptions.hub.traefik.io\nuplinks.hub.traefik.io\nbuiltinroles.iam.kubesphere.io\ncategories.iam.kubesphere.io\nclusterrolebindings.iam.kubesphere.io\nclusterroles.iam.kubesphere.io\nglobalrolebindings.iam.kubesphere.io\nglobalroles.iam.kubesphere.io\ngroupbindings.iam.kubesphere.io\ngroups.iam.kubesphere.io\nloginrecords.iam.kubesphere.io\nrolebindings.iam.kubesphere.io\nroles.iam.kubesphere.io\nroletemplates.iam.kubesphere.io\nusers.iam.kubesphere.io\nworkspacerolebindings.iam.kubesphere.io\nworkspaceroles.iam.kubesphere.io\ncategories.kubesphere.io\nextensions.kubesphere.io\nextensionversions.kubesphere.io\ninstallplans.kubesphere.io\nrepositories.kubesphere.io\nserviceaccounts.kubesphere.io\nsubscriptions.marketplace.kubesphere.io\nnodes.metrics.k8s.io\npods.metrics.k8s.io\ningressclasses.networking.k8s.io\ningresses.networking.k8s.io\nipaddresses.networking.k8s.io\nnetworkpolicies.networking.k8s.io\nservicecidrs.networking.k8s.io\nruntimeclasses.node.k8s.io\napiservers.operator.tigera.io\ngatewayapis.operator.tigera.io\ngoldmanes.operator.tigera.io\nimagesets.operator.tigera.io\ninstallations.operator.tigera.io\nmanagementclusterconnections.operator.tigera.io\ntigerastatuses.operator.tigera.io\nwhiskers.operator.tigera.io\npoddisruptionbudgets.policy\nadminnetworkpolicies.policy.networking.k8s.io\nbaselineadminnetworkpolicies.policy.networking.k8s.io\nbackups.postgresql.cnpg.io\nclusterimagecatalogs.postgresql.cnpg.io\nclusters.postgresql.cnpg.io\ndatabaseroles.postgresql.cnpg.io\ndatabases.postgresql.cnpg.io\nfailoverquorums.postgresql.cnpg.io\nimagecatalogs.postgresql.cnpg.io\npoolers.postgresql.cnpg.io\npublications.postgresql.cnpg.io\nscheduledbackups.postgresql.cnpg.io\nsubscriptions.postgresql.cnpg.io\nbgpconfigurations.projectcalico.org\nbgpfilters.projectcalico.org\nbgppeers.projectcalico.org\nblockaffinities.projectcalico.org\ncaliconodestatuses.projectcalico.org\nclusterinformations.projectcalico.org\nfelixconfigurations.projectcalico.org\nglobalnetworkpolicies.projectcalico.org\nglobalnetworksets.projectcalico.org\nhostendpoints.projectcalico.org\nipamconfigurations.projectcalico.org\nippools.projectcalico.org\nipreservations.projectcalico.org\nkubecontrollersconfigurations.projectcalico.org\nnetworkpolicies.projectcalico.org\nnetworksets.projectcalico.org\nprofiles.projectcalico.org\nstagedglobalnetworkpolicies.projectcalico.org\nstagedkubernetesnetworkpolicies.projectcalico.org\nstagednetworkpolicies.projectcalico.org\ntiers.projectcalico.org\nresourcequotas.quota.kubesphere.io\nclusterrolebindings.rbac.authorization.k8s.io\nclusterroles.rbac.authorization.k8s.io\nrolebindings.rbac.authorization.k8s.io\nroles.rbac.authorization.k8s.io\ndeviceclasses.resource.k8s.io\nresourceclaims.resource.k8s.io\nresourceclaimtemplates.resource.k8s.io\nresourceslices.resource.k8s.io\npriorityclasses.scheduling.k8s.io\ncsidrivers.storage.k8s.io\ncsinodes.storage.k8s.io\ncsistoragecapacities.storage.k8s.io\nstorageclasses.storage.k8s.io\nvolumeattachments.storage.k8s.io\nvolumeattributesclasses.storage.k8s.io\nprovisionercapabilities.storage.kubesphere.io\nstorageclasscapabilities.storage.kubesphere.io\nsubnamespaceanchors.tenant.kubesphere.io\nworkspaceconfigurations.tenant.kubesphere.io\nworkspaces.tenant.kubesphere.io\nworkspacetemplates.tenant.kubesphere.io\ningressroutes.traefik.io\ningressroutetcps.traefik.io\ningressrouteudps.traefik.io\nmiddlewares.traefik.io\nmiddlewaretcps.traefik.io\nserverstransports.traefik.io\nserverstransporttcps.traefik.io\ntlsoptions.traefik.io\ntlsstores.traefik.io\ntraefikservices.traefik.io\nbackuprepositories.velero.io\nbackups.velero.io\nbackupstoragelocations.velero.io\ndatadownloads.velero.io\ndatauploads.velero.io\ndeletebackuprequests.velero.io\ndownloadrequests.velero.io\npodvolumebackups.velero.io\npodvolumerestores.velero.io\nrestores.velero.io\nschedules.velero.io\nserverstatusrequests.velero.io\nvolumesnapshotlocations.velero.io\n",
+      "finished_utc": "2026-11-16T23:42:35.610886+00:00"
+    }
+  },
+  "public_pki_certificate": {
+    "command": [
+      "kubectl",
+      "--context=jpiquot@local",
+      "--request-timeout=12s",
+      "-n",
+      "openbao",
+      "exec",
+      "hexalith-keys-0",
+      "-c",
+      "openbao",
+      "--",
+      "env",
+      "-i",
+      "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+      "HOME=/nonexistent",
+      "BAO_CLIENT_TIMEOUT=8s",
+      "bao",
+      "read",
+      "-format=json",
+      "-address=https://hexalith-keys.openbao.svc.cluster.local:8200",
+      "-ca-cert=/openbao/userconfig/openbao-server-tls/ca.crt",
+      "-tls-skip-verify=false",
+      "pki-int/cert/ca"
+    ],
+    "started_utc": "2026-11-16T23:41:12.442090+00:00",
+    "finished_utc": "2026-11-16T23:41:12.848908+00:00",
+    "exit_code": 0,
+    "observation": {
+      "certificate_pem_sha256": "d4cb24e6228086a381a5b3df60b497f0c9b0a30991c9eeaa448d0ef96a5da9ca",
+      "decoder_command": [
+        "openssl",
+        "x509",
+        "-noout",
+        "-subject",
+        "-issuer",
+        "-fingerprint",
+        "-sha256"
+      ],
+      "decoder_exit_code": 0,
+      "public_metadata": "subject=CN=Hexalith Internal Intermediate CA\nissuer=CN=Hexalith Internal Root CA, O=Hexalith\nsha256 Fingerprint=90:62:CE:EA:14:02:6B:CE:65:D0:0B:FF:3B:D3:A4:14:72:22:DA:A9:FF:6B:8B:20:9C:F7:BD:08:7E:A8:36:1B\n",
+      "trust": "CA-verifying public-certificate read; no token or Secret read"
+    }
+  },
+  "empty_inline_bundle_attempt": {
+    "command": [
+      "kubectl",
+      "--context=jpiquot@local",
+      "--request-timeout=12s",
+      "get",
+      "clusterissuer",
+      "openbao-internal-pki",
+      "-o",
+      "jsonpath={.spec.vault.caBundle}"
+    ],
+    "exit_code": 0,
+    "observed_utc": "2026-11-16T23:40:51.197822+00:00",
+    "observation": {
+      "source": "public transport CA bundle configured in ClusterIssuer; no Secret read",
+      "pem_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "metadata_exit_code": 1,
+      "public_metadata": "decoder failed; output discarded"
+    }
+  },
+  "findings": [
+    "jpiquot@local already targets https://192.168.1.30:6443; node1 has that internal IP.",
+    "No cert-manager Certificate in any namespace targets openbao/openbao-server-tls. No namespace-local Issuer in openbao.",
+    "ClusterIssuer openbao-internal-pki is Ready and uses pki-int/sign/hexalith-memories-services with Kubernetes auth role cert-manager-internal-pki, ServiceAccount cert-manager/openbao-pki-issuer and transport CA reference openbao-client-ca/ca.crt.",
+    "The ClusterIssuer inline caBundle is empty. The attempted decoder failed; no CA fingerprint was established from that attempt. The referenced Secret was not read.",
+    "Public CA-verifying read of pki-int/cert/ca returns Hexalith Internal Intermediate CA issued by Hexalith Internal Root CA, distinct in identity from the previously inventoried listener issuer Hexalith Keys Internal CA. This discovers an application PKI, not an authoritative renewal procedure for the current server leaf.",
+    "HCL ownership shows Helm plus kubectl modification managers; their names/timestamps do not identify the certificate issuer or an external source repository.",
+    "No KubeSphere ApplicationRelease or app.k8s.io Application objects returned. API discovery returned no Flux/ArgoCD/ExternalSecrets resource type.",
+    "The named TLS/PKI Secrets exist, but their contents, annotations and managedFields were not queried under the inherited names/types-only Secret restriction."
+  ],
+  "live_mutations": [],
+  "rollout_approval": null,
+  "post_rollout_verification": null,
+  "checkpoint_states": {
+    "C4b": "pending / not complete",
+    "C5b": "pending / not complete",
+    "C7": "pending / not complete"
+  },
+  "story_31_1": "in-progress",
+  "preserved_sha256": {
+    "_bmad-output/implementation-artifacts/tests/31-1-assistant-security-evaluation-2026-11-16.md": "140e7ec7c0b0f8163a099e9c3dfa3617f6bbb7b636246b3abe374c226e95c911",
+    "_bmad-output/implementation-artifacts/tests/31-1-assistant-security-evaluation-2026-11-16.json": "41dfcc14874d4fece9a0d93b9f3f45ee3aae69b3ebfa1a03b69adc1c7853b016",
+    "_bmad-output/implementation-artifacts/tests/31-1-ai-security-review-2026-11-16.md": "b32383303ca5e0709d879f3d2f07747823d7dcfa18a9b8bb20cc5896bad97a99",
+    "_bmad-output/implementation-artifacts/tests/31-1-ai-security-review-2026-11-16.json": "5f44afe27fb8a0f26dacc1ce355a67505e010512e71a513380e89cf42b1dbb3c",
+    "_bmad-output/implementation-artifacts/tests/31-1-security-evidence-refresh-2026-11-16.md": "f023694ad150e3a6891803af010e2a0dc913f7d72e8be8a5dbe647c1cb4f3927",
+    "_bmad-output/implementation-artifacts/tests/31-1-security-evidence-refresh-2026-11-16.json": "92fdf7bef1097dd43bbef4b8e6ca22ba2d05d1e93a8269d8ca9d4e014bf8e7b7",
+    "_bmad-output/implementation-artifacts/tests/31-1-openbao-platform-evidence.md": "81c77becd6cb7678607a8f5a52fc156b55866154487b0d3f94573401c3f2d06e",
+    "_bmad-output/implementation-artifacts/31-1-openbao-platform-hardening-and-documentation.md": "6ac05462ebf07f045522d3c4c2e335a7d47fc9a6aece5d6281767e3a94fce4cb",
+    "_bmad-output/implementation-artifacts/sprint-status.yaml": "a1bcd03d34bda41edbceba169a1a83948fbf1a57ee70a8c2a26c5967d12677e8",
+    "_bmad-output/planning-artifacts/epics.md": "9c69f552b1e4431279f49522bb2faabd27da7aa71104710a967d16081a6b15b8",
+    "docs/governance/openbao-independent-security-review.md": "7f01d34bb0012745c1dc899b7e57d6cd1a6fa5980a10cdad29c8750b4da3b66d",
+    "docs/operations/openbao.md": "bd29e76da4ab3de5912f5f79fa22e1119d22890e2861edfb00d238b0f5254bbc",
+    "deploy/openbao/values.yaml": "4d6e8909695100901be5008b5a4cd11d108ee03b495d26243d23a22ab25a0caa",
+    "_bmad-output/implementation-artifacts/spec-31-1-openbao-security-guard-remediation.md": "48ec387959b6bf9f2db94d645e8d7ab1b3581e9c0c581b0f67070d121cdd2945",
+    "_bmad-output/implementation-artifacts/tests/31-1-eval-01-peer-tls-addendum-2026-11-16.md": "34a635dd4a58d37bf8043fce1dac9b887d92875eaffe12d199bc8fc43184d795",
+    "_bmad-output/implementation-artifacts/tests/31-1-eval-01-peer-tls-addendum-2026-11-16.json": "e170ce75ab56f22cffcc447e563fa9a9592871a8ce0babeeda657158444ee5a9"
+  },
+  "prior_preservation_checks": {
+    "_bmad-output/implementation-artifacts/tests/31-1-assistant-security-evaluation-2026-11-16.md": true,
+    "_bmad-output/implementation-artifacts/tests/31-1-assistant-security-evaluation-2026-11-16.json": true,
+    "_bmad-output/implementation-artifacts/tests/31-1-ai-security-review-2026-11-16.md": true,
+    "_bmad-output/implementation-artifacts/tests/31-1-ai-security-review-2026-11-16.json": true,
+    "_bmad-output/implementation-artifacts/tests/31-1-security-evidence-refresh-2026-11-16.md": true,
+    "_bmad-output/implementation-artifacts/tests/31-1-security-evidence-refresh-2026-11-16.json": true,
+    "_bmad-output/implementation-artifacts/tests/31-1-openbao-platform-evidence.md": true,
+    "_bmad-output/implementation-artifacts/31-1-openbao-platform-hardening-and-documentation.md": true,
+    "_bmad-output/implementation-artifacts/sprint-status.yaml": true,
+    "_bmad-output/planning-artifacts/epics.md": true,
+    "docs/governance/openbao-independent-security-review.md": true,
+    "docs/operations/openbao.md": true,
+    "deploy/openbao/values.yaml": true,
+    "_bmad-output/implementation-artifacts/spec-31-1-openbao-security-guard-remediation.md": true
+  }
+}

@@ -1,0 +1,1032 @@
+{
+  "title": "Story 31.1 EVAL-01 peer TLS preparation and preflight addendum",
+  "created_utc": "2026-11-16T21:56:24.499583+00:00",
+  "author": {
+    "name": "Codex",
+    "kind": "AI assistant",
+    "independent_signoff": false
+  },
+  "scope": "EVAL-01 only",
+  "source_revision": "341ae091bc9a94bfab0c7741314419713188ae8d",
+  "state": "prepared; missing authoritative issuing/install/restore procedure; no live rollout approved or executed",
+  "owner": {
+    "retry_join_repository": "Hexalith/Hexalith.Memories",
+    "tracked_config": "deploy/openbao/values.yaml",
+    "deployed_config": "openbao/ConfigMap/hexalith-keys-config",
+    "certificate_custodian": "Platform Operations / jpiquot",
+    "issuing_repository_or_procedure": null,
+    "issuing_source_search": "Bounded Memories, sibling Platform/CICD/Agents/Docs, original July bootstrap and connected GitHub searches found consumers only. No cert-manager Certificate was returned."
+  },
+  "proposed_correction": "Existing-CA shared leaf renewal retaining all observed SANs and adding Pod-1/2 DNS names; integrate into actual owner issuing source before rollout.",
+  "prepared_input_sha256": {
+    "deploy/openbao/server-tls-identities.cnf": "7f891bbe394c7941d054065cc9fd7164bfcd59b03d36b4f4e5f200c61c6dff0f",
+    "tools/openbao/verify_peer_tls.py": "eacbd0310fdbef259855a16104edb68642f83fd234643215f3db4e195557765e",
+    "docs/operations/openbao-peer-tls-eval-01.md": "af8dbd8dc6e971c53d1ece7bec168243e7ed19a81968cc49678357206281b9b8",
+    "_bmad-output/implementation-artifacts/spec-31-1-eval-01-peer-tls-remediation.md": "403c3b258caf0f698f564e2e64613ede0c1b732e7e19918d5934d0bca150744a"
+  },
+  "historical_integrity": {
+    "checks": {
+      "_bmad-output/implementation-artifacts/tests/31-1-assistant-security-evaluation-2026-11-16.md": true,
+      "_bmad-output/implementation-artifacts/tests/31-1-assistant-security-evaluation-2026-11-16.json": true,
+      "_bmad-output/implementation-artifacts/tests/31-1-ai-security-review-2026-11-16.md": true,
+      "_bmad-output/implementation-artifacts/tests/31-1-ai-security-review-2026-11-16.json": true,
+      "_bmad-output/implementation-artifacts/tests/31-1-security-evidence-refresh-2026-11-16.md": true,
+      "_bmad-output/implementation-artifacts/tests/31-1-security-evidence-refresh-2026-11-16.json": true,
+      "_bmad-output/implementation-artifacts/tests/31-1-openbao-platform-evidence.md": true,
+      "_bmad-output/implementation-artifacts/31-1-openbao-platform-hardening-and-documentation.md": true,
+      "_bmad-output/implementation-artifacts/sprint-status.yaml": true,
+      "_bmad-output/planning-artifacts/epics.md": true,
+      "docs/governance/openbao-independent-security-review.md": true,
+      "docs/operations/openbao.md": true,
+      "deploy/openbao/values.yaml": true,
+      "_bmad-output/implementation-artifacts/spec-31-1-openbao-security-guard-remediation.md": true
+    },
+    "attested_report_matches_companion": true,
+    "source_hashes": {
+      "_bmad-output/implementation-artifacts/tests/31-1-assistant-security-evaluation-2026-11-16.md": "140e7ec7c0b0f8163a099e9c3dfa3617f6bbb7b636246b3abe374c226e95c911",
+      "_bmad-output/implementation-artifacts/tests/31-1-assistant-security-evaluation-2026-11-16.json": "41dfcc14874d4fece9a0d93b9f3f45ee3aae69b3ebfa1a03b69adc1c7853b016",
+      "_bmad-output/implementation-artifacts/tests/31-1-ai-security-review-2026-11-16.md": "b32383303ca5e0709d879f3d2f07747823d7dcfa18a9b8bb20cc5896bad97a99",
+      "_bmad-output/implementation-artifacts/tests/31-1-ai-security-review-2026-11-16.json": "5f44afe27fb8a0f26dacc1ce355a67505e010512e71a513380e89cf42b1dbb3c",
+      "_bmad-output/implementation-artifacts/tests/31-1-security-evidence-refresh-2026-11-16.md": "f023694ad150e3a6891803af010e2a0dc913f7d72e8be8a5dbe647c1cb4f3927",
+      "_bmad-output/implementation-artifacts/tests/31-1-security-evidence-refresh-2026-11-16.json": "92fdf7bef1097dd43bbef4b8e6ca22ba2d05d1e93a8269d8ca9d4e014bf8e7b7",
+      "_bmad-output/implementation-artifacts/tests/31-1-openbao-platform-evidence.md": "81c77becd6cb7678607a8f5a52fc156b55866154487b0d3f94573401c3f2d06e",
+      "_bmad-output/implementation-artifacts/31-1-openbao-platform-hardening-and-documentation.md": "6ac05462ebf07f045522d3c4c2e335a7d47fc9a6aece5d6281767e3a94fce4cb",
+      "_bmad-output/implementation-artifacts/sprint-status.yaml": "a1bcd03d34bda41edbceba169a1a83948fbf1a57ee70a8c2a26c5967d12677e8",
+      "_bmad-output/planning-artifacts/epics.md": "9c69f552b1e4431279f49522bb2faabd27da7aa71104710a967d16081a6b15b8",
+      "docs/governance/openbao-independent-security-review.md": "7f01d34bb0012745c1dc899b7e57d6cd1a6fa5980a10cdad29c8750b4da3b66d",
+      "docs/operations/openbao.md": "bd29e76da4ab3de5912f5f79fa22e1119d22890e2861edfb00d238b0f5254bbc",
+      "deploy/openbao/values.yaml": "4d6e8909695100901be5008b5a4cd11d108ee03b495d26243d23a22ab25a0caa",
+      "_bmad-output/implementation-artifacts/spec-31-1-openbao-security-guard-remediation.md": "48ec387959b6bf9f2db94d645e8d7ab1b3581e9c0c581b0f67070d121cdd2945"
+    }
+  },
+  "preflight": {
+    "started_utc": "2026-11-16T21:53:53.150018+00:00",
+    "phase": "preflight",
+    "author": "Codex AI assistant; no independent sign-off",
+    "target": {
+      "context": "jpiquot@local",
+      "namespace": "openbao",
+      "release": "hexalith-keys"
+    },
+    "invocation": [
+      "python3",
+      "tools/openbao/verify_peer_tls.py",
+      "--phase",
+      "preflight",
+      "--output",
+      "artifacts/story-31-1/eval-01-peer-tls-2026-11-16/preflight-final.json"
+    ],
+    "source_revision": "341ae091bc9a94bfab0c7741314419713188ae8d",
+    "recorder_sha256": "eacbd0310fdbef259855a16104edb68642f83fd234643215f3db4e195557765e",
+    "preserved_input_sha256": {
+      "_bmad-output/implementation-artifacts/tests/31-1-assistant-security-evaluation-2026-11-16.md": "140e7ec7c0b0f8163a099e9c3dfa3617f6bbb7b636246b3abe374c226e95c911",
+      "_bmad-output/implementation-artifacts/tests/31-1-assistant-security-evaluation-2026-11-16.json": "41dfcc14874d4fece9a0d93b9f3f45ee3aae69b3ebfa1a03b69adc1c7853b016",
+      "_bmad-output/implementation-artifacts/tests/31-1-ai-security-review-2026-11-16.md": "b32383303ca5e0709d879f3d2f07747823d7dcfa18a9b8bb20cc5896bad97a99",
+      "_bmad-output/implementation-artifacts/tests/31-1-ai-security-review-2026-11-16.json": "5f44afe27fb8a0f26dacc1ce355a67505e010512e71a513380e89cf42b1dbb3c",
+      "_bmad-output/implementation-artifacts/tests/31-1-security-evidence-refresh-2026-11-16.md": "f023694ad150e3a6891803af010e2a0dc913f7d72e8be8a5dbe647c1cb4f3927",
+      "_bmad-output/implementation-artifacts/tests/31-1-security-evidence-refresh-2026-11-16.json": "92fdf7bef1097dd43bbef4b8e6ca22ba2d05d1e93a8269d8ca9d4e014bf8e7b7",
+      "_bmad-output/implementation-artifacts/tests/31-1-openbao-platform-evidence.md": "81c77becd6cb7678607a8f5a52fc156b55866154487b0d3f94573401c3f2d06e",
+      "_bmad-output/implementation-artifacts/31-1-openbao-platform-hardening-and-documentation.md": "6ac05462ebf07f045522d3c4c2e335a7d47fc9a6aece5d6281767e3a94fce4cb",
+      "_bmad-output/implementation-artifacts/sprint-status.yaml": "a1bcd03d34bda41edbceba169a1a83948fbf1a57ee70a8c2a26c5967d12677e8",
+      "_bmad-output/planning-artifacts/epics.md": "9c69f552b1e4431279f49522bb2faabd27da7aa71104710a967d16081a6b15b8",
+      "docs/governance/openbao-independent-security-review.md": "7f01d34bb0012745c1dc899b7e57d6cd1a6fa5980a10cdad29c8750b4da3b66d",
+      "docs/operations/openbao.md": "bd29e76da4ab3de5912f5f79fa22e1119d22890e2861edfb00d238b0f5254bbc",
+      "deploy/openbao/values.yaml": "4d6e8909695100901be5008b5a4cd11d108ee03b495d26243d23a22ab25a0caa",
+      "_bmad-output/implementation-artifacts/spec-31-1-openbao-security-guard-remediation.md": "48ec387959b6bf9f2db94d645e8d7ab1b3581e9c0c581b0f67070d121cdd2945"
+    },
+    "checkpoint_states": {
+      "C4b": "pending / not complete",
+      "C5b": "pending / not complete",
+      "C7": "pending / not complete"
+    },
+    "story_31_1": "in-progress",
+    "rollout_approval": "not asserted by this recorder",
+    "before": {
+      "pods": {
+        "command": [
+          "kubectl",
+          "--context=jpiquot@local",
+          "--request-timeout=12s",
+          "-n",
+          "openbao",
+          "get",
+          "pods",
+          "-l",
+          "app.kubernetes.io/instance=hexalith-keys,component=server",
+          "-o",
+          "json"
+        ],
+        "started_utc": "2026-11-16T21:53:53.153199+00:00",
+        "exit_code": 0,
+        "observation": [
+          {
+            "name": "hexalith-keys-0",
+            "uid": "01cae80b-4142-4d85-b8ba-e6295371b832",
+            "chart_label": "openbao-0.29.5",
+            "active_label": "false",
+            "phase": "Running",
+            "containers": [
+              {
+                "name": "openbao",
+                "ready": true,
+                "image": "sha256:9f75be0ab4714bfb80349632dbeea5f9eb4e941bcd131d0c9abb8f5ba228a3ee",
+                "imageID": "quay.io/openbao/openbao@sha256:11fd73a2102cda9c55d5d881a8c3210303146a7ec1e8ac76f526e175c6d24641",
+                "restartCount": 14
+              }
+            ]
+          },
+          {
+            "name": "hexalith-keys-1",
+            "uid": "f89ff29e-0a36-4e46-bff0-6e545bfb4001",
+            "chart_label": "openbao-0.29.5",
+            "active_label": "true",
+            "phase": "Running",
+            "containers": [
+              {
+                "name": "openbao",
+                "ready": true,
+                "image": "sha256:9f75be0ab4714bfb80349632dbeea5f9eb4e941bcd131d0c9abb8f5ba228a3ee",
+                "imageID": "quay.io/openbao/openbao@sha256:11fd73a2102cda9c55d5d881a8c3210303146a7ec1e8ac76f526e175c6d24641",
+                "restartCount": 14
+              }
+            ]
+          },
+          {
+            "name": "hexalith-keys-2",
+            "uid": "3ef0013e-6a88-433c-ba88-974b9a3047c2",
+            "chart_label": "openbao-0.29.5",
+            "active_label": "false",
+            "phase": "Running",
+            "containers": [
+              {
+                "name": "openbao",
+                "ready": true,
+                "image": "sha256:9f75be0ab4714bfb80349632dbeea5f9eb4e941bcd131d0c9abb8f5ba228a3ee",
+                "imageID": "quay.io/openbao/openbao@sha256:11fd73a2102cda9c55d5d881a8c3210303146a7ec1e8ac76f526e175c6d24641",
+                "restartCount": 14
+              }
+            ]
+          }
+        ],
+        "finished_utc": "2026-11-16T21:53:53.492723+00:00"
+      },
+      "configmap": {
+        "command": [
+          "kubectl",
+          "--context=jpiquot@local",
+          "--request-timeout=12s",
+          "-n",
+          "openbao",
+          "get",
+          "configmap",
+          "hexalith-keys-config",
+          "-o",
+          "json"
+        ],
+        "started_utc": "2026-11-16T21:53:53.492745+00:00",
+        "exit_code": 0,
+        "observation": {
+          "uid": "4de8e509-ca76-4a03-bed6-a33a2c2358c5",
+          "resource_version": "21791787",
+          "hcl_sha256": "9340daddbfb65afdab4e9400762ff0cd6f858003c61f983a10b0edfe8fcc87db",
+          "peer_names": [
+            "hexalith-keys-0.hexalith-keys-internal.openbao.svc.cluster.local",
+            "hexalith-keys-1.hexalith-keys-internal.openbao.svc.cluster.local",
+            "hexalith-keys-2.hexalith-keys-internal.openbao.svc.cluster.local"
+          ],
+          "evidence_boundary": "declared HCL; hash does not prove process-loaded configuration"
+        },
+        "finished_utc": "2026-11-16T21:53:53.679833+00:00"
+      },
+      "certificates": {
+        "command": [
+          "kubectl",
+          "--context=jpiquot@local",
+          "--request-timeout=12s",
+          "-n",
+          "openbao",
+          "get",
+          "certificates.cert-manager.io",
+          "-o",
+          "name"
+        ],
+        "started_utc": "2026-11-16T21:53:53.679850+00:00",
+        "exit_code": 0,
+        "observation": {
+          "count": 0
+        },
+        "finished_utc": "2026-11-16T21:53:53.979645+00:00"
+      }
+    },
+    "probes": {
+      "peer-0-peer-dns": {
+        "command": [
+          "kubectl",
+          "--context=jpiquot@local",
+          "--request-timeout=12s",
+          "-n",
+          "openbao",
+          "exec",
+          "hexalith-keys-0",
+          "-c",
+          "openbao",
+          "--",
+          "env",
+          "-i",
+          "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+          "HOME=/nonexistent",
+          "BAO_CLIENT_TIMEOUT=8s",
+          "bao",
+          "status",
+          "-format=json",
+          "-address=https://hexalith-keys-0.hexalith-keys-internal.openbao.svc.cluster.local:8200",
+          "-ca-cert=/openbao/userconfig/openbao-server-tls/ca.crt",
+          "-tls-skip-verify=false"
+        ],
+        "started_utc": "2026-11-16T21:53:53.979697+00:00",
+        "exit_code": 0,
+        "observation": {
+          "status": {
+            "initialized": true,
+            "sealed": false,
+            "storage_type": "raft",
+            "version": "2.6.2",
+            "ha_enabled": true,
+            "ha_mode": null,
+            "type": "static",
+            "recovery_seal_type": "shamir"
+          },
+          "healthy": true
+        },
+        "finished_utc": "2026-11-16T21:53:54.400413+00:00"
+      },
+      "peer-0-service-name-control": {
+        "command": [
+          "kubectl",
+          "--context=jpiquot@local",
+          "--request-timeout=12s",
+          "-n",
+          "openbao",
+          "exec",
+          "hexalith-keys-0",
+          "-c",
+          "openbao",
+          "--",
+          "env",
+          "-i",
+          "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+          "HOME=/nonexistent",
+          "BAO_CLIENT_TIMEOUT=8s",
+          "bao",
+          "status",
+          "-format=json",
+          "-address=https://hexalith-keys-0.hexalith-keys-internal.openbao.svc.cluster.local:8200",
+          "-ca-cert=/openbao/userconfig/openbao-server-tls/ca.crt",
+          "-tls-skip-verify=false",
+          "-tls-server-name=hexalith-keys.openbao.svc.cluster.local"
+        ],
+        "started_utc": "2026-11-16T21:53:54.400452+00:00",
+        "exit_code": 0,
+        "observation": {
+          "status": {
+            "initialized": true,
+            "sealed": false,
+            "storage_type": "raft",
+            "version": "2.6.2",
+            "ha_enabled": true,
+            "ha_mode": null,
+            "type": "static",
+            "recovery_seal_type": "shamir"
+          },
+          "healthy": true
+        },
+        "finished_utc": "2026-11-16T21:53:54.883949+00:00"
+      },
+      "peer-0-service-route": {
+        "command": [
+          "kubectl",
+          "--context=jpiquot@local",
+          "--request-timeout=12s",
+          "-n",
+          "openbao",
+          "exec",
+          "hexalith-keys-0",
+          "-c",
+          "openbao",
+          "--",
+          "env",
+          "-i",
+          "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+          "HOME=/nonexistent",
+          "BAO_CLIENT_TIMEOUT=8s",
+          "bao",
+          "status",
+          "-format=json",
+          "-address=https://hexalith-keys.openbao.svc.cluster.local:8200",
+          "-ca-cert=/openbao/userconfig/openbao-server-tls/ca.crt",
+          "-tls-skip-verify=false"
+        ],
+        "started_utc": "2026-11-16T21:53:54.883982+00:00",
+        "exit_code": 0,
+        "observation": {
+          "status": {
+            "initialized": true,
+            "sealed": false,
+            "storage_type": "raft",
+            "version": "2.6.2",
+            "ha_enabled": true,
+            "ha_mode": null,
+            "type": "static",
+            "recovery_seal_type": "shamir"
+          },
+          "healthy": true
+        },
+        "finished_utc": "2026-11-16T21:53:55.280180+00:00"
+      },
+      "peer-1-peer-dns": {
+        "command": [
+          "kubectl",
+          "--context=jpiquot@local",
+          "--request-timeout=12s",
+          "-n",
+          "openbao",
+          "exec",
+          "hexalith-keys-1",
+          "-c",
+          "openbao",
+          "--",
+          "env",
+          "-i",
+          "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+          "HOME=/nonexistent",
+          "BAO_CLIENT_TIMEOUT=8s",
+          "bao",
+          "status",
+          "-format=json",
+          "-address=https://hexalith-keys-1.hexalith-keys-internal.openbao.svc.cluster.local:8200",
+          "-ca-cert=/openbao/userconfig/openbao-server-tls/ca.crt",
+          "-tls-skip-verify=false"
+        ],
+        "started_utc": "2026-11-16T21:53:55.861885+00:00",
+        "exit_code": 1,
+        "observation": {
+          "failure": "x509 hostname mismatch"
+        },
+        "finished_utc": "2026-11-16T21:53:56.387079+00:00"
+      },
+      "peer-1-service-name-control": {
+        "command": [
+          "kubectl",
+          "--context=jpiquot@local",
+          "--request-timeout=12s",
+          "-n",
+          "openbao",
+          "exec",
+          "hexalith-keys-1",
+          "-c",
+          "openbao",
+          "--",
+          "env",
+          "-i",
+          "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+          "HOME=/nonexistent",
+          "BAO_CLIENT_TIMEOUT=8s",
+          "bao",
+          "status",
+          "-format=json",
+          "-address=https://hexalith-keys-1.hexalith-keys-internal.openbao.svc.cluster.local:8200",
+          "-ca-cert=/openbao/userconfig/openbao-server-tls/ca.crt",
+          "-tls-skip-verify=false",
+          "-tls-server-name=hexalith-keys.openbao.svc.cluster.local"
+        ],
+        "started_utc": "2026-11-16T21:53:56.387125+00:00",
+        "exit_code": 0,
+        "observation": {
+          "status": {
+            "initialized": true,
+            "sealed": false,
+            "storage_type": "raft",
+            "version": "2.6.2",
+            "ha_enabled": true,
+            "ha_mode": null,
+            "type": "static",
+            "recovery_seal_type": "shamir"
+          },
+          "healthy": true
+        },
+        "finished_utc": "2026-11-16T21:53:56.922589+00:00"
+      },
+      "peer-1-service-route": {
+        "command": [
+          "kubectl",
+          "--context=jpiquot@local",
+          "--request-timeout=12s",
+          "-n",
+          "openbao",
+          "exec",
+          "hexalith-keys-1",
+          "-c",
+          "openbao",
+          "--",
+          "env",
+          "-i",
+          "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+          "HOME=/nonexistent",
+          "BAO_CLIENT_TIMEOUT=8s",
+          "bao",
+          "status",
+          "-format=json",
+          "-address=https://hexalith-keys.openbao.svc.cluster.local:8200",
+          "-ca-cert=/openbao/userconfig/openbao-server-tls/ca.crt",
+          "-tls-skip-verify=false"
+        ],
+        "started_utc": "2026-11-16T21:53:56.922616+00:00",
+        "exit_code": 0,
+        "observation": {
+          "status": {
+            "initialized": true,
+            "sealed": false,
+            "storage_type": "raft",
+            "version": "2.6.2",
+            "ha_enabled": true,
+            "ha_mode": null,
+            "type": "static",
+            "recovery_seal_type": "shamir"
+          },
+          "healthy": true
+        },
+        "finished_utc": "2026-11-16T21:53:57.535218+00:00"
+      },
+      "peer-2-peer-dns": {
+        "command": [
+          "kubectl",
+          "--context=jpiquot@local",
+          "--request-timeout=12s",
+          "-n",
+          "openbao",
+          "exec",
+          "hexalith-keys-2",
+          "-c",
+          "openbao",
+          "--",
+          "env",
+          "-i",
+          "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+          "HOME=/nonexistent",
+          "BAO_CLIENT_TIMEOUT=8s",
+          "bao",
+          "status",
+          "-format=json",
+          "-address=https://hexalith-keys-2.hexalith-keys-internal.openbao.svc.cluster.local:8200",
+          "-ca-cert=/openbao/userconfig/openbao-server-tls/ca.crt",
+          "-tls-skip-verify=false"
+        ],
+        "started_utc": "2026-11-16T21:53:58.347842+00:00",
+        "exit_code": 1,
+        "observation": {
+          "failure": "x509 hostname mismatch"
+        },
+        "finished_utc": "2026-11-16T21:53:58.741321+00:00"
+      },
+      "peer-2-service-name-control": {
+        "command": [
+          "kubectl",
+          "--context=jpiquot@local",
+          "--request-timeout=12s",
+          "-n",
+          "openbao",
+          "exec",
+          "hexalith-keys-2",
+          "-c",
+          "openbao",
+          "--",
+          "env",
+          "-i",
+          "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+          "HOME=/nonexistent",
+          "BAO_CLIENT_TIMEOUT=8s",
+          "bao",
+          "status",
+          "-format=json",
+          "-address=https://hexalith-keys-2.hexalith-keys-internal.openbao.svc.cluster.local:8200",
+          "-ca-cert=/openbao/userconfig/openbao-server-tls/ca.crt",
+          "-tls-skip-verify=false",
+          "-tls-server-name=hexalith-keys.openbao.svc.cluster.local"
+        ],
+        "started_utc": "2026-11-16T21:53:58.741353+00:00",
+        "exit_code": 0,
+        "observation": {
+          "status": {
+            "initialized": true,
+            "sealed": false,
+            "storage_type": "raft",
+            "version": "2.6.2",
+            "ha_enabled": true,
+            "ha_mode": null,
+            "type": "static",
+            "recovery_seal_type": "shamir"
+          },
+          "healthy": true
+        },
+        "finished_utc": "2026-11-16T21:53:59.094082+00:00"
+      },
+      "peer-2-service-route": {
+        "command": [
+          "kubectl",
+          "--context=jpiquot@local",
+          "--request-timeout=12s",
+          "-n",
+          "openbao",
+          "exec",
+          "hexalith-keys-2",
+          "-c",
+          "openbao",
+          "--",
+          "env",
+          "-i",
+          "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+          "HOME=/nonexistent",
+          "BAO_CLIENT_TIMEOUT=8s",
+          "bao",
+          "status",
+          "-format=json",
+          "-address=https://hexalith-keys.openbao.svc.cluster.local:8200",
+          "-ca-cert=/openbao/userconfig/openbao-server-tls/ca.crt",
+          "-tls-skip-verify=false"
+        ],
+        "started_utc": "2026-11-16T21:53:59.094107+00:00",
+        "exit_code": 0,
+        "observation": {
+          "status": {
+            "initialized": true,
+            "sealed": false,
+            "storage_type": "raft",
+            "version": "2.6.2",
+            "ha_enabled": true,
+            "ha_mode": null,
+            "type": "static",
+            "recovery_seal_type": "shamir"
+          },
+          "healthy": true
+        },
+        "finished_utc": "2026-11-16T21:53:59.760503+00:00"
+      }
+    },
+    "mounted_config": {
+      "peer-0": {
+        "command": [
+          "kubectl",
+          "--context=jpiquot@local",
+          "--request-timeout=12s",
+          "-n",
+          "openbao",
+          "exec",
+          "hexalith-keys-0",
+          "-c",
+          "openbao",
+          "--",
+          "env",
+          "-i",
+          "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+          "HOME=/nonexistent",
+          "BAO_CLIENT_TIMEOUT=8s",
+          "sha256sum",
+          "/openbao/config/extraconfig-from-values.hcl",
+          "/tmp/storageconfig.hcl"
+        ],
+        "started_utc": "2026-11-16T21:53:55.280216+00:00",
+        "exit_code": 0,
+        "observation": {
+          "sha256": {
+            "/openbao/config/extraconfig-from-values.hcl": "9340daddbfb65afdab4e9400762ff0cd6f858003c61f983a10b0edfe8fcc87db",
+            "/tmp/storageconfig.hcl": "9340daddbfb65afdab4e9400762ff0cd6f858003c61f983a10b0edfe8fcc87db"
+          }
+        },
+        "finished_utc": "2026-11-16T21:53:55.528535+00:00"
+      },
+      "peer-1": {
+        "command": [
+          "kubectl",
+          "--context=jpiquot@local",
+          "--request-timeout=12s",
+          "-n",
+          "openbao",
+          "exec",
+          "hexalith-keys-1",
+          "-c",
+          "openbao",
+          "--",
+          "env",
+          "-i",
+          "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+          "HOME=/nonexistent",
+          "BAO_CLIENT_TIMEOUT=8s",
+          "sha256sum",
+          "/openbao/config/extraconfig-from-values.hcl",
+          "/tmp/storageconfig.hcl"
+        ],
+        "started_utc": "2026-11-16T21:53:57.535246+00:00",
+        "exit_code": 0,
+        "observation": {
+          "sha256": {
+            "/openbao/config/extraconfig-from-values.hcl": "9340daddbfb65afdab4e9400762ff0cd6f858003c61f983a10b0edfe8fcc87db",
+            "/tmp/storageconfig.hcl": "9340daddbfb65afdab4e9400762ff0cd6f858003c61f983a10b0edfe8fcc87db"
+          }
+        },
+        "finished_utc": "2026-11-16T21:53:57.800299+00:00"
+      },
+      "peer-2": {
+        "command": [
+          "kubectl",
+          "--context=jpiquot@local",
+          "--request-timeout=12s",
+          "-n",
+          "openbao",
+          "exec",
+          "hexalith-keys-2",
+          "-c",
+          "openbao",
+          "--",
+          "env",
+          "-i",
+          "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+          "HOME=/nonexistent",
+          "BAO_CLIENT_TIMEOUT=8s",
+          "sha256sum",
+          "/openbao/config/extraconfig-from-values.hcl",
+          "/tmp/storageconfig.hcl"
+        ],
+        "started_utc": "2026-11-16T21:53:59.760534+00:00",
+        "exit_code": 0,
+        "observation": {
+          "sha256": {
+            "/openbao/config/extraconfig-from-values.hcl": "9340daddbfb65afdab4e9400762ff0cd6f858003c61f983a10b0edfe8fcc87db",
+            "/tmp/storageconfig.hcl": "9340daddbfb65afdab4e9400762ff0cd6f858003c61f983a10b0edfe8fcc87db"
+          }
+        },
+        "finished_utc": "2026-11-16T21:54:00.059455+00:00"
+      }
+    },
+    "public_certificates": {
+      "peer-0": {
+        "started_utc": "2026-11-16T21:53:55.528566+00:00",
+        "command": [
+          "kubectl",
+          "--context=jpiquot@local",
+          "--request-timeout=12s",
+          "-n",
+          "openbao",
+          "port-forward",
+          "--address=127.0.0.1",
+          "pod/hexalith-keys-0",
+          "0:8200"
+        ],
+        "decoder_command": [
+          "openssl",
+          "x509",
+          "-inform",
+          "DER",
+          "-noout",
+          "-subject",
+          "-issuer",
+          "-dates",
+          "-ext",
+          "subjectAltName"
+        ],
+        "access": "loopback API-server tunnel; no NetworkPolicy evidence",
+        "trust": "unverified public-certificate inventory only; use separate CA-verifying bao probes",
+        "exit_code": 0,
+        "observation": {
+          "leaf_der_sha256": "c0c9260f14095b3d62138d27473505cf2c7bf68524efe55df1b29694ee13f884",
+          "tls_version": "TLSv1.3",
+          "public_metadata": "subject=CN=hexalith-keys.openbao.svc.cluster.local, O=Hexalith\nissuer=CN=Hexalith Keys Internal CA, O=Hexalith\nnotBefore=Jul 19 13:38:39 2026 GMT\nnotAfter=Aug 20 13:38:39 2027 GMT\nX509v3 Subject Alternative Name: \n    DNS:hexalith-keys, DNS:hexalith-keys.openbao, DNS:hexalith-keys.openbao.svc, DNS:hexalith-keys.openbao.svc.cluster.local, DNS:hexalith-keys-0.hexalith-keys-internal, DNS:hexalith-keys-0.hexalith-keys-internal.openbao, DNS:hexalith-keys-0.hexalith-keys-internal.openbao.svc, DNS:hexalith-keys-0.hexalith-keys-internal.openbao.svc.cluster.local, DNS:localhost, IP Address:127.0.0.1\n"
+        },
+        "tunnel_terminated_and_awaited": true,
+        "finished_utc": "2026-11-16T21:53:55.861799+00:00"
+      },
+      "peer-1": {
+        "started_utc": "2026-11-16T21:53:57.800331+00:00",
+        "command": [
+          "kubectl",
+          "--context=jpiquot@local",
+          "--request-timeout=12s",
+          "-n",
+          "openbao",
+          "port-forward",
+          "--address=127.0.0.1",
+          "pod/hexalith-keys-1",
+          "0:8200"
+        ],
+        "decoder_command": [
+          "openssl",
+          "x509",
+          "-inform",
+          "DER",
+          "-noout",
+          "-subject",
+          "-issuer",
+          "-dates",
+          "-ext",
+          "subjectAltName"
+        ],
+        "access": "loopback API-server tunnel; no NetworkPolicy evidence",
+        "trust": "unverified public-certificate inventory only; use separate CA-verifying bao probes",
+        "exit_code": 0,
+        "observation": {
+          "leaf_der_sha256": "c0c9260f14095b3d62138d27473505cf2c7bf68524efe55df1b29694ee13f884",
+          "tls_version": "TLSv1.3",
+          "public_metadata": "subject=CN=hexalith-keys.openbao.svc.cluster.local, O=Hexalith\nissuer=CN=Hexalith Keys Internal CA, O=Hexalith\nnotBefore=Jul 19 13:38:39 2026 GMT\nnotAfter=Aug 20 13:38:39 2027 GMT\nX509v3 Subject Alternative Name: \n    DNS:hexalith-keys, DNS:hexalith-keys.openbao, DNS:hexalith-keys.openbao.svc, DNS:hexalith-keys.openbao.svc.cluster.local, DNS:hexalith-keys-0.hexalith-keys-internal, DNS:hexalith-keys-0.hexalith-keys-internal.openbao, DNS:hexalith-keys-0.hexalith-keys-internal.openbao.svc, DNS:hexalith-keys-0.hexalith-keys-internal.openbao.svc.cluster.local, DNS:localhost, IP Address:127.0.0.1\n"
+        },
+        "tunnel_terminated_and_awaited": true,
+        "finished_utc": "2026-11-16T21:53:58.347736+00:00"
+      },
+      "peer-2": {
+        "started_utc": "2026-11-16T21:54:00.059485+00:00",
+        "command": [
+          "kubectl",
+          "--context=jpiquot@local",
+          "--request-timeout=12s",
+          "-n",
+          "openbao",
+          "port-forward",
+          "--address=127.0.0.1",
+          "pod/hexalith-keys-2",
+          "0:8200"
+        ],
+        "decoder_command": [
+          "openssl",
+          "x509",
+          "-inform",
+          "DER",
+          "-noout",
+          "-subject",
+          "-issuer",
+          "-dates",
+          "-ext",
+          "subjectAltName"
+        ],
+        "access": "loopback API-server tunnel; no NetworkPolicy evidence",
+        "trust": "unverified public-certificate inventory only; use separate CA-verifying bao probes",
+        "exit_code": 0,
+        "observation": {
+          "leaf_der_sha256": "c0c9260f14095b3d62138d27473505cf2c7bf68524efe55df1b29694ee13f884",
+          "tls_version": "TLSv1.3",
+          "public_metadata": "subject=CN=hexalith-keys.openbao.svc.cluster.local, O=Hexalith\nissuer=CN=Hexalith Keys Internal CA, O=Hexalith\nnotBefore=Jul 19 13:38:39 2026 GMT\nnotAfter=Aug 20 13:38:39 2027 GMT\nX509v3 Subject Alternative Name: \n    DNS:hexalith-keys, DNS:hexalith-keys.openbao, DNS:hexalith-keys.openbao.svc, DNS:hexalith-keys.openbao.svc.cluster.local, DNS:hexalith-keys-0.hexalith-keys-internal, DNS:hexalith-keys-0.hexalith-keys-internal.openbao, DNS:hexalith-keys-0.hexalith-keys-internal.openbao.svc, DNS:hexalith-keys-0.hexalith-keys-internal.openbao.svc.cluster.local, DNS:localhost, IP Address:127.0.0.1\n"
+        },
+        "tunnel_terminated_and_awaited": true,
+        "finished_utc": "2026-11-16T21:54:00.314999+00:00"
+      }
+    },
+    "after": {
+      "pods": {
+        "command": [
+          "kubectl",
+          "--context=jpiquot@local",
+          "--request-timeout=12s",
+          "-n",
+          "openbao",
+          "get",
+          "pods",
+          "-l",
+          "app.kubernetes.io/instance=hexalith-keys,component=server",
+          "-o",
+          "json"
+        ],
+        "started_utc": "2026-11-16T21:54:00.315093+00:00",
+        "exit_code": 0,
+        "observation": [
+          {
+            "name": "hexalith-keys-0",
+            "uid": "01cae80b-4142-4d85-b8ba-e6295371b832",
+            "chart_label": "openbao-0.29.5",
+            "active_label": "false",
+            "phase": "Running",
+            "containers": [
+              {
+                "name": "openbao",
+                "ready": true,
+                "image": "sha256:9f75be0ab4714bfb80349632dbeea5f9eb4e941bcd131d0c9abb8f5ba228a3ee",
+                "imageID": "quay.io/openbao/openbao@sha256:11fd73a2102cda9c55d5d881a8c3210303146a7ec1e8ac76f526e175c6d24641",
+                "restartCount": 14
+              }
+            ]
+          },
+          {
+            "name": "hexalith-keys-1",
+            "uid": "f89ff29e-0a36-4e46-bff0-6e545bfb4001",
+            "chart_label": "openbao-0.29.5",
+            "active_label": "true",
+            "phase": "Running",
+            "containers": [
+              {
+                "name": "openbao",
+                "ready": true,
+                "image": "sha256:9f75be0ab4714bfb80349632dbeea5f9eb4e941bcd131d0c9abb8f5ba228a3ee",
+                "imageID": "quay.io/openbao/openbao@sha256:11fd73a2102cda9c55d5d881a8c3210303146a7ec1e8ac76f526e175c6d24641",
+                "restartCount": 14
+              }
+            ]
+          },
+          {
+            "name": "hexalith-keys-2",
+            "uid": "3ef0013e-6a88-433c-ba88-974b9a3047c2",
+            "chart_label": "openbao-0.29.5",
+            "active_label": "false",
+            "phase": "Running",
+            "containers": [
+              {
+                "name": "openbao",
+                "ready": true,
+                "image": "sha256:9f75be0ab4714bfb80349632dbeea5f9eb4e941bcd131d0c9abb8f5ba228a3ee",
+                "imageID": "quay.io/openbao/openbao@sha256:11fd73a2102cda9c55d5d881a8c3210303146a7ec1e8ac76f526e175c6d24641",
+                "restartCount": 14
+              }
+            ]
+          }
+        ],
+        "finished_utc": "2026-11-16T21:54:00.505369+00:00"
+      },
+      "configmap": {
+        "command": [
+          "kubectl",
+          "--context=jpiquot@local",
+          "--request-timeout=12s",
+          "-n",
+          "openbao",
+          "get",
+          "configmap",
+          "hexalith-keys-config",
+          "-o",
+          "json"
+        ],
+        "started_utc": "2026-11-16T21:54:00.505393+00:00",
+        "exit_code": 0,
+        "observation": {
+          "uid": "4de8e509-ca76-4a03-bed6-a33a2c2358c5",
+          "resource_version": "21791787",
+          "hcl_sha256": "9340daddbfb65afdab4e9400762ff0cd6f858003c61f983a10b0edfe8fcc87db",
+          "peer_names": [
+            "hexalith-keys-0.hexalith-keys-internal.openbao.svc.cluster.local",
+            "hexalith-keys-1.hexalith-keys-internal.openbao.svc.cluster.local",
+            "hexalith-keys-2.hexalith-keys-internal.openbao.svc.cluster.local"
+          ],
+          "evidence_boundary": "declared HCL; hash does not prove process-loaded configuration"
+        },
+        "finished_utc": "2026-11-16T21:54:00.638840+00:00"
+      },
+      "certificates": {
+        "command": [
+          "kubectl",
+          "--context=jpiquot@local",
+          "--request-timeout=12s",
+          "-n",
+          "openbao",
+          "get",
+          "certificates.cert-manager.io",
+          "-o",
+          "name"
+        ],
+        "started_utc": "2026-11-16T21:54:00.638868+00:00",
+        "exit_code": 0,
+        "observation": {
+          "count": 0
+        },
+        "finished_utc": "2026-11-16T21:54:00.836153+00:00"
+      }
+    },
+    "finished_utc": "2026-11-16T21:54:00.836191+00:00",
+    "checks_pass": false,
+    "identity_stable": true,
+    "config_hashes_match_declaration": true,
+    "limits": [
+      "No Secret reads; CA consumed only by installed bao CLI. No implicit OpenBao credential.",
+      "Status and file hashes do not prove actual Raft join, loaded HCL, failover, ACLs or production qualification.",
+      "Review before/after identities and owner CA/certificate receipt before accepting a post-rollout result."
+    ]
+  },
+  "process_preflight": [
+    {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "openbao",
+        "exec",
+        "hexalith-keys-0",
+        "-c",
+        "openbao",
+        "--",
+        "env",
+        "-i",
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "HOME=/nonexistent",
+        "/bin/sh",
+        "-c",
+        "cat /proc/1/comm; for f in /proc/[0-9]*/comm; do read -r name < \"$f\" || continue; case \"$name\" in bao) printf \"%s \" \"$f\"; readlink \"${f%/comm}/exe\" ;; esac; done"
+      ],
+      "started_utc": "2026-11-16T21:55:08.067096+00:00",
+      "finished_utc": "2026-11-16T21:55:08.330108+00:00",
+      "exit_code": 0,
+      "observation": {
+        "pid1_is_shell": true,
+        "openbao_processes": [
+          "/proc/12/comm /usr/bin/bao"
+        ]
+      }
+    },
+    {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "openbao",
+        "exec",
+        "hexalith-keys-1",
+        "-c",
+        "openbao",
+        "--",
+        "env",
+        "-i",
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "HOME=/nonexistent",
+        "/bin/sh",
+        "-c",
+        "cat /proc/1/comm; for f in /proc/[0-9]*/comm; do read -r name < \"$f\" || continue; case \"$name\" in bao) printf \"%s \" \"$f\"; readlink \"${f%/comm}/exe\" ;; esac; done"
+      ],
+      "started_utc": "2026-11-16T21:55:08.330281+00:00",
+      "finished_utc": "2026-11-16T21:55:08.713705+00:00",
+      "exit_code": 0,
+      "observation": {
+        "pid1_is_shell": true,
+        "openbao_processes": [
+          "/proc/12/comm /usr/bin/bao"
+        ]
+      }
+    },
+    {
+      "command": [
+        "kubectl",
+        "--context=jpiquot@local",
+        "--request-timeout=12s",
+        "-n",
+        "openbao",
+        "exec",
+        "hexalith-keys-2",
+        "-c",
+        "openbao",
+        "--",
+        "env",
+        "-i",
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "HOME=/nonexistent",
+        "/bin/sh",
+        "-c",
+        "cat /proc/1/comm; for f in /proc/[0-9]*/comm; do read -r name < \"$f\" || continue; case \"$name\" in bao) printf \"%s \" \"$f\"; readlink \"${f%/comm}/exe\" ;; esac; done"
+      ],
+      "started_utc": "2026-11-16T21:55:08.713759+00:00",
+      "finished_utc": "2026-11-16T21:55:08.929587+00:00",
+      "exit_code": 0,
+      "observation": {
+        "pid1_is_shell": true,
+        "openbao_processes": [
+          "/proc/12/comm /usr/bin/bao"
+        ]
+      }
+    }
+  ],
+  "process_capture_correction": "The first process projection assumed /bin/bao and retained no matching child. A fresh exact-command capture resolves /usr/bin/bao on every Pod; the proposed signal guard was corrected before use. Neither attempt signalled any process.",
+  "local_verification": {
+    "command": [
+      "run-with-temp",
+      "bash",
+      "artifacts/story-31-1/eval-01-peer-tls-2026-11-16/verify-prepared.sh"
+    ],
+    "exit_code": 0,
+    "result": "PASS: 18 intended names/IP, wrong-host and wrong-CA rejection; recorder syntax and failure-output controls\nSynthetic certificates only. No deployed CA, private key or Secret was accessed.\n",
+    "scope": "Synthetic 18 DNS/IP positives, wrong-host and wrong-CA rejection, syntax and failure-output controls only; no deployment result",
+    "log_sha256": "069feef3239590fae54fc1b40d2068a4cea27dcaae221110988e5513f7bb1689",
+    "script_sha256": "4e79f601a6978e169f3f70310e30abe94a493196eb4aafbfa6b1363f8e9911ad"
+  },
+  "rollout": {
+    "approval": null,
+    "custodian_receipt": null,
+    "commands_executed": [],
+    "post_rollout_checks": null,
+    "pending": "Resolve issuing/install/restore source and intended trusted CA fingerprint; complete and approve operation plan before live action."
+  },
+  "checkpoint_states": {
+    "C4b": "pending / not complete; no completion date",
+    "C5b": "pending / not complete; no completion date",
+    "C7": "pending / not complete; no completion date"
+  },
+  "story_31_1": "in-progress",
+  "limits": [
+    "No Secret object payload, mounted certificate/key file, credential, operator token, seal material, audit contents or encrypted state was read. Mounted public CA was consumed only by bao status.",
+    "Public leaf metadata came from unverified network handshakes solely for inventory; separate direct bao probes supply CA-verifying results.",
+    "Only read-only Kubernetes queries, status probes, config fingerprints and temporary loopback port-forwards ran. All tunnels were terminated and awaited.",
+    "Local SAN configuration is a proposal, not a proven authoritative issuer change. No issuance, Secret mutation, reload, restart, Helm action, join or rollout occurred.",
+    "No independent sign-off, owner approval, waiver, Story 31.2 activation change or Production qualification is inferred. Other findings remain outside scope."
+  ]
+}
