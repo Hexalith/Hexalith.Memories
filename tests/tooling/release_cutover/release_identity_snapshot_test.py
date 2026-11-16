@@ -143,16 +143,15 @@ class ReleaseIdentitySnapshotTests(unittest.TestCase):
             code = TOOL.main()
         return code, output.getvalue()
 
-    def additive(self, before):
+    def additive(self, before, version="4.0.1"):
         after = copy.deepcopy(before)
-        version = "4.0.1"
         after["tags"]["refs/tags/v" + version] = {"object": SOURCE, "commit": SOURCE}
         names = [f"{identifier}.{version}.nupkg" for identifier in PACKAGES] + [
             "hexalith-memories-production.yaml", "hexalith-memories-release-evidence.tar.gz", "hexalith-memories-release-evidence.tar.gz.sha256.json"]
-        after["releases"]["3"] = {"tag": "v" + version, "draft": False, "prerelease": False,
+        after["releases"]["3"] = {"tag": "v" + version, "draft": False, "prerelease": "-" in version,
             "assets": {name: {key: value for key, value in asset(name).items() if key != "name"} for name in names}}
         for identifier in PACKAGES:
-            after["packages"][identifier][version] = {"listed": True}
+            after["packages"][identifier][version.lower()] = {"listed": True}
         for repository in IMAGES:
             after["images"][repository][version] = copy.deepcopy(INDEX_IDENTITY)
         return after
@@ -235,35 +234,147 @@ class ReleaseIdentitySnapshotTests(unittest.TestCase):
                 after["latest"] = latest
                 self.assertEqual([], TOOL.compare(before, after, "additive", "4.0.1", SOURCE))
 
+    def assert_refused_naming(self, expected, before, after, version="4.0.1"):
+        """Require the exact refusal reason or delta member, not merely any failure."""
+        try:
+            delta = TOOL.compare(before, after, "additive", version, SOURCE)
+        except ValueError as error:
+            self.assertIn(expected, str(error))
+        else:
+            self.assertTrue(any(expected in item for item in delta), delta)
+
     def test_additive_refuses_any_other_delta_or_latest_moved_elsewhere(self):
         before = self.captured()
+        package, image = PACKAGES[0], IMAGES[0]
         mutations = {
-            "extra-tag": lambda d: d["tags"].update({"refs/tags/v9.0.0": {"commit": SOURCE, "object": SOURCE}}),
-            "retag": lambda d: d["tags"]["refs/tags/v4.0.0"].update(commit=OLD_SOURCE),
-            "wrong-source": lambda d: d["tags"]["refs/tags/v4.0.1"].update(commit=OLD_SOURCE),
-            "asset-missing": lambda d: d["releases"]["3"]["assets"].pop("hexalith-memories-production.yaml"),
-            "extra-release": lambda d: d["releases"].update({"4": copy.deepcopy(d["releases"]["3"])}),
-            "draft": lambda d: d["releases"]["3"].update(draft=True),
-            "old-asset-size": lambda d: d["releases"]["1"]["assets"]["historical.yaml"].update(size=11),
-            "old-asset-digest": lambda d: d["releases"]["1"]["assets"]["historical.yaml"].update(digest=None),
-            "missing-package": lambda d: d["packages"][PACKAGES[0]].pop("4.0.1"),
-            "unlisted": lambda d: d["packages"][PACKAGES[0]]["4.0.0"].update(listed=False),
-            "missing-image": lambda d: d["images"][IMAGES[0]].pop("4.0.1"),
-            "old-image-changed": lambda d: d["images"][IMAGES[0]]["4.0.0"].update(digest="sha256:" + "f" * 64),
-            "old-media-type-changed": lambda d: d["images"][IMAGES[0]]["4.0.0"].update(mediaType=TOOL.INDEX_TYPES[1]),
-            "new-single-image": lambda d: d["images"][IMAGES[0]]["4.0.1"].update(mediaType=TOOL.MANIFEST_TYPES[0]),
-            "latest-elsewhere": lambda d: d.update(latest="2"),
+            "extra-tag": (lambda d: d["tags"].update({"refs/tags/v9.0.0": {"commit": SOURCE, "object": SOURCE}}),
+                          "identity/tags/refs/tags/v9.0.0: added"),
+            "retag": (lambda d: d["tags"]["refs/tags/v4.0.0"].update(commit=OLD_SOURCE),
+                      "identity/tags/refs/tags/v4.0.0/commit: changed"),
+            "wrong-source": (lambda d: d["tags"]["refs/tags/v4.0.1"].update(commit=OLD_SOURCE), "missing tag or wrong source"),
+            "asset-missing": (lambda d: d["releases"]["3"]["assets"].pop("hexalith-memories-production.yaml"),
+                              "expected the 13 nonempty digested assets"),
+            "zero-size-asset": (lambda d: d["releases"]["3"]["assets"]["hexalith-memories-production.yaml"].update(size=0),
+                                "expected the 13 nonempty digested assets"),
+            "extra-release": (lambda d: d["releases"].update({"4": copy.deepcopy(d["releases"]["3"])}), "expected exactly one new release"),
+            "draft": (lambda d: d["releases"]["3"].update(draft=True), "wrong tag or publication state"),
+            "new-tag-mismatch": (lambda d: d["releases"]["3"].update(tag="v4.0.2"), "wrong tag or publication state"),
+            "stable-as-prerelease": (lambda d: d["releases"]["3"].update(prerelease=True), "wrong tag or publication state"),
+            "old-asset-size": (lambda d: d["releases"]["1"]["assets"]["historical.yaml"].update(size=11),
+                               "identity/releases/1/assets/historical.yaml/size: changed"),
+            "old-asset-digest": (lambda d: d["releases"]["1"]["assets"]["historical.yaml"].update(digest="sha256:" + "e" * 64),
+                                 "identity/releases/1/assets/historical.yaml/digest: changed"),
+            "malformed-old-asset-digest": (lambda d: d["releases"]["1"]["assets"]["historical.yaml"].update(digest=None),
+                                           "invalid asset identity"),
+            "missing-package": (lambda d: d["packages"][package].pop("4.0.1"), f"identity/packages/{package}/4.0.1: removed"),
+            "unlisted": (lambda d: d["packages"][package]["4.0.0"].update(listed=False), f"identity/packages/{package}/4.0.0/listed: changed"),
+            "new-version-unlisted": (lambda d: d["packages"][package]["4.0.1"].update(listed=False),
+                                     f"identity/packages/{package}/4.0.1/listed: changed"),
+            "missing-image": (lambda d: d["images"][image].pop("4.0.1"), "new release tag must be an image index"),
+            "old-image-changed": (lambda d: d["images"][image]["4.0.0"].update(digest="sha256:" + "f" * 64),
+                                  f"identity/images/{image}/4.0.0/digest: changed"),
+            "old-media-type-changed": (lambda d: d["images"][image]["4.0.0"].update(mediaType=TOOL.INDEX_TYPES[1]),
+                                       f"identity/images/{image}/4.0.0/mediaType: changed"),
+            "new-single-image": (lambda d: d["images"][image]["4.0.1"].update(mediaType=TOOL.MANIFEST_TYPES[0]),
+                                 "new release tag must be an image index"),
+            "latest-draft": (lambda d: d.update(latest="2"), "Latest must identify a published stable release"),
         }
-        for label, mutate in mutations.items():
+        for label, (mutate, expected) in mutations.items():
             with self.subTest(label=label):
                 after = self.additive(before)
                 mutate(after)
-                try:
-                    self.assertTrue(TOOL.compare(before, after, "additive", "4.0.1", SOURCE))
-                except ValueError as error:
-                    self.assertTrue(str(error))
-        with self.assertRaisesRegex(ValueError, "already existed"):
-            TOOL.compare(before, self.additive(before), "additive", "4.0.0", SOURCE)
+                self.assert_refused_naming(expected, before, after)
+        with self.assertRaisesRegex(ValueError, "refs/tags/v4.0.0: already existed"):
+            TOOL.compare(before, self.additive(before, "4.0.0"), "additive", "4.0.0", SOURCE)
+
+    def test_additive_refuses_latest_moved_to_an_older_stable_release(self):
+        before = self.captured()
+        before["releases"]["2"].update(draft=False, prerelease=False)
+        after = self.additive(before)
+        after["latest"] = "2"
+        with self.assertRaisesRegex(ValueError, "GitHub Latest: moved elsewhere"):
+            TOOL.compare(before, after, "additive", "4.0.1", SOURCE)
+
+    def test_additive_refuses_preexisting_package_version_or_image_tag_without_git_tag(self):
+        package, image = PACKAGES[0], IMAGES[0]
+        before = self.captured()
+        before["packages"][package]["4.0.1"] = {"listed": True}
+        with self.assertRaisesRegex(ValueError, f"NuGet {package}: version already existed"):
+            TOOL.compare(before, self.additive(before), "additive", "4.0.1", SOURCE)
+        before = self.captured()
+        before["images"][image]["4.0.1"] = {"digest": "sha256:" + "9" * 64, "mediaType": TOOL.INDEX_TYPES[0]}
+        with self.assertRaisesRegex(ValueError, f"registry {image}: tag already existed"):
+            TOOL.compare(before, self.additive(before), "additive", "4.0.1", SOURCE)
+
+    def test_additive_prerelease_positive_control_and_argument_refusals(self):
+        before = self.captured()
+        version = "4.1.0-RC.1"
+        after = self.additive(before, version)
+        self.assertEqual([], TOOL.compare(before, after, "additive", version, SOURCE))
+        stable = copy.deepcopy(after)
+        stable["releases"]["3"]["prerelease"] = False
+        self.assert_refused_naming("wrong tag or publication state", before, stable, version)
+        promoted = copy.deepcopy(after)
+        promoted["latest"] = "3"
+        self.assert_refused_naming("Latest must identify a published stable release", before, promoted, version)
+        refusals = {
+            (None, SOURCE): "--version is required (without v)",
+            ("v4.0.1", SOURCE): "--version is required (without v)",
+            ("4.1.0-rc.01", SOURCE): "numeric prerelease identifier has a leading zero",
+            ("4.0.1", None): "--source-sha is required",
+            ("4.0.1", SOURCE[:12]): "--source-sha is required",
+            ("4.0.1", SOURCE.upper()): "--source-sha is required",
+        }
+        for (candidate, source), expected in refusals.items():
+            with self.subTest(version=candidate, source=source):
+                with self.assertRaises(ValueError) as refusal:
+                    TOOL.compare(before, self.additive(before), "additive", candidate, source)
+                self.assertIn(expected, str(refusal.exception))
+
+    def test_identical_names_every_well_formed_added_removed_changed_member(self):
+        before = self.captured()
+        package, image = PACKAGES[0], IMAGES[0]
+        mutations = {
+            "tag-added": (lambda d: d["tags"].update({"refs/tags/v9.9.9": {"object": SOURCE, "commit": SOURCE}}),
+                          "identity/tags/refs/tags/v9.9.9: added"),
+            "tag-object-changed": (lambda d: d["tags"]["refs/tags/v4.0.0"].update(object=OLD_SOURCE),
+                                   "identity/tags/refs/tags/v4.0.0/object: changed"),
+            "release-added": (lambda d: d["releases"].update({"5": {"tag": "v5.0.0-preview", "draft": True, "prerelease": True, "assets": {}}}),
+                              "identity/releases/5: added"),
+            "release-state-changed": (lambda d: d["releases"]["2"].update(draft=False), "identity/releases/2/draft: changed"),
+            "asset-digest-changed": (lambda d: d["releases"]["1"]["assets"]["historical.yaml"].update(digest="sha256:" + "e" * 64),
+                                     "identity/releases/1/assets/historical.yaml/digest: changed"),
+            "package-version-removed": (lambda d: d["packages"][package].pop("3.9.0"), f"identity/packages/{package}/3.9.0: removed"),
+            "package-listed-changed": (lambda d: d["packages"][package]["3.9.0"].update(listed=True),
+                                       f"identity/packages/{package}/3.9.0/listed: changed"),
+            "image-tag-added": (lambda d: d["images"][image].update({"4.0.9": copy.deepcopy(INDEX_IDENTITY)}),
+                                f"identity/images/{image}/4.0.9: added"),
+            "image-digest-changed": (lambda d: d["images"][image]["4.0.0"].update(digest="sha256:" + "f" * 64),
+                                     f"identity/images/{image}/4.0.0/digest: changed"),
+        }
+        for label, (mutate, expected) in mutations.items():
+            with self.subTest(label=label):
+                after = copy.deepcopy(before)
+                mutate(after)
+                delta = TOOL.compare(before, after, "identical")
+                self.assertEqual([expected], delta)
+
+    def test_registry_pagination_refuses_off_host_link_before_sending_credentials(self):
+        repository = IMAGES[0]
+        for link in (f'<https://elsewhere.invalid/v2/{repository}/tags/list?n=100&last=4.0.0>; rel="next"',
+                     f'<https://{TOOL.REGISTRY}/v2/other-repository/tags/list?n=100&last=4.0.0>; rel="next"'):
+            with self.subTest(link=link):
+                self.responders.requests.clear()
+                def paged(url, link=link):
+                    if "/tags/list?n=100" in url and "last=" not in url:
+                        return Response({"name": repository, "tags": ["4.0.0"]}, {"Link": link})
+                    if "elsewhere.invalid" in url or "other-repository" in url:
+                        raise AssertionError("credentials must not leave the configured repository")
+                self.responders.fault = paged
+                with self.assertRaisesRegex(ValueError, f"registry {repository}: invalid pagination"):
+                    TOOL.images(TOOL.Reader(), repository)
+                self.assertFalse([request for request in self.responders.requests
+                                  if "elsewhere.invalid" in request.full_url or "other-repository" in request.full_url])
 
     def test_ambiguous_http_statuses_name_member_and_write_no_snapshot(self):
         for host_path, name in (("/releases?", "GitHub"), ("/v3-flatcontainer/", "NuGet"), ("/registration5-gz-semver2/", "NuGet"), ("/tags/list?", "registry"), ("/manifests/", "registry")):

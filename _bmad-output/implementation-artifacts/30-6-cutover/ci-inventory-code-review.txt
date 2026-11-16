@@ -1,0 +1,12 @@
+build: dotnet build tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj --configuration Debug -p:UseHexalithProjectReferences=true --artifacts-path <scratch>/ctbuild2 -m:1 -v:m (review-patched CiTestInventoryTests.cs)
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+run (after all review patches to deferred-work.md/CONTRIBUTING.md; the class reads them at runtime): DiffEngine_Disabled=true dotnet exec <scratch>/ctbuild2/bin/Hexalith.Memories.Cli.Tests/debug/Hexalith.Memories.Cli.Tests.dll -class Hexalith.Memories.Cli.Tests.Ci.CiTestInventoryTests
+xUnit.net v3 In-Process Runner v4.0.3+384aa7f0b4 (64-bit .NET 11.0.0)
+  Discovering: Hexalith.Memories.Cli.Tests
+  Discovered:  Hexalith.Memories.Cli.Tests
+  Starting:    Hexalith.Memories.Cli.Tests
+  Finished:    Hexalith.Memories.Cli.Tests (ID = 'c5b265c0bc668bb84c6f1a70b15ce03fa3f1e920e6157dfea920cb6fb4778cf2')
+=== TEST EXECUTION SUMMARY ===
+   Hexalith.Memories.Cli.Tests  Total: 118, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.238s

@@ -346,17 +346,24 @@ including recognized OCI/Docker single-image manifests and indexes. Capture veri
 response bytes against the registry digest and refuses unknown formats. Existing entries come
 from the before-snapshot; there is no historical allowlist or version cutoff. Only the five new
 version tags in an additive release must be image indexes. Use a fresh directory so prior evidence
-cannot be overwritten:
+cannot be overwritten. Keep it in a tracked, exact-byte location: `artifacts/` is git-ignored, and
+the root `text=auto eol=crlf` rule would rewrite snapshot bytes on checkout and break the receipts.
+The `30-6-cutover/**` path below carries the `-text` rule in `.gitattributes`; commit both files
+and their receipts:
 
 ```bash
-VERSION=4.0.1 # replace with the approved semantic-release candidate
+VERSION=4.1.0 # replace with the approved semantic-release candidate (feat e201f169 follows v4.0.0)
 SOURCE_SHA='REPLACE_WITH_FULL_APPROVED_CURRENT_MAIN_SHA'
-EVIDENCE=artifacts/next-release-$VERSION
+EVIDENCE=_bmad-output/implementation-artifacts/30-6-cutover/next-release-$VERSION
 python3 -B tools/release-identity-snapshot.py capture --output "$EVIDENCE/identity-before.json"
 ```
 
 Retain this before-snapshot and its `.sha256` receipt before the separately authorized dispatch.
-After the release finishes, capture again and require the additive-only check:
+After the release finishes, capture again and require the additive-only check. NuGet's
+flat-container and registration indexes can lag the push; an early after-capture refuses with
+`flat-container/registration version sets disagree` and writes nothing, so wait and capture again.
+Never edit a snapshot. A disagreement that persists after NuGet has finished validating the new
+versions is an incident: investigate the named member.
 
 ```bash
 python3 -B tools/release-identity-snapshot.py capture --output "$EVIDENCE/identity-after.json"
@@ -372,9 +379,9 @@ retained-byte recovery or a named blocker; never rerun publication to manufactur
 
 | Checkpoint | Owner | Exact command or artifact | Review state | Completion state |
 | --- | --- | --- | --- | --- |
-| Retrospective caller parity and removal | Memories Release Engineer | `30-6-cutover/parity-matrix.md` | reviewed 2026-11-16 | see matrix gate |
-| Next-release before-snapshot | Jérôme Piquot | `capture --output "$EVIDENCE/identity-before.json"` above | pending | obligation; not complete |
-| Final-code live additive proof | Jérôme Piquot | `compare ... --expect additive --version "$VERSION" --source-sha "$SOURCE_SHA"` above | pending | obligation; no live credit |
+| Retrospective caller parity and removal | Memories Release Engineer | `30-6-cutover/parity-matrix.md` | reviewed 2026-11-16 | complete; zero regression rows; old runner retired 2026-11-16 |
+| Next-release before-snapshot | Jérôme Piquot | `capture --output "$EVIDENCE/identity-before.json"` above | accepted 2026-11-16 (D2 obligation) | not complete; consequence: no final-code live publication credit; reopen trigger: the next owner-authorized dispatch |
+| Final-code live additive proof | Jérôme Piquot | `compare ... --expect additive --version "$VERSION" --source-sha "$SOURCE_SHA"` above | accepted 2026-11-16 (D2 obligation) | not complete; consequence: no final-code live publication credit; reopen trigger: the next owner-authorized dispatch followed by this comparison |
 
 ## Release Rollback
 
@@ -386,11 +393,21 @@ images carry the do-not-deploy defect described above. The pre-30.3 caller
 `46667b0d25c707bcdc961d59895bfe5a064bfd12` is never a target: it publishes on push and ignores
 the publication flag. Do not restore a push-triggered caller.
 
-1. Record the blocker, selected guarded tag, fully released evidence and owner in the PR. Capture
-   `identity-before.json` using the snapshot tool. Refuse an ambiguous live read.
+1. Record the blocker, selected guarded tag, fully released evidence and owner in the PR. From
+   the repository root, choose a fresh tracked exact-byte evidence directory outside any disposable
+   `$TMPDIR` and capture the before-snapshot. Refuse an ambiguous live read:
+
+   ```bash
+   TARGET_TAG=v4.0.0 # the re-established latest fully released guarded tag
+   ROLLBACK_EVIDENCE="$PWD/_bmad-output/implementation-artifacts/30-6-cutover/rollback-$(date -u +%Y%m%dT%H%M%SZ)"
+   python3 -B tools/release-identity-snapshot.py capture --output "$ROLLBACK_EVIDENCE/identity-before.json"
+   ```
+
 2. From a clean checkout at the PR base, run preparation and all scratch validation inside one
-   foreground `run-with-temp bash` job. Keep that job alive until every child has finished and
-   cleanup completes; retain requested logs outside its private `$TMPDIR`. Materialize both the
+   foreground shell job that owns a private, disposable `$TMPDIR` (on the maintainer workstation,
+   `run-with-temp bash`; elsewhere, a dedicated shell after `export TMPDIR="$(mktemp -d)"`).
+   Keep that job alive until every child has finished and cleanup completes; retain requested
+   logs outside its private `$TMPDIR`. Materialize both the
    Memories worktree and a separate worktree of the unchanged **root-declared** Builds gitlink.
    A plain directory beneath an uninitialized gitlink lets historical fixtures skip and supplies
    no qualification. From the repository root, inside that wrapper job:
@@ -414,12 +431,17 @@ the publication flag. Do not restore a push-triggered caller.
    Builds path. The pinned preparation/publication helper and historical recovery commits must
    already exist in the local root-declared Builds object store; stop with a named blocker if
    any is absent. Do not fetch or update a dependency, pin, allowlist or nested submodule to
-   manufacture availability. The exact restored path inventory is
-   [`30-6-cutover/rollback-surface.txt`](../../_bmad-output/implementation-artifacts/30-6-cutover/rollback-surface.txt).
-   It covers caller, publisher, recovery tools and their tests, including files absent at the target.
-   Restore only that reviewed surface from the selected tag, with `git restore --source v4.0.0 --worktree -- <paths>`.
-   Dependencies, Builds gitlinks/execution pins and recovery allowlists need their own authorization
-   if a future target would require changes. Check the actual diff before making a PR.
+   manufacture availability. The 2026-11-15 rehearsal restored the inventory in
+   [`30-6-cutover/rollback-surface.txt`](../../_bmad-output/implementation-artifacts/30-6-cutover/rollback-surface.txt)
+   at a base that still carried the old runner. It covers caller, publisher, recovery tools and
+   their tests, including files absent at the target. After the Story 30.6 retirement, restore that
+   inventory with two exclusions. Never restore `tools/test-release.ps1`: D4 retired it and no
+   guarded caller invokes it. Never restore `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs`
+   wholesale: it also carries non-release inventory facts, the retired runner's absence fact and the
+   deferred-work schema guard. Restore the remaining paths with
+   `git restore --source "$TARGET_TAG" --worktree -- <paths>`. Dependencies, Builds gitlinks/execution
+   pins and recovery allowlists need their own authorization if a future target would require
+   changes. Check the actual diff before making a PR.
 3. Run `actionlint .github/workflows/release.yml .github/workflows/recover-partial-release.yml`
    and each of the following exact fixture commands in that worktree, inside the same wrapper
    job. Require exit 0 **and zero skips for every lane**, including every isolated fallback
@@ -447,11 +469,15 @@ the publication flag. Do not restore a push-triggered caller.
    Python process, once, with no skipped assertions:
 
    ```bash
+   FALLBACK_FAILED=
    for MODULE in partial_release_completion_test.py publication_contract_test.py publish_containers_test.py registry_authorization_test.py release_orchestration_test.py
    do
-     python3 -B -m unittest discover -s tests/tooling/publish_containers -p "$MODULE" -v || exit 1
+     python3 -B -m unittest discover -s tests/tooling/publish_containers -p "$MODULE" -v || { echo "named blocker: $MODULE failed" >&2; FALLBACK_FAILED=1; break; }
    done
    ```
+
+   A failed module does not exit the wrapper job: still run the step-4 cleanup, then report
+   the blocker.
 
    Require the aggregate executed IDs to equal the entire discovered set, with zero skips.
    The 30.6 rehearsal executed 104/104 exact IDs in those five processes (9/50/26/12/7).
@@ -462,10 +488,29 @@ the publication flag. Do not restore a push-triggered caller.
    test was rerun or changed for that metadata correction. Record any remaining failed
    module as a named blocker and keep the rollback checkpoint incomplete.
 
-4. Capture `identity-after-rollback.json` from the read-only destinations, then run:
+   A rollback PR that restores this target's `tests/tooling/publish_containers` also inherits the
+   race in CI's `test-unit-contract` job, which runs the full discovery. Rerun a failed CI job only
+   when the failure is this named fixture race, and require the rerun to pass in full. Otherwise
+   record a named blocker. Patching the restored fixture changes the target and needs its own
+   authorization.
+
+   The C# inventory class cannot build in this scratch layout, because only the Builds gitlink is
+   materialized. Run it in the PR branch checkout, with its root-declared submodules, after applying
+   the same restore. Adjust only the release-surface facts it reports, record that adjustment in
+   the PR, and require the class to pass there and in PR CI:
 
    ```bash
-   python3 -B tools/release-identity-snapshot.py compare identity-before.json identity-after-rollback.json --expect identical
+   dotnet build tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj --configuration Debug -p:UseHexalithProjectReferences=true --artifacts-path "$TMPDIR/cli-tests" -m:1
+   DiffEngine_Disabled=true dotnet exec "$TMPDIR/cli-tests/bin/Hexalith.Memories.Cli.Tests/debug/Hexalith.Memories.Cli.Tests.dll" -class Hexalith.Memories.Cli.Tests.Ci.CiTestInventoryTests
+   ```
+
+4. Return to the source checkout, capture the after-snapshot from the read-only destinations into
+   the same evidence directory, then compare:
+
+   ```bash
+   cd "$SOURCE_ROOT"
+   python3 -B tools/release-identity-snapshot.py capture --output "$ROLLBACK_EVIDENCE/identity-after-rollback.json"
+   python3 -B tools/release-identity-snapshot.py compare "$ROLLBACK_EVIDENCE/identity-before.json" "$ROLLBACK_EVIDENCE/identity-after-rollback.json" --expect identical
    ```
 
    Require exit 0 and retain both receipts and test logs outside the disposable directory.
@@ -482,6 +527,14 @@ the publication flag. Do not restore a push-triggered caller.
    rehearsal. The checked local diff becomes the reviewable PR;
    merging or dispatching it requires the ordinary owner-controlled process.
 
+5. After the rollback PR merges and its push CI finishes, capture again and require that the
+   merge published nothing:
+
+   ```bash
+   python3 -B tools/release-identity-snapshot.py capture --output "$ROLLBACK_EVIDENCE/identity-after-merge.json"
+   python3 -B tools/release-identity-snapshot.py compare "$ROLLBACK_EVIDENCE/identity-before.json" "$ROLLBACK_EVIDENCE/identity-after-merge.json" --expect identical
+   ```
+
 Rolling back to v4.0.0 drops the retained-byte recovery bundles introduced in Story 30.5.
 A subsequent failed release can therefore lack the current-set recovery bytes. Preserve every
 available immutable artifact and record a named blocker when recovery prerequisites are absent.
@@ -492,8 +545,8 @@ published identities, and never move Latest as part of rollback.
 | Checkpoint | Owner | Exact command or artifact | Review state | Completion state |
 | --- | --- | --- | --- | --- |
 | Fully released guarded target and refusals | Memories Maintainer | This rule plus `30-6-cutover/parity-matrix.md` | reviewed 2026-11-16 | documented; live target proof recorded in matrix |
-| Local rollback release lanes | Platform Operations | `30-6-cutover/rollback-rehearsal.md` | reviewed 2026-11-16 | see rehearsal result |
-| Published identities unchanged | Platform Operations | `compare identity-before.json identity-after-rollback.json --expect identical` | reviewed 2026-11-16 | see rehearsal result |
+| Local rollback release lanes | Platform Operations | `30-6-cutover/rollback-rehearsal.md` | reviewed 2026-11-16 | complete 2026-11-16; actionlint and five lanes pass; containers 104/104 through isolated modules after retained full-discovery fixture flakes |
+| Published identities unchanged | Platform Operations | `compare identity-before.json identity-after-rollback.json --expect identical` | reviewed 2026-11-16 | complete 2026-11-16; the before, after and supplemental snapshots are byte-identical |
 
 ## Prerequisites
 

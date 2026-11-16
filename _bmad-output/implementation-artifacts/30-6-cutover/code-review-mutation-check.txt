@@ -1,0 +1,8 @@
+Story 30.6 code review 2026-11-16: mutation check on a scratch copy of tools/release-identity-snapshot.py (HEAD e1cded9f sha256 6bd754f0ba3a99b87e6c97f427d73c46b3602bfcf8cced576b2daa9eef2bd9ff) against the review-patched tests/tooling/release_cutover suite. Command: python3 -I -B mutate.py <scratch-root>; each mutation is applied alone and the original restored.
+latest-elsewhere(448): CAUGHT ['Ran 34 tests in 0.229s', 'FAILED (failures=1)']
+nuget-existed(451): CAUGHT ['Ran 34 tests in 0.236s', 'FAILED (failures=1)']
+image-existed(454): CAUGHT ['Ran 34 tests in 0.233s', 'FAILED (failures=1)']
+prerelease-clause(441): CAUGHT ['Ran 34 tests in 0.228s', 'FAILED (failures=2)']
+tag-clause(441): CAUGHT ['Ran 34 tests in 0.225s', 'FAILED (failures=1)']
+size>0(445): CAUGHT ['Ran 34 tests in 0.227s', 'FAILED (failures=1)']
+registry-offhost(300): CAUGHT ['Ran 34 tests in 0.221s', 'FAILED (failures=2)']

@@ -30,14 +30,14 @@ the passing final local lanes without changing the original failure evidence.
 
 | Checkpoint | Owner | Exact command or artifact | Review state | Completion state |
 | --- | --- | --- | --- | --- |
-| Workflow syntax | Platform Operations | `actionlint .github/workflows/release.yml .github/workflows/recover-partial-release.yml`; `rollback-actionlint.txt` | pending independent review | complete; exit 0 |
-| Package lane | Platform Operations | `python3 -B -m unittest discover -s tests/tooling/release_packages -p '*_test.py' -v`; `rollback-release_packages.txt` | pending independent review | complete; exit 0 |
-| Preflight lane | Platform Operations | Same discovery command with `tests/tooling/release_preflight`; `rollback-release_preflight.txt` | pending independent review | complete; exit 0 |
-| Dispatch lane | Platform Operations | Same discovery command with `tests/tooling/release_dispatch`; `rollback-release_dispatch.txt` | pending independent review | complete; exit 0 |
-| NuGet lane | Platform Operations | Same discovery command with `tests/tooling/publish_nuget`, padded private TMPDIR below; `rollback-publish_nuget-padded.txt` | pending independent review | complete; 32/32 methods pass, zero skips, exit 0; original failures retained |
-| Container lane | Platform Operations | Same discovery command with `tests/tooling/publish_containers`; `rollback-publish_containers.txt` | pending independent review | complete; 104/104 methods, zero skips, exit 0 |
-| Temporary worktree cleanup | Platform Operations | `git worktree list`; no 30.6 worktree remains | pending independent review | complete after all child jobs finished |
-| Before/after published identities | Platform Operations | Intended `identity-before.json`, `identity-after-rollback.json`, `compare --expect identical`; `snapshot-capture-refused.txt` | blocked by historical manifest shape | not complete; no snapshots written and no identical verdict claimed |
+| Workflow syntax | Platform Operations | `actionlint .github/workflows/release.yml .github/workflows/recover-partial-release.yml`; `rollback-actionlint.txt` | reviewed 2026-11-16 (code review; results unchanged) | complete; exit 0 |
+| Package lane | Platform Operations | `python3 -B -m unittest discover -s tests/tooling/release_packages -p '*_test.py' -v`; `rollback-release_packages.txt` | reviewed 2026-11-16 (code review; results unchanged) | complete; exit 0 |
+| Preflight lane | Platform Operations | Same discovery command with `tests/tooling/release_preflight`; `rollback-release_preflight.txt` | reviewed 2026-11-16 (code review; results unchanged) | complete; exit 0 |
+| Dispatch lane | Platform Operations | Same discovery command with `tests/tooling/release_dispatch`; `rollback-release_dispatch.txt` | reviewed 2026-11-16 (code review; results unchanged) | complete; exit 0 |
+| NuGet lane | Platform Operations | Same discovery command with `tests/tooling/publish_nuget`, padded private TMPDIR below; `rollback-publish_nuget-padded.txt` | reviewed 2026-11-16 (code review; results unchanged) | complete; 32/32 methods pass, zero skips, exit 0; original failures retained |
+| Container lane | Platform Operations | Same discovery command with `tests/tooling/publish_containers`; `rollback-publish_containers.txt` | reviewed 2026-11-16 (code review; results unchanged) | complete; 104/104 methods, zero skips, exit 0 |
+| Temporary worktree cleanup | Platform Operations | `git worktree list`; no 30.6 worktree remains | reviewed 2026-11-16 (code review; results unchanged) | complete after all child jobs finished |
+| Before/after published identities | Platform Operations | Intended `identity-before.json`, `identity-after-rollback.json`, `compare --expect identical`; `snapshot-capture-refused.txt` | superseded 2026-11-16 by the D6 addendum below (reviewed) | not complete at this report; no snapshots written and no identical verdict claimed |
 
 ## Named blockers
 
@@ -189,3 +189,7 @@ D2's next owner-dispatched release remains an explicit additive-snapshot obligat
 proof supplies no live final-code publication credit and authorizes no dispatch or remote change.
 
 Final review follow-up — 2026-11-16: the stronger guards retain the same snapshot format. `identity-post-review.json` is byte-identical to the temporal-bracket snapshots, and its capture/comparison exit 0. Original refusal, failed discoveries and passing isolated modules remain unchanged.
+
+Code review 2026-11-16: the original table's review states above now carry their dated disposition; every recorded
+result, failure and refusal is unchanged. The full container discovery in the 2026-11-15 rehearsal passed 104/104
+(`rollback-publish_containers.txt`); the D6 bracket credits the isolated-module run as recorded in the addendum.

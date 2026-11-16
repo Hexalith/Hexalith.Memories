@@ -56,3 +56,7 @@ and matched the registry header; both digest and media type are retained.
 Candidate **4.0.1** is absent from the tag refs, Release tags, all ten package inventories and
 all five image repositories. This is a before-state observation, not a version selection or
 authorization to dispatch. The qualifier's synthetic 0.0.302 version remains offline-only.
+
+Code review correction (2026-11-16): semantic-release's next candidate from this base is **4.1.0**, because
+`feat` commit `e201f169` follows v4.0.0. `identity-before.json` also shows 4.1.0 absent from the tag refs,
+Release tags, all ten package inventories and all five image repositories. The 4.0.1 statement above is retained as written.

@@ -38,6 +38,9 @@ public sealed partial class CiTestInventoryTests
         "access_telemetry_lifecycle",
     ];
 
+    // Story 14.5: the closed structured-entry status vocabulary of deferred-work.md (DW-2).
+    private static readonly string[] AllowedDeferredStatuses = ["open", "resolved", "accepted", "carried-forward"];
+
     [Fact]
     public void DockerFreeProjectInventory_ShouldMatchExpectedUnitAndContractAssemblies()
     {
@@ -1243,6 +1246,92 @@ public sealed partial class CiTestInventoryTests
     }
 
     [Fact]
+    public void DeferredWorkRegister_RealRepo_StructuredEntriesSatisfyFieldContract()
+    {
+        string repoRoot = GetRepoRoot();
+        string[] lines = File.ReadAllLines(Path.Combine(repoRoot, "_bmad-output", "implementation-artifacts", "deferred-work.md"));
+
+        // Story 30.6 code review: retiring tools/test-release.ps1 must not retire the register's
+        // structured field contract (DW-1..DW-6). Every ID-led entry is still parsed and validated;
+        // the positive control keeps a broken parser from passing vacuously on zero entries.
+        StructuredDeferredEntry[] entries = ParseStructuredDeferredEntries(lines);
+
+        entries.ShouldNotBeEmpty("deferred-work.md carries ID-led structured entries (for example 27.21-C1.15-*); an empty parse means the reader no longer recognises them.");
+    }
+
+    [Fact]
+    public void ParseStructuredDeferredEntries_NoStructuredEntries_ReturnsEmpty()
+    {
+        string[] fixture =
+        [
+            "## Deferred from: code review of legacy-story (test-fixture)",
+            string.Empty,
+            "- **12.4-RV101. Legacy prose entry without structured fields.** Existing prose does not match the structured schema, so the parser must ignore it.",
+        ];
+
+        ParseStructuredDeferredEntries(fixture).ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData("ID")]
+    [InlineData("Status")]
+    [InlineData("Source story")]
+    [InlineData("Target artifact")]
+    [InlineData("Re-open trigger")]
+    public void ParseStructuredDeferredEntries_StructuredEntryMissingRequiredField_FailsLoudly(string missingField)
+    {
+        string[] fixture = BuildStructuredFixtureWithoutField(missingField);
+
+        ShouldAssertException assertion = Should.Throw<ShouldAssertException>(() => ParseStructuredDeferredEntries(fixture));
+        assertion.Message.ShouldContain($"'{missingField}");
+    }
+
+    [Fact]
+    public void ParseStructuredDeferredEntries_StructuredEntryMissingEvidenceAndRationale_FailsLoudly()
+    {
+        string[] fixture = StructuredFixture("open");
+
+        ShouldAssertException assertion = Should.Throw<ShouldAssertException>(() => ParseStructuredDeferredEntries(fixture));
+        assertion.Message.ShouldContain("Evidence");
+        assertion.Message.ShouldContain("Rationale");
+    }
+
+    [Fact]
+    public void ParseStructuredDeferredEntries_ResolvedEntryWithoutEvidence_FailsLoudly()
+    {
+        string[] fixture = StructuredFixture("resolved", "  - Rationale: fixture rationale.");
+
+        ShouldAssertException assertion = Should.Throw<ShouldAssertException>(() => ParseStructuredDeferredEntries(fixture));
+        assertion.Message.ShouldContain("Evidence");
+    }
+
+    [Theory]
+    [InlineData("accepted")]
+    [InlineData("carried-forward")]
+    public void ParseStructuredDeferredEntries_NonResolvedDispositionWithoutRationale_FailsLoudly(string status)
+    {
+        string[] fixture = StructuredFixture(status, "  - Evidence: fixture evidence.");
+
+        ShouldAssertException assertion = Should.Throw<ShouldAssertException>(() => ParseStructuredDeferredEntries(fixture));
+        assertion.Message.ShouldContain("Rationale");
+    }
+
+    [Theory]
+    [InlineData("done")]
+    [InlineData("closed")]
+    [InlineData("fixed")]
+    [InlineData("deferred-again")]
+    [InlineData("Open")]
+    [InlineData("OPEN")]
+    public void ParseStructuredDeferredEntries_StructuredEntryWithInvalidStatus_FailsLoudly(string invalidStatus)
+    {
+        string[] fixture = StructuredFixture(invalidStatus, "  - Rationale: fixture rationale.");
+
+        ShouldAssertException assertion = Should.Throw<ShouldAssertException>(() => ParseStructuredDeferredEntries(fixture));
+        assertion.Message.ShouldContain("Status");
+    }
+
+    [Fact]
     public void DeferredWorkRegister_RealRepo_DeclaresEachIdExactlyOnce()
     {
         string repoRoot = GetRepoRoot();
@@ -1252,8 +1341,8 @@ public sealed partial class CiTestInventoryTests
 
         // Story 27.3: an ID collision has now recurred three times, each time because an entry was
         // renumbered to escape a collision and landed on another live ID (27.3-CR7 -> 27.3-CR17 ->
-        // 27.3-CR18). The earlier per-entry baseline guards checked for a
-        // duplicate field *within* one entry and stayed green across entries, so the register could
+        // 27.3-CR18). The per-entry structured reader (ParseStructuredDeferredEntries) checks for a
+        // duplicate field *within* one entry and stays green across entries, so the register could
         // resolve one ID to two unrelated obligations with nothing able to observe it. This binds
         // the register-wide invariant instead of the per-entry one.
         duplicates.ShouldBeEmpty($"deferred-work.md declares duplicate entry IDs: {string.Join(", ", duplicates)}");
@@ -2088,8 +2177,8 @@ public sealed partial class CiTestInventoryTests
     /// <summary>Returns every deferred-work ID declared more than once, with its occurrence count.</summary>
     /// <remarks>
     /// Uses <see cref="DeferredConsumerFieldRegex"/>, which mirrors the register's actual consumer
-    /// (<c>DEFERRED_FIELD_RE</c> in <c>tools/verify-integration-stub-closure.py</c>) rather than the retired
-    /// per-entry baseline reader. A line that consumer treats as an ID declaration cannot escape
+    /// (<c>DEFERRED_FIELD_RE</c> in <c>tools/verify-integration-stub-closure.py</c>) rather than the C#
+    /// structured-entry reader. A line that consumer treats as an ID declaration cannot escape
     /// this guard, and a line it ignores cannot make this guard fail. Values are grouped ordinally
     /// because that consumer keys its entry dictionary on the raw ID string.
     /// </remarks>
@@ -2105,8 +2194,141 @@ public sealed partial class CiTestInventoryTests
             .OrderBy(static description => description, StringComparer.Ordinal)
             .ToArray();
 
+    private static string[] StructuredFixture(string status, params string[] dispositionFields)
+        =>
+        [
+            "- **S11-FX. Test fixture entry.**",
+            "  - ID: S11-FX",
+            $"  - Status: {status}",
+            "  - Source story: 14-5-fixture",
+            "  - Target artifact: docs/dev/release-runbook.md",
+            "  - Re-open trigger: fixture trigger",
+            .. dispositionFields,
+        ];
+
+    private static string[] BuildStructuredFixtureWithoutField(string missingField)
+        => StructuredFixture("open", "  - Rationale: fixture rationale.")
+            .Where(field => !field.Contains($"- {missingField}:", StringComparison.Ordinal))
+            .ToArray();
+
+    // Story 14.5: reads every ID-led structured entry of deferred-work.md and enforces the closed
+    // field contract (DW-1..DW-6). Story 30.6 retired the release-lane baseline pairing that used
+    // to share this reader; the contract itself still binds every structured entry.
+    private static StructuredDeferredEntry[] ParseStructuredDeferredEntries(string[] lines)
+    {
+        List<StructuredDeferredEntry> result = [];
+        Dictionary<string, string> fields = new(StringComparer.Ordinal);
+        int? idLineIndex = null;
+
+        for (int i = 0; i < lines.Length; i++)
+        {
+            Match match = StructuredFieldRegex().Match(lines[i]);
+            if (!match.Success)
+            {
+                continue;
+            }
+
+            string label = match.Groups["label"].Value;
+            string value = match.Groups["value"].Value.Trim();
+
+            if (label == "ID")
+            {
+                FlushPendingStructuredEntry(result, fields, idLineIndex);
+                fields.Clear();
+                idLineIndex = i;
+            }
+
+            if (idLineIndex is null)
+            {
+                label.ShouldBe("ID", $"structured deferred field '{label}:' near line {i + 1} appears before an 'ID:' field; structured entries must start with 'ID:'.");
+            }
+
+            // review-14-5: a duplicate field within a single entry must fail closed so an editor
+            // mistake (e.g. two Status lines disagreeing) cannot silently keep the first or last
+            // value depending on hash insertion order.
+            fields.ContainsKey(label).ShouldBeFalse($"structured deferred entry has a duplicated '{label}:' field.");
+            fields[label] = value;
+        }
+
+        FlushPendingStructuredEntry(result, fields, idLineIndex);
+        return [.. result];
+    }
+
+    private static void FlushPendingStructuredEntry(
+        List<StructuredDeferredEntry> result,
+        Dictionary<string, string> fields,
+        int? idLineIndex)
+    {
+        if (idLineIndex is null || fields.Count == 0)
+        {
+            return;
+        }
+
+        fields.TryGetValue("ID", out string? id);
+        fields.TryGetValue("Status", out string? status);
+        fields.TryGetValue("Source story", out string? sourceStory);
+        fields.TryGetValue("Target artifact", out string? targetArtifact);
+        fields.TryGetValue("Re-open trigger", out string? reopenTrigger);
+        fields.TryGetValue("Evidence", out string? evidence);
+        fields.TryGetValue("Rationale", out string? rationale);
+
+        id.ShouldNotBeNullOrWhiteSpace($"structured deferred entry near line {idLineIndex} is missing the 'ID:' value.");
+        StructuredIdShape().IsMatch(id!).ShouldBeTrue($"structured deferred entry has 'ID: {id}' which is not a single non-whitespace token of allowed characters (alphanumeric, dot, dash).");
+
+        status.ShouldNotBeNullOrWhiteSpace($"structured deferred entry '{id}' is missing the required 'Status:' field.");
+        sourceStory.ShouldNotBeNullOrWhiteSpace($"structured deferred entry '{id}' is missing the required 'Source story:' field.");
+        targetArtifact.ShouldNotBeNullOrWhiteSpace($"structured deferred entry '{id}' is missing the required 'Target artifact:' field.");
+        reopenTrigger.ShouldNotBeNullOrWhiteSpace($"structured deferred entry '{id}' is missing the required 'Re-open trigger:' field.");
+
+        // The register's closure style writes a dated rationale after the status token
+        // (`Status: resolved 2026-07-26 - <why>`). Take the leading token as the status and
+        // keep the remainder as prose; the token itself must still be one of the four
+        // documented values, so `superseded` or any other invented status still fails.
+        status = status!.Split(' ', 2, StringSplitOptions.TrimEntries)[0];
+        AllowedDeferredStatuses.ShouldContain(status, $"structured deferred entry '{id}' has invalid 'Status: {status}'. Allowed values: {string.Join(", ", AllowedDeferredStatuses)}.");
+
+        if (status == "resolved")
+        {
+            evidence.ShouldNotBeNullOrWhiteSpace($"structured deferred entry '{id}' has 'Status: resolved' and must include an 'Evidence:' field.");
+        }
+        else if (status is "accepted" or "carried-forward")
+        {
+            rationale.ShouldNotBeNullOrWhiteSpace($"structured deferred entry '{id}' has 'Status: {status}' and must include a 'Rationale:' field.");
+        }
+        else
+        {
+            bool hasEvidenceOrRationale = !string.IsNullOrWhiteSpace(evidence) || !string.IsNullOrWhiteSpace(rationale);
+            hasEvidenceOrRationale.ShouldBeTrue($"structured deferred entry '{id}' must include either 'Evidence:' or 'Rationale:' (or both).");
+        }
+
+        result.Add(new StructuredDeferredEntry(id!, status, sourceStory!, targetArtifact!, reopenTrigger!, evidence, rationale));
+    }
+
+    // Story 14.5: structured-field reader for deferred-work.md. The label group enumerates the
+    // closed schema vocabulary so a typo like 'Statu:' cannot silently start a malformed entry,
+    // and the value group stops at end-of-line so trailing prose cannot bleed into a captured
+    // value. Bullet markers ('- ', '* ') and indentation are tolerated so the schema can render
+    // as nested Markdown sub-bullets. 'Test:' stays in the vocabulary (DW-11) so a legacy field
+    // is recognised rather than silently ignored.
+    [GeneratedRegex(@"^\s*(?:[-*]\s+)?(?<label>ID|Status|Source story|Target artifact|Re-open trigger|Evidence|Rationale|Test):\s+(?<value>.+?)\s*$")]
+    private static partial Regex StructuredFieldRegex();
+
+    // Story 14.5: ID values must be a single token of alphanumerics, dot, and dash so that
+    // similar-but-different IDs (12x4-RV6, 112.4-RV6) are captured verbatim.
+    [GeneratedRegex(@"^[A-Za-z0-9.\-]+$")]
+    private static partial Regex StructuredIdShape();
+
+    private sealed record StructuredDeferredEntry(
+        string Id,
+        string Status,
+        string SourceStory,
+        string TargetArtifact,
+        string ReopenTrigger,
+        string? Evidence,
+        string? Rationale);
+
     // Story 27.3 code review (eighth-invocation review): the duplicate-ID guard reused
-    // the retired structured-field regex and so disagreed with the register's actual consumer,
+    // StructuredFieldRegex above and so disagreed with the register's actual consumer,
     // read_deferred_entries in tools/verify-integration-stub-closure.py, in BOTH directions.
     // That consumer's DEFERRED_FIELD_RE is case-insensitive, accepts ':' with no following
     // space, and requires a '-' bullet. So '- id: 27.3-CR18' and '- ID:27.3-CR18' each create

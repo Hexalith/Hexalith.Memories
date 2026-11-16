@@ -524,7 +524,7 @@ development_status:
   30-3-guarded-release-dispatch-and-shared-caller-adoption: done
   30-4-five-image-publication-contract: done
   30-5-partial-release-recovery: done
-  30-6-release-cutover-parity-and-rollback: review
+  30-6-release-cutover-parity-and-rollback: done
   epic-30-retrospective: optional
 
   # Epic 31: OpenBao Secrets Platform and Runtime Secret-Store Migration

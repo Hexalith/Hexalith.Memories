@@ -27,6 +27,7 @@ origin: migrated from legacy ledger ("Schema for Active Entries"), 2026-09-01
 location: tools/test-release.ps1
 reason: - `Target artifact:` — the repository-relative path or planning artifact the entry targets. For release-lane baseline entries, this points at the consumer that owns the release filter (typically `tools/test-release.ps1` or a parser test).
 status: open
+note: 2026-11-16 — Story 30.6 code review. Story 30.6 retired `tools/test-release.ps1` (D4), so no release-lane baseline consumer exists. The structured field contract (DW-1..DW-6) stays enforced by `DeferredWorkRegister_RealRepo_StructuredEntriesSatisfyFieldContract` in `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs`.
 
 ### DW-5: `Re-open trigger:` — one sentence describing the event or evidence that would
 
@@ -76,6 +77,7 @@ origin: migrated from legacy ledger ("Schema for Active Entries"), 2026-09-01
 location: tools/test-release.ps1
 reason: - `Test:` — fully-qualified `Class.Method` name when the entry is paired with a release-lane filter in `tools/test-release.ps1`. Required when `Target artifact` references the release-lane test script.
 status: open
+note: 2026-11-16 — Story 30.6 code review. The `tools/test-release.ps1` release-lane pairing was retired with the runner (D4). The structured reader still recognises a legacy `Test:` field, but no current check pairs it with a release filter.
 
 ### DW-12: Case activity stream append and summary-hash update should be made atomic if duplicate retry side effects become observable.
 
@@ -6317,4 +6319,16 @@ decision: 2026-11-01 keep-open — parked. Reopens only on the trigger: any Prod
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-5-partial-release-recovery.md`
   summary: Measure the supported recovery bundle's peak disk footprint on the GitHub runner (unverified medium).
   evidence: R4 BH9. Downloaded ZIP, retained bundle, extraction and materialized OCI layouts coexist; the review supplied no supported-size/free-space or ENOSPC execution. Owner: Jérôme Piquot / platform operations. Consequence: runner capacity for a full live release bundle is unqualified. Reopen trigger: measure a supported bundle's peak filesystem usage and runner free space, or reproduce a controlled capacity failure, before selecting cleanup/capacity changes. Offline tiny fixtures are not capacity evidence.
+  status: open
+
+## Deferred from: code review of spec-30-6-release-cutover-parity-and-rollback.md (2026-11-16)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-30-6-release-cutover-parity-and-rollback.md`
+  summary: Prove the final 30.4-fix/30.5 release code live, with the D2 next-release identity snapshots and the additive-only comparison.
+  evidence: Frozen D2 records that live proof of the final code is a recorded obligation, not passed evidence. The v4.0.0 rehearsal run `43432588932` ran pre-30.5 code. The exact commands and the tracked exact-byte evidence location are in `docs/dev/release-runbook.md` "Release Cutover Parity". Owner: Jérôme Piquot. Consequence: there is no final-code live publication credit. Reopen trigger: the next owner-authorized release dispatch, followed by `compare --expect additive` against its retained before-snapshot.
+  status: open
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-30-6-release-cutover-parity-and-rollback.md`
+  summary: Prove current-set retained-byte recovery live. D2's additive check observes only a successful release and cannot exercise recovery.
+  evidence: Code review 2026-11-16 (Historical Slice Guard F5). The parity-matrix Failure/Recovery rows rest on static source plus the offline qualifier artifacts `30-6-cutover/recovery.json` and `partial-publication.json`, which carry no live credit. Parity row: `live-recovery`. Owner: Jérôme Piquot. Consequence: there is no live recovery credit for the final 30.5 code. Reopen trigger: the first owner-authorized Recover Partial Release run.
   status: open

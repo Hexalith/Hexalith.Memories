@@ -5862,7 +5862,7 @@ So that a partial release is completed exactly once without overwriting or retag
 
 **Owned paths:** `.github/workflows/recover-partial-release.yml`, `tools/complete-partial-release.ps1`.
 
-**Dated correction (2026-11-15, Story 30.6; F6):** The final Story 30.5 File Scope is authoritative for delivered ownership: nineteen implementation/test/doc paths plus the spec and sprint status (twenty-one changed files). It includes retained-byte capture/validation, caller failure retention, recovery tooling, Python and C# fixtures and the runbook, beyond the two original paths above.
+**Dated correction (2026-11-15, Story 30.6; F6):** The final Story 30.5 File Scope is authoritative for delivered ownership: twenty implementation/test/doc paths plus the spec, sprint status and deferred-work ledger, and six root submodule gitlinks (twenty-nine File List entries) [corrected 2026-11-16 by Story 30.6 code review: the note first read "nineteen ... (twenty-one changed files)"; `spec-30-5-partial-release-recovery.md` File List is authoritative]. It includes retained-byte capture/validation, caller failure retention, recovery tooling, Python and C# fixtures and the runbook, beyond the two original paths above.
 
 
 **Checkpoint evidence:** All artifacts below are planned; no gate has passed. Each independently verifiable gate has its own row.

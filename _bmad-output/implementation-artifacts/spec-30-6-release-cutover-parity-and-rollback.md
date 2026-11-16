@@ -113,18 +113,85 @@ These anchors are from investigation on 2026-11-15. Re-derive them before editin
 - Given the rollback rehearsal, when the before/after snapshots are compared, then they are identical and the rehearsed release lanes pass.
 - Given the runbook, when an operator prepares a rollback, then v3.0.19–v3.0.25 and the pre-30.3 caller are refused as targets, and the next-release additive check is documented with exact commands.
 
+### Review Findings
+
+Code review 2026-11-16 (`/bmad-code-review 30.6`), range `fad5ec5efb286a1b4589869a354895acd3aaf55c..e1cded9ffc6f6cc13c956a900e7ad1065bfd4830` (111 paths). Six layers ran and none failed: Blind Hunter, Edge Case Hunter, Verification Gap, Acceptance Auditor, Historical Slice Guard and Story Phase Ledger Auditor. They read a 5,245-line core diff. Bulky raw captures were excluded by size only, and their hashes and comparisons were replayed by the parent. Decisions were resolved with the recommended option under the owner's standing review preference and are listed for veto.
+
+- [x] [Review][Decision] Container rollback lane credited through isolated modules — Inside the D6 bracket, three full exact-v4.0.0 `publish_containers` discoveries each failed one different positive cancellation control (103/104). The cause is the documented v4.0.0 HTTP/1.0 204 fixture race, which `76de3ea4` fixes. Resolved (recommended, owner veto): AC2 is satisfied by the combined evidence.
+  - The same target passed full discovery 104/104 in the 2026-11-15 rehearsal (`30-6-cutover/rollback-publish_containers.txt`).
+  - All 104 IDs pass once in five fresh module processes.
+  - The fallback reuse is now classified.
+  - The runbook warns that a v4.0.0 rollback PR inherits this race in CI's full `publish_containers` step.
+  - `rollback-d6-results.json` (`allReleaseLanesPass: false`) stays unchanged.
+- [x] [Review][Decision] Rollback surface for a post-retirement rollback — `rollback-surface.txt` lists `tools/test-release.ps1` and the whole `CiTestInventoryTests.cs`. At HEAD, restoring that list from v4.0.0 would resurrect the retired runner (the v4.0.0 caller never invokes it) and revert 772 lines of shared inventory facts, including the D4 absence fact. Resolved (recommended, owner veto):
+  - The runbook excludes the retired runner.
+  - The runbook forbids a wholesale restore of `CiTestInventoryTests.cs`.
+  - The C# inventory class becomes a required rollback lane, and the PR adjusts only the release-surface facts it reports.
+  - The retained `rollback-surface.txt` stays unchanged as the 2026-11-15 rehearsal record.
+- [x] [Review][Decision] Live recovery proof has no trigger — The Failure and Recovery rows rest on `static-source`, and D2's additive check observes only a successful release, so it can never exercise recovery. Resolved (recommended, owner veto): both rows cite the offline qualifier artifacts, and a `live-recovery` shared-gap row plus a ledger entry are added. Owner: Jérôme Piquot. Trigger: the first owner-authorized Recover Partial Release run.
+- [x] [Review][Decision] D2 final-code live proof is tracked only in the runbook after `done` — Resolved (recommended, owner veto): the obligation stays in 30.6 as frozen D2 records it (accepted, not passed). A ledger entry with owner, consequence and reopen trigger is registered, and no new story is split.
+- [x] [Review][Decision] Ownership of `30-6-cutover/coordinator-acceptance.md` — Resolved (recommended): dev-story close-out. It was written 2026-11-16 00:27, after `changed-files-d6.txt` (00:24) and before the first review fixes (00:46).
+- [x] [Review][Decision] Status of the runbook obligation table — Resolved (recommended): treat it as story evidence, and copy the spec's accepted D2 disposition (owner, consequence, reopen trigger) into both obligation rows.
+- [x] [Review][Patch] D4 retirement deleted the only real-register check of the structured `deferred-work.md` field contract (status vocabulary, `Evidence:` on resolved, `Rationale:` on accepted/carried-forward, required fields). It covers 7 live `27.21-C1.15-*` entries [tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs]
+- [x] [Review][Patch] Runbook rollback surface resurrects the retired runner, reverts shared C# inventory facts and runs no C# lane [docs/dev/release-runbook.md]
+- [x] [Review][Patch] Additive and identical refusal tests accept any `ValueError`. Several checks are unreachable or uncovered: Latest moved elsewhere, pre-existing NuGet version/image tag, new-release tag/prerelease state, zero-size asset, unlisted new version, prerelease positive control, and well-formed identical-mode deltas [tests/tooling/release_cutover/release_identity_snapshot_test.py:209]
+- [x] [Review][Patch] The registry pagination guard that keeps Basic credentials on the registry host is untested [tests/tooling/release_cutover/release_identity_snapshot_test.py:322]
+- [x] [Review][Patch] Spec `done` disagrees with sprint `review`. The recorded readiness green used the `spec-` key, which skipped C4, and ran while `done`, which skipped C1 [spec frontmatter; 30-6-cutover/final-verification.json]
+- [x] [Review][Patch] Change Log rows use non-canonical phase names, the dev-story row repeats already-recorded deltas, reconciliation cells are false or missing, and count cells lack commands and cumulative deltas [spec Change Log]
+- [x] [Review][Patch] Evidence-table rows are pending, dateless or stale under `review`/`done` [30-6-cutover/parity-matrix.md; 30-6-cutover/rollback-rehearsal.md; docs/dev/release-runbook.md; spec Verification]
+- [x] [Review][Patch] The CONTRIBUTING forbidden-default list no longer matches its named source of truth (`tools/check-story-file-scope.py:53`) [CONTRIBUTING.md:163]
+- [x] [Review][Patch] `./tools/test.ps1` without a filter runs the whole solution, including Integration and Benchmark tests. That is not the retired lane's unit-contract set [CONTRIBUTING.md:670]
+- [x] [Review][Patch] Rollback snapshots are written inside the disposable scratch worktree, and steps 1 and 4 give no exact capture command [docs/dev/release-runbook.md]
+- [x] [Review][Patch] The fallback loop's `|| exit 1` skips the mandated cleanup-on-failure [docs/dev/release-runbook.md]
+- [x] [Review][Patch] Next-release evidence goes to git-ignored `artifacts/`, outside the exact-byte `-text` rule [docs/dev/release-runbook.md]
+- [x] [Review][Patch] No guidance for NuGet flat-container/registration lag at the after-capture [docs/dev/release-runbook.md]
+- [x] [Review][Patch] The next semantic-release candidate is 4.1.0 (`feat` e201f169 follows v4.0.0), not 4.0.1. It is also absent from every domain [spec Checkpoint Evidence; 30-6-cutover/dry-run.md; docs/dev/release-runbook.md]
+- [x] [Review][Patch] The F6 note miscounts the Story 30.5 delivered paths [_bmad-output/planning-artifacts/epics.md]
+- [x] [Review][Patch] The D2 obligation is not tracked in the ledger [deferred-work.md]
+- [x] [Review][Patch] The Failure and Recovery parity rows cite only static source, and there is no live-recovery shared gap [30-6-cutover/parity-matrix.md]
+- [x] [Review][Patch] The Slice Proof says "one outcome" for a D5-approved checkpoint story, and the ledger/planning hand-offs have no checkpoint row [spec Slice Proof; Checkpoint Evidence]
+- [x] [Review][Patch] The classification record omits the Story 14.5 parser, the 30.4 R6/30.5 F6 hand-offs and the 30.5 fallback. The documented slice-scope command also differs from the one that ran [spec Historical Context Classification; Verification]
+- [x] [Review][Patch] The prior values for Controlled rehearsal and Complete-set dry run are not prior-caller values [30-6-cutover/parity-matrix.md]
+- [x] [Review][Patch] The parity-regression I/O row is a D5 manual gate, but the task claims executed fixtures [spec review record]
+- [x] [Review][Patch] The rollback procedure depends on the user-local `run-with-temp` wrapper [docs/dev/release-runbook.md]
+- [x] [Review][Patch] The rollback procedure never re-captures identities after the PR merges and its push CI runs [docs/dev/release-runbook.md]
+- [x] [Review][Patch] Ledger schema entries DW-4 and DW-11 still locate the retired release-filter pairing [deferred-work.md]
+
+#### Rejected
+
+- Blind: the rollback procedure lacks branch/commit/PR steps. `low`: the ordinary PR process applies, rollbacks are rare, and the fix adds procedure.
+- Blind: the procedure hard-codes v4.0.0 values. `low`: the text says "currently" and requires re-establishing the target first, and the fix adds variables to a rare path.
+- Blind, Edge, Verification Gap: the snapshot records no capture metadata and couples to the working-tree inventory with fixed 10/5 counts, `compare X X` passes, and timing uses mtimes. `low`: the counts are frozen Always text, a change fails loudly, and D5 keeps the tool small.
+- Blind: additive accepts a stable release that did not become Latest. Rejected: the frozen I/O matrix specifies "Latest unchanged or moved to X".
+- Blind: `retarget:` lines leave the original target and trigger text, `epic-30-retrospective` is optional, and version-floor lacks a status. Rejected: the Code Map mandates appended retarget lines and D4 is an owner decision. The status gap is pre-existing.
+- Blind: `EvidenceCheckoutTests` inherits `GIT_*` variables. `low`: no hook runs it, and the worst case is loose objects and a temp index.
+- Blind, Edge: `\w` accepts non-ASCII in tag and helper patterns. `false`: a non-ASCII tag fails request encoding and refuses as `ambiguous UnicodeEncodeError` naming the member, and capture never writes one.
+- Blind: `qualification.txt` names a moved `qualifier/` path, and logs carry absolute local paths. `low`: raw tool output is retained evidence that the frozen intent forbids rewriting.
+- Blind: the dry run is credited without noting the pending `approval.md`. `false`: `dry-run.md:36-38` states approval remains pending and grants no credit.
+- Edge: a GitHub `next` link may skip pages. `false`: GitHub pagination is sequential, and every link is bound to the validated collection.
+- Edge: non-object Docker config, an internal urllib `ValueError` and the null-reply reason text. `low`: each still refuses fail-closed; only the message is less specific.
+- Edge: slow or oversized replies. `low`: trusted endpoints with 60-second socket timeouts.
+- Edge: a short registry username redacts member names. `low`: cosmetic.
+- Edge: the redirect test is proxied when `HTTP_PROXY` is set. `low`: CI sets no proxy.
+- Edge: the fixed 20-character NuGet padding is host-dependent. `low`: it is a rollback-only workaround for one historical assertion, and computing it adds logic.
+- Edge: the zero-skip rule is not counted mechanically. `low`: the requirement is explicit, and a fix adds tooling.
+- Historical Slice: Story 30.3 should be `historical-reference-only`. `false`: its caller is the current source under proof and was re-verified.
+- Acceptance: the removed-Latest-release case expects `identity/latest`. `false`: refusing at Latest validation, naming `identity/latest`, is the correct fail-closed result.
+- Verification Gap: the agent memory note about `Evidence:` enforcement is stale. Not a repository defect; it becomes true again once the schema guard is restored.
+
 ## Checkpoint Evidence
 
 | Checkpoint | Owner | Evidence command or artifact | Review state | Completion state |
 | --- | --- | --- | --- | --- |
-| Dry-run parity | Memories Release Engineer | `30-6-cutover/dry-run.md`, `complete-set-dry-run.json`, `identity-before.json` | reviewed 2026-11-16 | complete; six clean-base offline checkpoints; candidate 4.0.1 absent in complete before-snapshot |
+| Dry-run parity | Memories Release Engineer | `30-6-cutover/dry-run.md`, `complete-set-dry-run.json`, `identity-before.json` | reviewed 2026-11-16 | complete; six clean-base offline checkpoints; candidate 4.0.1 absent in complete before-snapshot; the actual next candidate 4.1.0 is also absent (code review 2026-11-16) |
 | Controlled rehearsal | Memories Release Engineer | v4.0.0 run `43432588932`, `30-6-cutover/live-runs.json`, `live-jobs.json`, `live-release-readback.json` (pre-30.5 code, D2) | reviewed 2026-11-16 | historical run/readback complete; no final-code live credit |
 | Next-release additive verification | Jérôme Piquot | Runbook obligation: `compare --expect additive` on the next dispatch | accepted 2026-11-16 | not complete (D2 obligation); consequence: no final-code live publication credit; reopen trigger: next owner-authorized release followed by the additive comparison |
 | Lane-by-lane comparison | Memories Release Engineer | `30-6-cutover/parity-matrix.md` and prior/current sources | reviewed 2026-11-16 | complete; zero regression verdicts |
-| Prior publisher removal gate | Memories Release Engineer | `30-6-cutover/parity-matrix.md` removal record, `retirement.diff`, `ci-inventory-d6.txt` | reviewed 2026-11-16 | complete; old script/instructions/dead C# facts retired after identity proof; C# 101/101 pass |
-| Rollback without artifact mutation | Platform Operations | `30-6-cutover/rollback-rehearsal.md` D6 addendum, `identity-d6-proof.json`, both `compare --expect identical` artifacts | reviewed 2026-11-16 | complete; all identities identical through the complete 104-ID isolated-module fallback; historical full-discovery flakes retained |
+| Prior publisher removal gate | Memories Release Engineer | `30-6-cutover/parity-matrix.md` removal record, `retirement.diff`, `ci-inventory-d6.txt` | reviewed 2026-11-16 | complete; old script/instructions/runner C# facts retired after identity proof; code review restored the live deferred-work schema guard the retirement had removed, C# 118/118 (`30-6-cutover/ci-inventory-code-review.txt`) |
+| Rollback without artifact mutation | Platform Operations | `30-6-cutover/rollback-rehearsal.md` D6 addendum, `identity-d6-proof.json`, both `compare --expect identical` artifacts | reviewed 2026-11-16 | complete; all identities identical through the complete 104-ID isolated-module fallback; historical full-discovery flakes retained; AC2 container credit accepted in code review 2026-11-16 (2026-11-15 full discovery 104/104 plus isolated modules), recorded for owner veto |
 | Rollback target refusal | Memories Maintainer | Runbook Release Rollback; `30-6-cutover/live-release-readback.json` | reviewed 2026-11-16 | documented; v4.0.0 full target set read back |
-| Snapshot fixtures | Memories Maintainer | `run-with-temp python3 -B -m unittest discover -s tests/tooling/release_cutover -p '*_test.py' -v`; `30-6-cutover/snapshot-fixtures-numeric-links.txt` | reviewed 2026-11-16 | 29/29 methods pass; zero skips; review guards, Git checkout, actual redirects and numeric pagination covered |
+| Snapshot fixtures | Memories Maintainer | `run-with-temp python3 -B -m unittest discover -s tests/tooling/release_cutover -p '*_test.py' -v`; `30-6-cutover/snapshot-fixtures-code-review.txt`, `code-review-mutation-check.txt` | reviewed 2026-11-16 | 34/34 methods pass; zero skips; refusal reasons pinned; 7/7 mutations caught |
+| Ledger/planning hand-offs | Memories Maintainer | `deferred-work.md` retarget/resolution lines and the two 2026-11-16 code-review obligation entries; `epics.md` dated notes; parity rows | reviewed 2026-11-16 | complete; eight entries re-targeted (seven shared gaps plus the do-not-deploy owner action), five resolved, D2 and live-recovery obligations registered |
 
 ## File Scope
 
@@ -161,9 +228,11 @@ Allowed files for this story:
 - `_bmad-output/implementation-artifacts/30-6-cutover/ci-alignment-final.txt`
 - `_bmad-output/implementation-artifacts/30-6-cutover/ci-inventory-baseline-build.txt`
 - `_bmad-output/implementation-artifacts/30-6-cutover/ci-inventory-baseline.txt`
+- `_bmad-output/implementation-artifacts/30-6-cutover/ci-inventory-code-review.txt`
 - `_bmad-output/implementation-artifacts/30-6-cutover/ci-inventory-d6-build.txt`
 - `_bmad-output/implementation-artifacts/30-6-cutover/ci-inventory-d6-results.json`
 - `_bmad-output/implementation-artifacts/30-6-cutover/ci-inventory-d6.txt`
+- `_bmad-output/implementation-artifacts/30-6-cutover/code-review-mutation-check.txt`
 - `_bmad-output/implementation-artifacts/30-6-cutover/complete-set-dry-run.json`
 - `_bmad-output/implementation-artifacts/30-6-cutover/coordinator-acceptance.md`
 - `_bmad-output/implementation-artifacts/30-6-cutover/dry-run.md`
@@ -243,6 +312,7 @@ Allowed files for this story:
 - `_bmad-output/implementation-artifacts/30-6-cutover/set-drift.json`
 - `_bmad-output/implementation-artifacts/30-6-cutover/snapshot-capture-refused.txt`
 - `_bmad-output/implementation-artifacts/30-6-cutover/snapshot-fixtures-acceptance-hardening.txt`
+- `_bmad-output/implementation-artifacts/30-6-cutover/snapshot-fixtures-code-review.txt`
 - `_bmad-output/implementation-artifacts/30-6-cutover/snapshot-fixtures-d6.txt`
 - `_bmad-output/implementation-artifacts/30-6-cutover/snapshot-fixtures-final.txt`
 - `_bmad-output/implementation-artifacts/30-6-cutover/snapshot-fixtures-numeric-links.txt`
@@ -269,11 +339,23 @@ Allowed files for this story:
 | Story 30.5 recovery | current-narrow-pattern | Probe classification and redaction patterns only; no write phases. |
 | Story 30.4 five-image contract | historical-reference-only | Set identity and the 13-asset expectation. |
 | Story 30.2 qualification | historical-reference-only | Offline complete-set dry run; no live credit. |
+| Story 14.5 deferred-work structured reader (`ParseStructuredDeferredEntries`) | current-narrow-pattern | Restored in code review from the baseline source, without the `Test:` capture, as the register's field-contract guard (DW-1..DW-6); the release-lane `Test:` pairing is not reused. |
+| Story 30.4 R6 and Story 30.5 F6 review hand-offs | historical-reference-only | Inputs for the dated `epics.md` notes and ledger resolutions only. |
+| Story 30.5 isolated-module fallback | current-narrow-pattern | One fresh process per complete module for the exact v4.0.0 container lane only. It supplements, and never replaces, the retained full-discovery result (code review decision 2026-11-16). |
 | 2026-07-26 umbrella Story 30.1/30.5 text | anti-template | Wording origin only. Never import `domain-release.yml` adoption or the nine-package/four-image shape. |
 
 ### Slice Proof
 
-One outcome: proven cutover parity with a parity-gated removal and a mutation-free rollback. Hand-offs are recorded and re-targeted, not implemented (D4).
+D5-approved checkpoint story: the owner approved keeping one spec. Each outcome maps to its own checkpoint row, with an owner, evidence, review state and completion state:
+
+- cutover parity → Lane-by-lane comparison, Dry-run parity, Controlled rehearsal;
+- parity-gated removal → Prior publisher removal gate;
+- mutation-free rollback → Rollback without artifact mutation, Rollback target refusal;
+- read-only snapshot tool and its CI step → Snapshot fixtures;
+- next-release obligation → Next-release additive verification;
+- ledger and planning hand-offs → Ledger/planning hand-offs.
+
+Hand-offs are recorded and re-targeted, not implemented (D4). Corrected in code review 2026-11-16; the earlier text read "One outcome".
 
 ### Epic AC Verification
 
@@ -295,12 +377,13 @@ Verified 2026-11-15 against `55693790997d7055ff673f72cd196cf80179ecd6`.
 | Date | Phase | Change | Test count | File List reconciliation |
 | :--- | :---- | :----- | :--------- | :----------------------- |
 | 2026-11-15 | create-story | The spec is created from epic Story 30.6 with owner decisions D1–D5. Owner: Jérôme Piquot. | `release_cutover`: new scope 0 → planned 8–12 methods. `ci_alignment` 15 methods (+0 planned): `python3 -B -c "import unittest; print(unittest.defaultTestLoader.discover('tests/tooling/ci_alignment', pattern='*_test.py', top_level_dir='tests/tooling/ci_alignment').countTestCases())"`. `release_dispatch` 17 methods (+0 planned): the same command with `release_dispatch`. CT not run at creation, because it needs an isolated Debug build; dev-story captures the baseline before the CT edit (planned −1 to −5 cases). Phase delta +0. | `spec-30-6-release-cutover-parity-and-rollback.md` added. |
-| 2026-11-15 | implementation (pending gates) | Read-only snapshot tool/fixtures/CI, matrix and evidence, clean-base qualifier, scratch rollback, runbook and dated hand-offs. Full snapshot and removal gates stay incomplete on the two recorded blockers. | New release_cutover 0 → 12 methods (12 pass), ci_alignment 15 → 15 (15 pass), CT baseline 141 → 141 (141 pass; no C# edit), no fixture credit represented as live proof. Rollback historical lanes recorded independently. | Allowed implementation/doc/evidence paths only; old script/instructions/C# facts retained because retirement is gated. |
-| 2026-11-15 | acceptance hardening | Require every GitHub asset SHA-256 digest; refuse missing/null digests and malformed releases/latest shapes with named member diagnostics before any snapshot write. Strict historical-index policy and pending gates remain unchanged. | release_cutover 12 → 14 methods (+2); 14/14 pass, zero skips. Exact output: `30-6-cutover/snapshot-fixtures-acceptance-hardening.txt`. No live probes or mutations in this correction. | Only snapshot tool/fixtures and their evidence/notes changed. |
-| 2026-11-15 | rehearsal environment follow-up | Exact v4.0.0 NuGet method and full lane pass with a twenty-character child directory beneath the wrapper TMPDIR; no source/test edits or output normalization. Original failed evidence remains unchanged. Read-only audit finds valid SHA-256 digests on all 1,700 assets across 183 Releases. | Historical NuGet 32/32 pass, zero skips; snapshot fixtures remain 14/14. The full snapshot/removal gate remains pending only on the historical-index policy. | Added supplemental padding/audit/final-result evidence and updated current summaries; no live mutations. |
-| 2026-11-16 | D6 completion and parity-gated retirement | Historical capture records recognized manifests/indexes with exact digest/media type. Full before/after plus supplemental final-fallback snapshots are identical; exact rollback modules qualify all 104 IDs after retained historical discovery flakes. Zero-regression coordinator parity verification gates old-runner/instructions/dead-fact retirement. Final workflow review remains pending. | release_cutover 14 → 16 (+2), 16 pass; ci_alignment 15 pass; C# inventory 141 → 101 (-40), 101 pass after isolated Debug/source build, zero skips/warnings/errors. Full container set 104/104 passes in isolated modules; original failed discoveries and collector correction retained. | D6 tool/fixtures, approved retirement paths, current reports/checkpoints and new evidence only. |
-| 2026-11-16 | dev-story | D6 exact historical manifest/index capture, complete identity bracket and parity-gated retirement. | Snapshot 0 → 16; CI 15/15; dispatch 17/17; C# 141 → 101 (-40), 101 pass; historical container set 104/104 in complete isolated modules, zero skips. | matched 111/111; cumulative File List includes implementation, documentation, preserved evidence and retirement. |
-| 2026-11-16 | code-review | Three independent reviewers plus final live verification; direct guard/coverage/doc fixes, one uncommon-low finding rejected and no new deferrals. | Snapshot 16 → 29 (+13), 29/29 pass; CI 15/15; unchanged C# 101/101 evidence retained; post-review full live capture and identical comparison exit 0. | matched 111/111; exact cumulative File List reconciled after review corrections. |
+| 2026-11-15 | dev-story | Implementation (pending gates; phase name canonicalised in code review 2026-11-16): read-only snapshot tool/fixtures/CI, matrix and evidence, clean-base qualifier, scratch rollback, runbook and dated hand-offs. Full snapshot and removal gates stay incomplete on the two recorded blockers. | New release_cutover 0 → 12 methods (12 pass), ci_alignment 15 → 15 (15 pass), CT baseline 141 → 141 (141 pass; no C# edit), no fixture credit represented as live proof. Rollback historical lanes recorded independently. Phase delta: release_cutover +12 (0 → 12 methods; new scope), ci_alignment +0, CT +0 cases; cumulative: release_cutover +12, CT +0. Command: `python3 -B -m unittest discover -s tests/tooling/release_cutover -p '*_test.py'` (12-method runner output not retained); CT baseline `30-6-cutover/ci-inventory-baseline.txt`. | Allowed implementation/doc/evidence paths only; old script/instructions/C# facts retained because retirement is gated. Phase-local set `30-6-cutover/changed-files.txt` (46 entries) against baseline `fad5ec5e`; no `matched N/N` was recorded in this phase. |
+| 2026-11-15 | dev-story | Acceptance hardening (phase name canonicalised in code review 2026-11-16): require every GitHub asset SHA-256 digest; refuse missing/null digests and malformed releases/latest shapes with named member diagnostics before any snapshot write. Strict historical-index policy and pending gates remain unchanged. | release_cutover 12 → 14 methods (+2); 14/14 pass, zero skips. Exact output: `30-6-cutover/snapshot-fixtures-acceptance-hardening.txt`. No live probes or mutations in this correction. Cumulative release_cutover +14; same command. | Only snapshot tool/fixtures and their evidence/notes changed. Phase-local scope output `30-6-cutover/acceptance-hardening-scope.txt`, baseline `fad5ec5e`; no `matched N/N` recorded. |
+| 2026-11-15 | dev-story | Rehearsal environment follow-up (phase name canonicalised in code review 2026-11-16): exact v4.0.0 NuGet method and full lane pass with a twenty-character child directory beneath the wrapper TMPDIR; no source/test edits or output normalization. Original failed evidence remains unchanged. Read-only audit finds valid SHA-256 digests on all 1,700 assets across 183 Releases. | Phase delta +0 for every story unit (release_cutover 14, cumulative +14). Historical v4.0.0 NuGet 32/32 is an outside-story rollback lane, not a story discovery unit. The full snapshot/removal gate remains pending only on the historical-index policy. | Added supplemental padding/audit/final-result evidence and updated current summaries; no live mutations. Phase-local scope output `30-6-cutover/acceptance-final-scope.txt`; no `matched N/N` recorded. |
+| 2026-11-16 | dev-story | D6 completion and parity-gated retirement (phase name canonicalised in code review 2026-11-16): historical capture records recognized manifests/indexes with exact digest/media type. Full before/after plus supplemental final-fallback snapshots are identical; exact rollback modules qualify all 104 IDs after retained historical discovery flakes. Zero-regression coordinator parity verification gates old-runner/instructions/dead-fact retirement. Final workflow review remains pending. | release_cutover 14 → 16: +3 added, −1 removed (`test_registry_pagination_and_bad_digest_or_non_index_refusal`), net +2, cumulative +16; 16 pass (`30-6-cutover/snapshot-fixtures-d6.txt`). ci_alignment 15 pass (+0). C# inventory 141 → 101 cases: 23 methods / 41 cases removed and 1 case added (`RetiredReleaseTestScript_ShouldRemainAbsent`), net −40, cumulative −40. 101 pass after an isolated Debug/source build, zero skips/warnings/errors; argv in `30-6-cutover/ci-inventory-d6-results.json`. The historical container set 104/104 in isolated modules is an outside-story rollback lane; original failed discoveries and collector correction retained. | D6 tool/fixtures, approved retirement paths, current reports/checkpoints and new evidence only. Phase-local set `30-6-cutover/changed-files-d6.txt` (95 entries), baseline `fad5ec5e`. |
+| 2026-11-16 | dev-story | Close-out of D6 exact historical manifest/index capture, complete identity bracket and parity-gated retirement. Counts corrected in code review 2026-11-16: this summary repeats no delta. | Phase delta +0 for every unit. Cumulative: release_cutover +16 (16 methods), ci_alignment +0 (15), release_dispatch +0 (17), CT −40 cases (101). Historical container set 104/104 in isolated modules is outside story units. | matched 96/96 against baseline `fad5ec5e`: `30-6-cutover/changed-files-d6.txt` (95) plus `30-6-cutover/coordinator-acceptance.md` (dev-story close-out, code-review decision). Corrected in code review 2026-11-16; the cell first read 111/111. |
+| 2026-11-16 | code-review | Three independent reviewers plus final live verification; direct guard/coverage/doc fixes, one uncommon-low finding rejected and no new deferrals. | Snapshot 16 → 29 (+13; cumulative +29), 29/29 pass (`30-6-cutover/snapshot-fixtures-numeric-links.txt`); CI 15/15 (+0); CT +0 cases (101, cumulative −40; the D6 run, not a post-patch rerun); post-review full live capture and identical comparison exit 0. | matched 111/111 against `git diff --name-status fad5ec5e..e1cded9f` and `30-6-cutover/final-changed-files.txt`, baseline `fad5ec5efb286a1b4589869a354895acd3aaf55c`. |
+| 2026-11-16 | code-review | `/bmad-code-review 30.6`. Six layers; 6 decisions resolved (recommended, listed for owner veto), 24 patches applied, 19 rejected, 0 deferred. Restored the deferred-work schema guard. Pinned snapshot refusal reasons and added the missing additive, identical and registry-pagination cases. Corrected the runbook rollback surface, evidence paths, cleanup, wrapper and post-merge check. Repaired the ledger, checkpoint and evidence-table records. Added the D2 and live-recovery obligation entries. | Phase delta: release_cutover +5 methods (29 → 34); CT +17 cases (101 → 118: `DeferredWorkRegister_RealRepo_StructuredEntriesSatisfyFieldContract` plus 16 `ParseStructuredDeferredEntries_*` cases); ci_alignment +0 (15); release_dispatch +0 (17). Cumulative from the create baseline: release_cutover +34 (0 → 34 methods), CT −23 cases (141 → 118), ci_alignment +0, release_dispatch +0. No external same-lane delta. Commands: `python3 -B -m unittest discover -s tests/tooling/release_cutover -p '*_test.py' -v` → `30-6-cutover/snapshot-fixtures-code-review.txt` (34/34, zero skips). Isolated Debug build, then `DiffEngine_Disabled=true dotnet exec <build>/Hexalith.Memories.Cli.Tests.dll -class Hexalith.Memories.Cli.Tests.Ci.CiTestInventoryTests` → `30-6-cutover/ci-inventory-code-review.txt` (118/118; the DLL carries the new literal). CT 141 re-derived in a scratch worktree at `fad5ec5e` and 101 at `e1cded9f` before patching. ci_alignment/release_dispatch counted with the create-story `countTestCases()` command and run with discover. | matched 114/114 against baseline `fad5ec5efb286a1b4589869a354895acd3aaf55c`: `git diff --name-status fad5ec5e..e1cded9f` (111 paths) plus the uncommitted review set (`git diff --name-only fad5ec5e` and `git ls-files --others --exclude-standard`), which adds `30-6-cutover/ci-inventory-code-review.txt`, `code-review-mutation-check.txt` and `snapshot-fixtures-code-review.txt`. |
 
 ## Implementation Notes
 
@@ -387,7 +470,7 @@ Review corrections completed 2026-11-16: B1–B10, E2, V1–V2 and P1 are addres
 
 ## Verification
 
-Observed D6 completion checks: snapshot fixtures 16/16, ci_alignment 15/15, zero skips; changed
+Observed D6 completion checks (historical; current counts are in the 2026-11-16 code-review ledger rows): snapshot fixtures 16/16, ci_alignment 15/15, zero skips; changed
 CI actionlint clean. The isolated Debug/source CLI inventory build has zero warnings/errors and
 the changed class passes 101/101 cases (baseline 141, delta -40). The six clean-base qualifier
 checkpoints remain passing offline evidence. Restored v4.0.0 actionlint, release_packages (28),
@@ -404,7 +487,7 @@ under `30-6-cutover/`. Independent review is complete. The post-review live snap
 - `python3 tools/release-identity-snapshot.py compare _bmad-output/implementation-artifacts/30-6-cutover/identity-before.json _bmad-output/implementation-artifacts/30-6-cutover/identity-after-rollback.json --expect identical` -- expected: exit 0.
 - `run-with-temp actionlint .github/workflows/ci.yml` -- expected: clean.
 - The isolated Debug build, then `DiffEngine_Disabled=true dotnet exec <build>/Hexalith.Memories.Cli.Tests.dll -class Hexalith.Memories.Cli.Tests.Ci.CiTestInventoryTests` -- expected: all cases pass.
-- `run-with-temp python3 -B tools/check-story-slice-scope.py --story-key 30-6-release-cutover-parity-and-rollback --require-record` and `tools/check-story-file-scope.py --story-key spec-30-6-release-cutover-parity-and-rollback --changed-files-file <list>` -- expected: pass.
+- `run-with-temp python3 -B tools/check-story-slice-scope.py --story-key 30-6-release-cutover-parity-and-rollback --changed-files-file <list> --require-record` (the bare `--story-key` form passes vacuously) and `tools/check-story-file-scope.py --story-key spec-30-6-release-cutover-parity-and-rollback --changed-files-file <list>` -- expected: pass.
 
 ## Final Verification — 2026-11-16
 
@@ -415,3 +498,40 @@ JSON byte streams have SHA-256 `68165b901643f2005f450474c0cf7ba3710ced1c0d5c7da5
 `30-6-cutover/post-review-capture-verified.json` binds the final capture to its exact tool hash;
 the earlier over-restricted pagination refusal remains preserved. Git checkout now preserves
 all exact-byte evidence. `30-6-cutover/final-verification.json` records the final checks.
+
+## Code Review Record — 2026-11-16
+
+- **Range:** `fad5ec5efb286a1b4589869a354895acd3aaf55c..e1cded9ffc6f6cc13c956a900e7ad1065bfd4830`, plus the review patch set above. HEAD did not move during the review; the baseline is an ancestor. The review is not chunked.
+- **Readiness gate (frontmatter key):** `python3 -B tools/check-story-review-readiness.py --story-key 30-6-release-cutover-parity-and-rollback --changed-files-file <raw 114-path cumulative set>`, run while the status read `review`.
+  - C1 printed "File List exactly matches all 114 in-scope changed paths".
+  - Final line: `Story review readiness validation passed.` (exit 0).
+  - At review start, the same key exited 1 with `C4: story declares status 'done' but sprint-status records 'review'.`
+  - The earlier recorded green run (`30-6-cutover/final-scope.txt:137-145`) used the `spec-` key while the status read `done`, so it skipped both C4 and C1. It is superseded and is not evidence.
+- **Scope gates:**
+  - `python3 -B tools/check-story-slice-scope.py --story-key 30-6-release-cutover-parity-and-rollback --changed-files-file <set> --require-record` printed `story-slice-scope: OK - 1 story file(s) checked`.
+  - `python3 -B tools/check-story-file-scope.py --story-key spec-30-6-release-cutover-parity-and-rollback --changed-files-file <set>` printed `Story file scope validation passed.`
+- **Identity replay:**
+  - Each `compare` of `identity-before.json` against the rollback, module-fallback and post-review snapshots, with `--expect identical`, exits 0.
+  - All four JSON files hash to `68165b901643f2005f450474c0cf7ba3710ced1c0d5c7da51cd2b3ba486d2158`.
+  - The tool is unchanged by the review (`6bd754f0…`, the same hash the post-review capture recorded).
+- **Remediation runtime checklist:**
+  - Categories 1–3 do not apply: no Dapr workflow, activity registration, or tenant-scoped cleanup or dedup is touched.
+  - Category 4 applies to the release rollback. Published identities are preserved: three identical comparisons, and nothing was deleted, retagged or overwritten. Scratch staging worktrees are removed on success and on failure: `temporaryWorktreesRemoved: true` in `rollback-d6-results.json` and in the failed full-discovery `rollback-d6-containers-rerun-results.json` and `rollback-d6-containers-affinity-results.json`.
+  - This review found a defect of the same class: the runbook fallback loop exited before cleanup. It is fixed and recorded as a checklist item on this story. It is not a new category.
+  - Category 5: `matched 114/114`.
+- **Epic AC Verification audit:** the commands behind every `corrected` row were re-run read-only.
+  - `git tag --contains 8aee7a13` → v3.0.18 first.
+  - `git show 46667b0d:.github/workflows/release.yml` → `on: push` to main, no `HEXALITH_RELEASE_PUBLISH_ENABLED`.
+  - `git show 46667b0d:.releaserc.json` → `*.nupkg` plus the production YAML (11).
+  - `gh run view 43432588932` → `workflow_dispatch`, `success`, head `c4ee9977…`.
+  - `gh release view v4.0.0 --json assets` → 13.
+  - The runbook now carries both headings.
+  - Each corrected row has its dated `epics.md` note (D1–D5). No row was weakened.
+- **I/O matrix "Parity regression" row:** this row is a D5 manual gate, not a snapshot-tool behavior. Its evidence is the reviewed matrix with zero `regression` rows, which precedes `retirement.diff`. The fixture claim in the task applies to the other four rows.
+- **Decisions taken for owner veto:**
+  1. Accept AC2 container credit from the 2026-11-15 full discovery (104/104) plus the isolated modules.
+  2. Exclude the retired runner from post-retirement rollbacks and reconcile `CiTestInventoryTests.cs` instead of restoring it wholesale.
+  3. Register the live-recovery shared gap with its trigger.
+  4. Keep the D2 final-code proof in 30.6 as an accepted obligation with a ledger entry.
+  5. Assign `coordinator-acceptance.md` to the dev-story close-out.
+  6. Treat the runbook obligation rows as story evidence.
