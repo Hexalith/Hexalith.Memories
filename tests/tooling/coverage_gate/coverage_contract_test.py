@@ -59,6 +59,7 @@ class CoverageContractTests(unittest.TestCase):
             [
                 "Hexalith.Memories.Contracts.Tests",
                 "Hexalith.Memories.Server.Tests",
+                "Hexalith.Memories.DerivedStores.Tests",
                 # Story 27.3: registered in the Docker-free unit/contract lane on 2026-07-26, so
                 # its Cobertura report is now required evidence. Keep in sync with
                 # tools/test-projects.unit-contract.txt and CiTestInventoryTests.
@@ -118,8 +119,8 @@ class CoverageContractTests(unittest.TestCase):
             with self.subTest(project=project_name):
                 project_path = REPO_ROOT / "tests" / project_name / f"{project_name}.csproj"
                 root = ET.parse(project_path).getroot()
-                if project_name == "Hexalith.Memories.DomainService.Tests":
-                    # This MTP project inherits the repository coverage extension; the
+                if project_name in {"Hexalith.Memories.DomainService.Tests", "Hexalith.Memories.DerivedStores.Tests"}:
+                    # These MTP projects inherit the repository coverage extension; the
                     # original seven projects retain their direct collector contract below.
                     self._assert_inherited_mtp_reference(root)
                     continue

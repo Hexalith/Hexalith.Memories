@@ -101,38 +101,42 @@ append_mtp_filter_args() {
   done
 }
 
-# Resolve the inventory file for the current filter. Filters that don't match any case fall
-# back to running against the entire solution (PROJECTS=("")).
-inventory_file=""
+# Keep local project routing aligned with the separated complete projects.
+inventory_files=()
 case "$FILTER" in
   "Category!=Integration")
-    inventory_file="tools/test-projects.unit-contract.txt"
+    inventory_files=("tools/test-projects.unit-contract.txt")
     ;;
-  *Category=IntegrationSlow*|*Category=Integration*)
-    inventory_file="tools/test-projects.integration-fast.txt"
+  "Category=Integration")
+    inventory_files=("tools/test-projects.integration-fast.txt" "tools/test-projects.integration-slow.txt")
+    ;;
+  *Category=IntegrationSlow*|*Category=Performance*)
+    inventory_files=("tools/test-projects.integration-slow.txt")
+    ;;
+  *Category=Integration*)
+    inventory_files=("tools/test-projects.integration-fast.txt")
     ;;
   "Category=Benchmark")
-    inventory_file="tools/test-projects.benchmark.txt"
+    inventory_files=("tools/test-projects.benchmark.txt")
+    ;;
+  *)
+    inventory_files=("tools/test-projects.unit-contract.txt" "tools/test-projects.integration-fast.txt"
+                     "tools/test-projects.integration-slow.txt" "tools/test-projects.benchmark.txt")
     ;;
 esac
 
 PROJECTS=()
-if [[ -n "$inventory_file" ]]; then
-  # Capture the inventory output through command substitution so a missing file (read_inventory
-  # returning 1) actually propagates to the parent shell. Process substitution `<( ... )` runs
-  # in a subshell whose exit code is invisible to mapfile, which would otherwise silently fall
-  # back to PROJECTS=("") and run dotnet test against the entire solution with no project filter.
+for inventory_file in "${inventory_files[@]}"; do
   if ! inventory_contents=$(read_inventory "$inventory_file"); then
     exit 1
   fi
-  if [[ -n "$inventory_contents" ]]; then
-    mapfile -t PROJECTS <<<"$inventory_contents"
+  if [[ -z "$inventory_contents" ]]; then
+    echo "Test project inventory '$inventory_file' is empty." >&2
+    exit 1
   fi
-fi
-
-if [[ ${#PROJECTS[@]} -eq 0 ]]; then
-  PROJECTS=("")
-fi
+  mapfile -t inventory_projects <<<"$inventory_contents"
+  PROJECTS+=("${inventory_projects[@]}")
+done
 
 RESULTS_ROOT=""
 if [[ -n "$RESULTS_DIRECTORY" ]]; then
@@ -155,7 +159,7 @@ for project in "${PROJECTS[@]}"; do
   fi
 
   if [[ -n "$project" ]]; then
-    CMD+=("$project")
+    CMD+=(--project "$project")
   fi
 
   CMD+=(--configuration "$CONFIGURATION")

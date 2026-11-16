@@ -434,6 +434,7 @@ The Docker-free lane maps `Category!=Integration` to
 ```text
 Contracts.Tests
 Server.Tests
+DerivedStores.Tests
 AccessTelemetry.Tests
 Cli.Tests
 Mcp.Tests
@@ -500,7 +501,7 @@ The scheduled `.github/workflows/nightly.yml` workflow remains the Tier 3 slow i
 | `build` | Always-run aggregate requiring both shared Release verification and local Debug/source verification to succeed. |
 | `shared-ci / build-and-test` | Pinned shared Release restore/build with warnings as errors and the explicit Contracts MTP shard. |
 | `source-debug` | Debug/source restore/build and at least three passing, unskipped source-selected catalog tests. |
-| `test-unit-contract` | Run eight Docker-free unit/contract projects with Coverlet, enforce the 76.5% line gate, and pack/validate the approved NuGet topology before merge. |
+| `test-unit-contract` | Run nine Docker-free unit/contract projects with Coverlet, enforce the 76.5% line gate, and pack/validate the approved NuGet topology before merge. |
 | `integration-fast` | Run Docker-backed `Category=Integration&Category!=IntegrationSlow&Category!=Performance` tests and verify required surface evidence. |
 
 Build and test lanes initialize root-declared submodules under `references/` and use the SDK from `global.json`.
@@ -508,7 +509,7 @@ Build and test lanes initialize root-declared submodules under `references/` and
 `81c88b34d09d34260b92d7f0928dbbc1c7446baa`, with a matching `builds-execution-sha`, a 20-minute
 budget, explicit `microsoft-testing-platform` and only `Contracts.Tests` selected. Integration and
 Aspire selections are empty. Shared consumer validation and coverage stay disabled: Memories keeps
-its package topology verifier and eight-project Coverlet contract locally. Contracts intentionally
+its package topology verifier and nine-project Coverlet contract locally. Contracts intentionally
 runs in both lanes until collector/report equivalence is proved. No collector or package pin changes.
 
 `build` runs with `always()` after `shared-ci` and `source-debug`; failure, cancellation, skipping or
@@ -680,3 +681,17 @@ try { npm run release:dry-run } finally { Remove-Item Env:HEXALITH_RELEASE_CLASS
 The dry run needs an authorized `GH_TOKEN` or `GITHUB_TOKEN`, but its classification mode does not need the pinned Builds checkout and does not run prepare or publish hooks.
 
 Do not run a real `dotnet nuget push` locally. Publishing is CI-only.
+
+### Separated integration project ownership
+
+The fast and nightly integration projects are separate complete executables.
+`tools/test-projects.integration-fast.txt` selects `Hexalith.Memories.IntegrationTests`;
+`tools/test-projects.integration-slow.txt` selects `Hexalith.Memories.Integration.NightlyTests`.
+Exact `Category=Integration` selects both. `Category=IntegrationSlow` and
+`Category=Performance` select the nightly project; the fast compound selector
+selects the fast project. Run a project without a trait selector when qualifying
+all its cases, including untagged product tests. On adoption, the shared pipeline will run whole
+projects and place the nightly project and all benchmark cases in the nightly hook.
+Registration and hosted qualification still require released shared support.
+DerivedStores has sole ownership of its test source and a ninth required unit
+coverage report; the 76.5% threshold and production source scope are unchanged.

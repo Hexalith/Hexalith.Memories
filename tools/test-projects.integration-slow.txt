@@ -1,0 +1,2 @@
+# Complete nightly integration project: slow and performance scenarios.
+tests/Hexalith.Memories.Integration.NightlyTests/Hexalith.Memories.Integration.NightlyTests.csproj
