@@ -25,3 +25,6 @@
 [submodule "references/Hexalith.Platform"]
 	path = references/Hexalith.Platform
 	url = https://github.com/Hexalith/Hexalith.Platform.git
+[submodule "references/Hexalith.CiCd"]
+	path = references/Hexalith.CiCd
+	url = https://github.com/Hexalith/Hexalith.CiCd.git
