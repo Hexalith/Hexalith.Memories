@@ -30,7 +30,7 @@ using Shouldly;
 public sealed class Epic17ConformanceHardeningTests
 {
     /// <summary>The Fluent UI Blazor V5 version centrally pinned and validated for Epic 17 (AC6).</summary>
-    private const string PinnedFluentVersion = "5.0.1";
+    private const string PinnedFluentVersion = "5.1.0";
 
     private const string FluentPackageId = "Microsoft.FluentUI.AspNetCore.Components";
 
@@ -57,7 +57,7 @@ public sealed class Epic17ConformanceHardeningTests
     [Fact]
     public void PackageLock_DirectoryPackagesProps_PinsTheAuthoritativeFluentUiVersion()
     {
-        // AC6: component API choices follow the centrally evaluated Fluent UI V5 RC, not the incompatible
+        // AC6: component API choices follow the centrally evaluated Fluent UI V5, not the incompatible
         // Fluent UI MCP documentation target. The consumer wrapper imports the shared authority and never
         // duplicates its PackageVersion items locally.
         EvaluatedPackageVersion(FluentPackageId).ShouldBe(
@@ -69,7 +69,7 @@ public sealed class Epic17ConformanceHardeningTests
     public void PackageLock_NoMemoriesProject_OverridesTheFluentUiVersionLocally()
     {
         // AC6 + central package management: a per-project Version attribute would let a project drift off the
-        // pinned prerelease and silently copy an incompatible MCP-documented API signature.
+        // pinned version and silently copy an incompatible MCP-documented API signature.
         string root = RepositoryRoot();
         IEnumerable<string> projects = new[] { "src", "tests" }
             .Select(d => Path.Combine(root, d))
