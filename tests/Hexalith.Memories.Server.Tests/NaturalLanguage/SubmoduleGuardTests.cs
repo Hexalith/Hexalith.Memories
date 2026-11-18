@@ -45,7 +45,7 @@ public sealed partial class SubmoduleGuardTests
         string[] modulePaths = [.. GitmodulePathRegex()
             .Matches(gitmodules)
             .Select(match => match.Groups["path"].Value.Trim())
-            .Where(path => path != "references/Hexalith.PolymorphicSerializations")];
+            .Where(path => path is not ("references/Hexalith.PolymorphicSerializations" or "references/Hexalith.CiCd"))];
         string[] guardedModules = [.. props
             .Descendants("RequiredRootSubmodule")
             .Select(element => element.Attribute("Include")?.Value)
@@ -54,7 +54,7 @@ public sealed partial class SubmoduleGuardTests
         guardedModules.ShouldBe(
             modulePaths,
             ignoreOrder: true,
-            customMessage: "CheckSubmodules must guard every required path; the unused PolymorphicSerializations checkout is optional.");
+            customMessage: "CheckSubmodules must guard every required path; PolymorphicSerializations and CiCd have no source build dependency.");
     }
 
     [Fact]
