@@ -842,6 +842,7 @@ public sealed partial class CaseEndpointIntegrationTests
         createResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
         CaseRecord? createdCase = await createResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
         createdCase.ShouldNotBeNull();
+        await WaitForCaseCreatedAsync(tenantId, createdCase.Id);
 
         // Delete empty case
         using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync(
@@ -920,6 +921,7 @@ public sealed partial class CaseEndpointIntegrationTests
         createResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
         CaseRecord? createdCase = await createResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
         createdCase.ShouldNotBeNull();
+        await WaitForCaseCreatedAsync(tenantId, createdCase.Id);
 
         // Add a member
         var memberInput = new AddCaseMemberInput("user-cleanup-test", CaseMemberType.User);
@@ -966,6 +968,7 @@ public sealed partial class CaseEndpointIntegrationTests
         createResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
         CaseRecord? createdCase = await createResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
         createdCase.ShouldNotBeNull();
+        await WaitForCaseCreatedAsync(tenantId, createdCase.Id);
 
         // Delete case
         using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync(
@@ -992,6 +995,7 @@ public sealed partial class CaseEndpointIntegrationTests
         createResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
         CaseRecord? createdCase = await createResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
         createdCase.ShouldNotBeNull();
+        await WaitForCaseCreatedAsync(tenantId, createdCase.Id);
 
         // First delete
         using HttpResponseMessage deleteResponse1 = await _fixture.MemoriesClient.DeleteAsync(
@@ -1198,6 +1202,27 @@ public sealed partial class CaseEndpointIntegrationTests
 
         throw new TimeoutException(
             $"Search results for deleted memory unit '{memoryUnitId}' did not clear; last total was {lastResult?.TotalCount.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "unknown"}.");
+    }
+
+    private async Task WaitForCaseCreatedAsync(string tenantId, string caseId)
+    {
+        DateTimeOffset deadline = DateTimeOffset.UtcNow.AddMinutes(2);
+        IDatabase db = _fixture.RedisConnection.GetDatabase();
+        string caseKey = $"{tenantId}:case:{caseId}";
+        var parameters = new Dictionary<string, object> { ["caseId"] = caseId };
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if (await db.KeyExistsAsync(caseKey)
+                && await QueryGraphCountAsync(tenantId, "MATCH (c:Case {id: $caseId}) RETURN count(c) AS cnt", parameters) == 1)
+            {
+                return;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(500)).ConfigureAwait(false);
+        }
+
+        throw new TimeoutException($"Case '{caseId}' was not projected to Redis and FalkorDB within the allotted time.");
     }
 
     private async Task WaitForCaseDeletedAsync(
