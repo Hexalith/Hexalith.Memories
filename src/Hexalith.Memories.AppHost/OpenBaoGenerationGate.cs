@@ -11,29 +11,23 @@ internal sealed class OpenBaoGenerationGate
     private readonly object _sync = new();
     private OpenBaoGenerationLease? _activeLease;
     private int _generationNumber;
-    private TaskCompletionSource _nextReadiness = CreateCompletionSource();
+    private TaskCompletionSource _readiness = CreateCompletionSource();
 
-    /// <summary>Attempts to acquire exclusive ownership of generation initialization.</summary>
-    /// <param name="lease">The active generation lease.</param>
-    /// <returns><see langword="true"/> only for the callback that owns initialization.</returns>
-    internal bool TryBeginGeneration(out OpenBaoGenerationLease lease)
+    /// <summary>Starts a generation and invalidates any earlier lease.</summary>
+    /// <returns>The lease that owns initialization for this start.</returns>
+    internal OpenBaoGenerationLease BeginGeneration()
     {
         lock (_sync)
         {
-            if (_activeLease is not null)
+            if (_activeLease is { } previous)
             {
-                lease = _activeLease;
-                return false;
+                previous.Cancel();
+                previous.Readiness.TrySetException(
+                    new OperationCanceledException("OpenBao started another generation before initialization completed."));
+                _readiness = CreateCompletionSource();
             }
 
-            if (_nextReadiness.Task.IsCompleted)
-            {
-                _nextReadiness = CreateCompletionSource();
-            }
-
-            lease = new OpenBaoGenerationLease(++_generationNumber, _nextReadiness);
-            _activeLease = lease;
-            return true;
+            return _activeLease = new OpenBaoGenerationLease(++_generationNumber, _readiness);
         }
     }
 
@@ -43,7 +37,7 @@ internal sealed class OpenBaoGenerationGate
     {
         lock (_sync)
         {
-            return (_activeLease?.Readiness ?? _nextReadiness).Task;
+            return _readiness.Task;
         }
     }
 
@@ -80,25 +74,13 @@ internal sealed class OpenBaoGenerationGate
 
         lock (_sync)
         {
-            return ReferenceEquals(_activeLease, lease) && lease.Readiness.TrySetException(exception);
-        }
-    }
-
-    /// <summary>Closes the active generation so the next start obtains a fresh readiness signal.</summary>
-    internal void MarkStopped()
-    {
-        lock (_sync)
-        {
-            if (_activeLease is null)
+            if (!ReferenceEquals(_activeLease, lease))
             {
-                return;
+                return false;
             }
 
-            _activeLease.Cancel();
-            _activeLease.Readiness.TrySetException(
-                new OperationCanceledException("The OpenBao generation stopped before initialization completed."));
-            _activeLease = null;
-            _nextReadiness = CreateCompletionSource();
+            lease.Readiness.TrySetException(exception);
+            return true;
         }
     }
 

@@ -74,13 +74,11 @@ IResourceBuilder<ContainerResource> openBao = builder
     .ExcludeFromManifest();
 
 var openBaoGenerationGate = new OpenBaoGenerationGate();
-openBao.OnResourceEndpointsAllocated((resource, @event, cancellationToken) =>
+openBao.OnBeforeResourceStarted((resource, @event, cancellationToken) =>
 {
-    if (!openBaoGenerationGate.TryBeginGeneration(out OpenBaoGenerationLease lease))
-    {
-        return Task.CompletedTask;
-    }
-
+    // Aspire publishes this event for each explicit start, even when its watcher misses
+    // the terminal state during a fast restart. Let the container start while bootstrap retries.
+    OpenBaoGenerationLease lease = openBaoGenerationGate.BeginGeneration();
     _ = InitializeOpenBaoGenerationAsync(
         resource,
         @event.Services,
@@ -89,19 +87,6 @@ openBao.OnResourceEndpointsAllocated((resource, @event, cancellationToken) =>
         daprComponentPaths,
         openBaoGenerationGate,
         lease,
-        cancellationToken);
-    return Task.CompletedTask;
-});
-openBao.OnResourceStopped((resource, @event, cancellationToken) =>
-{
-    openBaoGenerationGate.MarkStopped();
-    _ = InitializeOpenBaoOnNextStartAsync(
-        resource,
-        @event.Services,
-        runtimeSeedParameter.Resource,
-        accessTelemetrySeedParameter.Resource,
-        daprComponentPaths,
-        openBaoGenerationGate,
         @event.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping);
     return Task.CompletedTask;
 });
@@ -209,9 +194,10 @@ builder.Eventing.Subscribe<BeforeResourceStartedEvent>(async (@event, cancellati
         "memories-access-telemetry-clock-dapr" or "memories-access-telemetry-clock-dapr-cli";
     if (usesOpenBao)
     {
-        Task generationReadiness = openBaoGenerationGate.SnapshotReadiness();
         await WaitForOpenBaoGenerationAsync(
-            generationReadiness,
+            @event.Services.GetRequiredService<ResourceNotificationService>(),
+            openBao.Resource.Name,
+            openBaoGenerationGate,
             TimeSpan.FromMinutes(2),
             cancellationToken).ConfigureAwait(false);
     }
@@ -1260,54 +1246,14 @@ static async Task InitializeOpenBaoGenerationAsync(
     }
     catch (Exception exception)
     {
-        _ = generationGate.TryFailCurrent(lease, exception);
-        OpenBaoGenerationLogger.GenerationFailed(
-            services.GetRequiredService<ILoggerFactory>().CreateLogger("Hexalith.Memories.AppHost.OpenBaoGeneration"),
-            lease.GenerationNumber,
-            exception);
-        services.GetRequiredService<IHostApplicationLifetime>().StopApplication();
-    }
-}
-
-static async Task InitializeOpenBaoOnNextStartAsync(
-    IResource resource,
-    IServiceProvider services,
-    ParameterResource runtimeSeedParameter,
-    ParameterResource accessTelemetrySeedParameter,
-    GeneratedDaprComponentPaths paths,
-    OpenBaoGenerationGate generationGate,
-    CancellationToken applicationStopping)
-{
-    try
-    {
-        ResourceNotificationService notifications = services.GetRequiredService<ResourceNotificationService>();
-        _ = await notifications.WaitForResourceAsync(
-            resource.Name,
-            [KnownResourceStates.Starting, KnownResourceStates.Running],
-            applicationStopping).ConfigureAwait(false);
-        if (!generationGate.TryBeginGeneration(out OpenBaoGenerationLease lease))
+        if (!generationGate.TryFailCurrent(lease, exception))
         {
             return;
         }
 
-        await InitializeOpenBaoGenerationAsync(
-            resource,
-            services,
-            runtimeSeedParameter,
-            accessTelemetrySeedParameter,
-            paths,
-            generationGate,
-            lease,
-            applicationStopping).ConfigureAwait(false);
-    }
-    catch (OperationCanceledException) when (applicationStopping.IsCancellationRequested)
-    {
-        // Normal AppHost shutdown; no replacement generation will start.
-    }
-    catch (Exception exception)
-    {
-        OpenBaoGenerationLogger.RecoveryWatcherFailed(
+        OpenBaoGenerationLogger.GenerationFailed(
             services.GetRequiredService<ILoggerFactory>().CreateLogger("Hexalith.Memories.AppHost.OpenBaoGeneration"),
+            lease.GenerationNumber,
             exception);
         services.GetRequiredService<IHostApplicationLifetime>().StopApplication();
     }
@@ -1395,18 +1341,27 @@ static async Task RestartOpenBaoConsumersAsync(IServiceProvider services, Cancel
 }
 
 static async Task WaitForOpenBaoGenerationAsync(
-    Task readiness,
+    ResourceNotificationService notifications,
+    string resourceName,
+    OpenBaoGenerationGate generationGate,
     TimeSpan timeout,
     CancellationToken cancellationToken)
 {
+    using var readinessCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+    readinessCancellation.CancelAfter(timeout);
+
     try
     {
-        await readiness.WaitAsync(timeout, cancellationToken).ConfigureAwait(false);
+        // A manually started consumer can bypass Aspire's dependency wait.
+        _ = await notifications.WaitForResourceHealthyAsync(resourceName, readinessCancellation.Token)
+            .ConfigureAwait(false);
+        await generationGate.SnapshotReadiness().WaitAsync(readinessCancellation.Token).ConfigureAwait(false);
     }
-    catch (TimeoutException exception)
+    catch (OperationCanceledException exception) when (
+        readinessCancellation.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
     {
         throw new TimeoutException(
-            $"The current OpenBao generation was not initialized within {timeout}.",
+            $"The current OpenBao generation was not healthy and initialized within {timeout}.",
             exception);
     }
 }

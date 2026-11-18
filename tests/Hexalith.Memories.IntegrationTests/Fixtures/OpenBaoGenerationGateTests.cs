@@ -14,27 +14,29 @@ using Shouldly;
 public sealed class OpenBaoGenerationGateTests
 {
     [Fact]
-    public void TryBeginGeneration_DuplicateEndpointEventDoesNotAcquireInitializationOwnership()
+    public void BeginGeneration_FirstStartUsesReadinessAlreadyObservedByConsumers()
     {
         var gate = new OpenBaoGenerationGate();
+        Task pendingReadiness = gate.SnapshotReadiness();
 
-        gate.TryBeginGeneration(out OpenBaoGenerationLease owner).ShouldBeTrue();
-        gate.TryBeginGeneration(out OpenBaoGenerationLease observer).ShouldBeFalse();
+        OpenBaoGenerationLease initial = gate.BeginGeneration();
 
-        observer.ShouldBeSameAs(owner);
-        owner.GenerationNumber.ShouldBe(1);
+        initial.Readiness.Task.ShouldBeSameAs(pendingReadiness);
+        initial.GenerationNumber.ShouldBe(1);
     }
 
     [Fact]
-    public async Task MarkStopped_InvalidatesOldLeaseAndRejectsItsLateArtifactInstall()
+    public async Task BeginGeneration_WithoutStopNotificationRejectsStaleCompletion()
     {
         var gate = new OpenBaoGenerationGate();
-        _ = gate.TryBeginGeneration(out OpenBaoGenerationLease staleLease);
+        OpenBaoGenerationLease staleLease = gate.BeginGeneration();
         Task staleReadiness = staleLease.Readiness.Task;
 
-        gate.MarkStopped();
+        OpenBaoGenerationLease currentLease = gate.BeginGeneration();
+
         _ = await Should.ThrowAsync<OperationCanceledException>(() => staleReadiness);
-        gate.TryBeginGeneration(out OpenBaoGenerationLease currentLease).ShouldBeTrue();
+        staleLease.CancellationToken.IsCancellationRequested.ShouldBeTrue();
+        gate.TryFailCurrent(staleLease, new InvalidOperationException()).ShouldBeFalse();
 
         bool staleInstallRan = false;
         gate.TryInstallCurrent(staleLease, () => staleInstallRan = true).ShouldBeFalse();
@@ -48,16 +50,16 @@ public sealed class OpenBaoGenerationGateTests
     }
 
     [Fact]
-    public void MarkStopped_DuplicateNotificationPreservesPendingNextGenerationReadiness()
+    public void BeginGeneration_ResetsReadinessAfterASuccessfulGeneration()
     {
         var gate = new OpenBaoGenerationGate();
-        _ = gate.TryBeginGeneration(out _);
+        OpenBaoGenerationLease first = gate.BeginGeneration();
+        gate.TryInstallCurrent(first, () => { }).ShouldBeTrue();
 
-        gate.MarkStopped();
-        Task pendingReadiness = gate.SnapshotReadiness();
-        gate.MarkStopped();
+        OpenBaoGenerationLease next = gate.BeginGeneration();
 
-        gate.SnapshotReadiness().ShouldBeSameAs(pendingReadiness);
-        pendingReadiness.IsCompleted.ShouldBeFalse();
+        first.Readiness.Task.IsCompletedSuccessfully.ShouldBeTrue();
+        next.Readiness.Task.ShouldBeSameAs(gate.SnapshotReadiness());
+        next.Readiness.Task.IsCompleted.ShouldBeFalse();
     }
 }

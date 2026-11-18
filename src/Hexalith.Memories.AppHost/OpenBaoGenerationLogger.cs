@@ -22,15 +22,4 @@ internal static partial class OpenBaoGenerationLogger
         ILogger logger,
         int generationNumber,
         Exception exception);
-
-    /// <summary>Logs a recovery-watcher failure before the disposable AppHost is stopped.</summary>
-    /// <param name="logger">The AppHost logger.</param>
-    /// <param name="exception">The secret-safe exception.</param>
-    [LoggerMessage(
-        EventId = 2902,
-        Level = LogLevel.Critical,
-        Message = "OpenBao generation recovery watcher failed; stopping the disposable AppHost.")]
-    internal static partial void RecoveryWatcherFailed(
-        ILogger logger,
-        Exception exception);
 }
