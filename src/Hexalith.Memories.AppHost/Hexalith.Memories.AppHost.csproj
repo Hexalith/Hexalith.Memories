@@ -8,6 +8,7 @@
     <NoWarn>$(NoWarn);CS0618</NoWarn>
     <IsPackable>false</IsPackable>
     <IsPublishable>true</IsPublishable>
+    <NoWarn>$(NoWarn);ASPIRE012</NoWarn>
     <UserSecretsId>hexalith-memories</UserSecretsId>
   </PropertyGroup>
 
