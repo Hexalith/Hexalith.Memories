@@ -1,8 +1,11 @@
-<Project Sdk="Aspire.AppHost.Sdk/13.6.5">
+<Project Sdk="Aspire.AppHost.Sdk/17.0.0">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <AspireUseCliBundle>true</AspireUseCliBundle>
+    <SuppressAspireAppHostSdkObsoleteWarning>true</SuppressAspireAppHostSdkObsoleteWarning>
+    <!-- Aspire 17 deprecates AddProject; keep the staged project model until a Project v2 migration. -->
+    <NoWarn>$(NoWarn);CS0618</NoWarn>
     <IsPackable>false</IsPackable>
     <IsPublishable>true</IsPublishable>
     <UserSecretsId>hexalith-memories</UserSecretsId>

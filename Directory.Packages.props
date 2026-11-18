@@ -18,9 +18,29 @@
   <!-- Owner release prerequisite: keep newer central selections while requiring the delivered catalog SDK. -->
   <PropertyGroup>
     <HexalithEventStoreVersion Condition="'$(HexalithEventStoreFromSource)' != 'true' and ('$(HexalithEventStoreVersion)' == '' or $([MSBuild]::VersionLessThan('$(HexalithEventStoreVersion)', '3.129.0')))">3.129.0</HexalithEventStoreVersion>
+    <HexalithAspireAppHostSdkVersion>17.0.0</HexalithAspireAppHostSdkVersion>
+    <HexalithAspireHostingDaprVersion>17.0.0-beta.1052</HexalithAspireHostingDaprVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Update="Hexalith.EventStore.*" Version="$(HexalithEventStoreVersion)" />
+  </ItemGroup>
+  <!-- Owner Aspire 17 selection: keep hosting packages on 17.0.0 while Builds catalog remains on 13.6.5.
+       CommunityToolkit Dapr has no stable 17.0.0 yet; use the latest 17.0.0-aligned preview. -->
+  <ItemGroup>
+    <PackageVersion Update="Aspire.Azure.Messaging.ServiceBus" Version="17.0.0" />
+    <PackageVersion Update="Aspire.Azure.Security.KeyVault" Version="17.0.0" />
+    <PackageVersion Update="Aspire.Azure.Storage.Blobs" Version="17.0.0" />
+    <PackageVersion Update="Aspire.Azure.Storage.Queues" Version="17.0.0" />
+    <PackageVersion Update="Aspire.Hosting" Version="17.0.0" />
+    <PackageVersion Update="Aspire.Hosting.Azure.AppContainers" Version="17.0.0" />
+    <PackageVersion Update="Aspire.Hosting.Azure.CosmosDB" Version="17.0.0" />
+    <PackageVersion Update="Aspire.Hosting.Docker" Version="17.0.0" />
+    <PackageVersion Update="Aspire.Hosting.Keycloak" Version="17.0.0-preview.1.26567.5" />
+    <PackageVersion Update="Aspire.Hosting.Kubernetes" Version="17.0.0" />
+    <PackageVersion Update="Aspire.Hosting.Redis" Version="17.0.0" />
+    <PackageVersion Update="Aspire.Hosting.Testing" Version="17.0.0" />
+    <PackageVersion Update="Aspire.Microsoft.Azure.Cosmos" Version="17.0.0" />
+    <PackageVersion Update="CommunityToolkit.Aspire.Hosting.Dapr" Version="$(HexalithAspireHostingDaprVersion)" />
   </ItemGroup>
   <!-- Existing public compatibility packages are consumed only by the explicit hosted-test profile. -->
   <ItemGroup Condition="'$(HexalithUsePublishedSdkForHostedTests)' == 'true' and '$(IsPublishing)' != 'true'">

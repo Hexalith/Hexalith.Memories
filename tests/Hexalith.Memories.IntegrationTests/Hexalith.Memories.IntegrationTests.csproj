@@ -2,6 +2,8 @@
 
   <PropertyGroup>
     <IsPackable>false</IsPackable>
+    <!-- Aspire 17 deprecates AddProject; keep the staged project model until a Project v2 migration. -->
+    <NoWarn>$(NoWarn);CS0618</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
