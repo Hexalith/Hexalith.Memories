@@ -24,9 +24,13 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 
-APPROVED_BUILDS_SHA = "ae77d5690a9411a2154fa4ed5231edc373942573"
-# Owner Jérôme Piquot approved these exact revisions for recovery on 2026-11-15 (D2).
-RECOVERY_BUILDS_SHAS = {"81c88b34d09d34260b92d7f0928dbbc1c7446baa", APPROVED_BUILDS_SHA}
+APPROVED_BUILDS_SHA = "38e038d1179b1c829ba47a45bfa0a4683ea5e2a5"
+# Retain the two revisions approved on 2026-11-15 alongside the current release revision.
+RECOVERY_BUILDS_SHAS = {
+    "81c88b34d09d34260b92d7f0928dbbc1c7446baa",
+    "ae77d5690a9411a2154fa4ed5231edc373942573",
+    APPROVED_BUILDS_SHA,
+}
 PLATFORMS = ["linux/amd64", "linux/arm64"]
 CANONICAL_IMAGES = [
     {"name": "server", "project": "src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj", "repository": "memories", "health": "liveness"},

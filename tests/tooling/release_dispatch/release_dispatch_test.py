@@ -69,7 +69,7 @@ class ReleaseDispatchTests(unittest.TestCase):
 
 
     def test_release_pin_is_approved_and_profile_tracks_the_gitlink(self):
-        approved = "ae77d5690a9411a2154fa4ed5231edc373942573"
+        approved = "38e038d1179b1c829ba47a45bfa0a4683ea5e2a5"
         self.assertEqual(approved, self.source.APPROVED_BUILDS_SHA)
         self.assertEqual(approved, self.destination.APPROVED_BUILDS_SHA)
         profile = json.loads((ROOT / "tools/builds-publication-qualification.json").read_text(encoding="utf-8"))
@@ -78,6 +78,7 @@ class ReleaseDispatchTests(unittest.TestCase):
             check=True, capture_output=True, text=True,
         ).stdout.strip()
         self.assertEqual(gitlink, profile["buildsSha"])
+        self.assertEqual(gitlink, approved)
 
     def test_five_image_release_retains_diagnostic_and_durable_success_evidence(self):
         publisher = (ROOT / "tools/publish-release.ps1").read_text(encoding="utf-8")

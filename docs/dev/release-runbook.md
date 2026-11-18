@@ -95,7 +95,7 @@ protection evidence below stays historical evidence; this story performs no remo
 ## Current Release Contract
 
 - An operator dispatches `.github/workflows/release.yml` from the current `main` tip. Normal pushes run CI and never publish. The source job proves the selected SHA is the live main tip with a successful completed `ci.yml` push run for that exact SHA, and checks that the production environment has required reviewers and a branch deployment policy. Administrator approval bypass is permitted when enabled in the environment settings. The protected `production` job runs only after that proof succeeds; it reads back protection again before publication.
-- The production job calls pinned `prepare-domain-release@81c88b34d09d34260b92d7f0928dbbc1c7446baa` with the identical `builds-execution-sha` and `expected-package-count: 10`. It restores and builds; only when publication is enabled does it then repeat the exact-source CI proof, because a frozen run exits its publish gate before that repeat. The caller validates the package manifest, checks local/remote tag and every versioned package/image destination, then reproves source immediately before OIDC login and `npx semantic-release`. Application tests are owned by exact-source CI and are not repeated in release. Semantic-release then drives the prepare, publish, and post-publish
+- The production job calls pinned `prepare-domain-release@38e038d1179b1c829ba47a45bfa0a4683ea5e2a5` with the identical `builds-execution-sha` and `expected-package-count: 10`. It restores and builds; only when publication is enabled does it then repeat the exact-source CI proof, because a frozen run exits its publish gate before that repeat. The caller validates the package manifest, checks local/remote tag and every versioned package/image destination, then reproves source immediately before OIDC login and `npx semantic-release`. Application tests are owned by exact-source CI and are not repeated in release. Semantic-release then drives the prepare, publish, and post-publish
   phases through its plugin chain —
   `pack-release.ps1` and
   `publish-release.ps1` are not invoked as separate workflow steps; they are invoked by
@@ -270,11 +270,11 @@ semantic-release installed its unused default `@semantic-release/npm` plugin and
 bundled npm CLI. The web E2E workspace and production .NET artifacts use separate dependency graphs
 and were not affected.
 
-`semantic-release` is intentionally pinned to `25.0.9`. The offline configuration verifier loads
-that installed version's configuration and constructs its plugin lifecycle without invoking any
-lifecycle hook, so the pin is a reviewed compatibility boundary rather than a general update
-policy. The normal verifier command also runs fail-closed mutation self-tests. The explicit
-`.releaserc.json` allowlist uses only commit analysis, release-note generation, the repository-owned
+`semantic-release` is pinned to `26.0.1` and runs on Node.js 26.13.1 in the release workflow.
+The offline verifier uses the public `resolveConfig` function from the installed
+`@semantic-release/core` dependency to verify the resolved configuration and plugin lifecycle
+without invoking lifecycle hooks. The normal verifier command also runs fail-closed self-tests.
+The explicit `.releaserc.json` allowlist uses only commit analysis, release-note generation, the repository-owned
 exec hooks, and GitHub publication. Because `@semantic-release/npm` is not used, the root override
 scopes its dependency edge to the official `@semantic-release/error@4.0.0` package alias and
 removes the vulnerable npm CLI bundle from the installed and locked graph.
@@ -290,11 +290,10 @@ npm audit signatures
 npm run verify:semantic-release-config
 ```
 
-Remove the alias and exact semantic-release pin when upstream semantic-release no longer installs
+Reevaluate the alias when upstream semantic-release no longer installs
 `@semantic-release/npm` by default, or when an upstream plugin release no longer brings the
-vulnerable npm bundle. The owning maintainers must confirm a clean low-level audit, migrate the
-verifier away from any obsolete internal API, and keep all release configuration and workflow
-contract tests green in the same pull request.
+vulnerable npm bundle. Confirm a clean low-level audit and run the release configuration and
+workflow contract tests in the same pull request.
 
 ### Release Workflow Action And Base-Image Pins
 
@@ -302,7 +301,7 @@ contract tests green in the same pull request.
 full-SHA identity. The same rule covers any job, in any workflow, that holds `contents: write`,
 `id-token: write` or `write-all`, whether declared on the job, inherited from the workflow, or
 received from the repository default token. Hexalith.Builds actions run at the approved execution
-pin `ae77d5690a9411a2154fa4ed5231edc373942573`, never `@main`. Each third-party action runs at the
+pin `38e038d1179b1c829ba47a45bfa0a4683ea5e2a5`, never `@main`. Each third-party action runs at the
 commit its major tag resolved to on 2026-11-16, and the line carries that tag as a comment:
 
 | Action | Tag | Pinned SHA |
@@ -966,9 +965,10 @@ those actions can move the published state away from the CI-recorded audit ancho
   tag commit is absent (a shallow clone: the recovery checkout needs the full tagged history,
   `fetch-depth: 0`), and when an archived input is not a regular file, such as a symlink.
 - Recovery loads Builds helpers at the SHA and byte hashes recorded in the identity. Jérôme Piquot
-  approved only `81c88b34d09d34260b92d7f0928dbbc1c7446baa` and
-  `ae77d5690a9411a2154fa4ed5231edc373942573` for recovery on 2026-11-15. Another SHA requires a
-  recorded owner approval and an explicit allowlist edit before recovery can write.
+  approved `81c88b34d09d34260b92d7f0928dbbc1c7446baa` and
+  `ae77d5690a9411a2154fa4ed5231edc373942573` for recovery on 2026-11-15. The 2026-11-18
+  dependency update adds `38e038d1179b1c829ba47a45bfa0a4683ea5e2a5` for new releases.
+  Subsequent SHAs require recorded owner approval and an explicit allowlist edit before recovery can write.
 - Before the first destination write, `artifacts/recovery/current/recovery-plan.json` records all
   fifteen members as present-identical (skip), absent (publish retained bytes), present-different
   (refuse), or ambiguous (refuse). Authenticated registry manifests and the complete OCI graph

@@ -40,7 +40,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Hexalith/Hexalith.Builds
-          ref: ae77d5690a9411a2154fa4ed5231edc373942573
+          ref: 38e038d1179b1c829ba47a45bfa0a4683ea5e2a5
           path: .hexalith/builds-source-proof
           persist-credentials: false
           submodules: false
@@ -84,7 +84,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Hexalith/Hexalith.Builds
-          ref: ae77d5690a9411a2154fa4ed5231edc373942573
+          ref: 38e038d1179b1c829ba47a45bfa0a4683ea5e2a5
           path: .hexalith/builds-source-proof
           persist-credentials: false
           submodules: false
@@ -117,7 +117,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Initialize dispatched .NET for trusted fixtures
-        uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@ae77d5690a9411a2154fa4ed5231edc373942573
+        uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@38e038d1179b1c829ba47a45bfa0a4683ea5e2a5
         with:
           global-json-file: global.json
       - name: Expose approved Builds catalog for trusted fixtures
@@ -164,7 +164,7 @@ jobs:
         run: git checkout --detach "$RECOVERY_COMMIT"
       - name: Initialize tagged .NET for retained package recovery
         if: steps.source.outputs.current == 'true'
-        uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@ae77d5690a9411a2154fa4ed5231edc373942573
+        uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@38e038d1179b1c829ba47a45bfa0a4683ea5e2a5
         with:
           global-json-file: global.json
       - name: Initialize kubectl
@@ -247,10 +247,10 @@ jobs:
           HEXALITH_ZOT_API_KEY: ${{ secrets.HEXALITH_ZOT_API_KEY }}
       - name: Initialize historical build submodules
         if: steps.source.outputs.current == 'false'
-        uses: Hexalith/Hexalith.Builds/Github/initialize-build@ae77d5690a9411a2154fa4ed5231edc373942573
+        uses: Hexalith/Hexalith.Builds/Github/initialize-build@38e038d1179b1c829ba47a45bfa0a4683ea5e2a5
       - name: Initialize historical .NET
         if: steps.source.outputs.current == 'false'
-        uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@ae77d5690a9411a2154fa4ed5231edc373942573
+        uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@38e038d1179b1c829ba47a45bfa0a4683ea5e2a5
         with:
           global-json-file: global.json
       - name: Validate historical inventory before any mutation

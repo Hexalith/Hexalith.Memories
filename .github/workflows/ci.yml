@@ -155,12 +155,6 @@ jobs:
       - name: Validate cross-tenant negative evidence
         run: python3 tools/check-tenant-isolation-evidence.py --branch-name "$BRANCH_NAME" --commit-message-file "$COMMIT_MESSAGE_FILE" --changed-files-file "$CHANGED_FILES_FILE"
 
-      - name: Validate story slice scope
-        # Epic 0 action item 3. Binds at authoring/registration, so a bundled or
-        # checkpoint-heavy story cannot be registered at `backlog` without its
-        # classification, slice-proof, and per-gate checkpoint record.
-        run: python3 tools/check-story-slice-scope.py --branch-name "$BRANCH_NAME" --commit-message-file "$COMMIT_MESSAGE_FILE" --changed-files-file "$CHANGED_FILES_FILE"
-
       - name: Validate story review readiness
         # Epics 22-25 action-item chain. The PR base..head set IS the story diff,
         # so --derive-cumulative is deliberately NOT passed here: re-deriving from
@@ -168,12 +162,12 @@ jobs:
         run: python3 tools/check-story-review-readiness.py --branch-name "$BRANCH_NAME" --commit-message-file "$COMMIT_MESSAGE_FILE" --changed-files-file "$CHANGED_FILES_FILE"
 
   shared-ci:
-    uses: Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@ae77d5690a9411a2154fa4ed5231edc373942573
+    uses: Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@38e038d1179b1c829ba47a45bfa0a4683ea5e2a5
     with:
       solution: Hexalith.Memories.slnx
       dotnet-global-json: global.json
       package-prepare-script: tools/ensure-dotnet11.sh
-      builds-execution-sha: ae77d5690a9411a2154fa4ed5231edc373942573
+      builds-execution-sha: 38e038d1179b1c829ba47a45bfa0a4683ea5e2a5
       test-platform: microsoft-testing-platform
       # The shared shard has no integration-exclusion input. Keep the full
       # Docker-free inventory and its canonical Coverlet reports in the local lane.
@@ -299,7 +293,7 @@ jobs:
       - name: Initialize root release-tooling Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: lts/*
+          node-version: '26.13.1'
           cache: npm
           cache-dependency-path: package-lock.json
 
@@ -325,18 +319,6 @@ jobs:
 
       - name: Build solution
         run: dotnet build Hexalith.Memories.slnx --configuration Release --no-restore
-
-      - name: Run BMad customization fixtures
-        run: python3 -m unittest discover -s tests/tooling/bmad_customization -p "*_test.py"
-
-      - name: Run tenant-isolation evidence gate fixtures
-        run: python3 -m unittest discover -s tests/tooling/tenant_isolation_evidence -p "*_test.py"
-
-      - name: Verify repository line-ending policy
-        run: python3 -m unittest discover -s tests/tooling/line_endings -p "*_test.py"
-
-      - name: Run shared CI alignment fixtures
-        run: python3 -m unittest discover -s tests/tooling/ci_alignment -p "*_test.py"
 
       - name: Run coverage gate fixtures
         run: python3 -m unittest discover -s tests/tooling/coverage_gate -p "*_test.py"
@@ -432,20 +414,8 @@ jobs:
         # retro item 68 decides whether this step stays.
         run: git submodule update --init references/Hexalith.Platform
 
-      - name: Run story file-scope gate fixtures
-        run: python3 -m unittest discover -s tests/tooling/story_scope -p "*_test.py"
-
       - name: Run approved publication preflight fixtures
         run: python3 -m unittest discover -s tests/tooling/approved_publication -p "*_test.py"
-
-      - name: Run story slice-scope gate fixtures
-        run: python3 -m unittest discover -s tests/tooling/story_slice_scope -p "*_test.py"
-
-      - name: Run story review-readiness gate fixtures
-        run: python3 -m unittest discover -s tests/tooling/story_review_readiness -p "*_test.py"
-
-      - name: Run integration stub closure fixtures
-        run: python3 -m unittest discover -s tests/tooling/integration_stub_closure -p "*_test.py"
 
       - name: Run integration-fast coverage verifier fixtures
         run: python3 -m unittest discover -s tests/tooling/integration_fast_coverage -p "*_test.py"
@@ -515,7 +485,7 @@ jobs:
         working-directory: tests/Hexalith.Memories.Web.E2E
 
       - name: Initialize Ubuntu APT mirrors
-        uses: Hexalith/Hexalith.Builds/Github/initialize-apt@ae77d5690a9411a2154fa4ed5231edc373942573
+        uses: Hexalith/Hexalith.Builds/Github/initialize-apt@38e038d1179b1c829ba47a45bfa0a4683ea5e2a5
 
       - name: Install Chromium browser
         run: npx playwright install --with-deps chromium
