@@ -80,11 +80,11 @@ The deployment-oriented Dapr component manifests live under `deploy/dapr/compone
 Memories runs and debugs as a module from the [Hexalith.Platform](https://github.com/Hexalith/Hexalith.Platform) workspace, where this repository is the direct submodule `references/Hexalith.Memories`. Prerequisites:
 
 - The Platform-pinned `hexalith-module` tool, restored with `dotnet tool restore` in the Platform root.
-- Aspire CLI `13.6.1` exactly; the tool refuses any other version with `HXR015`.
+- Aspire CLI `17.0.0` exactly; the tool refuses any other version with `HXR015`.
 - A running Docker engine.
 - `HEXALITH_DAPR_HOME` set to an absolute, isolated Dapr home: Dapr CLI `1.18.0` at `tools/dapr` and runtime `1.18.2` at `.dapr/bin/{daprd,placement,scheduler}`. The Platform README shows how to prepare one from the official release assets.
 - The Platform workspace's direct `references/Hexalith.Builds`, `references/Hexalith.EventStore`, `references/Hexalith.Tenants` and `references/Hexalith.Memories` checkouts, initialized without `--recursive`, with each `HEAD` matching its staged Platform gitlink. The tool reads all three declaration owners even though Memories does not run Tenants. After a local commit here, run `git add references/Hexalith.Memories` in the Platform root before starting a run.
-- The local Aspire orchestration and dashboard packages at `13.6.1`: run `dotnet restore apphost.cs` from Platform once before the first `debug` run. Tool restore alone does not install these SDK packages. If NuGet uses a custom `globalPackagesFolder`, set `NUGET_PACKAGES` to that absolute folder for both restore and `debug`; otherwise the tool checks `~/.nuget/packages` and reports `HXR016` when packages are missing.
+- The local Aspire orchestration and dashboard packages at `17.0.0`: run `dotnet restore apphost.cs` from Platform once before the first `debug` run. Tool restore alone does not install these SDK packages. If NuGet uses a custom `globalPackagesFolder`, set `NUGET_PACKAGES` to that absolute folder for both restore and `debug`; otherwise the tool checks `~/.nuget/packages` and reports `HXR016` when packages are missing.
 
 From the Platform root:
 

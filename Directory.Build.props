@@ -5,6 +5,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- Aspire 17 keeps AddProject and Aspire.AppHost.Sdk available but obsolete. -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);CS0618;ASPIRE012</WarningsNotAsErrors>
     <!-- Retain explicit central dependencies when older package assets target previous frameworks. -->
     <RestoreEnablePackagePruning>false</RestoreEnablePackagePruning>
   </PropertyGroup>
