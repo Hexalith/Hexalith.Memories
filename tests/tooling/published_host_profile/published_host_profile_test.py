@@ -15,7 +15,7 @@ PROJECTS = {
 class PublishedHostProfileTests(unittest.TestCase):
     def evaluate(self, name, profile=None, publishing=False, source=False, version="3.0.13", validate=False):
         project = ROOT / "src" / ("Hexalith.Memories." + name) / ("Hexalith.Memories." + name + ".csproj")
-        args = ["dotnet", "msbuild", str(project), "-nologo", "-p:HexalithEventStoreVersion=3.129.0",
+        args = ["dotnet", "msbuild", str(project), "-nologo", "-p:HexalithEventStoreVersion=5.3.1",
                 "-p:HexalithMemoriesVersion=" + version, "-p:IsPublishing=" + str(publishing).lower(),
                 "-p:HexalithEventStoreFromSource=" + str(source).lower(), "-p:HexalithEventStoreRoot=/uninitialized-sdk-owner",
                 "-getProperty:MemoriesPublishedHostedTestProfile", "-getItem:ProjectReference,PackageReference,PackageVersion"]

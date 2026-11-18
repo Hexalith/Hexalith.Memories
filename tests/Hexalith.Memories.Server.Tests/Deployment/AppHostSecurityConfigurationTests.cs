@@ -149,7 +149,7 @@ public sealed class AppHostSecurityConfigurationTests
             $"-p:HexalithEventStoreFromSource={fromSource.ToString().ToLowerInvariant()}",
             $"-p:HexalithUsePublishedSdkForHostedTests={hostedProfile.ToString().ToLowerInvariant()}",
             $"-p:IsPublishing={publishing.ToString().ToLowerInvariant()}",
-            "-p:HexalithMemoriesVersion=3.0.13", "-p:HexalithEventStoreVersion=3.129.0");
+            "-p:HexalithMemoriesVersion=3.0.13", "-p:HexalithEventStoreVersion=5.3.1");
         JsonElement items = evaluation.RootElement.GetProperty("Items");
         items.GetProperty("ProjectReference").EnumerateArray().Count(item =>
             Path.GetFileNameWithoutExtension(item.GetProperty("Identity").GetString()!.Replace('\\', '/')) == "Hexalith.EventStore.Client")
@@ -157,7 +157,7 @@ public sealed class AppHostSecurityConfigurationTests
         items.GetProperty("PackageReference").EnumerateArray().Count(item => item.GetProperty("Identity").GetString() == "Hexalith.EventStore.Client")
             .ShouldBe(expectedSource ? 0 : 1);
         items.GetProperty("PackageVersion").EnumerateArray().Single(item => item.GetProperty("Identity").GetString() == "Hexalith.EventStore.Client")
-            .GetProperty("Version").GetString().ShouldBe("3.129.0");
+            .GetProperty("Version").GetString().ShouldBe("5.3.1");
         serverProject.ShouldNotContain(
             "Hexalith.EventStore.Client\" Version=",
             Case.Sensitive);
@@ -213,11 +213,11 @@ public sealed class AppHostSecurityConfigurationTests
     [InlineData("", false, null)]
     [InlineData("", true, null)]
     [InlineData("newer-than-catalog", false, null)]
-    [InlineData("3.128.4", false, "3.129.0")]
-    [InlineData("3.129.0", false, "3.129.0")]
-    [InlineData("3.129.1", false, "3.129.1")]
-    [InlineData("3.130.0", false, "3.130.0")]
-    [InlineData("3.128.4", true, "3.128.4")]
+    [InlineData("5.3.0", false, "5.3.1")]
+    [InlineData("5.3.1", false, "5.3.1")]
+    [InlineData("5.3.2", false, "5.3.2")]
+    [InlineData("5.4.0", false, "5.4.0")]
+    [InlineData("5.3.0", true, "5.3.0")]
     public async Task RootDirectoryPackages_RequiresDeliveredCatalogSdkWithoutLoweringNewerSelectionsAsync(string selected, bool fromSource, string? expected)
     {
         if (expected is null)
@@ -242,9 +242,9 @@ public sealed class AppHostSecurityConfigurationTests
             Case.Sensitive);
         XDocument owningCatalog = XDocument.Parse(rootCatalog);
         XElement floor = owningCatalog.Descendants("HexalithEventStoreVersion").Single();
-        floor.Value.ShouldBe("3.129.0");
+        floor.Value.ShouldBe("5.3.1");
         ((string?)floor.Attribute("Condition")).ShouldBe(
-            "'$(HexalithEventStoreFromSource)' != 'true' and ('$(HexalithEventStoreVersion)' == '' or $([MSBuild]::VersionLessThan('$(HexalithEventStoreVersion)', '3.129.0')))");
+            "'$(HexalithEventStoreFromSource)' != 'true' and ('$(HexalithEventStoreVersion)' == '' or $([MSBuild]::VersionLessThan('$(HexalithEventStoreVersion)', '5.3.1')))");
         XElement update = owningCatalog.Descendants("PackageVersion").Single(element => (string?)element.Attribute("Update") == "Hexalith.EventStore.*");
         ((string?)update.Attribute("Update")).ShouldBe("Hexalith.EventStore.*");
         ((string?)update.Attribute("Version")).ShouldBe("$(HexalithEventStoreVersion)");
@@ -280,12 +280,12 @@ public sealed class AppHostSecurityConfigurationTests
     }
 
     [Theory]
-    [InlineData(false, "3.129.0")]
-    [InlineData(true, "3.128.4")]
+    [InlineData(false, "5.3.1")]
+    [InlineData(true, "5.3.0")]
     public async Task RootDirectoryPackages_EmptySelectionDistinguishesSourceCatalogBelowOwnerFloorAsync(bool fromSource, string expected)
     {
         XDocument catalog = ReadSelectedBuildsCatalog();
-        ReadDefaultEventStoreVersion(catalog).Value = "3.128.4";
+        ReadDefaultEventStoreVersion(catalog).Value = "5.3.0";
         XDocument owningCatalog = XDocument.Parse(ReadRepoFile("Directory.Packages.props"));
         Version.Parse(ReadDefaultEventStoreVersion(catalog).Value)
             .ShouldBeLessThan(Version.Parse(owningCatalog.Descendants("HexalithEventStoreVersion").Single().Value));
