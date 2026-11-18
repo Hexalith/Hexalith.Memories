@@ -471,14 +471,11 @@ jobs:
 
 
       - name: Restore solution
-        # Retain the NU1901-1904 exception for the source dependency restore graph.
-        run: dotnet restore Hexalith.Memories.slnx -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904
+        # Use the same configuration as the specimen host build and Playwright launch.
+        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904
 
-      # Build the Debug configuration the Playwright webServer runs (see playwright.config.ts),
-      # so the browser lane exercises the same build this job produced instead of a discarded
-      # Release build. Release compile coverage for the host is provided by the shared-ci lane.
       - name: Build Memories web specimen host
-        run: dotnet build tests/Hexalith.Memories.Web.SpecimenHost/Hexalith.Memories.Web.SpecimenHost.csproj --configuration Debug --no-restore -m:1
+        run: dotnet build tests/Hexalith.Memories.Web.SpecimenHost/Hexalith.Memories.Web.SpecimenHost.csproj --configuration Release --no-restore -m:1
 
       - name: Install Memories web E2E dependencies
         run: npm ci
