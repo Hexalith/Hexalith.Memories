@@ -11,6 +11,11 @@
     <RestoreEnablePackagePruning>false</RestoreEnablePackagePruning>
   </PropertyGroup>
 
+  <!-- Select the two published test hosts before NuGet evaluates their EventStore package floor. -->
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'Hexalith.Memories.Server' or '$(MSBuildProjectName)' == 'Hexalith.Memories.DomainService'">
+    <MemoriesPublishedHostedTestProfile Condition="'$(HexalithUsePublishedSdkForHostedTests)' == 'true' and '$(IsPublishing)' != 'true'">true</MemoriesPublishedHostedTestProfile>
+  </PropertyGroup>
+
   <PropertyGroup>
     <NuGetAudit>true</NuGetAudit>
     <NuGetAuditMode>all</NuGetAuditMode>

@@ -156,8 +156,9 @@ public sealed class AppHostSecurityConfigurationTests
             .ShouldBe(expectedSource ? 1 : 0);
         items.GetProperty("PackageReference").EnumerateArray().Count(item => item.GetProperty("Identity").GetString() == "Hexalith.EventStore.Client")
             .ShouldBe(expectedSource ? 0 : 1);
+        string expectedVersion = expectedSource ? "5.3.1" : ReadEventStoreMinimumVersion().ToString();
         items.GetProperty("PackageVersion").EnumerateArray().Single(item => item.GetProperty("Identity").GetString() == "Hexalith.EventStore.Client")
-            .GetProperty("Version").GetString().ShouldBe("5.3.1");
+            .GetProperty("Version").GetString().ShouldBe(expectedVersion);
         serverProject.ShouldNotContain(
             "Hexalith.EventStore.Client\" Version=",
             Case.Sensitive);
@@ -210,44 +211,30 @@ public sealed class AppHostSecurityConfigurationTests
     }
 
     [Theory]
-    [InlineData("", false, null)]
-    [InlineData("", true, null)]
-    [InlineData("newer-than-catalog", false, null)]
-    [InlineData("5.3.0", false, "5.3.1")]
-    [InlineData("5.3.1", false, "5.3.1")]
-    [InlineData("5.3.2", false, "5.3.2")]
-    [InlineData("5.4.0", false, "5.4.0")]
-    [InlineData("5.3.0", true, "5.3.0")]
-    public async Task RootDirectoryPackages_RequiresDeliveredCatalogSdkWithoutLoweringNewerSelectionsAsync(string selected, bool fromSource, string? expected)
+    [InlineData("", false)]
+    [InlineData("", true)]
+    [InlineData("above-catalog-and-minimum", false)]
+    [InlineData("5.3.0", false)]
+    [InlineData("5.3.1", false)]
+    [InlineData("5.3.2", false)]
+    [InlineData("at-minimum", false)]
+    [InlineData("5.3.0", true)]
+    public async Task RootDirectoryPackages_RequiresDeliveredCatalogSdkWithoutLoweringNewerSelectionsAsync(string selected, bool fromSource)
     {
-        if (expected is null)
+        Version minimum = ReadEventStoreMinimumVersion();
+        Version catalogDefault = Version.Parse(ReadDefaultEventStoreVersion(ReadSelectedBuildsCatalog()).Value);
+        if (selected == "at-minimum")
         {
-            XDocument catalog = ReadSelectedBuildsCatalog();
-            expected = fromSource
-                ? ReadDefaultEventStoreVersion(catalog).Value
-                : ReadBuildMetadata("EventStoreCatalogVersion");
-            if (selected == "newer-than-catalog")
-            {
-                Version catalogVersion = Version.Parse(expected);
-                selected = new Version(catalogVersion.Major, catalogVersion.Minor, checked(catalogVersion.Build + 1)).ToString();
-                Version.Parse(selected).ShouldBeGreaterThan(catalogVersion);
-                expected = selected;
-            }
+            selected = minimum.ToString();
+        }
+        else if (selected == "above-catalog-and-minimum")
+        {
+            Version latest = catalogDefault > minimum ? catalogDefault : minimum;
+            selected = new Version(latest.Major, latest.Minor, checked(latest.Build + 1)).ToString();
         }
 
-        string rootCatalog = ReadRepoFile("Directory.Packages.props");
-
-        rootCatalog.ShouldContain(
-            "references/Hexalith.Builds/Props/Directory.Packages.props",
-            Case.Sensitive);
-        XDocument owningCatalog = XDocument.Parse(rootCatalog);
-        XElement floor = owningCatalog.Descendants("HexalithEventStoreVersion").Single();
-        floor.Value.ShouldBe("5.3.1");
-        ((string?)floor.Attribute("Condition")).ShouldBe(
-            "'$(HexalithEventStoreFromSource)' != 'true' and ('$(HexalithEventStoreVersion)' == '' or $([MSBuild]::VersionLessThan('$(HexalithEventStoreVersion)', '5.3.1')))");
-        XElement update = owningCatalog.Descendants("PackageVersion").Single(element => (string?)element.Attribute("Update") == "Hexalith.EventStore.*");
-        ((string?)update.Attribute("Update")).ShouldBe("Hexalith.EventStore.*");
-        ((string?)update.Attribute("Version")).ShouldBe("$(HexalithEventStoreVersion)");
+        Version initial = selected.Length == 0 ? catalogDefault : Version.Parse(selected);
+        string expected = (!fromSource && initial < minimum ? minimum : initial).ToString();
         string fixture = Path.Combine(Path.GetTempPath(), "memories-evaluated-floor-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(fixture);
         try
@@ -280,15 +267,16 @@ public sealed class AppHostSecurityConfigurationTests
     }
 
     [Theory]
-    [InlineData(false, "5.3.1")]
-    [InlineData(true, "5.3.0")]
-    public async Task RootDirectoryPackages_EmptySelectionDistinguishesSourceCatalogBelowOwnerFloorAsync(bool fromSource, string expected)
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RootDirectoryPackages_EmptySelectionDistinguishesSourceCatalogBelowOwnerFloorAsync(bool fromSource)
     {
         XDocument catalog = ReadSelectedBuildsCatalog();
         ReadDefaultEventStoreVersion(catalog).Value = "5.3.0";
         XDocument owningCatalog = XDocument.Parse(ReadRepoFile("Directory.Packages.props"));
-        Version.Parse(ReadDefaultEventStoreVersion(catalog).Value)
-            .ShouldBeLessThan(Version.Parse(owningCatalog.Descendants("HexalithEventStoreVersion").Single().Value));
+        Version minimum = ReadEventStoreMinimumVersion();
+        Version.Parse(ReadDefaultEventStoreVersion(catalog).Value).ShouldBeLessThan(minimum);
+        string expected = fromSource ? ReadDefaultEventStoreVersion(catalog).Value : minimum.ToString();
         string fixture = Path.Combine(Path.GetTempPath(), "memories-source-catalog-floor-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(fixture);
         try
@@ -476,6 +464,9 @@ public sealed class AppHostSecurityConfigurationTests
         return value;
     }
 
+    private static Version ReadEventStoreMinimumVersion()
+        => Version.Parse(XDocument.Parse(ReadRepoFile("Directory.Packages.props")).Descendants("MemoriesEventStoreMinimumVersion").Single().Value);
+
     private static XElement ReadDefaultEventStoreVersion(XDocument catalog)
     {
         XElement root = catalog.Root.ShouldNotBeNull();
@@ -505,13 +496,14 @@ public sealed class AppHostSecurityConfigurationTests
             path.ShouldNotContain("$(", Case.Sensitive, "The fixture must resolve each owning tracked import without guessing other locations.");
             return Path.GetFullPath(path.Replace('\\', Path.DirectorySeparatorChar));
         })];
+        candidates.ShouldContain(Path.Combine(root, "references", "Hexalith.Builds", "Props", "Directory.Packages.props"));
         // Candidate templates define allowed provenance; MSBuild metadata determines which import actually ran.
         string catalogPath = Path.GetFullPath(evaluatedCatalogPath);
         candidates.ShouldContain(catalogPath, "The evaluated catalog must come from an owning tracked import; path overrides are refused.");
         XDocument catalog = XDocument.Load(catalogPath);
         string declaredVersion = ReadDefaultEventStoreVersion(catalog).Value;
-        string floor = owningCatalog.Descendants("HexalithEventStoreVersion").Single().Value;
-        string requiredVersion = Version.Parse(declaredVersion) < Version.Parse(floor) ? floor : declaredVersion;
+        Version minimum = ReadEventStoreMinimumVersion();
+        string requiredVersion = Version.Parse(declaredVersion) < minimum ? minimum.ToString() : declaredVersion;
         evaluatedVersion.ShouldBe(requiredVersion, "An evaluated version override must not replace the tracked catalog pin and owner SDK minimum.");
         evaluatedClientVersion.ShouldBe(evaluatedVersion, "The evaluated Client item must use the same exact central version.");
         return catalog;
