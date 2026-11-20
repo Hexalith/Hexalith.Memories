@@ -249,9 +249,7 @@ the memory unit already exists, `CheckIdempotencyActivity` returns duplicate, th
 early. This is intentional for normal at-least-once redelivery but **WRONG for operator-triggered
 replay-after-tenant-restore**.
 
-To rebuild memory from an event stream, operators must first delete the tenant's memory units
-(Story 3.5) **OR** recreate the tenant via the provisioning workflow, then re-publish. Story 9.1
-does NOT add a `forceReplay` bypass — that would regress the at-least-once idempotency guarantee.
+There is no `forceReplay` bypass. For projection loss, keep the live tenant and its deduplication evidence intact. Select a supported recovery method or stop if the projections cannot be recovered. Tenant erasure permanently retires the identity. See [Index Rebuild](../operations/index-rebuild.md).
 
 ### 3.2 Routing-config changes must quiesce the stream
 

@@ -85,6 +85,8 @@ RECOVERY_MANIFEST_DIR="$(cd -- "$(dirname -- "$RECOVERY_MANIFEST")" && pwd -P)"
 - `BackupRestoreFidelityIntegrationTests.ExportThenImport_RestoresEveryHashAndEdge` proves exact logical
   export/import fidelity, including graph `createdAt` and audit properties plus re-derived semantic chunks.
 
+Before rewinding storage or importing into a replacement cluster, reconcile every tenant in scope against current erasure evidence held outside the recovery point. Keep the restore isolated if an erased tenant could reappear or its status is unknown.
+
 Recovery order is: same PVC (AOF replay), PVC from snapshot, then logical export/import into a clean target.
 
 ## Scenario 1 — Redis pod or PVC loss
@@ -209,7 +211,7 @@ evidence is unavailable, use the VolumeSnapshot path above or rebuild the graph 
    ConfigMap values. Do not apply placeholder values or print recovered secrets.
 2. Deploy `deploy/kubernetes/overlays/production` on the new cluster, then require image pulls, both stateful
    backends, Server/MCP, and all four Dapr components to become healthy.
-3. For each tenant, follow the exact create/status/`Active`/isolation-verification procedure in
+3. For each verified live, non-erased tenant, follow the exact create/status/`Active`/isolation-verification procedure in
    [Tenant Onboarding and Offboarding](./tenant-onboarding-offboarding.md#onboarding), using the same id and
    provider/model/dimensions recorded in the export and recovery policy.
 4. Restore only the logical exports enumerated by `$RECOVERY_MANIFEST`. This loop verifies every SHA-256,
@@ -350,9 +352,8 @@ and never infer zero loss from a pod replacement.
 - On paired PVC restore failure, scale both StatefulSets to zero, preserve events and failed PVCs for
   forensics, and retry from the immutable pair only with incident-command approval. A pod-only restart with
   both original PVCs intact may still isolate the affected StatefulSet.
-- On logical restore failure, wait for or terminate the workflow, delete the failed tenant through the tenant
-  deletion workflow, wait for deletion proof, and re-provision a clean same-id target. Never restore over a
-  non-clean target.
+- On logical restore failure, pause intake, establish terminal workflow status, and preserve the partial target.
+  Apply the [logical restore stop conditions](./backup-restore.md#rollback-and-stop-conditions). Erasure permanently retires the tenant ID.
 - If Redis and FalkorDB recovery points cannot be proven paired, prefer the logical export/import path. Do not
   combine snapshots from different recovery IDs.
 - Resume intake only after repository verification, tenant `Active`/isolation checks, search smoke tests, and

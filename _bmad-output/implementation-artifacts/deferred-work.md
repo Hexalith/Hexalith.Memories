@@ -6358,3 +6358,44 @@ decision: 2026-11-01 keep-open — parked. Reopens only on the trigger: any Prod
 - Target artifact: `tests/Hexalith.Memories.IntegrationTests/Fixtures/OllamaOidcFakeServerTests.cs` (11 methods), `Fixtures/PublicSurfaceStabilityTests.cs` (5), `Ingestion/InventoryWirePaginationIntegrationTests.cs` (1), `Ingestion/MemoryErasureProcessProtocolTests.cs` (5), `Ingestion/ReferencedSourceProducerIntegrationTests.cs` (4), `Ingestion/SourceInventoryProducerIntegrationTests.cs` (17), `Ingestion/TenantIngestionLifecycleIntegrationTests.cs` (5), `Ingestion/UnitOwnershipAuthorityIntegrationTests.cs` (12); all paths after the first share the IntegrationTests project root.
 - Re-open trigger: The next story that touches any of those eight files or the integration-fast filter must review and assign their automatic CI lane, resolve the failing producer case, and shrink `CiTestInventoryTests.ReviewedUnselectedTests` as methods gain selection.
 - Evidence: Baseline xUnit discovery across all ten Release-built projects at `dd422905e563d0c23b7232df910a0c41d82d7b03` found these 60 untagged source methods were never selected by a lane, including the retired runner. The six Testcontainers classes passed 117/118 expanded cases locally; `ReferencedSourceProducerIntegrationTests` fails non-deterministically in 1–3 cases per run, always including `FailedReingestionCopiesPriorSourceAndReconcilesOnlyTheNewOwnerAcrossRestart(failBeforeScheduling: True, storedOwner: "foreign")`. `OllamaOidcFakeServerTests` needs the Aspire fixture; `PublicSurfaceStabilityTests` has no fixture. Story 30.8 preserves these sources and registers exact per-file counts in `UnselectedTests_MatchTheReviewedRegister`; tagging them before resolving the failure would not be earned coverage. Owner: Murat. Consequence: these 60 methods remain outside automatic CI until the trigger is handled. The inert pipe-worker entry point and opt-in CLI benchmark are separate design exclusions, not part of this debt.
+
+**2026-11-20 priority update.** The PR filter selects 492 of 638 expanded integration cases on `11343d16b968`. The 146 omissions include all 55 source-inventory producer cases and all 13 tenant-ingestion lifecycle cases. The historical 60 above counts source methods. Prioritize this work for the next integration-lane change. Resolve the known flaky producer case, and compare discovered test identities with the union of executed lane results. Owner: Murat. Reproduction commands are in the [audit course correction](../planning-artifacts/sprint-change-proposal-2026-11-20.md).
+
+## Deferred from the 2026-11-20 repository audit
+
+### DW-732: Keep ingestion source credentials out of logs and case activity
+
+- ID: AUDIT-20261120-SOURCE-DISPLAY
+- Status: open
+- Source story: Repository audit and [audit course correction](../planning-artifacts/sprint-change-proposal-2026-11-20.md), finding 2
+- Target artifact: `src/Hexalith.Memories.Server/Workflows/IngestionWorkflow.cs` and `src/Hexalith.Memories.Server/Cases/CaseActivityService.cs`
+- Re-open trigger: Prioritize at the next ingestion maintenance change, before exposing URL ingestion to tenants who use signed source URLs.
+- Evidence: Workflow logging passes the original source. Success and failure activity descriptions interpolate it. The activity service persists descriptions to the case stream. Owner: ingestion maintainer. Close on synthetic-marker checks across logs and stored/read case activity for normal, duplicate and failed ingestion, with exact fetch and deduplication behavior preserved.
+
+### DW-733: Demonstrate recovery after partial writes for a live tenant
+
+- ID: AUDIT-20261120-LIVE-RESTORE
+- Status: open
+- Source story: Repository audit and [audit course correction](../planning-artifacts/sprint-change-proposal-2026-11-20.md), finding 3
+- Target artifact: `docs/operations/backup-restore.md` and `tests/Hexalith.Memories.IntegrationTests/Restore/`
+- Re-open trigger: Before advertising a partial logical restore retry or approving a production recovery drill that depends on it.
+- Evidence: Restore requires a matching tenant and clean target. Deletion records a write fence and provisioning refuses that identifier. Owner: recovery owner. Rehearse a partial write on a disposable live tenant, demonstrate recovered contents and an unaffected control tenant, and publish only the procedure the drill proves. Follow the documented stop conditions until then. Stories 34.24/34.25 separately own erased-origin refusal.
+
+### DW-734: Align the evaluated EventStore package floor and its tests
+
+- ID: AUDIT-20261120-EVENTSTORE-FLOOR
+- Status: resolved
+- Source story: Repository audit and [audit course correction](../planning-artifacts/sprint-change-proposal-2026-11-20.md), finding 7
+- Target artifact: `Directory.Packages.props` and `tests/Hexalith.Memories.Server.Tests/Deployment/AppHostSecurityConfigurationTests.cs`
+- Re-open trigger: A package consumer resolves below the supported minimum, a higher selection is downgraded, or source-backed builds start applying the package floor.
+- Resolution: [PR #73](https://github.com/Hexalith/Hexalith.Memories/pull/73) merged on 2026-11-20. Package consumers enforce a single 5.4.0 minimum and preserve higher selections. Source-backed consumers retain the selected version.
+- Evidence: All 31 cases in `AppHostSecurityConfigurationTests` passed, including the nine that failed during the audit. Debug/source and Release/package builds passed. The [hosted unit and contract check](https://github.com/Hexalith/Hexalith.Memories/actions/runs/44731772842/job/136273081509) passed with 81.39% line coverage.
+
+### DW-735: Measure per-tenant ingestion ownership capacity
+
+- ID: AUDIT-20261120-OWNERSHIP-CAPACITY
+- Status: open
+- Source story: Repository audit and [audit course correction](../planning-artifacts/sprint-change-proposal-2026-11-20.md), finding 8
+- Target artifact: `src/Hexalith.Memories.Server/Ingestion/TenantIngestionOwnership.cs` and `docs/operations/capacity-planning.md`
+- Re-open trigger: Before claiming the 100K-unit reference workload, during the next Story 34.39 sizing exercise or on an observed ownership-capacity refusal, whichever comes first.
+- Evidence: The retained-key limit is 65,536, including per-unit aliases on the tracked path. Owner: ingestion and performance maintainers. Measure key cardinality by input shape, admission behavior and deletion completeness across the target workload. Size any subsequent partitioning change from the observed distribution.
