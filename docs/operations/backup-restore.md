@@ -31,7 +31,7 @@ The export is a logical snapshot, not a byte-image of Redis.
 | Case activity | `{tenantId}:case:{id}:activity` + `:activity:summary` | Not restored | Operational read-model; new activity accrues after restore |
 | Graph | Per-tenant FalkorDB graph | Exported edges restored; `CONTAINS` rebuilt from `caseId` | Direction, type, `createdAt`, confidence, origin, `verifiedBy`, and `previousConfidence` preserved |
 | Semantic chunks | `{tenantId}:vec:{id}:{seq}` (HASH) | Re-chunked and re-embedded | Attribution/dimensions equal; bytes equal for deterministic providers |
-| NL vectors | `{tenantId}:vecnl:{id}` (HASH) | Not restored | No generic semantic re-index or force-replay path exists; recover through the supported original-source republication/re-ingestion path in [Index Rebuild](./index-rebuild.md) |
+| NL vectors | `{tenantId}:vecnl:{id}` (HASH) | Not restored | No generic semantic re-index or force-replay path exists. If NL parity is required, follow the stop condition in [Index Rebuild](./index-rebuild.md). |
 
 Vectors are re-derived because export contains provider/model/dimensions attribution but no vector bytes or
 AI-generated NL description. Secret values are never exported: `apiSecretKeyName` is only a secret-store key
@@ -302,6 +302,8 @@ catalog and upload it atomically with the other recovery-point evidence before r
 
 ## Logical restore procedure
 
+Confirm from current lifecycle evidence that the origin tenant is live before using any recovery point. A backup predating deletion cannot establish that fact. Stop if erasure status is unknown.
+
 Restore is same-tenant-id only and asynchronous. The target tenant/case must be provisioned, `Active`, and
 clean: no indexed units, case hashes, or graph artifacts. Its provider/model/dimensions and secret reference
 must match the export. `RestoreTargetGuard` rejects a non-clean target.
@@ -417,19 +419,10 @@ output, restore status bodies, checksums, search smoke-test evidence, and incide
 
 ## Rollback and stop conditions
 
-There is no supported "restore an older snapshot over the top." Additive `HSET`/`MERGE` cannot remove newer
-objects, and the clean-target guard rejects them. On upload, validation, lease, workflow, or verification
-failure:
-
-1. Stop new intake and keep it stopped.
-2. Wait for the restore to become terminal, or have incident command terminate it through the approved Dapr
-   workflow operation; never delete the tenant while restore activities can still write.
-3. Delete the failed target through the tenant deletion workflow and wait for deletion evidence.
-4. Re-provision the same tenant id/configuration, require `Active` plus isolation verification, and retry the
-   known-good export into the clean target.
-
-If deletion or termination cannot be proved, stop and escalate. Do not search, resume intake, or layer another
-restore over the uncertain target.
+1. Pause intake. Retain the recovery manifest, export checksum, workflow ID, last status response and verification results. A request or polling timeout can leave the original restore running. Follow its status location until terminal, or have incident command terminate it and confirm its writers have stopped.
+2. If validation refused the upload before any write, correct the cause. Retry only for a live, non-erased tenant with the same export tenant ID, matching configuration and a demonstrably clean target. The restore must pass the checks under [Verification and evidence](#verification-and-evidence) before intake resumes.
+3. If any write may have occurred, the clean-target guard refuses the target, or verification fails, keep the tenant offline. Preserve the partial state and escalate to the recovery owner. Repeating the import can leave newer or partial data in place. A partially written target needs a rehearsed recovery procedure before service resumes.
+4. Tenant deletion permanently fences the identifier. Keep erasure separate from incident recovery. Never clear the fence, change the export's tenant ID, or restore an erased tenant from a backup. Before a physical rewind or a rebuild from an older backup, account for every affected tenant and every erasure since that recovery point. If current erasure history cannot be established independently of the backup, keep it isolated and stop before serving restored data.
 
 ## Scale limit
 

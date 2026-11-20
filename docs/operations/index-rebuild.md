@@ -7,14 +7,7 @@ embedding migration, restore, tenant provisioning/deletion, or EventStore dedupl
 verified: 2026-07-15 against repository revision
 `ca0a6266598e0f4231e2ff332d0e2131bfda75c6`.
 
-There is no generic index-rebuild command. This runbook selects only the recovery paths supported by
-the current implementation: bounded consistency verify/repair, blue/green embedding migration,
-logical import or physical restore, and destructive tenant reprovisioning followed by original-source
-re-ingestion/republishing. It covers one tenant and its syntactic, semantic, natural-language semantic,
-and FalkorDB graph projections. A case-scoped logical import affects the selected case; consistency,
-migration, and reprovision paths affect the selected tenant; the canary case is verification scope and
-does not make a tenant-wide mutation case-scoped. Physical Redis/FalkorDB snapshot restore replaces the
-shared backend recovery point and therefore rolls back all tenants, not just `TENANT_ID`.
+This runbook covers bounded consistency repair, blue/green embedding migration, logical import and paired physical restore. A case-scoped import affects its selected case. Repair and migration can affect the tenant. A physical Redis/FalkorDB restore rewinds shared storage for every tenant. Tenant deletion permanently retires the identifier.
 
 EventStore command/event history is authoritative for domain mutations; Redis and FalkorDB hold
 projections/read models. The current consistency implementation still uses the syntactic Redis hash as
@@ -24,7 +17,7 @@ around these ownership boundaries.
 ## Prerequisites and authorization
 
 - Assign a data owner, tenant owner, operator, change/incident ID, rollback owner, and observation
-  window. Consistency verification is read-only; every repair, migration, restore, delete/reprovision,
+  window. Consistency verification is read-only; every repair, migration, restore,
   or republish action requires tenant/data-owner approval.
 - Before any mutation, take and verify a logical export and a physically consistent paired Redis/
   FalkorDB backup. Record both snapshot identities/timestamps and the restore rehearsal evidence.
@@ -41,7 +34,7 @@ around these ownership boundaries.
     "$CHANGE_ID" "$NAMESPACE" "$TENANT_ID" "$CANARY_CASE_ID"
   ```
 
-- Destructive steps are limited to the approved restore or tenant delete/reprovision paths. Stop when
+- Keep the live tenant identity intact during recovery. Stop when
   scope, backup, workflow state, active/previous aliases, original source availability, or tenant
   isolation is uncertain.
 
@@ -72,8 +65,7 @@ Current limitations and ownership are decision inputs:
   storage and reports NL drift as an informational note. Tenant-wide enumeration does not discover an
   NL-only orphan, and repair planning neither rebuilds nor removes NL projections.
 - Logical export/import does not capture or regenerate NL vector bytes or the generated description.
-  Missing NL state requires original-source republishing/re-ingestion through Path D; Path A or logical
-  Path C cannot make it whole.
+  If NL parity is required and no verified physical recovery point covers it, escalate under Path D.
 
 ### Ingestion-time readiness vs. provisioning ownership
 
@@ -118,12 +110,12 @@ Use this operator decision path:
 1. For a transient backend/readiness-verification failure, restore Redis health and
    retry ingestion; the failed check will execute again.
 2. For an absent index on a tenant that did not finish provisioning, complete or
-   repeat the approved tenant provisioning/reprovisioning lifecycle. Do not issue
+   retry the approved provisioning workflow for that live, non-erased identifier. Do not issue
    ingestion-owned `FT.CREATE`.
 3. For an intentional provider/model/dimension transition, use Path B's blue/green
    migration. A dimension mismatch is not fixed by retrying readiness.
 4. For incompatible drift or projection loss, stop intake and select the supported
-   consistency, restore, or destructive rebuild path in the matrix below. Do not use
+   consistency or restore path in the matrix below. Do not use
    the additive upgrade allowance to conceal unrelated schema drift.
 
 ## Procedure
@@ -133,11 +125,11 @@ Use this operator decision path:
 | Observation / objective | Supported path | What it can change | Key stop condition | Recovery route |
 |---|---|---|---|---|
 | Need a read-only inventory or a bounded missing/orphan assessment | A — consistency verify/inspect | nothing | truncated/ambiguous evidence or unhealthy backend | restore backend health and repeat verify |
-| Missing graph projection with syntactic source present; orphan raw-semantic/graph projection | A — explicit consistency repair | graph re-merge and raw-semantic/graph orphan removal | recommendation includes semantic re-index, missing syntactic source, NL drift, non-convergence, or widened scope | stop; restore/re-ingest via C/D; NL loss requires D |
+| Missing graph projection with syntactic source present; orphan raw-semantic/graph projection | A — explicit consistency repair | graph re-merge and raw-semantic/graph orphan removal | recommendation includes semantic re-index, missing syntactic source, NL drift, non-convergence, or widened scope | stop and evaluate C, then escalate under D if NL remains missing |
 | Provider/model/dimensions or vector namespace transition | B — blue/green embedding migration | staged chunk vectors/indexes, aliases, tenant config | failures, marker owner mismatch, count/search parity failure | resume, abort, or owner-checked rollback while old targets remain |
-| Known-good logical export and a clean tenant/case target exist | C1 — logical import | exported syntactic, raw-semantic, case, and graph state; not NL state | dirty target, manifest/config mismatch, workflow failure, missing NL recovery requirement, or failed canary | terminate restore, delete/reprovision the failed scope, and retry the known-good export |
+| Known-good logical export and a clean tenant/case target exist | C1 — logical import | exported syntactic, raw-semantic, case, and graph state; not NL state | dirty target, manifest/config mismatch, workflow failure, missing NL recovery requirement, or failed canary | apply the logical restore stop conditions and preserve the live target |
 | Coordinated shared-backend rollback is approved for every tenant | C2 — paired physical restore | all Redis/FalkorDB state at the retained boundary | unverified snapshot pair, layout mismatch, any tenant owner missing, or failed control tenant | keep intake frozen and restore the approved all-tenant recovery point or escalate |
-| Full projection rebuild is required and original sources/events are available | D — tenant reprovision then controlled re-ingestion/republishing | all tenant projections and tenant-local lifecycle state | missing approval/export/backup/source, cross-tenant references, or control-tenant regression | restore original tenant from retained evidence |
+| Full projection rebuild is required and original sources/events are available | D — escalate an unsupported full rebuild | none | recovery would require erasing the tenant or bypassing deduplication | preserve the live tenant and its evidence |
 
 If no row fits, stop and escalate. Do not convert an unsupported semantic repair into a manual backend
 operation.
@@ -178,12 +170,10 @@ use the tool's owner-checked rollback/abort; do not alter aliases manually.
 
 ### 4. Path C — logical import or physical restore
 
-Choose logical import only for a newly provisioned clean tenant/case target. It can re-embed raw vectors
+Choose logical import only for a clean target belonging to the same live, non-erased tenant. It can re-embed raw vectors
 and consume provider capacity, but it does not restore NL vectors/descriptions and is therefore not a
 complete route when NL parity is required. The clean-target guard rejects layering an older export over
-existing state. On partial failure, wait for or terminate the restore through incident command, delete and
-reprovision the failed target, and retry the known-good export; do not layer or merely abandon another
-import on the uncertain target.
+existing state. On partial failure, freeze intake and follow the [logical restore stop conditions](./backup-restore.md#rollback-and-stop-conditions).
 
 Choose paired physical restore only for a verified same-layout snapshot and an explicitly approved
 all-tenant recovery. Quiesce every tenant/workflow, record every tenant owner/approver and control result,
@@ -192,29 +182,9 @@ Physical restore replaces shared durable state and must keep Redis/FalkorDB at o
 Never copy a live, mutating AOF directory or restore only one backend without an explicitly accepted
 reconciliation plan.
 
-### 5. Path D — destructive full tenant rebuild
+### 5. Path D — escalate a full rebuild
 
-1. Freeze intake and require every in-flight ingestion, restore, migration, repair, provisioning, and
-   deletion workflow to be terminal or explicitly terminated through incident command. Recording an
-   active workflow is not coordination: do not delete while it can still write. Inventory cross-tenant
-   references and external secret ownership. Confirm original source/event republishing is feasible.
-2. Produce logical export and paired physical backup, rehearse the recovery route, and obtain tenant,
-   data, retention/legal, and incident/change approvals.
-3. Delete the tenant only through authenticated `DELETE /api/v1/tenants/{tenantId}` and poll while the
-   registry exists. Follow the independent absence verification in
-   [Tenant Onboarding and Offboarding](./tenant-onboarding-offboarding.md). Set a change-approved polling
-   deadline before DELETE. Stop on the deadline, `Failed`, `CompensationFailed`, Dapr/state-store failure,
-   or scope change. A post-removal `404 TENANT_NOT_FOUND` is not completion until the linked independent
-   registry/index/graph/state absence and stale-access checks pass.
-4. Recreate the tenant through authenticated provisioning with the intended dimensions, wait for the
-   workflow to complete, and independently verify `Active`. Provisioning—not ingestion—creates the
-   indexes and graph.
-5. Republish/re-ingest original sources through supported APIs/workflows so raw and NL projections are
-   regenerated. Retained logical/physical evidence is the recovery point, not permission to layer an
-   incomplete logical import. A simple replay into the old tenant would have been deduplicated; there is
-   no force-replay switch.
-6. Start with the tenant-scoped canary. Compare counts and search/consistency behavior before expanding.
-   Preserve the pre-change export/snapshots through the rollback window.
+If Paths A–C cannot restore the required projections, stop intake for the affected tenant. Record the missing axes, available source data, workflow state, recovery point and the effect on a control tenant. Escalate to the data owner and incident commander. Ordinary replay can deduplicate an event whose projection is still missing. A full rebuild needs a rehearsal proving the live identity, deduplication guarantees and per-axis results survive. Erasure permanently retires the tenant ID.
 
 Never run manual `FT.DROPINDEX`, ingestion-owned `FT.CREATE`, raw graph/Redis deletes, dedup-key edits,
 or a made-up generic rebuild command.
@@ -245,15 +215,12 @@ sign-off. Never retain credentials or unredacted content in the shared packet.
 ## Rollback, recovery, and stop conditions
 
 - Path A: verification needs no rollback; stop repair on unsupported recommendations or non-convergence.
-  Recover missing syntactic/semantic data through C or D.
+  Evaluate C for missing syntactic/semantic data. Escalate under D if C cannot restore it.
 - Path B: retain old targets and use the migration tool's resume/abort/rollback contract.
-- Path C1: keep intake frozen, make the workflow terminal, delete/reprovision the failed clean target, and
-  retry the retained logical export. A layered import is unsupported and cannot restore NL state.
+- Path C1: apply the [logical restore stop conditions](./backup-restore.md#rollback-and-stop-conditions). Keep a partially written target offline.
 - Path C2: keep all-tenant intake frozen and restore only the approved paired recovery point. Do not
   combine arbitrary backend times or represent a shared-PVC rollback as tenant-scoped.
-- Path D: keep intake frozen. Logical rollback requires another terminal delete/reprovision transition and
-  still cannot restore NL; physical rollback is an all-tenant operation. Select the feasible route with the
-  recorded owners rather than promising an in-place tenant reversal.
+- Path D: keep intake frozen and the live identity intact until a recovery owner demonstrates a viable route for the affected projections.
 
 Stop immediately on tenant-isolation suspicion, unknown alias owner, missing backup/source, direct-state
 edit requirement, control-tenant regression, write rejection, or expanding blast radius. Escalate rather

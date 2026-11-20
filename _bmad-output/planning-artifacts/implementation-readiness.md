@@ -9,6 +9,16 @@ tracking_updated: false
 
 # Implementation readiness — 2026-10-08
 
+## Current disposition, 2026-11-20
+
+The successor sprint tracker remains on hold. Two items in the October snapshot below have since moved.
+
+- **R1, owner handoff.** The pinned McpCli tracker marks 4.4 and 4.5 done. Its Story 5.10 approval receipt covers the amended inventory. The L06 compatibility wizard is marked `withdraw / exclude` and L03 search is `defer / exclude`. The remaining prerequisite for G3 is delivery of the required enrolled target operations, followed by a clean-machine run. Inventory approval alone cannot demonstrate either.
+- **R2, dependency review.** The same-day follow-up in `epics.md` records the reviewed Epic 34 execution order and a draft final-validation result. Resume at the remaining target-surface and qualification gaps. Repeating the old 34.9 review would duplicate work.
+- **R3, qualification.** The October 31 checkpoint lacks the required independent reviewer and run evidence. The PRD records the consequence for December 1. The [20 November audit correction](sprint-change-proposal-2026-11-20.md) lists the evidence, remediation owners and remaining decisions.
+
+## Historical assessment, 2026-10-08
+
 The full plan is not ready for sprint tracking generation. The approved handoff
 stops before final validation, with missing target-surface stories, held
 qualification work, and an unfinished dependency review. Approval of the 64

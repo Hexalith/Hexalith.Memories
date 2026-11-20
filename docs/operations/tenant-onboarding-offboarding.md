@@ -129,8 +129,7 @@ subsequent deletion-status and tenant requests can return `404 TENANT_NOT_FOUND`
    runtime completion is necessary but not sufficient. If the registry is `Failed`, confirm compensation
    completed before correcting the cause and submitting a supported provisioning retry. If it is
    `CompensationFailed`, inventory the reported orphaned axes, keep the tenant disabled, and use the
-   authenticated DELETE lifecycle to clean them. Verify complete registry/index/graph/state absence before
-   attempting a fresh create; never delete orphaned backend state manually.
+   authenticated DELETE lifecycle only when permanent retirement is intended. Verify registry/index/graph/state absence. A new onboarding after retirement requires a new tenant identity.
 4. Independently require the tenant registry state to be `Active`:
 
    ```bash
@@ -287,13 +286,9 @@ handoff/retirement evidence.
   dimensions/provider/indexes disagree, isolation fails, provider quota is insufficient, or canary/
   control tests fail. A `Failed` tenant may use the supported provisioning retry only after compensation
   evidence is complete. A `CompensationFailed` tenant requires orphan-axis inventory and supported DELETE
-  cleanup with full absence verification before a fresh create.
+  cleanup only for permanent retirement, with full absence verification.
 - Offboarding before DELETE: unfreeze intake only if approvals and the tenant owner cancel the change.
-- Offboarding after DELETE: do not attempt direct backend reversal. Keep intake/identity disabled and
-  recover the same tenant ID through reprovision plus retained logical import. A paired physical snapshot
-  of the shared Redis/FalkorDB backends may be restored only into an isolated recovery environment to
-  extract/import this tenant, or through an explicitly approved all-tenant disaster-recovery operation;
-  never restore it in place as a single-tenant rollback.
+- After DELETE, keep the retired identity and intake disabled. Preserve erasure evidence independently of recovery media. Review a suspect backup only in an isolated recovery environment with intake disabled. Older exports and snapshots must never rehydrate this tenant, including during an all-tenant disaster recovery. Follow the [restore stop conditions](./backup-restore.md#rollback-and-stop-conditions) when its status is uncertain.
 - Failed/compensation-failed deletion: preserve the workflow ID and cleaned-axis evidence, fix the
   blocking dependency, and re-trigger DELETE through the idempotent recovery path.
 

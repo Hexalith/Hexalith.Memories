@@ -4,7 +4,7 @@ Hexalith Memory Module with syntactic and semantic search.
 
 ## Quick start
 
-The guided quickstart gets you from a fresh clone to a first search result in under 30 minutes on a clean machine (NFR31 — approximate; see [docs/dev/quickstart.md](docs/dev/quickstart.md#manual-nfr31-walkthrough-cadence) for the manual walkthrough cadence). The current automated coverage focuses on the wizard itself against a warm fixture; the full clean-machine walkthrough remains a manual verification step.
+This walkthrough uses the Memories compatibility CLI against the local AppHost. The Phase 1 target is a clean machine to the first successful search in under 30 minutes with enrolled Memories operations in Hexalith.McpCli. The first cold measurement is outstanding. [Walkthrough log](docs/dev/quickstart-walkthrough-log.md)
 
 ### 1. Prerequisites (~30s to verify)
 
@@ -48,17 +48,15 @@ dotnet pack src/Hexalith.Memories.Cli -c Release -o ./artifacts
 dotnet tool install -g --add-source ./artifacts Hexalith.Memories.Cli
 ```
 
-### 6. Run the guided quickstart (<1 min on a warm stack)
+### 6. Run the guided quickstart against the running stack
 
-In a second terminal (while the AppHost continues running in the first):
+In a second terminal, set `HEXALITH_MEMORIES_ENDPOINT` to the Memories Server URL shown in Aspire. Use a development bearer from the issuer configured for that Server and set it privately in `HEXALITH_MEMORIES_API_TOKEN`. Set `QUICKSTART_TENANT` to the sample tenant authorized by that bearer. [CLI configuration](docs/dev/cli-config.md) · [Local issuer configuration](docs/operations/deployment-configuration.md)
 
 ```bash
-memories quickstart
+memories quickstart --tenant "${QUICKSTART_TENANT:?set the authorized sample tenant}" --skip-prereq-check
 ```
 
-The wizard verifies prerequisites, prints the stack boot command, probes server health, provisions a sample tenant, ingests a sample document, and runs a validation search. On success you'll see `Quickstart ok in <N>s across 6 steps.`
-
-**Total** (warm cache, approximate): ~10 min. Cold-start first-time: approximately 25-30 min (network + Docker image pulls; record manual walkthrough timings in [docs/dev/quickstart-walkthrough-log.md](docs/dev/quickstart-walkthrough-log.md)).
+The free-port check is for a stopped stack. Here the stack already owns its ports. The wizard still probes server health, provisions the sample tenant, ingests a document and checks that the current sample is searchable.
 
 **If a step fails**, consult [docs/dev/quickstart.md](docs/dev/quickstart.md) for the per-step failure decision tree.
 
@@ -112,7 +110,7 @@ Attach to the child running the server's `bin/Debug/net11.0/<Assembly>` executab
 
 ## CLI (preview)
 
-Story 7.2 expands the `memories` .NET global tool with `--format human|json|table`, multi-axis search (`memories search query`, including syntactic, semantic, natural-language, graph, and hybrid modes), memory-unit inspection (`memories search inspect`), and the `--explain` score breakdown. Story 7.3 adds actionable error messages: every failure renders `Error: <CODE>` + message + recovery suggestion in human/table modes, or a `{ schemaVersion, command, error: { code, message, suggestion } }` envelope on stdout in JSON mode; domain errors exit `1` and plumbing exits `2`. Story 7.4 wires the `memories quickstart` guided wizard that verifies prerequisites, probes server health, provisions a sample tenant, ingests a sample document, and runs a validation search — completing in <30 minutes on a clean machine (NFR31) and in <60 seconds against a warm stack. Story 7.5 wires search + access telemetry: distributed traces (NFR28), custom Aspire Dashboard metrics (NFR29), and per-tenant audit events (FR67). See [docs/dev/telemetry.md](docs/dev/telemetry.md).
+Story 7.2 expands the `memories` .NET global tool with `--format human|json|table`, multi-axis search (`memories search query`, including syntactic, semantic, natural-language, graph, and hybrid modes), memory-unit inspection (`memories search inspect`), and the `--explain` score breakdown. Story 7.3 adds actionable error messages: every failure renders `Error: <CODE>` + message + recovery suggestion in human/table modes, or a `{ schemaVersion, command, error: { code, message, suggestion } }` envelope on stdout in JSON mode; domain errors exit `1` and plumbing exits `2`. Story 7.4 wires the `memories quickstart` guided wizard that verifies prerequisites, probes server health, provisions a sample tenant, ingests a sample document, and runs a validation search. See the walkthrough log for timing evidence. Story 7.5 wires search + access telemetry: distributed traces (NFR28), custom Aspire Dashboard metrics (NFR29), and per-tenant audit events (FR67). See [docs/dev/telemetry.md](docs/dev/telemetry.md).
 
 ```bash
 dotnet pack src/Hexalith.Memories.Cli -c Release -o ./artifacts

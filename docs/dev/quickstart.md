@@ -48,7 +48,7 @@ Runs five sub-checks: Docker daemon (`docker ps`), .NET prerequisites (`dotnet -
 - `Missing .NET 11 shared framework(s)` → install ASP.NET Core Runtime 11 (including .NET 11) or SDK 11; verify both framework names with `dotnet --list-runtimes`.
 - `Port <N> in use` → find the owner with `lsof -i :<N>` (macOS/Linux) or `netstat -ano | findstr :<N>` (Windows) and stop the conflicting process.
 
-Skip the step with `--skip-prereq-check` when you know the environment is fine (e.g., CI with a pre-bootstrapped stack).
+The README starts the AppHost before invoking the wizard. For that path, use `--skip-prereq-check` to avoid treating its listeners as conflicts and leave the health probe enabled. Configure the Server URL, an authorized development bearer and the matching sample tenant as described in the [README](../../README.md#quick-start).
 
 ### [2/6] Printing stack boot command
 
@@ -183,12 +183,12 @@ Story 7.4 does NOT emit structured audit events. Wizard invocations are ephemera
 
 ## Manual NFR31 walkthrough cadence
 
-NFR31 ("<30 minutes from clean machine to first search result") is measured quarterly on real hardware, not automated. Procedure:
+The Phase 1 NFR31 target is under 30 minutes on a clean machine. Run the compatibility walkthrough quarterly on an expendable machine. Label the result with the CLI and revision used. Story 35.7 measures the target McpCli route after its operations are enrolled.
 
-1. Wipe Docker Desktop (or use a fresh machine / VM) and delete the local clone.
+1. Start on a fresh machine or disposable VM with an empty image cache and no checkout.
 2. Start a stopwatch on `git clone`.
 3. Run the README Quick start end-to-end.
-4. Stop the stopwatch on the first `memories search query` that returns a non-empty result (after the wizard has left a sample memory unit behind).
+4. Stop the stopwatch when the wizard verifies a search result for the sample ingested on this run. Record any setup or authentication blocker at the step where it occurred.
 5. Record the run in [docs/dev/quickstart-walkthrough-log.md](quickstart-walkthrough-log.md): date, machine class, total minutes, notes.
 
 No reminder workflow is checked into this repository today; until one is added, keep the walkthrough log fresh manually during quarterly reviews and whenever the cold-start flow changes materially.
