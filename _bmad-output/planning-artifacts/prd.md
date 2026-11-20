@@ -2,7 +2,7 @@
 title: Hexalith.Memories
 status: change-controlled
 created: 2026-03-22
-updated: 2026-10-05
+updated: 2026-11-20
 stepsCompleted: ['step-01-init', 'step-02-discovery', 'step-02b-vision', 'step-02c-executive-summary', 'step-03-success', 'step-04-journeys', 'step-05-domain', 'step-06-innovation', 'step-07-project-type', 'step-08-scoping', 'step-09-functional', 'step-10-nonfunctional', 'step-11-polish', 'step-12-complete']
 inputDocuments:
   - '_bmad-output/planning-artifacts/product-brief-Hexalith.Memories-2026-03-22.md'
@@ -16,6 +16,8 @@ inputDocuments:
   - '_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md'
   - '_bmad-output/planning-artifacts/ux-designs/ux-memories-2026-09-12/DESIGN.md'
   - '_bmad-output/planning-artifacts/ux-designs/ux-memories-2026-09-12/EXPERIENCE.md'
+  - '_bmad-output/planning-artifacts/sprint-change-proposal-2026-11-01.md'
+  - '_bmad-output/planning-artifacts/sprint-change-proposal-2026-11-20.md'
 documentCounts:
   briefs: 1
   research: 0
@@ -36,7 +38,7 @@ workflowType: 'prd'
 
 **Author:** Jerome
 **Date:** 2026-03-22
-**Updated:** 2026-10-05 — ratified the expanded G1–G6 date and evidence-only G6 rule, assigned Administrator corpus stewardship, corrected the FR17 delivery overlap, and reconciled the architecture handoff. The 2026-09-12 update incorporated product-observable changes from the architecture and UX spines: current-revision projection completion, durable idempotency (FR75), internal tenant authorization, case-partitioned tenant-wide graph search, capability-aware degradation/readiness, verified tenant erasure, telemetry failure posture, workload fairness, active-CLI accessibility (NFR37), Evidence Packet/no-result semantics, and exact CLI delivery evidence. AD-14 phasing and FR75/NFR37/G6 binding are ratified in the current architecture spine; implementation evidence remains owed. Prior (2026-09-08): thesis/launch gates, status registers, ingestion vocabulary, MIT licence, and confirmed release dates. Mechanism/topology detail lives in `addendum.md`; presentation/composition detail lives in the UX spines. Active work breakdown lives in `epics.md` and `sprint-status.yaml`.
+**Updated 2026-11-20.** This revision incorporates the November 20 audit, the McpCli migration inventory and the November 1 telemetry decision. The release decision record below gives the current verdict and the evidence needed to revisit it.
 
 ## 0. Document Purpose
 
@@ -62,15 +64,15 @@ The system runs on DAPR, starts on Redis (RediSearch + Vector Search + FalkorDB)
 
 CLI is the operational superset (target state; today MCP exposes ingest while the CLI `ingest` group is a placeholder). MCP is the agent subset (search, ingest, traverse, case-info) and ships as Phase 1.5. Surfaces are capability-aligned, not 100% feature-parity. `[NON-GOAL for MVP]: MCP, EventStore CloudEvent auto-index, application-facing REST search UI, briefings, discussions, and memory diffing.`
 
-**Current release posture:** no-go. Administrator ratified 2026-12-01 for the expanded G1–G6 Phase 1 decision on 2026-10-05, with the 2026-10-31 prerequisite checkpoint and derived 2027-01-01 Phase 1.5 date. Required evidence remains absent; Story 27.22 is the separately approved C1.16 owner, the other 23 C1 proposals are held, and approved Epics 32–35 now have a current coverage map. Stories 33.1–33.8, 34.1–34.40, and 35.1–35.16 are approved, source-checked backlog definitions in `epics.md`; Epic 32 operation stories, the qualifying G1 human-review/run stories, target CLI NFR37 qualification, and the final release verdict remain held. Sprint tracking has not been refreshed. Architecture has ratified AD-14 phasing and FR75/NFR37/G6 binding, but its implementation ledger remains unevidenced; that decision status gives no gate credit. The Release decision record and Open Questions 1, 2, 9, and 10 are authoritative.
+**Release decision, 2026-11-20. Phase 1 remains no-go.** The project missed the October 31 prerequisite checkpoint. Two independent G1 reviewers still need to be named. The December 1 decision is unreachable on the recorded evidence. January 1 was the derived Phase 1.5 date and has no qualifying launch verdict. The Administrator owns the single permitted date reset once reviewer availability, corpus preparation, the target CLI delivery plan and engineering capacity support a new date. [Approved audit follow-up](sprint-change-proposal-2026-11-20.md)
 
-**Release decision update, 2026-11-20.** The October 31 prerequisite checkpoint lacks named independent G1 reviewers. The label-freeze and qualifying-run work is still held. The release decision record requires evidence or a registered, independently verified owner story for each prerequisite. Under that rule the December 1 G1–G6 decision is unreachable on the recorded evidence. Phase 1 remains no-go and the derived January 1 launch has no qualifying verdict. The Administrator owns the single permitted date reset once reviewer availability, the corpus and the target CLI delivery path support a new date. The [20 November audit correction](sprint-change-proposal-2026-11-20.md) assigns the remediation and evidence work.
+See the [release decision record](#release-decision-record) for the status of each gate and the consequences of a failed or missing run.
 
 ### What Makes This Special
 
 **Phase 1 proves hybrid retrieval plus non-retrofittable isolation.** The graph mechanics — typed edges, traversal, gap markers, chronological ordering (FR46–FR52) — ship in Phase 1 because they are the graph axis; what Phase 1 cannot promise is that the graph *contains* causal edges for a folder of files. The sequenced bet — queryable causality from EventStore conventions — is Phase 1.5, not the thesis gate. Event-sourced systems already capture *why* things happen; Memories makes CausationId/CorrelationId queryable once the EventStore product integration ships: *"What happened because of this deployment?"* walks the graph. Happy path is subscription plus conventions, not zero mapping and zero configuration.
 
-EventStore CloudEvent auto-index is the first *product* proof point for causal intelligence. Separately, Hexalith.EventStore is already the **domain source of truth** for Case / MemoryUnit / Tenant writes (current MVP consistency contract). **[Correction note 2026-10-08, Story 34.5 Epic AC Verification: true for cases, tenants, and memory-unit annotation and deletion, but ingested memory units are not committed to EventStore today — `MemoryUnitAggregate` handles only annotation and deletion commands, and no ingestion path calls `AcceptAsync`. Story 34.1 (V1 ingestion) and Story 34.2 (CloudEvents) make ingestion EventStore-first.]** Package/runtime pins for EventStore bits are architecture-owned (Epic 28). Those three "EventStore" meanings must not be collapsed.
+Phase 1.5 tests whether EventStore CloudEvents make causality searchable. For domain writes, FR13 requires an EventStore acknowledgement before projection. Cases, tenants, and memory-unit annotations and deletions use EventStore today. File/URL ingestion and CloudEvent ingestion still need that durable commit at intake (Stories 34.1 and 34.2). Epic 28 tracks the separate dependency on EventStore packages and runtime.
 
 Two additional differentiators compound later:
 
@@ -188,7 +190,7 @@ For 95%+ of EventStore events with known CausationId/CorrelationId chains, graph
 |---|---|---|
 | G1 | Hybrid vs BM25+semantic passes the thesis-gate protocol above (N ≥ 50, ΔNDCG@10 ≥ 0.02, κ ≥ 0.6) | Must pass |
 | G2 | Zero cross-tenant data leaks (NFR8) | Must pass |
-| G3 | Phase 1 onboarding <30 minutes (NFR31: README/AppHost → first CLI search); target acceptance uses `Hexalith.McpCli` after Memories enrollment, while any old Memories CLI run is labeled compatibility evidence | Must pass; rebaseline timing when shared access is available |
+| G3 | Starting from the NFR31 clean machine, follow the README manual path through AppHost, create a tenant and case, ingest a file or URL, and obtain the first correct search result through enrolled `Hexalith.McpCli` operations in <30 minutes. | Must pass. Story 35.7 records the cold run. |
 | G4 | Case ownership/isolation tests (FR32–FR34/NFR8): case-scoped queries never escape their case; tenant-wide hybrid fixtures span cases with mandatory attribution while every graph seed, node, edge, and path remains case-local | Must pass |
 | G5 | Fusion explain is deterministic (NFR24–NFR26) | Must pass |
 | G6 | MVP contract closure: every MVP-active requirement not marked **Verified against its current wording** — including not-started, partial, hardening, implemented-without-recorded-evidence, and re-verification rows — and every architecture-critical active-foundation gap has a named current re-runnable evidence path. Genuinely phase-inactive surfaces are explicitly outside MVP scope and earn no gate credit. A risk acceptance records accountability only; no product/architecture exception substitutes for evidence. Every such gap has an owner and a tracking entry in `sprint-status.yaml`; during an approved tracker freeze, AD-20 requires the architecture ledger to record the tracker obligation, freeze reference, and review date, and suspends only the tracker conjunct. | Must pass |
@@ -210,16 +212,18 @@ All six gates are hard gates; there is no soft tier. Phase 1 does **not** requir
 4. Boot the sample stack (`samples/02-eventstore-integration/`, `dotnet run --project <sample AppHost>`; until that sample exists the stopwatch cannot be run and L2 is not evaluable).
 5. Publish one domain event; run `memories search query --tenant <t> --query "<term>"`; a result attributed to that event stops the clock.
 
-**Release decision record (2026-09-08):**
+#### Release decision record
+
+Disposition as of 2026-11-20.
 
 | Decision | State | Owner | Decision date | If it fails |
 |---|---|---|---|---|
-| Thesis increment (Epics 0–8) | Epics 0–8 are `done` in `sprint-status.yaml` (2026-07-16), **but the Phase 1 CLI surface is incomplete**: `ingest`, `traverse`, and `case` are top-level placeholders; required tenant/status operations are absent; the two-axis control (FR25) and graph auto-seeding (FR17) do not exist. The increment is *closed in tracking*, not *complete against this PRD* | Jerome | — | n/a — delivery is not validation |
-| Gate prerequisites (missing target CLI operations, two-axis control, graph seeding, N ≥ 50 labelled corpus, independent human reviewers, and every G6 contract gap) | Story 27.22 is the separately approved C1.16 owner; the other 23 C1 gate proposals remain held. Epics 32–35 are approved from the corrected handoff. `epics.md` records Administrator-approved, source-checked backlog slices 33.1–33.8, 34.1–34.40, and 35.1–35.16; Epic 32 operation registration awaits the McpCli owner repository’s approved Memories inventory and coverage gate, and qualifying G1 reviewer/run and final-verdict slices remain held. The frozen sprint tracker has no successor rows. G6 includes every MVP row without current-wording verification, not only architecture-led gaps; AD-14 phasing and FR75/NFR37/G6 binding are ratified decisions, not qualification evidence. | Jerome (sprint planning) for story ownership/evidence; Administrator for corpus stewardship and independent-reviewer recruitment; Architecture for the reviewed spine | By 2026-10-31, each missing prerequisite has current evidence or a registered, independently verified owner story; a story satisfies this planning checkpoint only and never G6. If the checkpoint fails, declare the 2026-12-01 gate unreachable and use the PRD's single permitted sprint-change reset with a recorded reason. | Missing evidence, unowned work, or unavailable independent reviewers means no qualifying G1–G6 verdict and no launch. |
-| Thesis gate G1–G6 | G2: suite exists (Epics 5/20); re-run against the restated NFR8 owed after Epic 24. G3: procedure exists (Story 7.4 walkthrough), **no timed run recorded** (`docs/dev/quickstart-walkthrough-log.md` is empty) and blocked on missing target CLI operations (NFR31). G4/G5: automated suites need current wording. G1 **not yet run** and cannot qualify without the real corpus and two independent human reviewers. G6 **cannot pass** while MVP-active requirements or architecture-critical active-foundation gaps lack current re-runnable evidence. | Jerome | **2026-12-01**, retained by Administrator on 2026-10-05 for the expanded G1–G6 gate; the 2026-10-31 prerequisite checkpoint and 2027-01-01 derived Phase 1.5 date remain. The window for reviewers, corpus freeze, ≥50 labelled topics, implementation, re-verification, and governance closure remains a schedule risk, not gate evidence. | **G1 fail:** execute fusion kill-switch actions (1)–(6). **G2–G6 fail:** no release and no Phase 1.5 launch; remediate or re-scope through sprint change. **Not run by the date:** no verdict/no launch; one reset is permitted by sprint change, and a second miss is treated as a fail. |
-| Phase 1.5 launch L1–L3 | Epics 9–10 code delivered; gates not evaluated. L2 still lacks a full-stack EventStore-originated publish proof (DW-713). The older DW-728 SDK-pin mismatch is historical: current root and EventStore `global.json` both pin 10.0.401, but `EventStoreAppHostResourceGraphTests.cs:126-145` remains skipped with its 10.0.302/10.0.400 rationale, so the resource start and L2 proof remain unverified. `samples/` does not exist. | Jerome | **2027-01-01** (confirmed by Jerome, 2026-09-08) | **No launch.** MCP and EventStore packages stay marked preview and are not announced; the date is not moved without a sprint-change proposal |
+| Thesis increment (Epics 0–8) | The tracker records Epics 0–8 as done. Target CLI delivery, default graph seeding (FR17) and the two-axis benchmark control (FR25) remain open. | Jerome | Closed in tracking on 2026-07-16 | Gate qualification still requires the runs below. |
+| Gate prerequisites | The checkpoint required current evidence or a registered, independently verified owner story for each prerequisite. The Administrator stewards the corpus. Two independent external reviewers remain unnamed, blocking label freeze and the qualifying G1 run. Epic 32 target operations, CLI accessibility qualification (NFR37) and the final verdict still lack qualifying evidence. | Jerome for planning and evidence, Administrator for corpus and reviewers, Architecture for its evidence ledger | **2026-10-31 — missed** | The December 1 decision is unreachable on the recorded evidence. A registered story counts only toward planning. G6 requires current, re-runnable evidence. |
+| Thesis gate G1–G6 | G1 has no qualifying run. G2 needs current tenant-principal isolation evidence. G3 awaits enrolled target operations and a timed cold run. G4 and G5 need evidence against their current wording. G6 remains open for MVP requirements and architecture-critical gaps without current evidence. | Jerome owns the verdict. Administrator owns the date reset. | **2026-12-01 — unreachable.** No replacement approved. | A measured G1 failure triggers the six fusion kill-switch actions above. A G2–G6 failure blocks release and launch pending remediation or approved rescoping. Without a run there is no verdict or launch. One sprint-change reset is permitted with a recorded reason. A second miss counts as failure. |
+| Phase 1.5 launch L1–L3 | Epics 9–10 delivered preview code. L1–L3 remain unevaluated. L2 lacks the sample and a full-stack EventStore-originated publish proof (DW-713). The resource-start test remains skipped with its historical SDK rationale, although both repositories now select the same SDK. | Jerome | **2027-01-01 — previously derived.** Any revised launch date requires a sprint change. | Without a qualifying verdict, the MCP and EventStore packages remain preview and the launch stays on hold. |
 
-**2026-11-20 disposition of the dated rows above.** The October 31 prerequisites were missed. December 1 is the previously ratified target. A new date requires an owner decision and no automatic change is made to the derived launch date. The McpCli owner now records Stories 4.4 and 4.5 as done, with scope dispositions for the Memories inventory. G3 still needs enrolled operations and a cold run. See the [20 November audit correction](sprint-change-proposal-2026-11-20.md).
+**Planning evidence.** The McpCli owner completed Stories 4.4 and 4.5 and approved inventory dispositions. Story 35.7 still needs a delivered CLI path. Epic 34 has 60 reviewed story definitions and an execution order. Story 34.58 awaits a per-tenant storage budget. The successor sprint tracker remains on hold. AD-14 phasing and FR75/NFR37/G6 binding are ratified. G6 still requires evidence for the implementation. [Current readiness](implementation-readiness.md) · [Epic definitions](epics.md)
 
 A Phase 1.5 launch failure is a no-go, not a slip. It does not pull MCP into the thesis MVP and does not re-open isolation or fusion as optional.
 
@@ -264,7 +268,7 @@ A Phase 1.5 launch failure is a no-go, not a slip. It does not pull MCP into the
 |---|---|---|
 | 1 | EventStore product integration package `Hexalith.Memories.EventStore` (DAPR pub/sub through the Memories Server sidecar, auto-discovery, dual embedding, causal chains) | Launch gates L2 + L3 |
 | 2 | Search, ingest, traverse, and case-info with token-budget awareness through `Hexalith.McpCli`; `Hexalith.Memories.Mcp` is the obsolete compatibility server pending approved parity | Launch gate L1, re-baseline on shared-surface readiness |
-| 3 | `Hexalith.McpCli` generic diagnostic/migration contract for approved `explore` and EventStore diagnostics; the old Phase 1.5 CLI rows remain compatibility evidence | Full developer experience after shared-surface qualification |
+| 3 | Developers can diagnose EventStore handler registration and routing. Any mapping to McpCli requires separate approval. The owner deferred the legacy diagnostics (L13/L14) and withdrew the interactive exploration stub (S04) from migration scope. | Phase 1.5 EventStore diagnostics |
 
 The Memories Server is the sidecar-managed event subscriber. Hexalith modules publish CloudEvents to the configured DAPR pub/sub topic; the server sidecar delivers them to `/events/ingest`, where source-prefix routing maps events to tenant/case memory. Modules should not bypass this path with direct REST pushes for domain event streams. **[Correction note 2026-10-08: source-prefix routing describes today's code (`TenantEventRoutingOptions.SourceToTenantMap`), not the target. Adopted AD-5 forbids selecting a tenant from any publisher-set envelope field, including `source`. Story 34.10 replaces it with authenticated channel routing: the operator artifact maps the subscribing component, topic, and scoped publisher to one candidate tenant, which then passes the allowlist, grant, and `Active` checks. One subscribed topic therefore serves one tenant; per-tenant topics are the Phase 1.5 target. This paragraph changes when Story 34.10 lands.]**
 
@@ -309,7 +313,7 @@ The Memories Server is the sidecar-managed event subscriber. Hexalith modules pu
 
 ## User Journeys
 
-Durations and counts inside journeys ("14 minutes", "47 documents", "8 seconds") are illustrative narrative, not measurements; gates cite NFR and G/L numbers only. All CLI examples use the one shipped grammar: `memories search query --tenant <t> --query "<q>" [--case <c>] [--axis <a>] [--explain]`.
+Durations and counts inside journeys ("14 minutes", "47 documents", "8 seconds") are illustrative narrative, not measurements; gates cite NFR and G/L numbers only. Journey examples illustrate compatibility CLI syntax. The shipped search syntax is `memories search query --tenant <t> --query "<q>" [--case <c>] [--axis <a>] [--explain]`.
 
 ### Journey 1: Alex — "Zero to First Search" (Phase 1.5 launch path)
 
@@ -473,7 +477,7 @@ Priya asks: "Why was partial coverage approved instead of full?" The causal chai
 
 ### Journey 9: Alex — "The First Case" (Empty State)
 
-> **Target-state note:** This is the NFR31 Phase 1 manual path. Today `tenant create` is absent and the `case`/`ingest` groups are placeholders, so current CLI output must report unavailability and exit safely instead of printing the success copy below.
+> Journey 9 describes the experience required by NFR31. The examples use compatibility CLI syntax. G3 requires the corresponding operations to work on the enrolled McpCli surface. Until an operation is available, help and recovery messages must direct Alex to an action they can complete.
 
 Alex has the stack running. Redis is up, FalkorDB is up, the DAPR service is healthy. But there's nothing in it yet.
 
@@ -698,7 +702,7 @@ Hexalith.Memories is a hybrid Developer Tool + API Backend delivered as NuGet pa
 
 | Aspect | MVP | Future |
 |---|---|---|
-| Server runtime | .NET 10 / C# 14. SDK pin is `global.json` (repository configuration), not this PRD. | .NET plus optional architecture-owned polyglot sidecars (see addendum: Dapr Agents) |
+| Server runtime | .NET 11 / C# 14. SDK pin is `global.json` (repository configuration), not this PRD. | .NET plus optional architecture-owned polyglot sidecars (see addendum: Dapr Agents) |
 | Client libraries | MVP CLI uses a minimal direct HTTP/ingress adapter inside the CLI; reusable `.NET` client packages are not MVP blockers | `.NET` (`Client` for DAPR consumers, `Client.Rest` for external consumers), Python, TypeScript clients targeting ingress REST API |
 | CLI | .NET global tool (`dotnet tool install -g Hexalith.Memories.Cli`) | Same |
 | Cross-language access | Via ingress REST API (any HTTP client) or DAPR service invocation (any DAPR SDK) | Dedicated language-specific client packages |
@@ -862,7 +866,7 @@ Ingestion is a **DAPR Workflow** (`IngestionWorkflow`): extract, embed, and proj
 
 Not all capabilities map to all interfaces. **Capability alignment, not feature parity.** CLI is the operational superset. MCP exposes what LLM agents need (search, ingest, traverse, case info). Tenant management, diagnostics, and interactive features are CLI-only.
 
-The single source of truth for which CLI verbs are Phase 1 versus Phase 1.5, and which are shipped, is the **CLI surface** table in CLI Specification. This matrix only maps capabilities to interfaces.
+The CLI column illustrates the compatibility commands for each capability. FR53 and the approved McpCli inventory govern target coverage by phase.
 
 | Capability | CLI | MCP (Phase 1.5) | DAPR Service Invocation |
 |---|---|---|---|
@@ -879,28 +883,28 @@ The single source of truth for which CLI verbs are Phase 1 versus Phase 1.5, and
 | Portable export (FR71) | `memories export case/tenant` | -- | -- |
 | Interactive exploration | `memories explore` | -- | -- |
 | Handler management | `memories handlers` | -- | -- |
-| Guided quickstart | `memories quickstart` (shipped; the README quickstart is the NFR31 vehicle, the command is its scripted form) | -- | -- |
+| Guided quickstart | `memories quickstart` (compatibility wizard) | -- | -- |
 | Batch directory ingestion | `memories ingest <dir>` | -- | -- |
 
 **Design rationale:** MCP exposes agent work. CLI exposes ops. DAPR service invocation is the internal programmatic API. FR53 is satisfied per active phase; a help entry backed by `NotImplementedCommand` is not coverage.
 
 ### CLI Specification
 
-**Distribution:** .NET global tool (`dotnet tool install -g Hexalith.Memories.Cli`)
+**Compatibility distribution.** `dotnet tool install -g Hexalith.Memories.Cli` installs the legacy Memories CLI. `Hexalith.McpCli` owns the target surface. Its approved inventory defers search row L03 and withdraws wizard row L06 from migration scope. Both are excluded from target coverage under the approved dispositions. A qualifying G3 run still requires a working search operation. The compatibility packages remain available until their retirement criteria are met. [Migration inventory](../../references/Hexalith.McpCli/_bmad-output/implementation-artifacts/memories-migration-inventory-v1.1.0.md) · [Owner approval](../../references/Hexalith.McpCli/_bmad-output/implementation-artifacts/evidence/story-5-10/approval.json)
 
 **Global options (all commands):** `--endpoint`, `--token`, `--format`, `--verbose`, `--telemetry`. Tenant scope is passed as `--tenant <id>` on tenant-scoped commands; it names the requested tenant, and the token's tenant claims authorize it (NFR11). There is no `tenant switch` — ambient tenant state was removed from the contract on 2026-09-08.
 
-**CLI surface with phase and delivery status (this table is the FR53 source of truth; the Phase 1 rows are the thesis surface):**
+**Compatibility CLI commands and output semantics.** The table records the phase and delivery status of the legacy command tree. FR53 requires delivery through enrolled McpCli operations.
 
 | Command | Phase | Delivery status (2026-09-12, `RootCommandFactory`) | Acceptance output |
 |---|---|---|---|
 | `memories search query --tenant --query [--case] [--axis] [--max-results] [--explain]` | 1 | Shipped (Story 7.2) | Ranked results with Evidence Packet fields; `--explain` shows per-axis rank contributions and weights |
 | `memories search inspect` / `search lookup` | 1 | Shipped (7.2 / 18.5) | Single-unit Evidence Packet / keyed lookup |
 | `memories traverse --tenant --from [--depth] [--edge-type]` | 1 | **Not started** — `NotImplementedCommand` stub | Ordered nodes with typed edges, timestamps, `[MISSING: id]` gap markers (FR47–FR49, FR52) |
-| `memories ingest <file|url|dir> --tenant --case` | 1 | **Not started** — stub; **blocks G3**. Ingestion is reachable today via `POST /api/v1/ingest` and `quickstart` | Progress, unit count, per-unit ingestion state (FR1–FR3, FR10) |
-| `memories case create/delete/list` | 1 | **Not started** — stub; **`create` blocks G3**. Case bootstrap exists server-side (Epic 0/3) | Case id, unit count, next-step hint (FR26–FR27, FR30) |
+| `memories ingest <file\|url\|dir> --tenant --case` | 1 | **Not started** — compatibility stub. Ingestion is reachable today via `POST /api/v1/ingest` and `quickstart` | Progress, unit count, per-unit ingestion state (FR1–FR3, FR10) |
+| `memories case create/delete/list` | 1 | **Not started** — compatibility stub. Case bootstrap exists server-side (Epic 0/3) | Case id, unit count, next-step hint (FR26–FR27, FR30) |
 | `memories case add-member/remove-member/activity` | 1 | **Not started** — stub | Member list (metadata only, no authorization); activity feed attributing ingest/search/membership events (FR28–FR29, FR36) |
-| `memories tenant create/delete/verify` | 1 | **Not started** — absent from the command tree; only `tenant list` is wired; **`create` blocks G3**. Provisioning exists as `TenantProvisioningWorkflow` (Epic 0/5) | Provisioned resources summary; verify prints the NFR8 isolation checks with pass/fail (FR38–FR40) |
+| `memories tenant create/delete/verify` | 1 | **Not started** — absent from the command tree; only `tenant list` is wired. Provisioning exists as `TenantProvisioningWorkflow` (Epic 0/5) | Provisioned resources summary; verify prints the NFR8 isolation checks with pass/fail (FR38–FR40) |
 | `memories tenant list` | 1 | Shipped (7.1) | Tenant table |
 | `memories status telemetry --tenant` | 1 | Shipped (7.5) | Telemetry summary, indexes, queue depth |
 | `memories status --case/--failed` | 1 | **Not started** — absent from the command tree; only `telemetry` is wired | Counts per ingestion state; failed units with stage + error (FR10–FR11) |
@@ -913,7 +917,7 @@ The single source of truth for which CLI verbs are Phase 1 versus Phase 1.5, and
 
 **Shipped without a CLI verb (REST `/api/v1` + `Hexalith.Memories.Client.Rest` are the Phase 1 surface; no CLI verb is planned for Phase 1):** FR12 re-ingest (`POST …/memory-units/{id}/re-ingest`, `POST …/failed-units/re-ingest`), FR21–FR22 metadata filter and pagination (`GET /api/v1/search` parameters), FR35 delete unit (`DELETE …/memory-units/{id}`), FR37 annotate (`POST …/memory-units/{id}/annotations`), FR42/FR43/FR45 tenant configuration (`PATCH /api/v1/tenants/{id}`, `GET/PUT …/embedding-config`), FR51 promote edge confidence (`PATCH /api/v1/tenants/{id}/edges/confidence`). Route constants are `Contracts.V1.MemoriesRoutes`. A future CLI verb for any of these is a sprint-selected FR53 slice, not an MVP gap.
 
-Unavailable Phase 1 CLI operations are the remaining FR53 MVP slices. They require owning stories in `epics.md` / `sprint-status.yaml`; this PRD records that the thesis surface is incomplete until the target operations are real.
+Epic 32 owns delivery of the approved Phase 1 operations through McpCli. Story 35.7 can qualify G3 once an operator can complete the manual journey through first search.
 
 **Output Formats:**
 
@@ -939,7 +943,7 @@ Sensitive values are not resolved through configuration fallback. Product servic
 
 | Example | Maps to | Demonstrates | Status (2026-09-08) |
 |---|---|---|---|
-| `samples/01-quickstart/` | Journey 9 (Phase 1 thesis path) | `dotnet run --project AppHost` boots full stack, ingest + search via CLI | Not started — `memories quickstart` and the README carry NFR31 today; the folder does not exist |
+| `samples/01-quickstart/` | Journey 9 (Phase 1 thesis path) | Boot AppHost and ingest and search through the CLI | Sample pending. The README documents the compatibility walkthrough. Story 35.7 owns the timed target-CLI run. |
 | `samples/02-eventstore-integration/` | Journey 1 (Phase 1.5) | Aspire AppHost with EventStore + Memories, DAPR subscription wired; the L2 stopwatch runs against it | Not started — required before L2 can be timed |
 | `samples/03-mcp-agent/` | Journey 3 (Phase 1.5) | MCP server launched by Aspire, agent configuration | Not started — required before L1 can be run |
 
@@ -986,13 +990,13 @@ FR1–FR75 are the product-horizon inventory, not a claim that every FR is activ
 
 **Canonical phase register** (August 2026 change control; confirmed 2026-09-08 — this register is the only increment source of truth; FR46–FR52 stay MVP as shipped graph mechanics, see MVP Feature Set):
 
-- **MVP (thesis + foundation):** FR1–FR22, FR24–FR52, FR55–FR57, FR63–FR70, FR72–FR75, plus the Phase 1 rows of the CLI surface table (FR53).
-- **Phase 1.5:** FR23, FR54, FR58–FR62, and the Phase 1.5 CLI slices of FR53 (`explore`, EventStore diagnostics).
+- **MVP (thesis + foundation):** FR1–FR22, FR24–FR52, FR55–FR57, FR63–FR70, FR72–FR75, plus approved Phase 1 McpCli capabilities (FR53).
+- **Phase 1.5:** FR23, FR54, FR58–FR62, and the Phase 1.5 CLI capabilities of FR53. Target mappings for EventStore diagnostics require separate approval.
 - **Phase 2:** FR71 (completed early as non-MVP Story 8.3; Epic 26 covers operational backup/restore only — do not reschedule application export as new Phase 2 work).
 
 A capability completed before its planned phase is recorded as completed non-MVP and does not silently change thesis-MVP acceptance.
 
-**Delivery status register (2026-09-12; FR17 overlap corrected 2026-10-05):** `sprint-status.yaml` remains authoritative for tracking state. The current architecture spine's brownfield gap ledger is separate contract-conformance evidence: when it disproves the current wording, this register downgrades the claim and records tracking drift rather than rewriting tracker history. The register is refreshed at each PRD Update and is not edited between Updates.
+**Delivery status register (updated 2026-11-20).** The sprint tracker records story state. The register below records delivery against the current FR wording. Release gates require the evidence specified in Measurable Outcomes.
 
 | Status | FRs | Notes |
 |---|---|---|
@@ -1001,15 +1005,15 @@ A capability completed before its planned phase is recorded as completed non-MVP
 | **Partial (protocol prerequisite missing)** | FR17, FR25 | FR17: shipped hybrid skips the graph axis without an explicit start node; the auto-seeding rule (Measurable Outcomes) is not implemented. FR25: shipped benchmark compares against best single axis; the BM25+semantic control does not exist. Both gate G1. |
 | **Partial (architecture contract incomplete)** | FR6, FR13, FR34, FR39, FR65, FR75 | Missing or incomplete: current-revision all-axis checkpoint/replay (FR6/FR13), tenant-wide case-partitioned graph merge (FR34), end-to-end erasure plus CLI (FR39), server-derived external/system provenance (FR65), and durable authoritative duplicate suppression (FR75). |
 | **Shipped against previous wording; re-verification owed** | FR8, FR66, FR72 | Existing capabilities predate the strengthened fairness, capability-aware degradation, and readiness contracts. |
-| **Shipped, hardening in progress** | FR44 | Epic 0/5/20 delivered; Epic 24 (tenant-scoped principals as the isolation boundary) is in progress. NFR8 evidence must be re-run when Epic 24 closes. |
-| **Partial (server shipped, Phase 1 CLI operation unavailable)** | FR1–FR3, FR10–FR11, FR26–FR30, FR36, FR38, FR40, FR47, FR53 | Server-side behaviour and tests shipped (Epics 0, 1, 3, 4, 5, 6); reachable via `POST /api/v1/...` and `quickstart`. `ingest`, `traverse`, and `case` are top-level `NotImplementedCommand` placeholders. Target `tenant create/delete/verify` and `status --case/--failed` operations are absent from the current command tree, not individually registered stubs. FR38/FR40 additionally wait on Epic 24 hardening. FR39 is in the architecture-contract row because both its erasure contract and CLI are incomplete. See the CLI surface table. |
+| **Shipped, hardening in progress** | FR44 | Epics 0/5/20 delivered isolation controls. The November audit found a shared Redis connection in the search path. Stories 34.11 and 35.6 must demonstrate tenant-scoped access, cross-tenant denial and denial after revocation. Story 34.53 covers FalkorDB separately. |
+| **Partial (server shipped, Phase 1 CLI operation unavailable)** | FR1–FR3, FR10–FR11, FR26–FR30, FR36, FR38, FR40, FR47, FR53 | Server and compatibility implementations exist. Epic 32 still needs to deliver the required shared CLI operations. The audit found sensitive URL values in workflow logs and case activity. DW-732 tracks redaction and regression tests for FR2/FR36. FR38/FR40 need backend isolation and revocation evidence. FR39 is tracked above under the incomplete erasure contract. |
 | **Shipped early (non-MVP)** | FR71 | Story 8.3 operational export/restore; application-facing export stays Phase 2. |
 | **Not started** | — | No FR is wholly unstarted; the gaps are the CLI slices above. |
 
 ### Knowledge Ingestion
 
 - **FR1:** Developer can ingest content from local files into a specified case
-- **FR2:** Developer can ingest content from URLs into a specified case
+- **FR2:** Developers can ingest a URL into a specified case. Fetch and scoped duplicate detection use the original source. On success, duplicate delivery and failure, sensitive URL path and query values must be absent from structured logs, rendered logs and the case activity described in FR36.
 - **FR3:** Developer can batch-ingest content from a directory into a specified case
 - **FR4:** System can extract text from ingested content (plain text, PDF, markdown)
 - **FR5:** System can generate embeddings for ingested content via a configurable embedding provider
@@ -1050,7 +1054,7 @@ A capability completed before its planned phase is recorded as completed non-MVP
 - **FR33:** System maintains case-scoped graph edges and paths between memory units within a case; cross-case edges and traversal remain forbidden through Phase 1.5
 - **FR34:** Developer can search across all cases within a tenant, returning independently ranked results with mandatory case attribution while every graph contribution remains case-local
 - **FR35:** Developer can delete an individual memory unit from a case
-- **FR36:** Developer can view recent activity within a case (ingestion events, searches, membership changes)
+- **FR36:** Developers can view recent ingestion, search and membership activity within a case. Both stored activity and its API representation must protect sensitive URL values under FR2.
 - **FR37:** Developer can annotate or correct a memory unit, with annotations tracked as linked memory units
 
 ### Tenant Management
@@ -1078,7 +1082,7 @@ These are the graph *mechanics* (MVP, Epics 1 and 4). What populates `caused_by`
 
 ### Developer Interfaces
 
-- **FR53:** Developer can interact with retrieval and ingestion capabilities via CLI **per the Phase 1 rows of the CLI surface table** (CLI Specification). Real commands count; `NotImplementedCommand` does not. **Phase:** split (MVP surface vs 1.5 slices). **Status:** partial
+- **FR53:** Developers can ingest and retrieve memory through working, enrolled `Hexalith.McpCli` operations for the approved Phase 1 scope. Phase 1.5 adds its approved CLI capabilities. The compatibility table records the expected output and recovery behavior. **Status:** partial pending target delivery.
 - **FR54:** Developer can interact with search, ingestion, traversal, and case-info capabilities via MCP tools. **Phase:** 1.5
 - **FR55:** CLI supports multiple output formats: human-readable (default), JSON, and table
 - **FR56:** CLI provides actionable error messages with recovery suggestions for, at minimum: server unreachable (name the boot command); authentication or tenant-claim mismatch (name the authenticated tenant without disclosing restricted evidence); unknown tenant or case id; true empty tenant or case (name an implemented next action); incomplete/delayed ingestion; active filters; stale evidence; unit `failed` (name the stage and error); backend degraded (name the unavailable/excluded axes); provider rate-limited (name the retry window). A generic "no results" message is insufficient, and unavailable target commands are never presented as completed actions. The CLI exit-code map (`CliExitCodes`) is the machine-readable side of this list
@@ -1117,14 +1121,14 @@ These are the graph *mechanics* (MVP, Epics 1 and 4). What populates `caused_by`
 
 *NFRs are tagged by validation phase: **[MVP]** = thesis/foundation, **[P1.5]** = EventStore product integration + MCP, **[Ongoing]** = as infrastructure matures, **[Future web]** = Epic 17+.*
 
-**NFR delivery status (2026-09-12):** *verified* = an automated suite or recorded run exercises the current wording; *implemented* = the mechanism exists but the stated verification has no recorded run; *not started* = neither. Verification of a Phase 1.5 component does not activate its product surface; only L1–L3 do that. The current architecture spine's gap ledger corrects claims that predate the strengthened wording. The NFR delivery-status register is refreshed only during PRD Updates.
+**NFR delivery status (updated 2026-11-20):** *verified* = an automated suite or recorded run exercises the current wording; *implemented* = the mechanism exists but the stated verification has no recorded run; *not started* = neither. Verification of a Phase 1.5 component does not activate its product surface; only L1–L3 do that. The current architecture spine's gap ledger corrects claims that predate the strengthened wording. The NFR delivery-status register is refreshed only during PRD Updates.
 
 | Status | NFRs |
 |---|---|
 | Verified | NFR11, NFR17, NFR19–NFR20, NFR26–NFR28, NFR30 |
 | Verified against the *previous* wording; re-verification owed | NFR8–NFR10 (principal-driven isolation, data-plane secret path, and layered internal authorization), NFR13 (mixed-workload fairness), NFR18 (capability-aware failure boundary), NFR21 (negative envelope case), NFR22 (durable provider retry timing), NFR24–NFR25 (canonical cross-surface fusion/explain semantics) |
-| Partial mechanism and re-verification owed | NFR16 — controlled Redis restart proved the previous wording, but authoritative EventStore replay to every current projection/configuration and erased-tenant non-resurrection are not implemented |
-| Implemented, verification run not recorded in PRD evidence | NFR1–NFR5, NFR7, NFR12, NFR14, NFR23, NFR29, NFR31 (Story 7.4 walkthrough, no timed clean-machine record), NFR33–NFR34 (Epic 27 in progress; revised production-admission/runtime-failure posture needs fresh evidence; **2026-11-01:** Epic 27 done — NFR34 retention validated locally, Production enablement held as dated accepted debt per sprint-change-proposal-2026-11-01.md) |
+| Partial mechanism and re-verification owed | NFR16 — the controlled Redis restart covered the previous wording. Authoritative replay and erased-tenant non-resurrection remain unverified. NFR31 — the compatibility walkthrough exists. Target operations and the Story 35.7 cold run remain outstanding. |
+| Implemented, verification run not recorded in PRD evidence | NFR1–NFR5, NFR7, NFR12, NFR14, NFR23, NFR29, NFR33–NFR34. DW-735 tracks measurement of the NFR12 100K-unit workload. Epic 27 closed with local retention evidence. Production lifecycle writes remain disabled. The operator’s log platform controls retention. The lack of a Memories-enforced bound is accepted debt. The Production qualification campaign is parked. [November 1 decision](sprint-change-proposal-2026-11-01.md) |
 | Not started | NFR6 (event freshness measurement), NFR15 (extraction-point review), NFR32 and NFR35 (future web, Epic 17 delivered components but gates activate with the web surface), NFR36 (new 2026-09-08), NFR37 (active CLI accessibility contract; current-contract evidence absent) |
 
 `[ASSUMPTION: the "implemented" row reflects the absence of recorded evidence in planning artifacts, not proof of absence in CI; the architecture owner should move rows up when a run is linked.]`
@@ -1198,7 +1202,7 @@ These are the graph *mechanics* (MVP, Epics 1 and 4). What populates `caused_by`
 | NFR | Requirement | Target | Phase |
 |---|---|---|---|
 | **NFR30** | Every CLI command includes --help with at least one usage example | CLI help completeness test: parse all commands, verify example presence | MVP |
-| **NFR31** | README includes a working Phase 1 quickstart that completes in <30 minutes on a clean machine with Docker installed. **G3 is timed on the README manual path** — AppHost boot → `tenant create` → `case create` → `ingest` → `search query` — using real CLI operations; `memories quickstart` is the scripted convenience and may be used *in addition*, not instead. G3 cannot run while `tenant create` is absent and the `case`/`ingest` groups are placeholders; these operations sit on the 2026-12-01 critical path. **Clean machine (definition shared with L2):** a fresh OS user profile on Windows 11, macOS, or Ubuntu LTS with only Docker (or Docker Desktop) and the .NET SDK pinned in `global.json` preinstalled; the Aspire CLI/workload is installed on the clock; broadband network assumed; Docker image pulls are on the clock (unlike NFR7); the embedding-provider API key is **off** the clock (obtained beforehand and pasted at the prompt). Phase 1.5 EventStore 30-minute clock is a separate launch gate (L2) using the same machine definition. | Timed walkthrough on the clean machine above, recorded in `docs/dev/quickstart-walkthrough-log.md` with date, OS, and machine spec; **no run recorded as of 2026-09-08** | MVP |
+| **NFR31** | A developer following the README on a clean machine can start AppHost, create a tenant and case, ingest a file or URL, and obtain the first correct search result through enrolled McpCli operations in <30 minutes. The clean machine for G3 and L2 is a fresh Windows 11, macOS or Ubuntu LTS user profile with only Docker and the SDK pinned in `global.json` preinstalled. Assume broadband access. Obtain the embedding-provider key before timing starts and enter it at the prompt. Count Aspire installation and image pulls in the elapsed time. L2 separately times the Phase 1.5 EventStore journey. | Story 35.7 records the date, OS, machine, tool versions, raw steps and elapsed time. Record missing operations or a missed threshold as a blocker. Compatibility runs are logged separately. The target run is pending. [Walkthrough log](../../docs/dev/quickstart-walkthrough-log.md) | MVP |
 
 ### Future web, freshness, and telemetry
 
@@ -1223,8 +1227,8 @@ These are the graph *mechanics* (MVP, Epics 1 and 4). What populates `caused_by`
 
 ## Open Questions
 
-1. **Closed 2026-10-05.** Administrator retained 2026-12-01 for the expanded G1–G6 gate, 2026-10-31 as the prerequisite checkpoint, and 2027-01-01 as the derived Phase 1.5 date. A missing prerequisite makes the retained gate date unreachable; no verdict means no launch, and the single-reset rule still applies.
-2. `[PHASE-BLOCKER / G1]` Administrator is the Phase 1 corpus steward as the sole project contributor. Two independent external human reviewers who did not curate the corpus or implement the evaluated behaviour must be named and have independence checked before label freeze and a qualifying G1 run. Their names and availability remain open. Revisit: 2026-10-31 prerequisite checkpoint.
+1. **Date reset open.** On November 20 the audit established that the missed October 31 checkpoint makes the previously approved December 1 gate unreachable. The Administrator may use the single sprint-change reset once reviewer availability, corpus preparation, the target CLI delivery plan and engineering capacity support a new date. January 1 remains the previous derived launch date. A replacement requires an explicit decision.
+2. `[PHASE-BLOCKER / G1]` Administrator stewards the Phase 1 corpus and must name two external human reviewers, verify that neither curated the corpus nor implemented the evaluated behavior, and confirm their availability before freezing labels. Revisit when both reviewers are available and before proposing a new gate date.
 3. Compact scope, source, relevance caveat, freshness/degradation, omission, and recovery remain visible on every evidence-bearing surface. Should detailed ranks, weights, matched terms, and graph diagnostics remain opt-in (`--explain`, FR19) or become default at web activation? Owner: UX. Revisit: Epic 17 activation SCP.
 4. **Closed 2026-09-08.** Licence is MIT (Jerome). The PRD's Apache 2.0 text was replaced; the repository already complies. Remaining action: publish the MIT no-relicense sentence in the README (handoff, `addendum.md`).
 5. FR32 stays absolute (single-case ownership) for MVP and Phase 1.5; brief R3 (lightweight cross-case references) may be restored only as a Phase 2 FR via sprint change. Owner: Jerome. Revisit: Phase 2 planning.
@@ -1238,8 +1242,8 @@ These are the graph *mechanics* (MVP, Epics 1 and 4). What populates `caused_by`
 
 - `[ASSUMPTION]` Generic Marten/Wolverine/Axon zero-code remains an experiment until a named spike passes the DAPR-generic kill switch. (§ Executive Summary)
 - `[ASSUMPTION]` Cloud-drive, git, image, and video ingest stay deferred until an owner names a phase. (§ Non-Goals)
-- `[DERIVED]` G1-prerequisite sprint-selection date 2026-10-31 (one month before the confirmed 2026-12-01 release decision, which is itself one month before the confirmed 2027-01-01 launch decision). (§ Measurable Outcomes › Release decision record; Open Question 1)
-- `[RATIFIED 2026-10-05]` Administrator retained 2026-12-01 for the expanded G1–G6 gate; 2026-10-31 remains the prerequisite checkpoint and 2027-01-01 the derived Phase 1.5 date. (§ Release decision record; Open Question 1)
+- `[CHECKPOINT MISSED 2026-10-31]` The prerequisite review closed without the independent reviewers required for G1. See the release decision record and Open Question 2.
+- `[DATE RESET OPEN 2026-11-20]` December 1 was the ratified gate date and January 1 its derived launch date. The Administrator owns the single reset under Open Question 1.
 - `[ASSUMPTION]` Thesis-stress slice ≤ 20% of N; explicit + metadata-carried edges ≥ 30% of non-`contains` edges for the run to count as a three-axis (not similarity-graph) test. (§ Measurable Outcomes › Thesis-gate protocol)
 - `[ASSUMPTION]` NFR36 file/URL freshness budgets (60 s for ≤10 KB, 5 min for ≤1 MB) are derived from NFR5 throughput; architecture may tighten, not remove. (§ NFR36)
 - `[ASSUMPTION]` The NFR "implemented" status row reflects absence of recorded evidence in planning artifacts, not proof of absence in CI. (§ Non-Functional Requirements › NFR delivery status)

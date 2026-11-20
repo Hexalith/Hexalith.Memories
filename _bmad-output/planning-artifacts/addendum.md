@@ -1,20 +1,20 @@
 # Addendum — Hexalith.Memories PRD
 
 **Role:** Mechanism, topology, rejected alternatives, and change-control residue that must not live in the product-outcome PRD.
-**Updated:** 2026-10-05
+**Updated 2026-11-20.**
 **Does not override:** `prd.md` ship gates, FR/NFR IDs, or Glossary terms.
 
 ## Why this file exists
 
 The 2026-09-05 PRD Update moved implementation how-to out of the requirements contract: Aspire topology, OpenBao, package graphs, fusion numeric weights, Dapr Agents, and SDK pins. Architecture remains authoritative for those facts when they drift.
 
-**Current handoff (2026-10-05):** The final architecture spine has ratified AD-14 phasing and binds FR75/NFR37/G6. Ratified decisions do not supply G6 evidence: every MVP-active requirement and architecture-critical active-foundation gap still needs a current re-runnable evidence path under AD-20. The PRD retains 2026-12-01 for the expanded G1–G6 gate and 2026-10-31 for prerequisites. Administrator stewards the real Phase 1 corpus; two independent external human reviewers remain unnamed, so G1 remains no-go. See the PRD Release decision record and Open Questions 1, 2, 9, and 10.
+**Current handoff, 2026-11-20.** The missed October 31 checkpoint leaves Phase 1 at no-go. The Administrator stewards the corpus and must secure two independent reviewers before label freeze. Story 35.7 needs enrolled McpCli operations and a cold run. AD-14 and the FR75/NFR37/G6 architecture binding are ratified. Each active gap still needs current, re-runnable evidence under AD-20. [Release decision record](prd.md#release-decision-record)
 
 ## EventStore — three contracts (do not collapse)
 
-1. **Domain truth (current MVP):** Case / MemoryUnit / Tenant durable commit is Hexalith.EventStore acknowledgement. Search/vector/graph are rebuildable projections. See PRD FR13, pipeline section, architecture driver #3 / Epic 21.
+1. **Domain truth.** FR13 requires an EventStore commit before projection. Cases, tenants and memory-unit annotations and deletions already use it. Stories 34.1 and 34.2 own the outstanding intake commit for V1 ingestion and CloudEvents, respectively.
 2. **Product integration (Phase 1.5):** CloudEvent auto-index, dual embedding, CausationId/CorrelationId edges (FR59–FR62, Epic 9).
-3. **Runtime pin (architecture / Epic 28):** Which EventStore packages or SHA this repo consumes. Not a product FR. SDK/toolchain mismatches (e.g. 10.0.302 vs 10.0.400) are repository configuration, not PRD text.
+3. **Runtime dependency (Epic 28).** DW-734 closed after the 5.4.0 EventStore package floor preserved higher selections and all 31 configuration tests passed. L2 still requires a full-stack EventStore-originated publish (DW-713). [Deferred-work register](../implementation-artifacts/deferred-work.md)
 
 ## Fusion — decision vs numbers
 
@@ -37,16 +37,16 @@ Source: `tests/Hexalith.Memories.Benchmarks` (`BenchmarkSuiteTests.ThesisValidat
 | Graph edges in corpus | `references` 29, `causedBy` 9, `correlatedWith` 5 | Whatever the frozen real corpus contains under the Phase 1 population rule |
 | Result | 8/8 wins, reproducible twice | Not yet run |
 
-The suite remains the NFR26 reproducibility gate and a regression check. Expanding it into the G1 protocol is engineering work to be sprint-selected (Epic 26 successor); the PRD owns the numbers, the README restates them.
+The eight-topic suite supplies NFR26 regression and reproducibility evidence. Stories 33.2 and 33.3 own case-local graph seeding and partitioning, 33.4 owns the two-axis control, and 33.6 owns the real corpus. G1 still requires independently reviewed labels and a qualifying scoring run.
 
 ## Release decision — why dated no-go rather than "gate must pass"
 
-The 2026-09-08 validation found that every prior gate could only delay. The PRD now carries a Release decision record with a decision date per gate and a stated failure outcome. Administrator retained **2026-12-01** for the expanded G1–G6 gate on 2026-10-05, with **2026-10-31** as the prerequisite checkpoint and **2027-01-01** as the derived Phase 1.5 launch date. A missed prerequisite makes the retained gate date unreachable; no verdict means no launch. Any reset uses the PRD's single permitted sprint-change route.
+The October 5 decision set October 31 as the prerequisite checkpoint, December 1 as the G1–G6 decision and January 1 as the derived Phase 1.5 date. The checkpoint was missed. The Administrator can propose one reset when reviewer availability, corpus preparation, the target CLI delivery plan and engineering capacity support it. The PRD distinguishes a missing verdict from a measured G1 failure, which triggers the fusion kill switch. [Approved November 20 disposition](sprint-change-proposal-2026-11-20.md)
 
 ## Isolation mechanism
 
 - **PRD outcome:** NFR8, FR38, FR40 — zero leaks, tenant-scoped resources, automated verify.
-- **Architecture-owned:** per-tenant Redis ACL users + tenant-scoped backend resolution. Key prefixes, hash tags, and logical DBs are placement tools, not the primary security boundary (Story 24.3).
+- **Backend authority.** The design requires per-tenant Redis principals. The audit found that search selected a tenant index over a shared Redis connection. Stories 34.11 and 35.6 must show that each tenant can read and write its own data, that each is denied access to the other’s data, and that the deployed backend rejects revoked credentials. Story 34.53 covers FalkorDB separately.
 - **MVP isolation tier:** shared cluster, tenant-scoped principals and indexes, API enforcement (not separate processes/volumes per tenant unless a later approved change says so).
 
 ## Ingestion runtime
@@ -54,9 +54,9 @@ The 2026-09-08 validation found that every prior gate could only delay. The PRD 
 - **PRD:** DAPR Workflow owns stages, retry, compensation. Rate-limiter actor owns embedding budget.
 - **Rejected:** per-tenant document-queue pipeline actor as orchestrator (pre-D23).
 - **NFR17 proof:** workflow history / Durable Task persistence, not "pipeline actor state."
-- **Projection completion:** work is keyed by `(tenantId, caseId, memoryUnitId, authoritative EventStore sourceVersion, schemaGeneration, embeddingConfigurationEpoch)`. One DAPR-state coordinator advances per-axis checkpoints monotonically with ETag/CAS, rejects stale acknowledgements, and shares the protocol across ingest, repair, and replay.
+- **Projection completion contract.** The target coordinator accepts monotonic per-axis checkpoints for `(tenantId, caseId, memoryUnitId, authoritative EventStore sourceVersion, schemaGeneration, embeddingConfigurationEpoch)`. Stories 34.1, 34.3 and 34.4 cover the revision, write fencing and completion. The audit found that a missing graph acknowledgement could still yield `indexed`. Status, case activity and counts must agree on incomplete work until repair obtains all three current acknowledgements.
 - **Idempotency:** V1 tokens are scoped by tenant, case, and command/operation. CloudEvent identity is tenant + case + exact validated `source` + `id`, compared ordinally with no post-validation normalization. Durable EventStore/workflow suppression owns the guarantee; projections are idempotent upserts for the completion tuple. Redis preflight reservation is fail-open admission optimization only and never durable truth.
-- **Recovery distinction:** authoritative EventStore replay, application export restore, and the current Redis-input consistency repair are different operations. The current architecture spine records replay-to-all-current-projections as an implementation gap.
+- **Recovery.** Authoritative EventStore replay, export restore and Redis-input consistency repair are separate operations. Replay to all current projections is still outstanding. Retry a restore only after a confirmed pre-write refusal, on a clean target with the same live tenant ID and matching configuration. If writes may have occurred or verification fails, keep the tenant offline and preserve its state for the recovery owner. DW-733 requires a live-tenant drill with final counts, search on each axis and an unaffected control tenant. [Restore stop conditions](../../docs/operations/backup-restore.md#rollback-and-stop-conditions)
 
 ## Identity
 
@@ -73,12 +73,12 @@ The 2026-09-08 validation found that every prior gate could only delay. The PRD 
 ## Tenant erasure
 
 - **PRD outcome:** FR39/NFR16 — verified projection purge, irreversible EventStore content inaccessibility, telemetry erasure handoff, no replay/restore resurrection, and no tenant-ID reuse.
-- **Architecture-owned mechanism:** Hexalith.EventStore tenant-key crypto-shredding; content-free deletion evidence/tombstones; unreadable restored payload quarantine rather than rehydration.
+- **Erasure evidence.** Deletion fences the tenant ID against reuse. The architecture calls for tenant-key crypto-shredding and content-free tombstones. Stories 34.24 and 34.25 still need to demonstrate that an erased origin or a pre-erasure snapshot cannot rehydrate content.
 - **Telemetry boundary:** tenant deletion records the durable mapping/handoff but does not force early deletion of retained opaque telemetry. NFR34 owns TTL, purge progress, and any separately adopted accelerated purge operation.
 
 ## Capacity and backpressure
 
-- Tenant and global quotas have separate owners; admission and concurrency are tenant-partitioned and queues are bounded/durable.
+- The NFR12 reference workload is 100K units per tenant. The current ingestion ledger caps retained keys at 65,536, and key count varies by workload. DW-735 must measure keys per unit, admission and deletion at load before publishing a supported capacity. Admission and concurrency are tenant-partitioned, with separate tenant and global quotas.
 - Provider `Retry-After` is honored through workflow timers, not unbounded in-memory retries.
 - Repair, recovery, and migration work run below interactive query/ingestion priority. PRD NFR12/NFR13/NFR22/NFR36 own measurable fairness and freshness outcomes.
 
@@ -95,8 +95,8 @@ The 2026-09-08 validation found that every prior gate could only delay. The PRD 
 
 ## Language / SDK
 
-- Language baseline in the PRD: .NET 10 / C# 14.
-- SDK pin: `global.json` only. Dated SCPs that mention 10.0.302 or 10.0.400 are historical verified facts, not PRD pins.
+- The repository targets .NET 11 and C# 14 in `Directory.Build.props`.
+- `global.json` selects the SDK.
 
 ## Brief residue (2026-03-22) not absorbed as FRs
 
@@ -141,16 +141,15 @@ Brief claims deliberately **not** carried into the PRD (2026-09-08 product-brief
 
 ## Downstream drift not fixed by this Update (handoff)
 
-The current architecture spine supersedes legacy `architecture.md` for architecture decisions. The PRD incorporated its product-observable guarantees on 2026-09-12 and aligned G6 to AD-20 on 2026-10-05. AD-14 phasing and FR75/NFR37/G6 binding are ratified; architecture implementation gaps remain unevidenced. `epics.md` needs re-derivation from the approved correction before sprint tracking can be refreshed. The Story 27.4 live-producer contract stays out of the PRD.
+The final architecture spine ratifies AD-14 phasing and the FR75/NFR37/G6 binding. Epic 34 has a reviewed execution order. Final validation and successor sprint tracking remain on hold for the outstanding target-surface and qualification work. Epic 27 closed through the separate November 1 telemetry decision. [Implementation readiness](implementation-readiness.md)
 
 Further handoff items recorded on 2026-09-08 (afternoon adversarial pass), none applied to code or downstream documents by this Update:
 
 - `tests/Hexalith.Memories.Benchmarks`: rename `ThesisValidation_HybridOutperforms80Percent` (and the `ThesisValidated` flag) to a diagnostic/regression name; add the two-axis BM25+semantic control, the per-topic aggregate guards, the edge-source census, and the cached-embedding hash. A passing run of the current test is not G1 evidence.
 - `README.md` line 84 says "per-tenant audit events (FR67)"; the PRD glossary bans "audit" for access telemetry. Reword downstream.
-- `README.md` line 7 quotes NFR31 as "approximate"; NFR31 now defines the clean machine and the recorded-run requirement. `docs/dev/quickstart-walkthrough-log.md` has no run.
+- The README labels the warm-stack quickstart as a compatibility walkthrough. Story 35.7 owns cold timing on McpCli. [Walkthrough log](../../docs/dev/quickstart-walkthrough-log.md)
 - Licence: confirmed MIT by Jerome on 2026-09-08 (Open Question 4 closed); the repository already complies. Remaining downstream action: add the README sentence "Hexalith.Memories is committed to the MIT license. We will not change to a restrictive license." Any older Apache 2.0 wording in `architecture.md`/`epics.md` is drift to remove.
-- Dates: Administrator retained the expanded G1–G6 gate on 2026-12-01, the prerequisite checkpoint on 2026-10-31, and the derived Phase 1.5 decision on 2027-01-01 in the approved 2026-10-05 correction. These dates do not waive missing evidence or independent G1 reviewers.
-- `HybridSearchService` skips the graph axis without a start node; the PRD now requires auto-seeding from top-5 syntactic + top-5 semantic (FR17). No owning story exists yet.
+- `HybridSearchService` still needs case-local seeding on default hybrid search. Stories 33.2 and 33.3 own this work under FR17.
 - MCP parameter naming (`axis` vs `axes`) is declared once in the CLI surface table (`--axis`); the MCP tool schema should be checked against it when Epic 10 hardening is next touched.
 - The final architecture spine binds `FR1-FR75`, `NFR1-NFR37`, `G1-G6`, and `L1-L3`; its AD-14/FR75/NFR37/G6 decisions and AD-23 Identifier Grammar V1 are ratified. Implementations and qualifying evidence remain owed.
 
