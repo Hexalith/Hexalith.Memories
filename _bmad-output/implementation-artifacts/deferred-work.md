@@ -6384,11 +6384,12 @@ decision: 2026-11-01 keep-open — parked. Reopens only on the trigger: any Prod
 ### DW-734: Align the evaluated EventStore package floor and its tests
 
 - ID: AUDIT-20261120-EVENTSTORE-FLOOR
-- Status: open
+- Status: resolved
 - Source story: Repository audit and [audit course correction](../planning-artifacts/sprint-change-proposal-2026-11-20.md), finding 7
 - Target artifact: `Directory.Packages.props` and `tests/Hexalith.Memories.Server.Tests/Deployment/AppHostSecurityConfigurationTests.cs`
-- Re-open trigger: Correct the existing server test failures before the next release or EventStore package qualification.
-- Evidence: The 5.3.1 comparison assigns 5.4.0 and the tests assert the older floor. Owner: build maintainer. Verify the owner-supported floor and evaluated values for source, lower, equal, newer and empty selections. Close on a green server suite and separate Debug/source and Release/package checks.
+- Re-open trigger: A package consumer resolves below the supported minimum, a higher selection is downgraded, or source-backed builds start applying the package floor.
+- Resolution: [PR #73](https://github.com/Hexalith/Hexalith.Memories/pull/73) merged on 2026-11-20. Package consumers enforce a single 5.4.0 minimum and preserve higher selections. Source-backed consumers retain the selected version.
+- Evidence: All 31 cases in `AppHostSecurityConfigurationTests` passed, including the nine that failed during the audit. Debug/source and Release/package builds passed. The [hosted unit and contract check](https://github.com/Hexalith/Hexalith.Memories/actions/runs/44731772842/job/136273081509) passed with 81.39% line coverage.
 
 ### DW-735: Measure per-tenant ingestion ownership capacity
 
