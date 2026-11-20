@@ -117,7 +117,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Initialize dispatched .NET for trusted fixtures
-        uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@38e038d1179b1c829ba47a45bfa0a4683ea5e2a5
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           global-json-file: global.json
       - name: Expose approved Builds catalog for trusted fixtures
@@ -164,7 +164,7 @@ jobs:
         run: git checkout --detach "$RECOVERY_COMMIT"
       - name: Initialize tagged .NET for retained package recovery
         if: steps.source.outputs.current == 'true'
-        uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@38e038d1179b1c829ba47a45bfa0a4683ea5e2a5
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           global-json-file: global.json
       - name: Initialize kubectl
@@ -250,7 +250,7 @@ jobs:
         uses: Hexalith/Hexalith.Builds/Github/initialize-build@38e038d1179b1c829ba47a45bfa0a4683ea5e2a5
       - name: Initialize historical .NET
         if: steps.source.outputs.current == 'false'
-        uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@38e038d1179b1c829ba47a45bfa0a4683ea5e2a5
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           global-json-file: global.json
       - name: Validate historical inventory before any mutation

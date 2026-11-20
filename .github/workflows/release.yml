@@ -89,12 +89,6 @@ jobs:
         with:
           version: ${{ env.KUBECTL_VERSION }}
 
-      # SDK 10 supplies retained compatibility fixtures; global.json selects SDK 11.
-      - name: Install .NET 10 runtime and targeting packs
-        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
-        with:
-          dotnet-version: 10.0.x
-
       - name: Prepare guarded release from pinned Builds
         id: prepare
         uses: Hexalith/Hexalith.Builds/Github/prepare-domain-release@38e038d1179b1c829ba47a45bfa0a4683ea5e2a5
