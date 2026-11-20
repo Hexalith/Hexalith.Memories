@@ -251,6 +251,8 @@ internal static class MemoriesServerServiceCollectionExtensions
             builder.Configuration.GetSection(ContentChunkingOptions.SectionName));
         builder.Services.Configure<UrlFetcherOptions>(builder.Configuration.GetSection("Ingestion:UrlFetcher"));
         builder.Services.AddHttpClient(UrlContentFetcher.HttpClientName)
+            // HttpClientFactory request logs include the URL path. FetchUrlActivity logs the unit ID.
+            .RemoveAllLoggers()
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
             {
                 AllowAutoRedirect = false,

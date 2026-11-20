@@ -77,13 +77,15 @@ public class UrlContentFetcherTests
     public async Task FetchAsync_SocketException_ThrowsUrlNetworkError()
     {
         UrlContentFetcher fetcher = BuildFetcher(
-            (_, _) => throw new HttpRequestException("refused", new SocketException()),
+            (_, _) => throw new HttpRequestException("refused: " + SignedUrlLogAssertions.Url, new SocketException()),
             _localhostAllowed);
 
         UrlFetchException ex = await Should.ThrowAsync<UrlFetchException>(
             () => fetcher.FetchAsync(new Uri("http://localhost/"), CancellationToken.None));
 
         ex.ErrorCode.ShouldBe("URL_NETWORK_ERROR");
+        ex.ToString().ShouldNotContain(SignedUrlLogAssertions.PathSecret);
+        ex.ToString().ShouldNotContain(SignedUrlLogAssertions.QuerySecret);
     }
 
     [Fact]

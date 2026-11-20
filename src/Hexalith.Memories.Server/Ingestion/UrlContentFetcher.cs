@@ -8,7 +8,6 @@ namespace Hexalith.Memories.Server.Ingestion;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
-using System.Net.Sockets;
 
 using Hexalith.Memories.Contracts.V1;
 
@@ -74,13 +73,9 @@ public sealed class UrlContentFetcher : IUrlContentFetcher
             {
                 throw new UrlFetchException("URL_TIMEOUT", $"URL fetch timed out after {_options.TimeoutSeconds}s.");
             }
-            catch (HttpRequestException ex) when (IsConnectionRelated(ex))
+            catch (HttpRequestException)
             {
-                throw new UrlFetchException("URL_NETWORK_ERROR", $"Network failure fetching URL: {ex.Message}", ex);
-            }
-            catch (HttpRequestException ex) when (ex.StatusCode is null)
-            {
-                throw new UrlFetchException("URL_NETWORK_ERROR", $"Network failure fetching URL: {ex.Message}", ex);
+                throw new UrlFetchException("URL_NETWORK_ERROR", "Network failure fetching URL.");
             }
 
             try
@@ -141,13 +136,17 @@ public sealed class UrlContentFetcher : IUrlContentFetcher
                 {
                     throw new UrlFetchException(
                         "UNSUPPORTED_CONTENT_TYPE",
-                        $"Response Content-Type '{contentType}' is not supported.",
+                        "Response Content-Type is not supported.",
                         httpStatusCode: status);
                 }
 
                 byte[] body = await ReadBoundedAsync(response, _options.MaxBytes, linked.Token).ConfigureAwait(false);
 
                 return new UrlFetchResult(body, contentType, body.LongLength, current.ToString(), status);
+            }
+            catch (Exception ex) when (ex is IOException or HttpRequestException)
+            {
+                throw new UrlFetchException("URL_NETWORK_ERROR", "Failed reading URL response body.");
             }
             finally
             {
@@ -175,15 +174,7 @@ public sealed class UrlContentFetcher : IUrlContentFetcher
                 break;
             }
 
-            int read;
-            try
-            {
-                read = await source.ReadAsync(buffer.AsMemory(0, toRead), cancellationToken).ConfigureAwait(false);
-            }
-            catch (IOException ex)
-            {
-                throw new UrlFetchException("URL_NETWORK_ERROR", $"Failed reading response body: {ex.Message}", ex);
-            }
+            int read = await source.ReadAsync(buffer.AsMemory(0, toRead), cancellationToken).ConfigureAwait(false);
 
             if (read == 0)
             {
@@ -210,7 +201,4 @@ public sealed class UrlContentFetcher : IUrlContentFetcher
             or HttpStatusCode.SeeOther
             or HttpStatusCode.TemporaryRedirect
             or HttpStatusCode.PermanentRedirect;
-
-    private static bool IsConnectionRelated(HttpRequestException ex)
-        => ex.InnerException is SocketException;
 }

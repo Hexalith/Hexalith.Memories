@@ -54,7 +54,7 @@ internal sealed class CaseActivityService
             [
                 new NameValueEntry("type", JsonNamingPolicy.CamelCase.ConvertName(eventType.ToString())),
                 new NameValueEntry("actor", actor),
-                new NameValueEntry("description", description),
+                new NameValueEntry("description", ProtectIngestionDescription(eventType, memoryUnitId, description)),
             ];
 
             if (memoryUnitId is not null)
@@ -275,6 +275,24 @@ internal sealed class CaseActivityService
         }
     }
 
+    // Earlier workflow histories and retained stream entries can contain the original source.
+    private static string ProtectIngestionDescription(CaseActivityEventType type, string? unitId, string description)
+    {
+        if (type == CaseActivityEventType.MemoryUnitIngested
+            && description.StartsWith($"Memory unit {unitId} indexed from ", StringComparison.Ordinal))
+        {
+            return $"Memory unit {unitId} indexed";
+        }
+
+        if (type == CaseActivityEventType.IngestionFailed
+            && description.StartsWith("Ingestion failed for ", StringComparison.Ordinal))
+        {
+            return $"Memory unit {unitId} failed";
+        }
+
+        return description;
+    }
+
     private static CaseActivityEvent? ParseStreamEntry(StreamEntry entry)
     {
         string? type = entry.Values.FirstOrDefault(v => v.Name == "type").Value;
@@ -300,7 +318,7 @@ internal sealed class CaseActivityService
             timestamp,
             eventType,
             actor,
-            description,
+            ProtectIngestionDescription(eventType, memoryUnitId, description),
             string.IsNullOrEmpty(memoryUnitId) ? null : memoryUnitId);
     }
 }

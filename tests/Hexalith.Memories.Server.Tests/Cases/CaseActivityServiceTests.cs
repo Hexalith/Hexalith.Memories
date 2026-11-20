@@ -456,6 +456,25 @@ public class CaseActivityServiceTests
         timestamp.ShouldBeNull();
     }
 
+    [Theory]
+    [InlineData(CaseActivityEventType.MemoryUnitIngested, "Memory unit mu-1 indexed from {0}", "Memory unit mu-1 indexed")]
+    [InlineData(CaseActivityEventType.IngestionFailed, "Ingestion failed for {0} at stage fetching", "Memory unit mu-1 failed")]
+    public async Task LegacyUrlDescriptionsAreSafeOnReadAndRedelivery(CaseActivityEventType type, string format, string expected)
+    {
+        string legacy = string.Format(format, "https://example.test/synthetic-path?sig=synthetic-query");
+        (IConnectionMultiplexer redis, IDatabase db) = CreateMockRedis();
+        db.StreamRangeAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue?>(), Arg.Any<RedisValue?>(),
+                Arg.Any<int?>(), Order.Descending, Arg.Any<CommandFlags>())
+            .Returns([CreateStreamEntry("1712345678901-0", type.ToString(), "actor", legacy, "mu-1")]);
+        CaseActivityService service = new(redis, NullLogger<CaseActivityService>.Instance);
+        (await service.GetRecentActivityAsync("tenant-a", "case-a")).Single().Description.ShouldBe(expected);
+
+        (await service.RecordEventAsync("tenant-a", "case-a", type, "actor", legacy, "mu-1")).ShouldBeTrue();
+        var append = db.ReceivedCalls().Single(call => call.GetMethodInfo().Name == nameof(IDatabase.StreamAddAsync));
+        var fields = (NameValueEntry[])append.GetArguments()[1]!;
+        fields.Single(field => field.Name == "description").Value.ToString().ShouldBe(expected);
+    }
+
     private static StreamEntry CreateStreamEntry(string id, string type, string actor, string description, string? memoryUnitId)
     {
         List<NameValueEntry> values =

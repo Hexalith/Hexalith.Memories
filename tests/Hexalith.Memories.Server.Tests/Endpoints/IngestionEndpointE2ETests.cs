@@ -19,6 +19,7 @@ using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.Tenants;
 using Hexalith.Memories.Server.Tests.Authentication;
 using Hexalith.Memories.Server.Tests.EventStoreIntegration;
+using Hexalith.Memories.Server.Tests.Ingestion;
 using Hexalith.Memories.TestHelpers.Factories;
 using Hexalith.Memories.Telemetry;
 
@@ -84,6 +85,27 @@ public sealed class IngestionEndpointE2ETests : IDisposable
                 input.CausationId == request.CausationId &&
                 input.CorrelationId == request.CorrelationId),
             Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData(true, 6101)]
+    [InlineData(false, 6102)]
+    public async Task PostUrlProtectsSourceInEnqueueLogs(bool valid, int eventId)
+    {
+        StubTenantActive();
+        _scheduler.ScheduleAsync(Arg.Any<string>(), Arg.Any<IngestionInput>(), Arg.Any<CancellationToken>())
+            .Returns(call => call.ArgAt<string>(0));
+        using HttpClient client = CreateAuthorizedClient();
+        UrlIngestionRequest request = new()
+        {
+            TenantId = TenantId, CaseId = CaseId, Url = SignedUrlLogAssertions.Url,
+            IngestedBy = valid ? "integration" : string.Empty,
+        };
+        using HttpResponseMessage response = await client.PostAsJsonAsync("/api/v1/ingest/url", request,
+            MemoriesJsonContext.Options, TestContext.Current.CancellationToken);
+        response.StatusCode.ShouldBe(valid ? HttpStatusCode.Accepted : HttpStatusCode.BadRequest);
+        _factory.AuditLogs.Captures.ShouldContain(log => log.EventId == eventId);
+        _factory.AuditLogs.Captures.ShouldProtectSource();
     }
 
     /// <summary>Configured HTTP file and URL entry points return the exact generation-qualified identifier passed to scheduling.</summary>

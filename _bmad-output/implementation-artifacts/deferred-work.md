@@ -6366,11 +6366,38 @@ decision: 2026-11-01 keep-open — parked. Reopens only on the trigger: any Prod
 ### DW-732: Keep ingestion source credentials out of logs and case activity
 
 - ID: AUDIT-20261120-SOURCE-DISPLAY
-- Status: open
+- Status: resolved
 - Source story: Repository audit and [audit course correction](../planning-artifacts/sprint-change-proposal-2026-11-20.md), finding 2
 - Target artifact: `src/Hexalith.Memories.Server/Workflows/IngestionWorkflow.cs` and `src/Hexalith.Memories.Server/Cases/CaseActivityService.cs`
-- Re-open trigger: Prioritize at the next ingestion maintenance change, before exposing URL ingestion to tenants who use signed source URLs.
-- Evidence: Workflow logging passes the original source. Success and failure activity descriptions interpolate it. The activity service persists descriptions to the case stream. Owner: ingestion maintainer. Close on synthetic-marker checks across logs and stored/read case activity for normal, duplicate and failed ingestion, with exact fetch and deduplication behavior preserved.
+- Re-open trigger: Either URL marker appears in a log or case activity, the fetch target changes, or duplicate detection loses the original URL or its tenant and case scope.
+- Resolution (2026-11-20): FR2 and FR36 are satisfied across enqueue, fetch, successful indexing, duplicate delivery and failure. Logs identify work by its ID and retain the failure stage and error code. The named HTTP client omits raw request logging. Case activity uses the memory-unit ID. Previously emitted source-bearing descriptions are protected when read or redelivered.
+- Acceptance evidence: Separate synthetic secrets in the URL path and query were absent from structured log fields, rendered logs, Redis activity entries and the activity HTTP response. The upstream received the exact submitted URL. Submitting it twice in one tenant and case returned the original memory-unit ID, with one fetch, one indexed unit across the backing stores and one ingestion activity. After indexing, changing the tenant, case, path or query yielded a distinct deduplication lookup. A 404 exercised the durable retry and failure path, including stored and API failure activity.
+- Focused server tests: 159 passed, 0 failed, 0 skipped.
+
+```bash
+dotnet test --project tests/Hexalith.Memories.Server.Tests \
+  --filter-class '*.IngestionWorkflowTests' \
+  --filter-class '*.IngestionEndpointE2ETests' \
+  --filter-class '*.FetchUrlActivityTests' \
+  --filter-class '*.UrlContentFetcherTests' \
+  --filter-class '*.UrlContentFetcherHttpPipelineTests' \
+  --filter-class '*.CaseActivityServiceTests' \
+  --filter-class '*.IngestionEndpointLogTests' \
+  --filter-class '*.CheckIdempotencyActivityTests' \
+  --filter-class '*.DedupKeyBuilderTests' \
+  --filter-class '*.ContentExtractionClientTests' \
+  --filter-class '*.SaveDedupKeyActivityTests'
+```
+
+- Live integration tests: Both prerequisite builds succeeded. Both selected tests passed with 0 errors, failures or skips in 45.383 seconds. The live run used .NET 11, Aspire and Dapr in a disposable Linux container with Redis. The initial host run stopped during Aspire startup before ingestion because the control plane could not write its per-user port file.
+
+```bash
+dotnet build references/Hexalith.EventStore/src/Hexalith.EventStore -c Debug -m:1
+dotnet build tests/Hexalith.Memories.IntegrationTests -c Debug -m:1
+dotnet tests/Hexalith.Memories.IntegrationTests/bin/Debug/net11.0/Hexalith.Memories.IntegrationTests.dll \
+  -method '*.UrlIngestionIntegrationTests.UrlIngestion_SmallTextPage_ShouldCompleteAndBeSearchable' \
+  -method '*.UrlIngestionIntegrationTests.UrlIngestion_404Url_ShouldFailAfterRetries'
+```
 
 ### DW-733: Demonstrate recovery after partial writes for a live tenant
 

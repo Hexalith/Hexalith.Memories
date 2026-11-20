@@ -13,39 +13,24 @@ using Microsoft.Extensions.Logging;
 /// </summary>
 internal static partial class IngestionEndpointLog
 {
-    /// <summary>Redacts a URL to scheme + host + path (drops query and fragment) for log safety.</summary>
-    internal static string RedactUrl(Uri uri)
-    {
-        ArgumentNullException.ThrowIfNull(uri);
-        return $"{uri.Scheme}://{uri.Host}{uri.AbsolutePath}";
-    }
-
-    /// <summary>Best-effort redaction for raw URL input that may not parse.</summary>
-    internal static string RedactUrl(string? url)
-        => Uri.TryCreate(url, UriKind.Absolute, out Uri? uri)
-            ? RedactUrl(uri)
-            : "(invalid-url)";
-
     [LoggerMessage(
         EventId = 6101,
         Level = LogLevel.Information,
-        Message = "URL ingestion scheduled for tenant {TenantId}, case {CaseId}, instance {InstanceId}, url {RedactedUrl}")]
+        Message = "URL ingestion scheduled for tenant {TenantId}, case {CaseId}, instance {InstanceId}")]
     internal static partial void LogUrlIngestionScheduled(
         ILogger logger,
         string tenantId,
         string caseId,
-        string instanceId,
-        string redactedUrl);
+        string instanceId);
 
     [LoggerMessage(
         EventId = 6102,
         Level = LogLevel.Warning,
-        Message = "URL ingestion rejected for tenant {TenantId}, case {CaseId}, url {RedactedUrl}: {ErrorCode}")]
+        Message = "URL ingestion rejected for tenant {TenantId}, case {CaseId}: {ErrorCode}")]
     internal static partial void LogUrlIngestionRejected(
         ILogger logger,
         string tenantId,
         string caseId,
-        string redactedUrl,
         string errorCode);
 
     [LoggerMessage(
@@ -76,23 +61,21 @@ internal static partial class IngestionEndpointLog
     [LoggerMessage(
         EventId = 6105,
         Level = LogLevel.Information,
-        Message = "URL fetch started for memory unit {MemoryUnitId}, url {RedactedUrl}")]
+        Message = "URL fetch started for memory unit {MemoryUnitId}")]
     internal static partial void LogUrlFetchStarted(
         ILogger logger,
-        string memoryUnitId,
-        string redactedUrl);
+        string memoryUnitId);
 
     [LoggerMessage(
         EventId = 6106,
         Level = LogLevel.Information,
-        Message = "URL fetch completed for memory unit {MemoryUnitId}, status {HttpStatus}, bytes {ByteCount}, elapsedMs {ElapsedMs}, finalUrl {FinalRedactedUrl}")]
+        Message = "URL fetch completed for memory unit {MemoryUnitId}, status {HttpStatus}, bytes {ByteCount}, elapsedMs {ElapsedMs}")]
     internal static partial void LogUrlFetchCompleted(
         ILogger logger,
         string memoryUnitId,
         int httpStatus,
         long byteCount,
-        long elapsedMs,
-        string finalRedactedUrl);
+        long elapsedMs);
 
     [LoggerMessage(
         EventId = 6107,

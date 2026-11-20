@@ -43,9 +43,9 @@ public sealed class ContentExtractionClient : IContentExtractionClient
 
         if (string.IsNullOrWhiteSpace(extractedContent))
         {
+            string source = string.IsNullOrWhiteSpace(input.MemoryUnitId) ? "the source" : $"memory unit '{input.MemoryUnitId}'";
             throw new InvalidOperationException(
-                $"Kreuzberg returned empty content for '{input.SourceUri}' " +
-                $"(content type: {contentType}). " +
+                $"Extraction returned empty content for {source}. " +
                 "The file may be corrupt or in an unsupported format.");
         }
 

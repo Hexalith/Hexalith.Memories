@@ -15,6 +15,8 @@ using Hexalith.Memories.Server.Activities.Ingestion;
 using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.NaturalLanguage;
 using Hexalith.Memories.Server.Search;
+using Hexalith.Memories.Server.Tests.Ingestion;
+using Hexalith.Memories.Server.Tests.Telemetry.Infrastructure;
 using Hexalith.Memories.Server.Workflows;
 using Hexalith.Memories.TestHelpers.Factories;
 
@@ -683,6 +685,44 @@ public class IngestionWorkflowTests
         details.Stage.ShouldBe("fetching");
         details.ErrorCode.ShouldBe("URL_TIMEOUT");
         details.RetryCount.ShouldBe(5);
+    }
+
+    [Theory]
+    [InlineData("success")]
+    [InlineData("duplicate")]
+    [InlineData("failure")]
+    public async Task SignedUrlIsAbsentFromWorkflowLogs(string outcome)
+    {
+        IngestionInput input = IngestionInputFactory.Create(sourceType: SourceType.Url, sourceUri: SignedUrlLogAssertions.Url)
+            with { ContentBytes = null };
+        WorkflowContext context = CreateMockContext();
+        using CapturingAuditLoggerProvider logs = new();
+        context.CreateReplaySafeLogger<IngestionWorkflow>().Returns(logs.CreateLogger(nameof(IngestionWorkflow)));
+        SetupHappyPathActivities(context, input);
+        context.CallActivityAsync<IdempotencyResult>(nameof(CheckIdempotencyActivity),
+                Arg.Is<IdempotencyInput>(i => i.SourceUri == input.SourceUri && i.TenantId == input.TenantId && i.CaseId == input.CaseId),
+                Arg.Any<WorkflowTaskOptions>())
+            .Returns(outcome == "duplicate" ? new IdempotencyResult(true, "existing-unit") : new IdempotencyResult(false, null));
+        context.CallActivityAsync<UrlFetchResult>(nameof(FetchUrlActivity), Arg.Any<FetchUrlInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(outcome == "failure"
+                ? Task.FromException<UrlFetchResult>(new UrlFetchException("URL_NETWORK_ERROR", "Failure fetching " + input.SourceUri))
+                : Task.FromResult(new UrlFetchResult([1], "text/plain", 1, input.SourceUri, 200)));
+
+        IngestionWorkflow workflow = new();
+        if (outcome == "failure")
+        {
+            await Should.ThrowAsync<UrlFetchException>(() => workflow.RunAsync(context, input));
+            logs.Captures.ShouldContain(log => log.Level == LogLevel.Error && log.Message.Contains("fetching"));
+        }
+        else
+        {
+            IngestionResult result = await workflow.RunAsync(context, input);
+            result.Status.ShouldBe(MemoryUnitStatus.Indexed);
+            result.WasDuplicate.ShouldBe(outcome == "duplicate");
+            logs.Captures.ShouldContain(log => log.Message.Contains(result.MemoryUnitId));
+        }
+
+        logs.Captures.ShouldProtectSource();
     }
 
     // --- AC: Activity recording resilience ---

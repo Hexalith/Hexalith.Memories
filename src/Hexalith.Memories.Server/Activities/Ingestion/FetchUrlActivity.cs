@@ -53,8 +53,7 @@ public sealed class FetchUrlActivity : WorkflowTraceLinkedActivity<FetchUrlInput
             throw new UrlFetchException("INVALID_URL", "URL must be an absolute URI.");
         }
 
-        string redacted = IngestionEndpointLog.RedactUrl(uri);
-        IngestionEndpointLog.LogUrlFetchStarted(_logger, input.MemoryUnitId, redacted);
+        IngestionEndpointLog.LogUrlFetchStarted(_logger, input.MemoryUnitId);
 
         await using IAsyncDisposable lease = await _gate
             .AcquireAsync(input.TenantId, CancellationToken.None)
@@ -66,17 +65,12 @@ public sealed class FetchUrlActivity : WorkflowTraceLinkedActivity<FetchUrlInput
             UrlFetchResult result = await _fetcher.FetchAsync(uri, CancellationToken.None).ConfigureAwait(false);
             stopwatch.Stop();
 
-            string finalRedacted = Uri.TryCreate(result.FinalUrl, UriKind.Absolute, out Uri? finalUri)
-                ? IngestionEndpointLog.RedactUrl(finalUri)
-                : redacted;
-
             IngestionEndpointLog.LogUrlFetchCompleted(
                 _logger,
                 input.MemoryUnitId,
                 result.HttpStatusCode,
                 result.ContentLength,
-                stopwatch.ElapsedMilliseconds,
-                finalRedacted);
+                stopwatch.ElapsedMilliseconds);
 
             if (_payloadStore is null)
             {

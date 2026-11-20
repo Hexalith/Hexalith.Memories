@@ -318,7 +318,6 @@ internal static class IngestionEndpoints
                         urlLogger,
                         request?.TenantId ?? "(missing)",
                         request?.CaseId ?? "(missing)",
-                        IngestionEndpointLog.RedactUrl(request?.Url),
                         validationError.Code);
                     return Results.BadRequest(validationError);
                 }
@@ -331,7 +330,6 @@ internal static class IngestionEndpoints
                         urlLogger,
                         request.TenantId,
                         request.CaseId,
-                        IngestionEndpointLog.RedactUrl(request.Url),
                         tenantStatusError.Code);
                     return TenantStatusGuard.ToHttpResult(tenantStatusError);
                 }
@@ -358,8 +356,7 @@ internal static class IngestionEndpoints
                     urlLogger,
                     request.TenantId,
                     request.CaseId,
-                    instanceId,
-                    IngestionEndpointLog.RedactUrl(url));
+                    instanceId);
 
                 return Results.Accepted(
                     MemoriesRoutes.IngestStatusLocation(instanceId),

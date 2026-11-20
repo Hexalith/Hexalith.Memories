@@ -68,8 +68,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
         try
         {
             logger.LogInformation(
-                "Ingestion started for {SourceUri} in tenant {TenantId}, unit {MemoryUnitId}",
-                input.SourceUri,
+                "Ingestion started in tenant {TenantId} for unit {MemoryUnitId}",
                 input.TenantId,
                 memoryUnitId);
 
@@ -99,8 +98,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
             if (idempotency.IsDuplicate)
             {
                 logger.LogInformation(
-                    "Duplicate detected for {SourceUri} in tenant {TenantId}, existing unit: {ExistingId}",
-                    input.SourceUri,
+                    "Duplicate detected in tenant {TenantId}, existing unit {MemoryUnitId}",
                     input.TenantId,
                     idempotency.ExistingMemoryUnitId);
 
@@ -655,7 +653,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                         input.CaseId,
                         CaseActivityEventType.MemoryUnitIngested,
                         input.IngestedBy,
-                        $"Memory unit {memoryUnitId} indexed from {input.SourceUri}",
+                        $"Memory unit {memoryUnitId} indexed",
                         memoryUnitId,
                         traceContext));
             }
@@ -924,9 +922,8 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
         catch (Exception ex)
         {
             logger.LogWarning(
-                ex,
-                "One or more compensation activities failed for {MemoryUnitId}.",
-                cleanupInput.MemoryUnitId);
+                "One or more compensation activities failed for {MemoryUnitId} ({ExceptionType}).",
+                cleanupInput.MemoryUnitId, ex.GetType().Name);
 
             originalException?.Data["CompensationFailure"] = ex.Message;
         }
@@ -1014,14 +1011,12 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
         exception.Data["MemoryUnitId"] = memoryUnitId;
 
         logger.LogError(
-            exception,
-            "Ingestion failed for {MemoryUnitId}. Status={Status}; stage={Stage}; errorCode={ErrorCode}; retryCount={RetryCount}; message={ErrorMessage}",
+            "Ingestion failed for {MemoryUnitId}. Status={Status}; stage={Stage}; errorCode={ErrorCode}; retryCount={RetryCount}",
             memoryUnitId,
             MemoryUnitStatus.Failed,
             details.Stage,
             details.ErrorCode,
-            details.RetryCount,
-            details.ErrorMessage);
+            details.RetryCount);
     }
 
     private static string GetErrorCode(Exception exception)
@@ -1087,7 +1082,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                     input.CaseId,
                     CaseActivityEventType.IngestionFailed,
                     input.IngestedBy,
-                    $"Ingestion failed for {input.SourceUri} at stage {stage}",
+                    $"Memory unit {memoryUnitId} failed at stage {stage}",
                     memoryUnitId,
                     traceContext));
         }
@@ -1150,7 +1145,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
         }
         catch (Exception persistEx)
         {
-            RetryFailureLog.LogFailedUnitPersistenceFailed(logger, memoryUnitId, persistEx.Message);
+            RetryFailureLog.LogFailedUnitPersistenceFailed(logger, memoryUnitId, persistEx.GetType().Name);
         }
     }
 

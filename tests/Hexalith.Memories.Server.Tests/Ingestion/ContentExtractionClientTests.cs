@@ -172,6 +172,18 @@ public class ContentExtractionClientTests
     }
 
     [Fact]
+    public async Task ExtractAsync_EmptySignedUrlDocument_IdentifiesOnlyTheMemoryUnit()
+    {
+        ExtractionInput input = new(SignedUrlLogAssertions.Url, [], "text/markdown", SourceType.Url, "tenant-a", "unit-extract");
+
+        var exception = await Should.ThrowAsync<InvalidOperationException>(() => _client.ExtractAsync(input));
+
+        exception.Message.ShouldContain("unit-extract");
+        exception.ToString().ShouldNotContain(SignedUrlLogAssertions.PathSecret);
+        exception.ToString().ShouldNotContain(SignedUrlLogAssertions.QuerySecret);
+    }
+
+    [Fact]
     public async Task ExtractAsync_ShouldSetExtractedAtTimestamp()
     {
         // Arrange

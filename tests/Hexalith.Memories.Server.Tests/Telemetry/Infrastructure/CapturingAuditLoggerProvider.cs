@@ -77,7 +77,9 @@ internal sealed class CapturingAuditLoggerProvider : ILoggerProvider
             string message = formatter(state, exception);
             lock (sync)
             {
-                captures.Add(new AuditLogCapture(logLevel, eventId.Id, category, auditEvent, message));
+                var fields = state as IEnumerable<KeyValuePair<string, object?>>;
+                captures.Add(new AuditLogCapture(logLevel, eventId.Id, category, auditEvent, message,
+                    fields?.ToArray() ?? [], exception));
             }
         }
 
@@ -123,9 +125,13 @@ internal sealed class CapturingAuditLoggerProvider : ILoggerProvider
 /// <param name="Category">Logger category name.</param>
 /// <param name="AuditEvent">Audit event record (null if the log entry was not an audit emission).</param>
 /// <param name="Message">Formatted message.</param>
+/// <param name="Fields">Structured state before formatting.</param>
+/// <param name="Exception">Exception available to log renderers.</param>
 internal sealed record AuditLogCapture(
     LogLevel Level,
     int EventId,
     string Category,
     AccessTelemetryEvent? AuditEvent,
-    string Message);
+    string Message,
+    IReadOnlyList<KeyValuePair<string, object?>> Fields,
+    Exception? Exception);

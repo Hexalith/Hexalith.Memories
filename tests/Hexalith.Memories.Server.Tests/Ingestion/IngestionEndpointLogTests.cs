@@ -14,50 +14,18 @@ using Shouldly;
 public class IngestionEndpointLogTests
 {
     [Fact]
-    public void RedactUrl_DropsQueryAndFragment()
-    {
-        Uri uri = new("https://example.com/path?token=secret&q=foo#frag");
-
-        string redacted = IngestionEndpointLog.RedactUrl(uri);
-
-        redacted.ShouldBe("https://example.com/path");
-        redacted.ShouldNotContain("secret");
-        redacted.ShouldNotContain("frag");
-    }
-
-    [Fact]
-    public void RedactUrl_PreservesSchemeHostPath()
-    {
-        Uri uri = new("https://example.com/api/v1/doc");
-
-        IngestionEndpointLog.RedactUrl(uri).ShouldBe("https://example.com/api/v1/doc");
-    }
-
-    [Fact]
-    public void RedactUrl_InvalidString_ReturnsPlaceholder()
-    {
-        IngestionEndpointLog.RedactUrl("definitely not a uri").ShouldBe("(invalid-url)");
-    }
-
-    [Fact]
-    public void RedactUrl_NullUri_Throws()
-    {
-        Should.Throw<ArgumentNullException>(() => IngestionEndpointLog.RedactUrl((Uri)null!));
-    }
-
-    [Fact]
     public void LogUrlIngestionScheduled_WithNullLogger_DoesNotThrow()
     {
         // Smoke test — [LoggerMessage] partial methods must be callable.
         Should.NotThrow(() => IngestionEndpointLog.LogUrlIngestionScheduled(
-            NullLogger.Instance, "t1", "c1", "inst-1", "https://example.com/x"));
+            NullLogger.Instance, "t1", "c1", "inst-1"));
     }
 
     [Fact]
     public void LogUrlFetchCompleted_WithNullLogger_DoesNotThrow()
     {
         Should.NotThrow(() => IngestionEndpointLog.LogUrlFetchCompleted(
-            NullLogger.Instance, "mu-1", 200, 1024L, 42L, "https://example.com/final"));
+            NullLogger.Instance, "mu-1", 200, 1024L, 42L));
     }
 
     [Fact]
@@ -71,7 +39,7 @@ public class IngestionEndpointLogTests
     public void LogUrlIngestionRejected_WithNullLogger_DoesNotThrow()
     {
         Should.NotThrow(() => IngestionEndpointLog.LogUrlIngestionRejected(
-            NullLogger.Instance, "t1", "c1", "https://example.com/x", "INVALID_URL"));
+            NullLogger.Instance, "t1", "c1", "INVALID_URL"));
     }
 
     [Fact]
