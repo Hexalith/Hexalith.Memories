@@ -69,6 +69,11 @@ internal sealed class ApplyDerivedStoreCorrectionActivity(
                 EmbeddingContentKind.Payload,
                 extraction.ExtractedContentReference)).ConfigureAwait(false);
 
+        if (embedding.Chunks.Count == 0)
+        {
+            throw new DerivedStoreStateException("EMBEDDING_CHUNKS_EMPTY", "Correction regeneration produced no embedding chunks.");
+        }
+
         string model = embedding.Model ?? ResolveModel(embedding.Provider);
         ChunkEmbeddingResult firstChunk = embedding.Chunks[0];
         var indexInput = new IndexInput

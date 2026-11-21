@@ -7,6 +7,8 @@ namespace Hexalith.Memories.Server.Endpoints;
 
 using Dapr.Workflow;
 
+using Grpc.Core;
+
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Contracts.V1.DerivedStores;
 using Hexalith.Memories.Server.DerivedStores;
@@ -182,10 +184,17 @@ public static class DerivedStoreEndpoints
                 DerivedStoreCorrectionStartResult start = await store.StartCorrectionAsync(tenantId, request, cancellationToken).ConfigureAwait(false);
                 if (start.ShouldSchedule)
                 {
-                    _ = await workflowClient.ScheduleNewWorkflowAsync(
-                        nameof(DerivedStoreCorrectionWorkflow),
-                        start.WorkflowInstanceId,
-                        new DerivedStoreCorrectionWorkflowInput(tenantId, start.Status.OperationId));
+                    try
+                    {
+                        _ = await workflowClient.ScheduleNewWorkflowAsync(
+                            nameof(DerivedStoreCorrectionWorkflow),
+                            start.WorkflowInstanceId,
+                            new DerivedStoreCorrectionWorkflowInput(tenantId, start.Status.OperationId));
+                    }
+                    catch (Exception exception) when (IsDuplicateWorkflowInstance(exception))
+                    {
+                        // Another replica already scheduled the deterministic instance; the stored status remains authoritative.
+                    }
                 }
 
                 return start.Status.State == DerivedStoreCorrectionState.NoOp
@@ -223,6 +232,24 @@ public static class DerivedStoreEndpoints
         });
 
         return app;
+    }
+
+    private static bool IsDuplicateWorkflowInstance(Exception exception)
+    {
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is RpcException { StatusCode: StatusCode.AlreadyExists })
+            {
+                return true;
+            }
+
+            if (current is AggregateException aggregate && aggregate.InnerExceptions.Any(IsDuplicateWorkflowInstance))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static async Task<IResult?> ValidateTenantAsync(

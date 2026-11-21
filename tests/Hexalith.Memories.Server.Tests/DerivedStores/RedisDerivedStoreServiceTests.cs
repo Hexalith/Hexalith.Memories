@@ -210,6 +210,116 @@ public class RedisDerivedStoreServiceTests
     }
 
     [Fact]
+    public async Task StartCorrectionAsync_CreateRace_RejoinsWinnerPendingAndKeepsDeterministicInstanceId()
+    {
+        StartDerivedStoreCorrectionRequest request = new(AssociationId, IntakeId, "correction-1", 1, "case-corrected");
+        DerivedStoreBinding binding = CreateBinding([new(DerivedStoreRecordKind.Message, 0, "mu-message")]);
+        DerivedStoreCorrectionStatus winner = CreatePendingStatus() with { DeadlineUtc = Now.AddMinutes(30) };
+        string statusKey = RedisDerivedStoreService.BuildStatusKey(TenantId, winner.OperationId);
+        int statusReads = 0;
+        (RedisDerivedStoreService service, IDatabase database, _) = CreateService();
+        database.StringGetAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>()).Returns(call =>
+        {
+            string key = call.ArgAt<RedisKey>(0).ToString();
+            if (key == RedisDerivedStoreService.BuildBindingKey(TenantId, AssociationId, IntakeId))
+            {
+                return Serialize(binding);
+            }
+
+            if (key == statusKey)
+            {
+                statusReads++;
+                return statusReads == 1 ? RedisValue.Null : Serialize(winner);
+            }
+
+            return RedisValue.Null;
+        });
+        database.HashGetAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<CommandFlags>())
+            .Returns((RedisValue)TenantId);
+
+        DerivedStoreCorrectionStartResult result = await service.StartCorrectionAsync(TenantId, request, CancellationToken.None);
+
+        result.ShouldSchedule.ShouldBeTrue();
+        result.Status.DeadlineUtc.ShouldBe(winner.DeadlineUtc);
+        result.WorkflowInstanceId.ShouldBe($"{winner.OperationId}-attempt-{winner.DeadlineUtc.UtcTicks}");
+    }
+
+    [Fact]
+    public async Task GetCorrectionStatusAsync_PastDeadlineWhilePending_PersistsTimedOut()
+    {
+        DerivedStoreCorrectionStatus pending = CreatePendingStatus() with { DeadlineUtc = Now.AddMinutes(-1) };
+        (RedisDerivedStoreService service, IDatabase database, _) = CreateService();
+        database.StringGetAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>()).Returns(Serialize(pending));
+
+        DerivedStoreCorrectionStatus? status = await service.GetCorrectionStatusAsync(TenantId, pending.OperationId, CancellationToken.None);
+
+        status.ShouldNotBeNull();
+        status.State.ShouldBe(DerivedStoreCorrectionState.TimedOut);
+        status.FailureReasonCode.ShouldBe("correction_deadline_exceeded");
+        string expectedStatusKey = RedisDerivedStoreService.BuildStatusKey(TenantId, pending.OperationId);
+        string? persistedPayload = database.ReceivedCalls()
+            .Where(call => string.Equals(call.GetMethodInfo().Name, nameof(IDatabase.StringSetAsync), StringComparison.Ordinal))
+            .Select(call => call.GetArguments())
+            .Where(arguments => arguments.Length > 1
+                && string.Equals(arguments[0]?.ToString(), expectedStatusKey, StringComparison.Ordinal))
+            .Select(arguments => arguments[1]?.ToString())
+            .FirstOrDefault(payload => !string.IsNullOrEmpty(payload));
+        persistedPayload.ShouldNotBeNull();
+        persistedPayload.ShouldContain("timedOut");
+        persistedPayload.ShouldContain("correction_deadline_exceeded");
+    }
+
+    [Fact]
+    public async Task DiagnosticEntries_StayInDedicatedHashAndMissOtherTenants()
+    {
+        (RedisDerivedStoreService service, IDatabase database, _) = CreateService();
+        DiagnosticStoreEntry entry = new("resource-001", "digest-001");
+        RedisValue stored = RedisValue.Null;
+        database.When(db => db.HashSetAsync(
+                Arg.Any<RedisKey>(),
+                Arg.Any<RedisValue>(),
+                Arg.Any<RedisValue>(),
+                Arg.Any<When>(),
+                Arg.Any<CommandFlags>()))
+            .Do(call => stored = call.ArgAt<RedisValue>(2));
+        database.HashGetAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<CommandFlags>())
+            .Returns(call =>
+                call.ArgAt<RedisKey>(0).ToString() == RedisDerivedStoreService.BuildDiagnosticKey(TenantId, DiagnosticStoreClass.VectorIndex)
+                    ? stored
+                    : RedisValue.Null);
+        database.HashDeleteAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<CommandFlags>()).Returns(true);
+        database.HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+            .Returns([new HashEntry("resource-001", "digest-001")]);
+
+        await service.PutDiagnosticEntryAsync(TenantId, DiagnosticStoreClass.VectorIndex, entry.ResourceId, entry, CancellationToken.None);
+        DiagnosticStoreEntry? owner = await service.GetDiagnosticEntryAsync(
+            TenantId, DiagnosticStoreClass.VectorIndex, entry.ResourceId, CancellationToken.None);
+        DiagnosticStoreEntry? intruder = await service.GetDiagnosticEntryAsync(
+            "tenant-b", DiagnosticStoreClass.VectorIndex, entry.ResourceId, CancellationToken.None);
+        IReadOnlyList<DiagnosticStoreEntry> listed = await service.ListDiagnosticEntriesAsync(
+            TenantId, DiagnosticStoreClass.VectorIndex, CancellationToken.None);
+        bool deleted = await service.DeleteDiagnosticEntryAsync(
+            TenantId, DiagnosticStoreClass.VectorIndex, entry.ResourceId, CancellationToken.None);
+
+        owner.ShouldBe(entry);
+        intruder.ShouldBeNull();
+        listed.ShouldBe([entry]);
+        deleted.ShouldBeTrue();
+        await database.Received().HashSetAsync(
+            RedisDerivedStoreService.BuildDiagnosticKey(TenantId, DiagnosticStoreClass.VectorIndex),
+            entry.ResourceId,
+            entry.ContentDigest,
+            Arg.Any<When>(),
+            Arg.Any<CommandFlags>());
+        await database.DidNotReceive().HashSetAsync(
+            Arg.Is<RedisKey>(key => key.ToString().Contains(":mu:", StringComparison.Ordinal)),
+            Arg.Any<RedisValue>(),
+            Arg.Any<RedisValue>(),
+            Arg.Any<When>(),
+            Arg.Any<CommandFlags>());
+    }
+
+    [Fact]
     public async Task ApplyCorrectionAsync_CompletedUnitFence_SkipsRepeatedEffectsBeforeIntakeFence()
     {
         DerivedStoreBindingEntry entry = new(DerivedStoreRecordKind.Message, 0, "mu-message");

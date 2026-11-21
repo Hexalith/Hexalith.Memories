@@ -330,10 +330,11 @@ internal sealed class RedisDerivedStoreService(
         if (!created)
         {
             RedisValue racedStatus = await database.StringGetAsync(statusKey).WaitAsync(cancellationToken).ConfigureAwait(false);
+            DerivedStoreCorrectionStatus raced = DeserializeRequired<DerivedStoreCorrectionStatus>(racedStatus, "CORRECTION_STATUS_CORRUPT");
             return new DerivedStoreCorrectionStartResult(
-                DeserializeRequired<DerivedStoreCorrectionStatus>(racedStatus, "CORRECTION_STATUS_CORRUPT"),
-                ShouldSchedule: false,
-                BuildWorkflowInstanceId(status));
+                raced,
+                ShouldSchedule: raced.State == DerivedStoreCorrectionState.Pending,
+                BuildWorkflowInstanceId(raced));
         }
 
         return new DerivedStoreCorrectionStartResult(
@@ -349,12 +350,31 @@ internal sealed class RedisDerivedStoreService(
     {
         ValidateTenant(tenantId);
         ValidateSafeToken(operationId, nameof(operationId), maxLength: 96);
-        RedisValue value = await _redis.GetDatabase().StringGetAsync(BuildStatusKey(tenantId, operationId))
+        IDatabase database = _redis.GetDatabase();
+        RedisValue value = await database.StringGetAsync(BuildStatusKey(tenantId, operationId))
             .WaitAsync(cancellationToken)
             .ConfigureAwait(false);
-        return value.HasValue
-            ? DeserializeRequired<DerivedStoreCorrectionStatus>(value, "CORRECTION_STATUS_CORRUPT")
-            : null;
+        if (!value.HasValue)
+        {
+            return null;
+        }
+
+        DerivedStoreCorrectionStatus status = DeserializeRequired<DerivedStoreCorrectionStatus>(value, "CORRECTION_STATUS_CORRUPT");
+        if (IsTerminal(status.State) || _timeProvider.GetUtcNow() < status.DeadlineUtc)
+        {
+            return status;
+        }
+
+        return await SaveStatusAsync(
+            database,
+            tenantId,
+            status with
+            {
+                State = DerivedStoreCorrectionState.TimedOut,
+                CompletedAtUtc = _timeProvider.GetUtcNow(),
+                FailureReasonCode = "correction_deadline_exceeded",
+            },
+            cancellationToken).ConfigureAwait(false);
     }
 
     internal async Task<DerivedStoreCorrectionStatus> ApplyCorrectionAsync(
@@ -615,9 +635,15 @@ internal sealed class RedisDerivedStoreService(
             ["correctedCaseId"] = correctedCaseId,
         };
         var graph = new FalkorDB(_falkorDb.GetDatabase());
-        _ = await graph.SelectGraph(tenantId).QueryAsync(query, parameters)
+        NFalkorDB.ResultSet graphResult = await graph.SelectGraph(tenantId).QueryAsync(query, parameters)
             .WaitAsync(GraphOperationTimeout, cancellationToken)
             .ConfigureAwait(false);
+        if (!graphResult.Any())
+        {
+            throw new DerivedStoreStateException(
+                "CORRECTION_GRAPH_CASE_MISSING",
+                "The corrected case graph node is absent; MemoryUnit containment was not migrated.");
+        }
     }
 
     private static async Task MigrateDedupKeyAsync(
@@ -767,7 +793,7 @@ internal sealed class RedisDerivedStoreService(
             or DerivedStoreCorrectionState.Failed
             or DerivedStoreCorrectionState.TimedOut;
 
-    private static string BuildDiagnosticKey(string tenantId, DiagnosticStoreClass storeClass)
+    internal static string BuildDiagnosticKey(string tenantId, DiagnosticStoreClass storeClass)
         => $"{tenantId}:memories:diagnostics:derived-store:{NormalizeClass(storeClass)}";
 
     internal static string BuildBindingKey(string tenantId, string associationId, string intakeId)
