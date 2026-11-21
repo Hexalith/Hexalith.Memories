@@ -18,6 +18,7 @@ inputDocuments:
   - '_bmad-output/planning-artifacts/ux-designs/ux-memories-2026-09-12/EXPERIENCE.md'
   - '_bmad-output/planning-artifacts/sprint-change-proposal-2026-11-01.md'
   - '_bmad-output/planning-artifacts/sprint-change-proposal-2026-11-20.md'
+  - '_bmad-output/planning-artifacts/prd-validation-2026-11-20/validation-report.md'
 documentCounts:
   briefs: 1
   research: 0
@@ -33,12 +34,10 @@ workflowType: 'prd'
 
 # Product Requirements Document - Hexalith.Memories
 
-**Approved McpCli course correction (2026-09-27):** `Hexalith.McpCli` is the target Hexalith-owned CLI/MCP presentation for eligible Memories operations. `Hexalith.Memories.Cli` and `.Mcp` are obsolete migration sources; they remain compatibility assets until search, ingest, traversal, tenant isolation, identity, output, and accessibility behavior passes approved replacement or withdrawal gates. Descriptions below of their direct HTTP/Dapr hosting and distribution are historical or migration requirements, not the target topology.
-
+**Updated 2026-11-20.** Phase 1 remains **no-go**. This revision reconciles the release tests, operator journeys and delivery register with the November audit, the current architecture and the McpCli migration inventory. [Release decision and evidence needed to reopen](#release-decision-record)
 
 **Author:** Jerome
 **Date:** 2026-03-22
-**Updated 2026-11-20.** This revision incorporates the November 20 audit, the McpCli migration inventory and the November 1 telemetry decision. The release decision record below gives the current verdict and the evidence needed to revisit it.
 
 ## 0. Document Purpose
 
@@ -93,7 +92,7 @@ Downstream workflows and readers must use these terms exactly.
 
 - **Memory unit** — The stored unit of knowledge (document chunk, event, annotation) owned by exactly one **Case**.
 - **Case** — Team-scoped container of memory units and case-scoped graph edges. Not an authorization principal.
-- **Tenant** — Isolation boundary. Access is authorized by tenant claims on an authenticated principal.
+- **Tenant** — Isolation boundary. A user’s authenticated tenant claims authorize ordinary product access. A trusted workload needs an explicit grant for the active tenant. Operator-authorized lifecycle work is scoped to one tenant and its enumerated operation under AD-5.
 - **Axis** — A retrieval method: syntactic (BM25), semantic (embedding), graph (traversal/proximity). `nl` is an optional extra semantic score on the natural-language-description embedding, not a fourth marketing axis.
 - **Hybrid / three-axis** — Fusion of *available* axes for a query via weighted reciprocal-rank fusion (RRF). Missing axes degrade; they do not fail the query (FR66).
 - **Evidence Packet** — Cross-surface trust envelope (confidence breakdown, origin, omitted-detail handling, degradation). Its versioned state vocabulary is `complete`, `partial`, `weak`, `empty`, `stale`, `degraded`, `unauthorized`, and `pendingExpansion`; current mappers need not emit every target state yet. Concrete shape is architecture/`Contracts.V1`-owned.
@@ -172,8 +171,8 @@ Hybrid retrieval must beat BM25+semantic on a frozen, labelled corpus under the 
 - **Embeddings:** vectors for the frozen corpus and topics are computed once, cached, and hashed together with the corpus; every scoring run reads the cache. This is what makes NFR26 achievable on real embeddings whose provider is not bit-stable across model updates.
 - **Control:** The unit of the 80% is a topic. A topic counts as a hybrid win when hybrid NDCG@10 exceeds the **BM25+semantic (two-axis RRF)** control by at least the pre-registered **ΔNDCG@10 ≥ 0.02**. Two aggregate guards also apply: mean ΔNDCG@10 over all N ≥ 0.00, and no single topic regresses by more than 0.10. A run that clears 80% and fails either guard fails G1. Single-axis runs are diagnostics only. The two-axis control is not implemented in the shipped suite; it is a prerequisite of G1 (FR25, status partial).
 - **Graph seeding (decision 2026-09-08):** G1 runs hybrid exactly as a developer gets it from `search query` — the current public search grammar has no start-node input. Therefore FR17 hybrid seeds the graph axis from the union of the top-5 syntactic and top-5 semantic candidates and traverses from them (depth ≤ 2). The shipped `HybridSearchService` skips the graph axis when no start node is supplied — that is a gap the G1 date depends on (FR17, status partial), not a protocol allowance. Explicit graph starts belong to `traverse` / `traverse_relations`, not an invented search `--from` flag.
-- **Ground truth:** Graded labels collected *after* queries exist and **frozen before any scoring run**, by Jerome plus 2 independent reviewers. Agreement statistic is **Cohen's κ ≥ 0.6** (pairwise, reported per reviewer pair). Below that, relabel and re-freeze before the first scoring run.
-- **Automated scoring:** NDCG@10 per topic, reproducible under NFR26.
+- **Ground truth.** Jerome and two independent reviewers each grade every pooled topic–unit pair on the same 0–3 relevance scale. Each reviewer pair must reach unweighted Cohen’s κ ≥ 0.6 on the complete set of raw grades. The median of the three grades is the final judgment. Freeze the pool, raw grades, final judgments and scorer version before scoring either ranking. [Grading and pooling procedure](addendum.md#g1-judgments)
+- **Automated scoring.** For each topic compute NDCG@10 with gain `2^grade − 1` and discount `1/log2(rank + 1)`. All N registered topics enter the win fraction and both aggregate guards. A topic with zero ideal gain scores zero for each arm. A missing judgment in either top ten prevents a qualifying run.
 - **Dispute resolution:** After scoring, labels are immutable for that run. A reviewer may annotate a disagreement; if the annotations justify relabelling, the run is discarded, the label set is re-frozen, and a *new* run is recorded with the reason. A run's pass/fail is never changed by editing labels after the fact.
 - **Fallback:** If independent reviewers are unavailable, automated scoring may still run but **does not** satisfy the thesis hard gate — it is a documented downgrade of gate confidence, not a substitute.
 
@@ -182,17 +181,17 @@ Hybrid retrieval must beat BM25+semantic on a frozen, labelled corpus under the 
 **If the threshold is not met, the kill switch executes these actions, in order, with no "or":** (1) stop fusion R&D as default hybrid; (2) remove graph from the default `--axis hybrid` — hybrid becomes BM25+semantic, and graph stays available only as an explicit axis and through `traverse` (FR47); (3) FalkorDB is retained for explicit traversal and is cut from general search scoring; (4) README and executive summary reposition to "BM25+semantic search with an explicit graph" *before* any other decision; (5) the Phase 1.5 launch gates L1–L3 are **not evaluated** — the launch decision date is cancelled and a sprint-change proposal must re-scope the product before a new date is set; (6) re-scope and re-estimate. "Reposition and keep building the same system" is not a pass.
 
 **Causal Chain Completeness:**
-For 95%+ of EventStore events with known CausationId/CorrelationId chains, graph traversal returns the complete causal path. Validated by automated tests against a named set of known event chains. **Fixture of record:** the Epic 9 event-ingestion integration fixture (`tests/Hexalith.Memories.IntegrationTests/EventStoreIntegration/EventIngestionPipelineIntegrationTests.cs` and the graph gap/edge-type fixtures under `tests/Hexalith.Memories.IntegrationTests/Graph/`), extended with a labelled chain set of at least 20 chains before L3 is evaluated. The `samples/02-eventstore-integration/` walkthrough named in Developer Experience is a Phase 1.5 deliverable that does not exist yet and is not the L3 fixture. **Phase 1.5 launch gate**, not a Phase 1 thesis gate.
+Freeze at least 20 labelled chains. Count each distinct eligible event once across all chains. At least 95% must return every expected path within the event’s case, including the labelled IDs, edge types and directions in order. Incomplete and unavailable traversals count as failures. [Fixture, eligibility and scoring](addendum.md#l3-event-denominator)
 
 **Phase 1 thesis go/no-go (CLI proof of hybrid + isolation):**
 
 | # | Criterion | Requirement |
 |---|---|---|
 | G1 | Hybrid vs BM25+semantic passes the thesis-gate protocol above (N ≥ 50, ΔNDCG@10 ≥ 0.02, κ ≥ 0.6) | Must pass |
-| G2 | Zero cross-tenant data leaks (NFR8) | Must pass |
+| G2 | Zero cross-tenant data leaks under NFR8. An explicit conflict between authenticated and requested scope must be rejected before any restricted output or product side effect. | Must pass |
 | G3 | Starting from the NFR31 clean machine, follow the README manual path through AppHost, create a tenant and case, ingest a file or URL, and obtain the first correct search result through enrolled `Hexalith.McpCli` operations in <30 minutes. | Must pass. Story 35.7 records the cold run. |
 | G4 | Case ownership/isolation tests (FR32–FR34/NFR8): case-scoped queries never escape their case; tenant-wide hybrid fixtures span cases with mandatory attribution while every graph seed, node, edge, and path remains case-local | Must pass |
-| G5 | Fusion explain is deterministic (NFR24–NFR26) | Must pass |
+| G5 | On native REST and the enrolled Phase 1 McpCli CLI JSON search path, the same fixed inputs produce identical scores, order and canonical Evidence Packet bytes under NFR24–NFR26. Repeat 100 times. Compare the shared offline serializer fixture as a component check. End-to-end MCP parity belongs to L1. | Must pass |
 | G6 | MVP contract closure: every MVP-active requirement not marked **Verified against its current wording** — including not-started, partial, hardening, implemented-without-recorded-evidence, and re-verification rows — and every architecture-critical active-foundation gap has a named current re-runnable evidence path. Genuinely phase-inactive surfaces are explicitly outside MVP scope and earn no gate credit. A risk acceptance records accountability only; no product/architecture exception substitutes for evidence. Every such gap has an owner and a tracking entry in `sprint-status.yaml`; during an approved tracker freeze, AD-20 requires the architecture ledger to record the tracker obligation, freeze reference, and review date, and suspends only the tracker conjunct. | Must pass |
 
 All six gates are hard gates; there is no soft tier. Phase 1 does **not** require MCP, EventStore CloudEvent auto-index, or causal-chain completeness.
@@ -201,16 +200,17 @@ All six gates are hard gates; there is no soft tier. Phase 1 does **not** requir
 
 | # | Criterion | Requirement |
 |---|---|---|
-| L1 | MCP end-to-end on a held-out query set (≥10 topics not used in G1 labelling): 100% of responses within token budget (FR23/FR54/FR58) **and** ≥ 8/10 topics where the agent's answer cites at least one memory unit graded relevant for that topic (scorer: the frozen G1 labels; agent: the reference configuration in `samples/03-mcp-agent/` once it exists) | Must pass |
+| L1 | On N ≥ 10 separately frozen topics held out from G1 and all tuning, every topic produces at least one budgeted MCP response and every response fits its requested budget. On at least 80% of all registered topics, the agent cites a unit returned in that interaction with a frozen L1 relevance grade ≥2 for that topic. Verify end-to-end MCP parity with the NFR25 reference vectors. | Must pass. Freeze the independent L1 labels and the reference agent configuration before the run. [Evidence procedure](addendum.md#l1-holdout) |
 | L2 | EventStore product integration: launch stopwatch below completes in <30 minutes on a clean machine as defined in NFR31 | Must pass |
-| L3 | Causal chain completeness ≥95% on the named known-chain fixture | Must pass |
+| L3 | At least 95% of distinct eligible events in the fixture of ≥20 frozen chains return all their labelled paths under the protocol above. | Must pass |
 
-**Launch stopwatch (L2), timed as one numbered script, clock starts at step 1:**
-1. `dotnet add package Hexalith.Memories.EventStore` in an existing EventStore-based service.
+**Launch stopwatch (L2).** Use the NFR31 clean profile. Before timing, stage only the pinned source checkout and the provider key. That revision must contain the unchanged EventStore starter service and its sample AppHost. Begin with empty package and container-image caches, no installed project tools, a stopped stack and no configured Memories package, subscription or app secret. Start the clock immediately before step 1. Count all restores, tool installs, configuration, image pulls and startup in the elapsed time. [Starting-state manifest](addendum.md#l2-starting-state)
+
+1. Run `dotnet add package Hexalith.Memories.EventStore` in the pinned starter service.
 2. Add the DAPR pub/sub subscription (topic + `/events/ingest` route) per the getting-started guide.
 3. Provide the embedding-provider secret through the DAPR Secrets API (OpenBao dev instance in the sample AppHost).
 4. Boot the sample stack (`samples/02-eventstore-integration/`, `dotnet run --project <sample AppHost>`; until that sample exists the stopwatch cannot be run and L2 is not evaluable).
-5. Publish one domain event; run `memories search query --tenant <t> --query "<term>"`; a result attributed to that event stops the clock.
+5. Invoke the starter service to commit a new domain event and record its EventStore event ID. Run the sample’s documented search. Stop the clock when the response attributes a returned unit to that exact event.
 
 #### Release decision record
 
@@ -223,7 +223,7 @@ Disposition as of 2026-11-20.
 | Thesis gate G1–G6 | G1 has no qualifying run. G2 needs current tenant-principal isolation evidence. G3 awaits enrolled target operations and a timed cold run. G4 and G5 need evidence against their current wording. G6 remains open for MVP requirements and architecture-critical gaps without current evidence. | Jerome owns the verdict. Administrator owns the date reset. | **2026-12-01 — unreachable.** No replacement approved. | A measured G1 failure triggers the six fusion kill-switch actions above. A G2–G6 failure blocks release and launch pending remediation or approved rescoping. Without a run there is no verdict or launch. One sprint-change reset is permitted with a recorded reason. A second miss counts as failure. |
 | Phase 1.5 launch L1–L3 | Epics 9–10 delivered preview code. L1–L3 remain unevaluated. L2 lacks the sample and a full-stack EventStore-originated publish proof (DW-713). The resource-start test remains skipped with its historical SDK rationale, although both repositories now select the same SDK. | Jerome | **2027-01-01 — previously derived.** Any revised launch date requires a sprint change. | Without a qualifying verdict, the MCP and EventStore packages remain preview and the launch stays on hold. |
 
-**Planning evidence.** The McpCli owner completed Stories 4.4 and 4.5 and approved inventory dispositions. Story 35.7 still needs a delivered CLI path. Epic 34 has 60 reviewed story definitions and an execution order. Story 34.58 awaits a per-tenant storage budget. The successor sprint tracker remains on hold. AD-14 phasing and FR75/NFR37/G6 binding are ratified. G6 still requires evidence for the implementation. [Current readiness](implementation-readiness.md) · [Epic definitions](epics.md)
+**Planning evidence.** The McpCli owner completed Stories 4.4 and 4.5 and approved inventory dispositions. Story 35.7 still needs a delivered CLI path. Epic 34 has 60 reviewed story definitions. The specification for the V1 wire-name register and build guard (34.33) precedes the additive URL retry token and durable ingestion acceptance (34.1). The guard and acceptance still require implementation evidence. [Story 34.33 specification](../specs/spec-34-33-v1-wire-name-register/SPEC.md) Story 34.58 awaits a per-tenant storage budget. The successor sprint tracker remains on hold. AD-14 phasing and FR75/NFR37/G6 binding are ratified. G6 still requires evidence for the implementation. [Current readiness](implementation-readiness.md) · [Epic definitions](epics.md)
 
 A Phase 1.5 launch failure is a no-go, not a slip. It does not pull MCP into the thesis MVP and does not re-open isolation or fusion as optional.
 
@@ -270,7 +270,7 @@ A Phase 1.5 launch failure is a no-go, not a slip. It does not pull MCP into the
 | 2 | Search, ingest, traverse, and case-info with token-budget awareness through `Hexalith.McpCli`; `Hexalith.Memories.Mcp` is the obsolete compatibility server pending approved parity | Launch gate L1, re-baseline on shared-surface readiness |
 | 3 | Developers can diagnose EventStore handler registration and routing. Any mapping to McpCli requires separate approval. The owner deferred the legacy diagnostics (L13/L14) and withdrew the interactive exploration stub (S04) from migration scope. | Phase 1.5 EventStore diagnostics |
 
-The Memories Server is the sidecar-managed event subscriber. Hexalith modules publish CloudEvents to the configured DAPR pub/sub topic; the server sidecar delivers them to `/events/ingest`, where source-prefix routing maps events to tenant/case memory. Modules should not bypass this path with direct REST pushes for domain event streams. **[Correction note 2026-10-08: source-prefix routing describes today's code (`TenantEventRoutingOptions.SourceToTenantMap`), not the target. Adopted AD-5 forbids selecting a tenant from any publisher-set envelope field, including `source`. Story 34.10 replaces it with authenticated channel routing: the operator artifact maps the subscribing component, topic, and scoped publisher to one candidate tenant, which then passes the allowlist, grant, and `Active` checks. One subscribed topic therefore serves one tenant; per-tenant topics are the Phase 1.5 target. This paragraph changes when Story 34.10 lands.]**
+The Memories Server sidecar receives Hexalith.EventStore CloudEvents through DAPR pub/sub at `/events/ingest`. For Phase 1.5, one subscribed topic serves one tenant. The operator maps the subscribing component, topic and publisher authenticated through the deployment’s publishing scope to exactly one candidate tenant. Admission requires an allowlisted publisher, an explicit grant for that tenant and its authoritative `Active` state. An unknown or ambiguous channel, or an envelope that contradicts the authenticated route, is rejected before any write. The publisher-supplied `source` identifies the event for provenance and duplicate detection. Changing it cannot select another tenant. **Implementation gap, recorded 2026-10-08.** `TenantEventRoutingOptions.SourceToTenantMap` still uses source prefixes. Story 34.10 owns authenticated channel routing. The Phase 1.5 multi-tenant target uses per-tenant EventStore topics. Modules publish domain events through this subscription.
 
 **Hard commitment:** Phase 1.5 remains the launch path for MCP and EventStore *product* integration. Its go/no-go is dated in the Release decision record; a failed gate is a no-go for those surfaces, not a slip. They are **not** pulled into the thesis MVP and isolation/fusion are **not** reopened.
 
@@ -313,7 +313,7 @@ The Memories Server is the sidecar-managed event subscriber. Hexalith modules pu
 
 ## User Journeys
 
-Durations and counts inside journeys ("14 minutes", "47 documents", "8 seconds") are illustrative narrative, not measurements; gates cite NFR and G/L numbers only. Journey examples illustrate compatibility CLI syntax. The shipped search syntax is `memories search query --tenant <t> --query "<q>" [--case <c>] [--axis <a>] [--explain]`.
+Durations and counts in the journeys are illustrative. Gate decisions use the G/L criteria and their recorded runs. `memories` commands and the four named MCP tools refer to the compatibility clients. Enrolled `Hexalith.McpCli` operations are the target. Use the tenant and case IDs returned by the service in place of the placeholders. The CLI specification distinguishes working commands, stubs and native routes.
 
 ### Journey 1: Alex — "Zero to First Search" (Phase 1.5 launch path)
 
@@ -321,13 +321,13 @@ Durations and counts inside journeys ("14 minutes", "47 documents", "8 seconds")
 
 Alex has been building a claims processing platform on Hexalith.EventStore for eight months. The system processes 50,000 events per day across six aggregate types. Last sprint, the product owner asked: "Can the AI assistant explain why a claim was denied?" Alex spent three days duct-taping Qdrant and LangChain together. It worked for the demo. Then the security review asked about tenant isolation, and the whole thing collapsed.
 
-**Opening Scene:** Alex finds Hexalith.Memories linked from the EventStore documentation. The README shows a 30-second demo: three commands, events appear searchable. Alex thinks "that can't be right" and opens the getting started guide.
+**Opening Scene:** Alex finds Hexalith.Memories linked from the EventStore documentation. In this launch scenario the sample guide demonstrates how to publish an event and find it in search. Alex thinks "that can't be right" and opens the getting started guide.
 
-**Rising Action:** `dotnet add package Hexalith.Memories.EventStore` — familiar. DAPR subscription config — two lines in `appsettings.json`. The embedding key goes into the sample AppHost's OpenBao dev store, and `dotnet run --project Hexalith.Memories.AppHost` boots Redis + FalkorDB + the server in under a minute. Alex publishes a test event to the DAPR topic. This is the launch stopwatch (L2), steps 1–5.
+**Rising Action:** `dotnet add package Hexalith.Memories.EventStore` — familiar. DAPR subscription config — two lines in `appsettings.json`. Alex enters the embedding key and runs the sample AppHost pinned in the L2 manifest. The host starts the instrumented claims service alongside Memories and its dependencies. Alex invokes the instrumented claims service to commit a test event. Its EventStore publication is delivered through the DAPR subscription. This is the launch stopwatch (L2), steps 1–5.
 
-**Climax:** `memories search query --tenant claims --query "claim denied"`. Results come back. Actual results. With the CausationId chain showing which command triggered the denial. It's been 14 minutes — inside the 30-minute L2 clock. Alex stares at the terminal. The three-day duct-tape project just became a 14-minute setup. *That can't be right* — but it is.
+**Climax:** Alex searches for “claim denied” under the authorized claims tenant. The compatibility example is `memories search query --tenant <tenantId> --query "claim denied"`. The result attributes the denial to the published event and its CausationId chain. In this launch scenario it takes 14 minutes. L2 still requires the timed sample run.
 
-**Trust Deepening:** Alex runs the same search with `--explain`. The output breaks down the result: a syntactic rank contribution for "denied", a semantic rank contribution for "claim rejection", and a graph edge from the DenyClaim command through to the original SubmitClaim event. Three axes, one query, RRF contributions rather than raw magnitudes. Alex understands *why* each result appeared, not just *that* it appeared.
+**Trust Deepening:** Alex repeats the search with explain enabled. The syntactic and semantic scores show the rank each match earned on its own axis. A graph edge connects the denial to the original submission. The response exposes the weights used in the composite, so Alex can tell why the claim ranked highly.
 
 **Resolution:** By end of day, Alex commits the integration code. The duct-tape Qdrant solution gets deleted. Alex goes home on time.
 
@@ -339,11 +339,11 @@ Alex has been building a claims processing platform on Hexalith.EventStore for e
 
 Two weeks after shipping, Alex gets a Slack message: "The AI assistant says there's no information about the Henderson claim, but I filed it yesterday."
 
-**Opening Scene:** Alex opens a terminal. `memories search query --tenant claims --case claims-q1 --query "Henderson"` returns zero results. Not good.
+**Opening Scene:** Alex opens a terminal. `memories search query --tenant <claims-tenant-id> --case <claims-case-id> --query "Henderson"` returns zero results. Not good.
 
-**Rising Action:** The empty result classifies the likely causes instead of fabricating per-case status. Alex runs the shipped `memories status telemetry --tenant claims`, then repeats the search with `--explain`; target `status --case/--failed` diagnostics are not currently registered. The output shows that no selected axis found Henderson and names ingestion/handler investigation as the next safe action.
+**Rising Action:** Alex broadens the query in the same authorized scope and repeats it with `--explain`. The compatibility command `memories status telemetry --tenant <tenantId>` shows tenant-wide activity and queue depth. For the affected case Alex reads `GET /api/v1/tenants/{tenantId}/cases/{caseId}/status` and `GET /api/v1/tenants/{tenantId}/cases/{caseId}/failed-units`. A zero-match search alone cannot identify a failed ingestion.
 
-Alex runs `memories handlers list` and `memories handlers mismatches --tenant claims`, then checks the DAPR subscription logs. The ClaimSubmitted event for Henderson was published but the Memories handler threw a serialization error — a new field added last sprint broke the auto-discovery mapping. The error message names the unknown event type and these implemented diagnostic commands.
+Alex runs `memories handlers list` and `memories handlers mismatches --tenant <claims-tenant-id>`, then checks the DAPR subscription logs. The ClaimSubmitted event for Henderson was published but the Memories handler threw a serialization error — a new field added last sprint broke the auto-discovery mapping. The error message names the unknown event type and these implemented diagnostic commands.
 
 **Climax:** Alex registers the V2 handler, triggers a replay of the missed events, and within seconds the Henderson search returns the full claim with causal chain intact.
 
@@ -351,7 +351,7 @@ Alex runs `memories handlers list` and `memories handlers mismatches --tenant cl
 
 **Capabilities revealed:** CLI diagnostics (status, explain, handlers list), clear error messages, event replay, handler registration, debug-first developer experience.
 
-> **Scope note:** `memories handlers list`, `memories handlers mismatches`, and event replay are Phase 1.5 EventStore product-integration capabilities (FR59–FR62, Epic 9), not MVP Feature #3 (hybrid search). Target case/failed status remains absent and is not presented as shipped.
+> **Scope note:** The working handler diagnostics belong to the Phase 1.5 EventStore investigation. Event replay is a Phase 1.5 capability. Compatibility inventory rows L13/L14 are deferred for McpCli. The current CLI registers `status telemetry` only.
 
 ---
 
@@ -359,9 +359,9 @@ Alex runs `memories handlers list` and `memories handlers mismatches --tenant cl
 
 Alex has the memory server running and CLI working. Now the product owner wants the team's AI assistant to use it.
 
-**Opening Scene:** Alex opens the MCP tool documentation. Four tools: `search_memory`, `ingest_content`, `traverse_relations`, `get_case_info`. Each has typed parameters with descriptions.
+**Opening Scene:** Alex opens the compatibility MCP documentation and finds four typed tools, `search_memory`, `ingest_content`, `traverse_relations`, and `get_case_info`. The following walkthrough describes those schemas. The approved McpCli inventory defers M01–M04, and Phase 1.5 acceptance requires its own qualifying surface.
 
-**Rising Action:** Alex adds the MCP tool definitions to the AI assistant configuration. First test: "What happened with claim 4821?" The assistant calls `search_memory(tenantId="claims", query="claim 4821", case="claims-q1", axes="Hybrid")` and returns results with source attribution. It works — but the response is too long, blowing past the context window.
+**Rising Action:** Alex adds the MCP tool definitions to the AI assistant configuration. First test: "What happened with claim 4821?" The assistant calls `search_memory(tenantId="<claims-tenant-id>", query="claim 4821", case="<claims-case-id>", axes="Hybrid")` and returns results with source attribution. It works — but the response is too long, blowing past the context window.
 
 **Climax:** Alex adds `tokenBudget=2000` to the call. The assistant calls again — same query, but the response is now concise: top-ranked results, truncated by relevance, with a note "8 additional results omitted." The assistant composes a focused answer. Alex tests three more queries, each producing grounded, sourced responses.
 
@@ -377,9 +377,9 @@ Alex has the memory server running and CLI working. Now the product owner wants 
 
 Marcus leads a team of seven working across three active cases. Sarah, a senior developer, left last month. Her replacement, Tomás, starts Monday. Marcus has spent every previous onboarding doing four hours of tribal knowledge transfer, walking through Confluence pages that are six months out of date.
 
-**Opening Scene:** Friday afternoon, Marcus creates Tomás's access to the three cases: `memories case add-member --tenant acme --case project-alpha --user tomas` (membership is attribution metadata; Tomás's *access* comes from his tenant claims). He does the same for project-beta and the incident-response case.
+**Opening Scene:** Friday afternoon, Marcus adds Tomás as a member of three cases in the Engineering tenant. For Project Alpha he calls `PUT /api/v1/tenants/{tenantId}/cases/{caseId}/members/{memberId}` with Engineering’s tenant ID, Project Alpha’s case ID and Tomás’s member ID. He repeats it for Project Beta and incident response. The membership records attribution. Tomás already has authenticated access to Engineering.
 
-**Rising Action:** Monday morning, Tomás opens the AI assistant and types: "Brief me on project-alpha." The assistant calls `search_memory(tenantId="engineering", query="project overview and recent activity", case="project-alpha")` and composes a narrative: the project started eight months ago as a payment processing rewrite, hit a critical incident in February when the gateway provider changed their API, pivoted to a dual-provider architecture, and is currently in testing. Key decisions, who made them, and why — all sourced from events, documents, and team discussions in the case memory.
+**Rising Action:** Monday morning, Tomás opens the AI assistant and types: "Brief me on project-alpha." The assistant calls `search_memory(tenantId="<engineering-tenant-id>", query="project overview and recent activity", case="<project-alpha-case-id>")` and composes a narrative: the project started eight months ago as a payment processing rewrite, hit a critical incident in February when the gateway provider changed their API, pivoted to a dual-provider architecture, and is currently in testing. Key decisions, who made them, and why — all sourced from events, documents, and team discussions in the case memory.
 
 **Climax:** Tomás asks: "What led to the dual-provider decision?" The assistant walks the causal chain: GatewayTimeoutEvent → IncidentDeclared → ArchitectureReviewDiscussion → DualProviderProposal → ApprovedByMarcus. Tomás understands not just *what* the architecture is, but *why* it exists. In 20 minutes, not four hours.
 
@@ -395,15 +395,15 @@ Marcus leads a team of seven working across three active cases. Sarah, a senior 
 
 Kenji manages the DAPR infrastructure for three business units. The compliance team just approved a fourth business unit for the AI platform, and they need their own isolated memory space by Thursday.
 
-**Opening Scene:** Kenji opens the CLI: `memories tenant create --id bu-compliance --display-name "Compliance Unit"`. The command provisions tenant-scoped Redis/FalkorDB resources (indexes plus backend principals). Isolation *outcome* is NFR8; the security boundary is tenant-scoped principals, not index names alone. It takes 8 seconds.
+**Opening Scene:** Kenji requests provisioning for the Compliance Unit. AD-23 requires the platform to issue the tenant ID. The current native route accepts a caller-supplied ID. Kenji provisions through `POST /api/v1/tenants`, with status at `GET /api/v1/tenants/{tenantId}/provision-status/{instanceId}`. The legacy CLI exposes `tenant list` only. Kenji retains the authorized tenant ID and provisioning receipt for subsequent calls. NFR8 requires tenant-scoped enforcement in both data stores.
 
-**Rising Action:** Kenji runs the tenant isolation verification: `memories tenant verify --id bu-compliance`. Automated checks confirm: search from bu-compliance context returns zero results from other tenants, ingestion into bu-compliance is not visible from other tenant contexts. All green.
+**Rising Action:** Kenji calls `POST /api/v1/tenants/{tenantId}/verify` and reads each diagnostic for indexes, syntactic and semantic isolation, and graph isolation. A check against an empty tenant can pass even when isolation is broken because there are no records to expose. For NFR8, Kenji needs populated fixtures and independent principals whose cross-tenant reads and writes are denied on each backend. `memories consistency verify --tenant <tenantId>` answers a different question about projection divergence.
 
-**Failure beat:** Next month, a new intern accidentally runs `memories search query --tenant bu-operations --query "test"` with a token whose tenant claim is bu-compliance. `--tenant` is an MVP search flag that names the *requested* tenant; authorization comes from the token's tenant claims (NFR11). The CLI returns a tenant-mismatch error naming the authenticated tenant. The isolation holds. Kenji sees the rejected request in access telemetry (not a tamper-evident audit trail) with who, when, and what was attempted.
+**Failure beat:** A new intern runs `memories search query --tenant <operations-tenant-id> --query "test"` using a bearer authorized only for `<compliance-tenant-id>`. The server rejects the explicit mismatch before retrieval. The CLI names the authenticated tenant and returns no restricted data. Kenji can see the denied operation and outcome in authorized access telemetry.
 
 **Resolution:** Kenji's Thursday deadline was met in under 10 minutes. The monitoring dashboard shows all four tenants healthy, isolated, with clear resource consumption per tenant.
 
-**Capabilities revealed:** CLI tenant provisioning, isolation verification (NFR8), boundary violation errors, access telemetry.
+**Capabilities revealed:** Native tenant provisioning, isolation verification (NFR8), boundary violation errors, access telemetry.
 
 ---
 
@@ -411,9 +411,9 @@ Kenji manages the DAPR infrastructure for three business units. The compliance t
 
 Six months after the compliance tenant launch, bu-compliance has grown to 2 million memory units. Redis memory is climbing past the comfort zone.
 
-**Opening Scene:** Kenji runs `memories backend assess --tenant bu-compliance` and sees the recommendation: "Consider Qdrant migration for tenants exceeding 1M units. Current memory usage: 12.4GB, projected 30-day growth: 2.1GB."
+**Opening Scene:** Kenji runs `memories backend assess --tenant <compliance-tenant-id>` and sees the recommendation: "Consider Qdrant migration for tenants exceeding 1M units. Current memory usage: 12.4GB, projected 30-day growth: 2.1GB."
 
-**Rising Action:** `memories backend migrate --tenant bu-compliance --target qdrant --dry-run` shows the migration plan: estimated time, data volume, steps, and rollback procedure. No surprises.
+**Rising Action:** `memories backend migrate --tenant <compliance-tenant-id> --target qdrant --dry-run` shows the migration plan: estimated time, data volume, steps, and rollback procedure. No surprises.
 
 **Climax:** Kenji executes the migration during a maintenance window. Migration completes with zero downtime — queries are served from Redis until the Qdrant index is ready, then traffic switches. The compliance team's AI assistant doesn't notice anything changed.
 
@@ -427,7 +427,7 @@ Six months after the compliance tenant launch, bu-compliance has grown to 2 mill
 
 ### Journey 7: LLM Agent — Technical Integration Path
 
-This journey maps the system interaction pattern rather than a human narrative.
+This journey describes the four working compatibility MCP tool schemas. Inventory rows M01–M04 are deferred for McpCli. Until enrolled equivalents exist, this walkthrough supplies behavior to preserve and the target end-to-end gate remains outstanding.
 
 **Integration Setup:**
 1. Application registers MCP tool definitions: `search_memory`, `ingest_content`, `traverse_relations`, `get_case_info`
@@ -435,9 +435,9 @@ This journey maps the system interaction pattern rather than a human narrative.
 
 **Query Cycle:**
 1. User prompt arrives requiring organizational context
-2. Agent calls `search_memory(tenantId="engineering", query="what led to the API redesign?", case="project-alpha", tokenBudget=2000, axes="Hybrid")`
+2. Agent calls `search_memory(tenantId="<engineering-tenant-id>", query="what led to the API redesign?", case="<project-alpha-case-id>", tokenBudget=2000, axes="Hybrid")`
 3. Memory server executes hybrid search, fuses available axes under FR17, and truncates to the token budget
-4. For graph detail, the agent calls `traverse_relations(tenantId="engineering", from="<result-id>", caseId="project-alpha")`
+4. For graph detail, the agent calls `traverse_relations(tenantId="<engineering-tenant-id>", from="<result-id>", caseId="<project-alpha-case-id>")`
 5. Responses include ranked memory units, source attribution, relevance confidence, typed causal links, and explicit gaps/degradation
 6. Agent composes a response grounded in sourced memory, citing specific documents and events
 
@@ -477,21 +477,21 @@ Priya asks: "Why was partial coverage approved instead of full?" The causal chai
 
 ### Journey 9: Alex — "The First Case" (Empty State)
 
-> Journey 9 describes the experience required by NFR31. The examples use compatibility CLI syntax. G3 requires the corresponding operations to work on the enrolled McpCli surface. Until an operation is available, help and recovery messages must direct Alex to an action they can complete.
+> Journey 9 describes NFR31. The named native routes and compatibility commands give Alex a working manual path today. G3 separately requires a clean-machine run using enrolled McpCli operations in under 30 minutes. L03 search is deferred and L06, the legacy guided wizard, was withdrawn from migration.
 
 Alex has the stack running. Redis is up, FalkorDB is up, the DAPR service is healthy. But there's nothing in it yet.
 
-**Opening Scene:** `memories search query --tenant pilot --query "anything"` returns: `No results. This tenant has no memory units yet. Get started: 'memories ingest <file>' to add your first document, or run 'memories quickstart' for a guided setup. Follow the README quickstart for the manual path.` (Event auto-indexing is not offered in this hint until Phase 1.5 ships.)
+**Opening Scene:** Alex searches for “water damage” using the issued ID of the Pilot tenant and finds no matches. A query alone cannot establish that the tenant is empty. The required hint lets Alex check the selected case and filters, try broader terms, or inspect a known unit. For a confirmed empty scope it points to the file or URL ingestion route. The current compatibility hint still advertises the `ingest` stub. Alex can follow the native steps below.
 
-**Rising Action:** Alex creates the first case: `memories case create --id claims-pilot --display-name "Claims Pilot"`. The CLI responds: `Case 'claims-pilot' created. 0 memory units. Start building knowledge: 'memories ingest <file|url|directory> --tenant pilot --case claims-pilot'.` Not an error, not a blank screen — a clear next step.
+**Rising Action:** Alex uses the authorized tenant ID issued by the platform at the AD-23 target. On the native path, `POST /api/v1/tenants/{tenantId}/cases` creates “Claims Pilot.” Alex keeps the case ID from the response and uses it in the ingestion request. “Claims Pilot” is the display name. The AD-23 target issues an opaque case ULID.
 
-Alex runs `memories ingest ./sample-claims/ --tenant pilot --case claims-pilot`. The CLI shows a progress indicator: 47 documents ingested, 47 memory units created, embedding in progress. Then: `Done. 47 memory units indexed. Try: 'memories search query --tenant pilot --case claims-pilot --query "claim"'`
+Alex submits a sample claims file through `POST /api/v1/ingest` or a source URL through `POST /api/v1/ingest/url`, then follows the receipt at `GET /api/v1/ingest/{instanceId}`. Case status shows the indexed count. For the separate 47-document batch example, `POST /api/v1/ingest/directory` takes a directory on the server, and `GET /api/v1/ingest/batches/{batchId}` reports progress.
 
-**Climax:** First search on real data: `memories search query --tenant pilot --case claims-pilot --query "water damage"`. Three results, ranked by hybrid (RRF) score. The system works. The empty state is gone, and Alex never felt lost getting here. Event publish to a DAPR topic is Journey 1 / Phase 1.5, not this climax.
+**Climax:** Alex reruns `memories search query --tenant <tenantId> --case <caseId> --query "water damage"` using the saved IDs. The compatibility CLI finds the sample and shows its source. In G3 the corresponding enrolled search must return the correct file or URL. The Phase 1.5 event-publish clock belongs to Journey 1.
 
 **Resolution:** Alex shares the README quickstart experience in the team channel. Two other developers set up their own cases by end of day.
 
-**Capabilities revealed:** Helpful empty state messages, README quickstart, optional interactive quickstart polish, batch ingestion from directory, clear progress feedback, case creation, first-search experience.
+**Capabilities revealed:** An actionable empty result, authorized case creation, file or URL ingestion, progress by receipt, and a first search with source attribution. The README’s warm-stack wizard remains a compatibility walkthrough. Enrolled setup and search must support the manual target without it.
 
 ---
 
@@ -501,7 +501,7 @@ Dani is a .NET developer at a fintech startup. They adopted Hexalith.Memories th
 
 **Opening Scene:** Dani opens a GitHub issue: "Feature request: show embedding model name in --explain output." They include a concrete use case and a mock of what the output should look like.
 
-**Rising Action:** Jerome responds within a day, labels it `good-first-issue`, and points to the relevant code path: `Hexalith.Memories.Cli/Commands/SearchCommand.cs` and the `ExplainResult` model. Dani clones the repo, runs `dotnet build` — it builds on first try. They run the existing tests — all green. The project structure matches what the README describes. Dani finds the `ExplainResult` class, adds the `EmbeddingModel` property, updates the CLI formatter, and writes a test.
+**Rising Action:** Jerome labels the issue `good-first-issue` and points Dani to the evidence contract, its server mapping, and the target presenter that consumes it. Dani builds the repository and follows an existing result through its tests. They propose the explanatory field on the shared response and add a fixture that checks how the active surface presents it. New Memories functionality follows the approved McpCli enrollment path.
 
 **Climax:** Dani opens a PR. The CI passes. Jerome reviews within 48 hours, suggests one naming change, and approves. The PR is merged into the next release. Dani's name is in the contributors list.
 
@@ -542,7 +542,7 @@ Dani is a .NET developer at a fintech startup. They adopted Hexalith.Memories th
 
 ### Compliance Boundary
 
-Hexalith.Memories is **interpretive infrastructure** — it occupies a middle ground between raw storage and application logic. It doesn't make decisions, but it *does* make interpretations (embeddings, causal chains, confidence scores). This framing is more honest and defensible than "just infrastructure."
+Hexalith.Memories provides **interpretive infrastructure**. It stores source evidence and derives embeddings, causal links and relevance scores. The consuming application decides how to act on those interpretations.
 
 **Three-tier responsibility model:**
 
@@ -554,7 +554,7 @@ Hexalith.Memories is **interpretive infrastructure** — it occupies a middle gr
 
 Memories provides the primitives that *enable* compliance:
 
-- **Tenant deletion** (`memories tenant delete`) completes only after product projections are purged, EventStore-held tenant content is irreversibly inaccessible with verification, and a durable access-telemetry erasure handoff is recorded. Replay, restart, and restore cannot resurrect the content; the deleted tenant ID cannot be reused. Retained opaque access telemetry follows NFR34's TTL rather than being presented as content or legal-audit evidence. **Limitation:** Cross-references to that tenant's data in *other* tenants' memory units are the application's responsibility to handle. The compliance guide must document this explicitly.
+- **Tenant deletion.** An authorized operator requests deletion through `DELETE /api/v1/tenants/{tenantId}`. FR39 permits completion only after product projections are purged, EventStore-held tenant content is irreversibly inaccessible with verification, and a durable access-telemetry erasure handoff is recorded. Replay, restart, and restore cannot resurrect the content; the deleted tenant ID cannot be reused. Retained opaque access telemetry follows NFR34's TTL rather than being presented as content or legal-audit evidence. **Limitation:** Cross-references to that tenant's data in *other* tenants' memory units are the application's responsibility to handle. The compliance guide must document this explicitly.
 - **Tenant isolation** (tenant-scoped backend principals and indexes, NFR8) ensures no cross-tenant data leakage, a prerequisite for downstream compliance. It is a shared-cluster isolation tier, not separate processes or volumes per tenant (see `addendum.md`).
 - **Access telemetry** of queries, ingestion, and mutations is provided as infrastructure telemetry. This is *not* a tamper-evident audit trail — it does not guarantee append-only storage, integrity verification, or retention compliance. Applications requiring certified audit trails must implement their own on top of this telemetry.
 
@@ -567,17 +567,17 @@ Memories provides the primitives that *enable* compliance:
 ### AI Reliability and Trust Boundaries
 
 **Confidence Score Semantics:**
-Confidence scores must have clear, documented meaning. Each memory unit's search result score is a composite with per-axis breakdowns:
+A native single-axis search returns the measure for that axis. For each contributing axis, hybrid search reports a score calculated from the unit’s rank. Rank one scores 1.0. The result also includes a weighted composite. These values measure relevance to the query.
 
-| Component | What it measures | Range | Normalization |
-|---|---|---|---|
-| Syntactic score | BM25 relevance to query terms for single-axis search; rank contribution for hybrid search | 0.0–1.0 | Single-axis explain uses BM25 saturation; hybrid explain exposes weighted reciprocal-rank contribution so raw BM25 magnitude is not fused directly. |
-| Semantic score | Cosine similarity for single-axis search; rank contribution for hybrid search | 0.0–1.0 | Single-axis explain uses cosine clamp; hybrid explain exposes weighted reciprocal-rank contribution. |
-| NL score (**Phase 1.5**, event units only) | Natural-language-description vector similarity for single-axis `axis=nl`; rank contribution for hybrid search when `nl` is enabled | 0.0–1.0 | Single-axis explain uses cosine clamp with syntactic-hash attribution backfill; hybrid explain exposes weighted reciprocal-rank contribution. Not a Phase 1 retrieval axis: file/URL units have no NL description embedding (FR60). |
-| Graph score | Proximity in the relationship graph (hop distance, edge weight) for single-axis search; rank contribution for hybrid search | 0.0–1.0 | Single-axis explain uses inverse hop distance with decay; hybrid explain exposes weighted reciprocal-rank contribution. Proximity magnitude is never fused directly. |
-| Composite score (**Relevance confidence**) | Weighted reciprocal-rank fusion of available axes | 0.0–1.0 | Weighted RRF over available axis rankings, normalized against the best possible rank contribution |
+| Axis | Native single-axis score | Public hybrid per-axis score |
+|---|---|---|
+| Syntactic | RediSearch BM25 relevance. The native score can exceed 1.0. | Rank on the syntactic list, normalized to its top rank. |
+| Semantic | Cosine similarity computed as `clamp(1 − distance, 0, 1)`. | Rank on the semantic list, normalized to its top rank. |
+| NL (Phase 1.5, event units only) | Cosine similarity of the natural-language description embedding. | Rank on the NL list when requested and configured (FR60). |
+| Graph | Proximity `1 / (1 + hop distance)` in a graph-scoped search. | Rank on the graph list, normalized to its top rank. |
+| Hybrid composite (**relevance confidence**) | Applies to fused results only. | Sum of weighted raw RRF terms divided by the maximum for the axes that returned at least one result. Range 0.0–1.0. |
 
-Single-axis scores keep their axis-specific meaning. Hybrid per-axis scores are rank-contribution scores, not raw BM25, cosine, or graph-proximity magnitudes. The fusion weights and algorithm are documented and deterministic. `--explain` exposes the score semantics and fusion weights applied.
+For V1, rank `r` has internal term `raw(r) = 1 / (10 + r)`. The public hybrid per-axis score is unweighted, `raw(r) / raw(1)`. A rank-one hit exposes `1.0` even with a weight of `0.30`. Its raw term is `1/11`. A rank-two hit exposes `11/12`. A unit missing from a participating axis has no score for that axis and contributes zero to the numerator. Explain reports weights separately and preserves the difference between an excluded, unavailable and empty axis (AD-9/AD-22).
 
 **Evidence Packet (cross-surface trust envelope):** The trust primitives defined across these requirements — composite confidence with per-axis breakdown (FR63), source/origin attribution (FR24), token-budget-aware omitted-detail handling (FR23), and graceful-degradation signaling (FR66), together with tenant/case scope, result state, freshness impact, and recovery guidance — are composed into a single shared response object referred to as the **Evidence Packet**. CLI JSON output, MCP tool responses, and future web UI composition use the same Evidence Packet contract. No surface defines confidence, degradation, omitted details, or recovery actions differently. Its versioned states are `complete`, `partial`, `weak`, `empty`, `stale`, `degraded`, `unauthorized`, and `pendingExpansion`; surfaces must not fabricate states that current mappers do not yet emit. Every evidence-bearing surface preserves the distinction between an unavailable axis, an excluded axis, and an available axis with no hits. Its concrete shape is owned by `Contracts.V1` (see Architecture) and its presentation semantics are elaborated in the UX Design Specification.
 
@@ -589,7 +589,7 @@ Single-axis scores keep their axis-specific meaning. Hybrid per-axis scores are 
 
 **Metadata confidence** is separate from search relevance: each metadata field on a memory unit tracks its origin (`human-declared` vs `ai-inferred`) and confidence (0.0–1.0). This distinguishes "the user tagged this as 'payment-related'" from "the embedding model inferred this is about payments."
 
-**Memory unit provenance:** Every memory unit tracks `ingested_by` as a mandatory MVP field. At authenticated external ingress, provenance binds to the normalized `sub` principal; caller-supplied provenance is rejected or ignored. Trusted internal adapters may use only the canonical `system:*` identity derived from an authenticated app-ID allowlist and an explicit tenant grant. App identity, channel credentials, and display metadata never authorize access or override the authenticated principal. Tenant claims authorize access. Case membership is tenant-scoped domain metadata and does not grant authorization in the current phase.
+**Memory unit provenance:** Every memory unit carries the mandatory MVP field `ingested_by`. For an authenticated external actor, capture the `(issuer, subject)` pair, normalize it once at authentication and compare the resulting identity ordinally on every surface. Equal subjects from different issuers identify different actors. External request metadata cannot override that identity. Trusted internal ingestion records the canonical `system:*` principal from the authenticated workload allowlist after validating the explicit grant and active tenant. Case membership records attribution only. AD-5 governs tenant and operator authority.
 
 **Structured Causal Data:**
 Memories is responsible for delivering **unambiguous causal chain structure**, not raw results that the LLM must interpret. When `traverse_relations` returns a causal chain, it provides:
@@ -651,8 +651,8 @@ EventStore happy path: subscribe, follow conventions, index dual embeddings and 
 **3. Causal Intelligence as a Query Interface (Domain Innovation — Phase 1.5 outcome)**
 Event-sourced systems already capture *why* things happen — but that causal data is locked inside infrastructure, queryable only by developers who know the event store schema. Once Phase 1.5 populates the graph from the event stream, Memories makes causal chains queryable via natural language: "What led to this decision?" walks the CausationId graph and returns structured, ordered, gap-aware results (the FR46–FR52 mechanics shipped in Phase 1). This transforms event sourcing from a persistence pattern into a knowledge management pattern. Gate: L3.
 
-**4. Interpretive Infrastructure (Positioning Innovation)**
-The three-tier responsibility model — Storage → Interpretation → Application — is a novel positioning for AI infrastructure. Memories is not "just a database" (it interprets content) and not "an AI application" (it doesn't make decisions). This framing creates a defensible product category and a clear responsibility boundary.
+**4. Interpretation and application decisions**
+Memories preserves source attribution and labels its interpretations, including retrieval relevance and inferred connections. Applications own decisions based on that evidence. Reviewers can check whether users can trace a conclusion to its source and see where its causal chain has a gap.
 
 ### Market Context & Competitive Landscape
 
@@ -666,7 +666,7 @@ The three-tier responsibility model — Storage → Interpretation → Applicati
 | Notion / Confluence | Full-text | Yes | No | Knowledge-base rivals the brief named; collaboration features here are Phase 2 |
 | **Hexalith.Memories** | Syntactic + semantic + graph (RRF of available axes) | Case model (MVP); discussions/briefings Phase 2 | EventStore CausationId (Phase 1.5 product integration) | DAPR-native; EventStore conventions are the beachhead |
 
-Falsifiable claim: Hexalith.Memories ships documented deterministic RRF across syntactic, semantic, and graph *on a DAPR/EventStore causal graph* — not "no competitor offers team memory." Replicating the integrated Hexalith path is still costly; that is not a surveyed uniqueness proof.
+The differentiation hypothesis is that one Dapr/EventStore integration can return a ranked answer with the causal chain and its gaps. G1 tests retrieval quality against BM25+semantic. L2 measures the effort to reach the first event-backed result and L3 measures known-chain completeness. Competitive durability and the cost of reproducing this integration remain unmeasured.
 
 **Addressable market:** EventStore users are the beachhead. Generic DAPR pub/sub (Marten, Wolverine, Axon) is an experiment with a kill switch (custom code beyond subscription config). It is not the brief's standalone case+three-axis expansion path and not an EventStore-equivalent zero-code promise.
 
@@ -675,8 +675,8 @@ Falsifiable claim: Hexalith.Memories ships documented deterministic RRF across s
 | Innovation | Validation Method | Kill Switch |
 |---|---|---|
 | Three-axis fusion | Thesis-gate protocol per Measurable Outcomes (G1: N ≥ 50, hybrid vs BM25+semantic, ΔNDCG@10 ≥ 0.02, κ ≥ 0.6) — not yet run; the 2026-07-16 N=8 run is diagnostic | Execute named kill-switch actions if 80% misses |
-| EventStore product integration | Launch stopwatch L2: `dotnet add package Hexalith.Memories.EventStore` + subscription + secret + boot + first event search | If the stopwatch exceeds 30 minutes, the conventions promise is broken — no launch |
-| Causal intelligence | L3: 95%+ of the named known-chain fixture fully traversable | No launch |
+| EventStore product integration | Launch stopwatch L2: `dotnet add package Hexalith.Memories.EventStore` + subscription + secret + boot + first event search | A run taking 30 minutes or longer fails L2 |
+| Causal intelligence | L3 requires complete paths for ≥95% of the fixture’s distinct eligible events | No launch |
 | DAPR-generic pattern | Test with non-EventStore event source (e.g., Marten publishing to DAPR) | If integration requires custom code beyond DAPR subscription config, the pattern isn't generic — keep EventStore conventions as the beachhead |
 
 ### Risk Mitigation
@@ -694,23 +694,25 @@ Missing nodes are already handled by gap detection (`[MISSING: event-id]`). If c
 
 ### Project-Type Overview
 
-Hexalith.Memories is a hybrid Developer Tool + API Backend delivered as NuGet packages with a DAPR-native service architecture orchestrated by .NET Aspire. Internal services communicate via DAPR service invocation; external consumers (CLI, LLM agents, third-party apps) connect through a REST API behind infrastructure-managed ingress. The system reuses shared infrastructure from the Hexalith ecosystem via root-declared git submodules under `references/` (`references/Hexalith.Commons` for error handling, `references/Hexalith.EventStore` for versioning conventions).
+Hexalith.Memories combines a developer tool and API backend distributed as NuGet packages. .NET Aspire composes the Dapr-native service. Native REST clients use infrastructure-managed ingress. The target CLI and MCP surfaces use enrolled operations in Hexalith.McpCli. The repository reuses Hexalith.Commons and Hexalith.EventStore through root-declared submodules under `references/`.
 
 ### Technical Architecture Considerations
+
+The September 27 course correction approved `Hexalith.McpCli` as the shared CLI and MCP surface for eligible operations. The legacy Memories CLI and MCP server remain available for compatibility until replacement or withdrawal satisfies the approved search, ingest, traversal, tenant isolation, identity, output and accessibility criteria.
 
 **Language & Platform Matrix:**
 
 | Aspect | MVP | Future |
 |---|---|---|
 | Server runtime | .NET 11 / C# 14. SDK pin is `global.json` (repository configuration), not this PRD. | .NET plus optional architecture-owned polyglot sidecars (see addendum: Dapr Agents) |
-| Client libraries | MVP CLI uses a minimal direct HTTP/ingress adapter inside the CLI; reusable `.NET` client packages are not MVP blockers | `.NET` (`Client` for DAPR consumers, `Client.Rest` for external consumers), Python, TypeScript clients targeting ingress REST API |
-| CLI | .NET global tool (`dotnet tool install -g Hexalith.Memories.Cli`) | Same |
+| Client libraries | Native ingress REST and the `Hexalith.Memories.Client.Rest` adapter serve existing consumers. The legacy CLI uses HTTP. | Reusable Dapr and language-specific clients are separately planned. |
+| CLI and MCP | `dotnet tool install -g Hexalith.Memories.Cli` installs the **compatibility** tool. The legacy MCP server is a separate compatibility package. | The `hexalith` CLI and `Hexalith.McpCli` MCP server expose enrolled operations. Inventory v1.1.0 defers L03 search and M01–M04, and withdraws L06 quickstart. Eligibility, installation and enrollment are distinct. |
 | Cross-language access | Via ingress REST API (any HTTP client) or DAPR service invocation (any DAPR SDK) | Dedicated language-specific client packages |
 | IDE tooling | None | VS/Rider templates, analyzers (deferred) |
 
 **Package Distribution:**
 
-`tools/release-packages.json` is the sole release inventory of published package IDs. A separate non-packable-host table names service/orchestration projects; those rows are not part of the published-package count. Do not restate a magic "9+3" in this PRD when the JSON and host list diverge — update the tables, not a slogan.
+`tools/release-packages.json` defines the published package IDs and separately lists non-packable projects. The two tables follow those manifest entries.
 
 **Published packages** (IDs must match `tools/release-packages.json`):
 
@@ -725,48 +727,51 @@ Hexalith.Memories is a hybrid Developer Tool + API Backend delivered as NuGet pa
 | `Hexalith.Memories.EventStore` | EventStore product-integration package (Phase 1.5 surface) |
 | `Hexalith.Memories.Telemetry` | Shared telemetry constants and collectors |
 | `Hexalith.Memories.ServiceDefaults` | Shared packaged service defaults |
+| `Hexalith.Memories.EventStoreExtensions` | Registers Memories-owned local internal intent adapters with the EventStore SDK |
 
-**Non-packable hosts** (not in the published count):
+**Non-packable projects**
 
-| Host | Purpose |
+| Project | Purpose |
 |---|---|
 | `Hexalith.Memories.Server` | DAPR service, workflows/actors, REST controllers |
-| `Hexalith.Memories.AppHost` | .NET Aspire orchestration |
-| `Hexalith.Memories.Web` | Epic 17 conformance specimen (runnable web shell for accessibility/telemetry conformance); **not an activated product surface** — NFR32/NFR35 activate when a web surface ships (Phase 2) |
+| `Hexalith.Memories.AppHost` | Local development and test orchestration with .NET Aspire |
+| `Hexalith.Memories.DomainService` | Independently authenticated EventStore SDK host for tenant, case and memory-unit commands and replay |
+| `Hexalith.Memories.Web` | Razor component library used by the runnable `tests/Hexalith.Memories.Web.SpecimenHost`. NFR32/NFR35 activate when the Phase 2 product web surface ships |
 | `Hexalith.Memories.AccessTelemetry` | Access-telemetry host component |
-| `Hexalith.Memories.AccessTelemetry.Clock` | Clock abstraction for access telemetry |
+| `Hexalith.Memories.AccessTelemetry.Clock` | Access-telemetry clock service |
 | `Hexalith.Memories.AccessTelemetry.Contracts` | Access-telemetry contracts |
 
-The six rows mirror `nonPackableProjects` in `tools/release-packages.json`; that file is the source of truth if the two disagree.
+The [release manifest](../../tools/release-packages.json) records each project path. The [route inventory](../../docs/operations/route-surface.md) identifies the separate Server and DomainService endpoints.
 
 Mechanism detail (dependency graph, Redis compatibility facade, composition root) is in `addendum.md` and architecture.
 
 **Deployment Topology:**
 
-External consumers connect through infrastructure-managed ingress (YARP, nginx, cloud API gateway — not application code). Internal services communicate via DAPR mesh.
+Native REST clients use infrastructure-managed ingress. Internal services use the Dapr mesh. The compatibility paths below describe existing consumers. New CLI and MCP operations follow the approved McpCli/Gateway enrollment contract.
 
-- **LLM Agent** → ingress → MCP Server (DAPR sidecar) → DAPR → Memories Server
-- **CLI / Third-party apps** → ingress → Memories Server (REST controllers)
+- **Compatibility MCP client** → ingress → compatibility MCP host → Dapr → Memories Server under the validated delegated bearer
+- **Compatibility CLI and direct REST clients** → infrastructure ingress → Memories Server under the validated bearer
+- **Shared McpCli target** → Gateway → enrolled module operation under workload authority. Admission of a user-scoped operation requires independent tenant and user authorization on that transport.
 - **Memories Server** → approved internal Redis/FalkorDB adapters → backend data-plane clients using Aspire-injected keyed connections; DAPR state remains the portable coordination path
 - **EventStore events** → DAPR pub/sub → Memories Server
 
-MCP Server is a DAPR service with its own sidecar, communicating with Memories Server via DAPR service invocation. Memories Server exposes REST controllers (for ingress routing) alongside DAPR endpoints (for internal consumers), both in the same ASP.NET Core host.
+The compatibility MCP host is a separate Dapr application that invokes Memories Server. The shared McpCli Gateway uses its own workload identity and forwards no user credentials. Memories Server exposes REST controllers and internal DAPR endpoints in the same ASP.NET Core host.
 
 **Service Communication Model:**
 
 | Layer | Communication |
 |---|---|
-| Internal (Server ↔ MCP Server) | DAPR service invocation |
+| Internal (Server ↔ compatibility MCP host) | DAPR service invocation with validated delegated bearer authority |
 | Internal (DAPR state) | Sidecar state API only |
 | Internal (Redis/FalkorDB search/graph) | Approved infrastructure-boundary clients with Aspire-injected keyed connections — not via the DAPR state API as a generic proxy. Product projects do not construct infrastructure endpoints or clients. |
 | Internal (EventStore domain truth) | EventStore acknowledgement is the durable commit for Case / MemoryUnit / Tenant |
 | Internal (EventStore product integration) | CloudEvents via DAPR pub/sub (Phase 1.5) |
-| External → Internal (CLI, LLM agents, third-party) | REST API via infrastructure ingress. CLI HTTP in MVP is transport, not the Phase 2 application search UI. |
+| External → internal | Direct clients and compatibility CLI/MCP use their bearer paths. Enrolled shared McpCli operations reach module handlers through the workload-authenticated Gateway. Native REST is active in MVP. The application search UI belongs to Phase 2. |
 | Serialization | JSON exclusively |
-| Authentication | External/delegated bearer authority is preserved across hops. Internal calls additionally require deny-by-default DAPR workload authorization and protected channels; authenticated app IDs map through one operator-owned allowlist to canonical `system:*` principals with explicit tenant grants (NFR10). Anonymous: enumerated health/DAPR infrastructure routes only. |
-| Tenant context | Derived or verified server-side from authenticated authority. Payload tenant/case fields, app identity, and channel credentials cannot authorize by themselves. |
+| Authentication | Native REST and compatibility CLI/MCP preserve validated bearer tenant and subject authority. The shared Gateway authenticates as a workload. Ordinary internal calls require protected DAPR channels, a deny-by-default app allowlist, an explicit tenant grant and an active tenant (NFR10). Anonymous access is limited to enumerated health and infrastructure routes. |
+| Tenant context | Resolve authorized scope on the server. Reject an explicit tenant mismatch before any restricted output or product side effect. Request fields, workload identity, case membership and channel credentials alone never authorize an operation. |
 | Rate limiting | In scope: embedding-provider throttle (FR69), inbound request quotas by authenticated tenant, plus ingress. Not "deferred to infrastructure" as the only control. |
-| Identity / provenance | Tenant claims authorize. Case membership is metadata. Provenance binds to normalized `sub` or the allowlist-derived `system:*` principal with an explicit tenant grant. |
+| Identity / provenance | External attribution uses the authenticated issuer and subject. A granted internal workload uses its canonical `system:*` identity. Case membership records attribution only. |
 
 **Error Handling Model:**
 
@@ -777,7 +782,7 @@ Errors follow the Hexalith.Commons shared error handling conventions (via `refer
 | Memories Server → DAPR | Hexalith.Commons error envelope | Error code, failed component (actor, index, graph), details |
 | MCP Server → LLM Agent | MCP error response | Hexalith error code mapped to MCP format, failed service identifier |
 | Ingress → CLI / third-party | HTTP status + Hexalith.Commons JSON envelope | Error code, failed component, recovery suggestion |
-| CLI → terminal | Human-readable message + error code; JSON in `--format json` | Actionable guidance ("Is the service running? Check `dotnet run --project AppHost`") |
+| CLI → terminal | Human-readable message + error code; JSON in `--format json` | Actionable guidance ("Is the service running? Check the local stack with `dotnet run --project src/Hexalith.Memories.AppHost`") |
 
 Internal DAPR errors must propagate through ingress with enough context for CLI to display actionable diagnostics — never swallow into generic 502.
 
@@ -785,7 +790,7 @@ Internal DAPR errors must propagate through ingress with enough context for CLI 
 
 Aligned with Hexalith.EventStore conventions (via `references/Hexalith.EventStore`):
 - NuGet packages: Semantic versioning
-- Service contract: Backward-compatible additions only (no versioned endpoints — DAPR app-id is unversioned)
+- `Contracts.V1.MemoriesRoutes` defines versioned native API paths under `/api/v1`. Dapr service invocation uses the configured, unversioned Server app ID (default `memories`) and the same versioned method paths. V1 evolves through backward-compatible additions. [Route inventory](../../docs/operations/route-surface.md)
 - Breaking changes: New message types, deprecation cycle matching EventStore patterns
 
 **Health Check & Observability:**
@@ -797,7 +802,7 @@ Aligned with Hexalith.EventStore conventions (via `references/Hexalith.EventStor
 | Logging | Aspire ServiceDefaults configures structured JSON logging with OpenTelemetry; correlation IDs from DAPR trace context |
 | Metrics | Aspire dashboard surfaces DAPR + custom metrics (ingestion throughput, search latency per axis, index size per tenant) via OpenTelemetry export |
 | Dashboard | Aspire dashboard provides local dev observability out of the box — no separate management API needed |
-| Consistency check | `memories tenant verify` detects index/graph divergence (orphaned graph edges, missing index entries across RediSearch + Vector + FalkorDB) |
+| Projection consistency | `memories consistency verify --tenant <tenantId>` checks index/graph divergence. Tenant-isolation diagnostics use `POST /api/v1/tenants/{tenantId}/verify`. |
 
 ### Embedding Provider Configuration
 
@@ -848,13 +853,13 @@ Ingestion is a **DAPR Workflow** (`IngestionWorkflow`): extract, embed, and proj
 | `embedding` | Call embedding provider API, get vector | Throttled by per-tenant rate-limiter actor |
 | `projecting` | Write RediSearch, Redis Vector, FalkorDB as rebuildable projections; retries with backoff stay in this state | Workflow + compensation |
 | `indexed` | All three projections acknowledge the current authoritative revision under the active schema and embedding configuration | Terminal success |
-| `failed` | Error at any stage after max retries; error, stage, and attempt count preserved (dead-letter detail) | Visible via CLI; not silently dropped |
+| `failed` | Terminal failure retains the error, stage and attempt count. | Operator reads the native case failed-units endpoint. CLI failure visibility remains an NFR19 obligation. |
 
 **Failure handling:**
 - Failed units retry with exponential backoff (configurable max retries) while remaining `projecting` (or the failing stage)
 - After max retries, units move to `failed` with error details preserved
-- `memories status --case X` shows counts per state
-- `memories status --failed` shows failed units with error details and stage
+- Read current case counts at `GET /api/v1/tenants/{tenantId}/cases/{caseId}/status`. `memories status telemetry --tenant <tenantId>` gives tenant-level metrics and queue depth.
+- Read failure details at `GET /api/v1/tenants/{tenantId}/cases/{caseId}/failed-units`. FR10, FR11 and NFR19 require the enrolled CLI to show per-state case counts and each failed unit’s stage and safe error. Both CLI reads await delivery.
 - FR13: no silent two-of-three searchable unit. Retry, repair, and EventStore replay converge through the same completion contract; a unit is not `indexed` until all three projections acknowledge the current revision and configuration, and query degradation cannot promote it.
 - **File/URL freshness (NFR36):** under normal conditions a ≤10 KB file unit reaches `indexed` within 60 seconds of `pending`; degradation is reported, not silent.
 
@@ -864,58 +869,60 @@ Ingestion is a **DAPR Workflow** (`IngestionWorkflow`): extract, embed, and proj
 
 ### Interface Capability Parity Matrix
 
-Not all capabilities map to all interfaces. **Capability alignment, not feature parity.** CLI is the operational superset. MCP exposes what LLM agents need (search, ingest, traverse, case info). Tenant management, diagnostics, and interactive features are CLI-only.
+The target CLI serves developers and operators. The Phase 1.5 MCP scope covers search, ingestion, traversal and case information. Each target operation requires enrollment. The following table records compatibility commands and native access available to operators.
 
-The CLI column illustrates the compatibility commands for each capability. FR53 and the approved McpCli inventory govern target coverage by phase.
+CLI names below belong to the legacy tree. A stub or missing verb links to its current native alternative. FR53 and the approved migration inventory govern target coverage.
 
-| Capability | CLI | MCP (Phase 1.5) | DAPR Service Invocation |
+| Capability | Compatibility CLI or current alternative | Compatibility MCP (Phase 1.5 behavior) | Service capability |
 |---|---|---|---|
 | Search (syntactic, semantic, graph, hybrid) | `memories search query` | `search_memory` | `SearchAsync` |
 | Search with explain | `memories search query --explain` | `search_memory` (explain field) | `SearchAsync` (explain option) |
 | Result / unit inspection | `memories search inspect`, `memories search lookup` | -- | -- |
-| Content ingestion | `memories ingest` | `ingest_content` | `IngestAsync` |
-| Graph traversal | `memories traverse` | `traverse_relations` | `TraverseAsync` |
-| Case management (create, delete, members, activity) | `memories case` | `get_case_info` | `CaseAsync` methods |
-| Tenant management | `memories tenant` | -- | `TenantAsync` methods |
-| Tenant isolation verification | `memories tenant verify` | -- | -- |
-| Ingestion status & failed units | `memories status` | -- | -- |
-| Index/graph consistency | `memories consistency verify/inspect/repair` | -- | -- |
-| Portable export (FR71) | `memories export case/tenant` | -- | -- |
-| Interactive exploration | `memories explore` | -- | -- |
+| Content ingestion | CLI stub. Use `POST /api/v1/ingest` or `POST /api/v1/ingest/url`. | `ingest_content` (file content only) | `IngestAsync` |
+| Graph traversal | CLI stub. Use `GET /api/v1/tenants/{tenantId}/traverse`. | `traverse_relations` | `TraverseAsync` |
+| Case management (create, delete, members, activity) | CLI stub. Use the native tenant-scoped cases routes. | `get_case_info` (case information only) | `CaseAsync` methods |
+| Tenant management | `memories tenant list` works. Native tenant routes handle create and delete. | -- | `TenantAsync` methods |
+| Tenant isolation verification | Native `POST /api/v1/tenants/{tenantId}/verify`. | -- | -- |
+| Ingestion status & failed units | Native case `/status` and `/failed-units` reads. `memories status telemetry --tenant <tenantId>` gives tenant-wide metrics. | -- | -- |
+| Index/graph consistency | `memories consistency verify/inspect/repair` (current repair mutates after confirmation) | -- | -- |
+| Basic portable application export (FR71) | `memories export case/tenant` | -- | -- |
+| Interactive exploration | `memories explore` is a stub. Use the working search, inspect and lookup commands for individual queries. | -- | -- |
 | Handler management | `memories handlers` | -- | -- |
-| Guided quickstart | `memories quickstart` (compatibility wizard) | -- | -- |
-| Batch directory ingestion | `memories ingest <dir>` | -- | -- |
+| Guided quickstart | `memories quickstart` works in the compatibility walkthrough. Inventory L06 withdraws it from McpCli migration. | -- | -- |
+| Batch directory ingestion | CLI stub. Use `POST /api/v1/ingest/directory` with a server-side source directory. | -- | -- |
 
 **Design rationale:** MCP exposes agent work. CLI exposes ops. DAPR service invocation is the internal programmatic API. FR53 is satisfied per active phase; a help entry backed by `NotImplementedCommand` is not coverage.
 
 ### CLI Specification
 
-**Compatibility distribution.** `dotnet tool install -g Hexalith.Memories.Cli` installs the legacy Memories CLI. `Hexalith.McpCli` owns the target surface. Its approved inventory defers search row L03 and withdraws wizard row L06 from migration scope. Both are excluded from target coverage under the approved dispositions. A qualifying G3 run still requires a working search operation. The compatibility packages remain available until their retirement criteria are met. [Migration inventory](../../references/Hexalith.McpCli/_bmad-output/implementation-artifacts/memories-migration-inventory-v1.1.0.md) · [Owner approval](../../references/Hexalith.McpCli/_bmad-output/implementation-artifacts/evidence/story-5-10/approval.json)
+**Compatibility distribution.** `dotnet tool install -g Hexalith.Memories.Cli` installs the legacy `memories` tool. New CLI and MCP delivery belongs to `Hexalith.McpCli` through enrolled Memories operations. The owner inventory defers L03 search and M01–M04 and withdraws L06 quickstart. These rows are excluded from approved target coverage. G3 still requires a working enrolled search. The compatibility packages remain available until their retirement criteria are met. [Migration inventory](../../references/Hexalith.McpCli/_bmad-output/implementation-artifacts/memories-migration-inventory-v1.1.0.md) · [Owner approval](../../references/Hexalith.McpCli/_bmad-output/implementation-artifacts/evidence/story-5-10/approval.json)
 
-**Global options (all commands):** `--endpoint`, `--token`, `--format`, `--verbose`, `--telemetry`. Tenant scope is passed as `--tenant <id>` on tenant-scoped commands; it names the requested tenant, and the token's tenant claims authorize it (NFR11). There is no `tenant switch` — ambient tenant state was removed from the contract on 2026-09-08.
+**Compatibility CLI global options** include `--endpoint`, `--token`, `--format`, `--verbose`, and `--telemetry`. A tenant-scoped command takes `--tenant <tenantId>` for the requested tenant. The authenticated claims authorize access (NFR11). There is no ambient tenant selection.
 
 **Compatibility CLI commands and output semantics.** The table records the phase and delivery status of the legacy command tree. FR53 requires delivery through enrolled McpCli operations.
 
-| Command | Phase | Delivery status (2026-09-12, `RootCommandFactory`) | Acceptance output |
+| Command | Phase | Compatibility delivery status (`RootCommandFactory`, reviewed 2026-11-20) | Acceptance output |
 |---|---|---|---|
-| `memories search query --tenant --query [--case] [--axis] [--max-results] [--explain]` | 1 | Shipped (Story 7.2) | Ranked results with Evidence Packet fields; `--explain` shows per-axis rank contributions and weights |
+| `memories search query --tenant --query [--case] [--axis] [--max-results] [--explain]` | 1 | Shipped (Story 7.2) | Hybrid explain distinguishes unweighted normalized axis ranks and the weights used in the composite. See NFR24 for the numeric acceptance fixture. |
 | `memories search inspect` / `search lookup` | 1 | Shipped (7.2 / 18.5) | Single-unit Evidence Packet / keyed lookup |
 | `memories traverse --tenant --from [--depth] [--edge-type]` | 1 | **Not started** — `NotImplementedCommand` stub | Ordered nodes with typed edges, timestamps, `[MISSING: id]` gap markers (FR47–FR49, FR52) |
-| `memories ingest <file\|url\|dir> --tenant --case` | 1 | **Not started** — compatibility stub. Ingestion is reachable today via `POST /api/v1/ingest` and `quickstart` | Progress, unit count, per-unit ingestion state (FR1–FR3, FR10) |
-| `memories case create/delete/list` | 1 | **Not started** — compatibility stub. Case bootstrap exists server-side (Epic 0/3) | Case id, unit count, next-step hint (FR26–FR27, FR30) |
+| `memories ingest <file\|url\|dir> --tenant --case` | 1 | Compatibility stub. Use the native file, URL or directory route in Journey 9. | Progress, unit count, per-unit ingestion state (FR1–FR3, FR10) |
+| `memories case create/delete/list` | 1 | Compatibility stub. Create/list at `/api/v1/tenants/{tenantId}/cases`. Delete through the native single-case route. | Case ID, unit count, next-step hint (FR26–FR27, FR30) |
 | `memories case add-member/remove-member/activity` | 1 | **Not started** — stub | Member list (metadata only, no authorization); activity feed attributing ingest/search/membership events (FR28–FR29, FR36) |
-| `memories tenant create/delete/verify` | 1 | **Not started** — absent from the command tree; only `tenant list` is wired. Provisioning exists as `TenantProvisioningWorkflow` (Epic 0/5) | Provisioned resources summary; verify prints the NFR8 isolation checks with pass/fail (FR38–FR40) |
+| `memories tenant create/delete/verify` | 1 | Absent. Use native tenant lifecycle routes. `POST /api/v1/tenants/{tenantId}/verify` runs isolation diagnostics. | Provisioning receipt and per-check diagnostic results (FR38–FR40). NFR8 requires separate populated, dual-principal evidence. |
 | `memories tenant list` | 1 | Shipped (7.1) | Tenant table |
-| `memories status telemetry --tenant` | 1 | Shipped (7.5) | Telemetry summary, indexes, queue depth |
-| `memories status --case/--failed` | 1 | **Not started** — absent from the command tree; only `telemetry` is wired | Counts per ingestion state; failed units with stage + error (FR10–FR11) |
-| `memories consistency verify/inspect/repair --tenant` | 1 | Shipped (8.2) | Divergence report; dry-run-then-apply repair receipt (FR73–FR74) |
-| `memories quickstart` | 1 | Shipped (7.4) | Prerequisite check → boot hint → health → sample tenant → sample ingest → validation search |
+| `memories status telemetry --tenant` | 1 | Shipped (7.5) | Tenant index health and size, recent search and ingestion activity, queue depth. |
+| `memories status --case/--failed` | 1 | Absent. Current per-case counts and failed-unit details are native case reads (see Failure handling). | Counts by ingestion state and failures with stage and error (FR10–FR11). |
+| `memories consistency verify/inspect/repair --tenant` | 1 | Verify, inspect and mutating repair shipped (8.2) | Reports divergence. Confirmation or `--yes` schedules Redis-input repair. FR74 still requires an authoritative preview and fenced apply (Story 34.30) |
+| `memories quickstart` | 1 | Shipped compatibility wizard (7.4). Withdrawn from McpCli migration (L06). | Checks prerequisites and health, provisions the sample tenant, ingests a sample and searches for it. |
 | `memories config show` | 1 | Shipped (7.1) | Effective configuration with sources |
-| `memories export case/tenant --tenant` | 2 (delivered early) | Shipped (8.3) | Portable JSON (FR71) |
+| `memories export case/tenant --tenant` | 2 | Basic application export shipped early (8.3) | Streams portable JSON for the selected case or tenant. FR71 custody safeguards remain outstanding |
 | `memories handlers list/mismatches` | 1.5 | Shipped (9.3) | Registered handlers; mismatch diagnostics (FR62) |
 | `memories explore` | 1.5 | Not started — stub | Interactive exploration |
 
-**Shipped without a CLI verb (REST `/api/v1` + `Hexalith.Memories.Client.Rest` are the Phase 1 surface; no CLI verb is planned for Phase 1):** FR12 re-ingest (`POST …/memory-units/{id}/re-ingest`, `POST …/failed-units/re-ingest`), FR21–FR22 metadata filter and pagination (`GET /api/v1/search` parameters), FR35 delete unit (`DELETE …/memory-units/{id}`), FR37 annotate (`POST …/memory-units/{id}/annotations`), FR42/FR43/FR45 tenant configuration (`PATCH /api/v1/tenants/{id}`, `GET/PUT …/embedding-config`), FR51 promote edge confidence (`PATCH /api/v1/tenants/{id}/edges/confidence`). Route constants are `Contracts.V1.MemoriesRoutes`. A future CLI verb for any of these is a sprint-selected FR53 slice, not an MVP gap.
+**Shipped without a CLI verb (REST `/api/v1` + `Hexalith.Memories.Client.Rest` are the Phase 1 surface; no CLI verb is planned for Phase 1):** FR12 re-ingest (`POST …/memory-units/{id}/re-ingest`, `POST …/failed-units/re-ingest`), FR21–FR22 metadata filter and pagination (`GET /api/v1/search` parameters), FR35 delete unit (`DELETE …/memory-units/{id}`), FR37 annotate (`POST …/memory-units/{id}/annotations`), FR42/FR45 tenant configuration (`PATCH /api/v1/tenants/{id}`, `GET/PUT …/embedding-config`), FR51 promote edge confidence (`PATCH /api/v1/tenants/{id}/edges/confidence`). Route constants are `Contracts.V1.MemoriesRoutes`. A later CLI verb for these operations requires selection under FR53.
+
+FR43 uses the native `PUT …/embedding-config` endpoint in Phase 1. Its conflict response warns that existing vectors require a full reindex. An acknowledged `forceReindex=true` records `ReindexRequired`. Story 34.31 still owes the rebuild and verified cutover. A Phase 1 CLI verb is outside the approved inventory. [Native guard](../../src/Hexalith.Memories.Server/Endpoints/TenantLifecycleEndpoints.cs)
 
 Epic 32 owns delivery of the approved Phase 1 operations through McpCli. Story 35.7 can qualify G3 once an operator can complete the manual journey through first search.
 
@@ -944,8 +951,8 @@ Sensitive values are not resolved through configuration fallback. Product servic
 | Example | Maps to | Demonstrates | Status (2026-09-08) |
 |---|---|---|---|
 | `samples/01-quickstart/` | Journey 9 (Phase 1 thesis path) | Boot AppHost and ingest and search through the CLI | Sample pending. The README documents the compatibility walkthrough. Story 35.7 owns the timed target-CLI run. |
-| `samples/02-eventstore-integration/` | Journey 1 (Phase 1.5) | Aspire AppHost with EventStore + Memories, DAPR subscription wired; the L2 stopwatch runs against it | Not started — required before L2 can be timed |
-| `samples/03-mcp-agent/` | Journey 3 (Phase 1.5) | MCP server launched by Aspire, agent configuration | Not started — required before L1 can be run |
+| `samples/02-eventstore-integration/` | Journey 1 (Phase 1.5) | Pinned EventStore starter service and sample AppHost. L2 times package addition, subscription setup and search for the event emitted by that service | Not started — required before L2 can be timed |
+| `samples/03-mcp-agent/` | Journey 3 (Phase 1.5) | MCP server launched by Aspire, pinned reference agent configuration and L1 evidence procedure | Not started — required before L1 can be run |
 
 Numbered naming signals the learning path and mirrors user journey progression. No `samples/` folder exists in the repository yet; the Phase 1.5 samples are launch prerequisites, not documentation polish.
 
@@ -979,7 +986,7 @@ Contributors can run unit tests without Docker. Integration tests require Docker
 - `references/Hexalith.EventStore` — Event types, versioning conventions, DAPR integration patterns
 
 **DAPR + Aspire Orchestration:**
-Current path: .NET Aspire AppHost with DAPR sidecars. Local: `dotnet run --project Hexalith.Memories.AppHost`. This is orchestration, not an extra product surface — see `addendum.md`.
+Current path: .NET Aspire AppHost with DAPR sidecars. Local: `dotnet run --project src/Hexalith.Memories.AppHost`. This is orchestration, not an extra product surface — see `addendum.md`.
 
 **Cross-Language Future Path:**
 Non-.NET external consumers can integrate today via ingress REST API (JSON payloads). Non-.NET internal services can integrate via DAPR service invocation (any DAPR SDK). Dedicated Python/TypeScript client packages are a future convenience layer.
@@ -992,7 +999,7 @@ FR1–FR75 are the product-horizon inventory, not a claim that every FR is activ
 
 - **MVP (thesis + foundation):** FR1–FR22, FR24–FR52, FR55–FR57, FR63–FR70, FR72–FR75, plus approved Phase 1 McpCli capabilities (FR53).
 - **Phase 1.5:** FR23, FR54, FR58–FR62, and the Phase 1.5 CLI capabilities of FR53. Target mappings for EventStore diagnostics require separate approval.
-- **Phase 2:** FR71 (completed early as non-MVP Story 8.3; Epic 26 covers operational backup/restore only — do not reschedule application export as new Phase 2 work).
+- **Phase 2:** FR71. Story 8.3 delivered the basic case and tenant application export early. The custody and import safeguards remain open. Epic 26 owns operational backup and recovery.
 
 A capability completed before its planned phase is recorded as completed non-MVP and does not silently change thesis-MVP acceptance.
 
@@ -1000,15 +1007,17 @@ A capability completed before its planned phase is recorded as completed non-MVP
 
 | Status | FRs | Notes |
 |---|---|---|
-| **Implemented and product-active** | FR4–FR5, FR7, FR9, FR12, FR14–FR16, FR18–FR22, FR24, FR31–FR33, FR35, FR37, FR41–FR43, FR45–FR46, FR48–FR52, FR55–FR57, FR63–FR64, FR67–FR70, FR73–FR74 | Implementation exists under the current wording and the capability belongs to an active product phase. This is delivery, not thesis-gate qualification. |
+| **Implemented and product-active** | FR4–FR5, FR7, FR9, FR12, FR14–FR16, FR18, FR20–FR22, FR24, FR31–FR33, FR35, FR37, FR41–FR42, FR45–FR46, FR48–FR52, FR55, FR63–FR64, FR67–FR70, FR73 | Implementation exists under the current wording and the capability belongs to an active product phase. This is delivery, not thesis-gate qualification. |
 | **Implemented preview; inactive pending Phase 1.5 gates** | FR23, FR54, FR58–FR62 | Code/artifacts exist, but L1–L3 qualification, publication, and announcement have not occurred. Tracker completion does not activate the product surface. |
 | **Partial (protocol prerequisite missing)** | FR17, FR25 | FR17: shipped hybrid skips the graph axis without an explicit start node; the auto-seeding rule (Measurable Outcomes) is not implemented. FR25: shipped benchmark compares against best single axis; the BM25+semantic control does not exist. Both gate G1. |
 | **Partial (architecture contract incomplete)** | FR6, FR13, FR34, FR39, FR65, FR75 | Missing or incomplete: current-revision all-axis checkpoint/replay (FR6/FR13), tenant-wide case-partitioned graph merge (FR34), end-to-end erasure plus CLI (FR39), server-derived external/system provenance (FR65), and durable authoritative duplicate suppression (FR75). |
+| **Partial explanation and CLI recovery** | FR19, FR56–FR57 | FR19 exposes ranks and weights, but the current explain text calls the public hybrid score weighted. FR56 and FR57 have recovery hints, but empty-state guidance still points to the compatibility ingest stub. The enrolled CLI must demonstrate that its suggested actions work. [Explain metadata](../../src/Hexalith.Memories.Server/Search/ExplainMetadataBuilder.cs) · [Compatibility search hints](../../src/Hexalith.Memories.Cli/Commands/SearchQueryCommand.cs) |
+| **Partial operator operations** | FR43, FR74 | FR43 has a native configuration warning and acknowledgement guard. Story 34.31 owes an authoritative rebuild, catch-up, verified tenant cutover and retirement. FR74 has a confirmed mutating Redis-input repair. Story 34.30 owes an authoritative revision-bound dry run, a tenant-fenced apply, deletion provenance in access telemetry and rejection of unsupported edges. [Repair story](epics.md#story-3430-repair-only-from-authoritative-revisions) · [Rebuild story](epics.md#story-3431-activate-a-phase-1-embedding-rebuild-epoch) |
 | **Shipped against previous wording; re-verification owed** | FR8, FR66, FR72 | Existing capabilities predate the strengthened fairness, capability-aware degradation, and readiness contracts. |
 | **Shipped, hardening in progress** | FR44 | Epics 0/5/20 delivered isolation controls. The November audit found a shared Redis connection in the search path. Stories 34.11 and 35.6 must demonstrate tenant-scoped access, cross-tenant denial and denial after revocation. Story 34.53 covers FalkorDB separately. |
-| **Partial (server shipped, Phase 1 CLI operation unavailable)** | FR1–FR3, FR10–FR11, FR26–FR30, FR36, FR38, FR40, FR47, FR53 | Server and compatibility implementations exist. Epic 32 still needs to deliver the required shared CLI operations. The audit found sensitive URL values in workflow logs and case activity. DW-732 tracks redaction and regression tests for FR2/FR36. FR38/FR40 need backend isolation and revocation evidence. FR39 is tracked above under the incomplete erasure contract. |
-| **Shipped early (non-MVP)** | FR71 | Story 8.3 operational export/restore; application-facing export stays Phase 2. |
-| **Not started** | — | No FR is wholly unstarted; the gaps are the CLI slices above. |
+| **Partial (server shipped, Phase 1 CLI operation unavailable)** | FR1–FR3, FR10–FR11, FR26–FR30, FR36, FR38, FR40, FR47, FR53 | Server and compatibility implementations exist. Epic 32 still needs to deliver the required shared CLI operations. DW-732 closed the FR2/FR36 signed-URL display defect on November 20. Logs and case activity redact sensitive values, including prior activity on read, while exact fetch and tenant/case deduplication are preserved. The 159 focused server tests and two live integration cases cover that boundary. AD-4 durable workflow-history protection and the target CLI operations remain open. [DW-732 evidence](../implementation-artifacts/deferred-work.md#dw-732-keep-ingestion-source-credentials-out-of-logs-and-case-activity) FR38/FR40 need backend isolation and revocation evidence. FR39 is tracked above under the incomplete erasure contract. |
+| **Partial, basic export shipped early (non-MVP)** | FR71 | Story 8.3 delivered streamed application JSON. Story 34.26 owes verifiable origin, payload integrity and staging cleanup. Story 34.57 binds release to the tenant lifecycle. Story 34.25 must refuse same-population imports from an erased origin. Epic 26 covers operational backup and recovery. |
+| **Not started** | — | Every FR has at least some implementation. |
 
 ### Knowledge Ingestion
 
@@ -1034,7 +1043,7 @@ A capability completed before its planned phase is recorded as completed non-MVP
 - **FR16:** Developer can search memory units by graph traversal within a tenant
 - **FR17:** Developer can search memory units by hybrid fusion combining all available axes; when no graph start node is supplied, the graph axis is auto-seeded from the top syntactic and semantic candidates (Measurable Outcomes › Graph seeding). For tenant-wide search, seeds and traversal are partitioned by each result's authoritative case and never cross case boundaries. Hybrid never silently degrades to two axes on a populated graph. **Status:** partial (auto-seeding and tenant-wide case merge not implemented)
 - **FR18:** Developer can control which axes are included in a search query
-- **FR19:** Developer can view per-axis score breakdown for each search result, including normalization method applied (explain mode)
+- **FR19:** Developers can inspect the score semantics of a native single-axis result or the unweighted normalized rank contributions and composite weights of a hybrid result (NFR24).
 - **FR20:** Developer can filter search results by case
 - **FR21:** Developer can filter search results by metadata field values
 - **FR22:** Developer can paginate search results
@@ -1064,8 +1073,8 @@ A capability completed before its planned phase is recorded as completed non-MVP
 - **FR40:** Operator can verify tenant isolation via automated checks
 - **FR41:** Operator can list tenants
 - **FR42:** Operator can update tenant configuration after creation (rate limits, display name, settings)
-- **FR43:** System refuses embedding-provider or index-schema changes that require reindex unless the operator passes an explicit acknowledgment flag; the CLI states that existing vectors will be rebuilt
-- **FR44:** System derives or verifies tenant and case authority server-side on every external and internal path, rejecting cross-tenant requests with clear errors; request fields, app identity, case membership, and channel credentials cannot authorize by themselves
+- **FR43:** Before accepting an embedding-provider or index-schema change that requires reindexing, the Phase 1 native API must tell the operator that existing vectors require rebuilding and require explicit acknowledgement. The acknowledged rebuild may degrade service for that tenant. It must catch up to authoritative changes, verify parity and activate the new configuration atomically for the tenant. Any later CLI exposure must relay the warning and acknowledgement.
+- **FR44:** System derives or verifies tenant and case authority server-side on every external and internal path. An explicit tenant conflict is rejected before retrieval or mutation with a clear error and zero restricted output. Request fields, app identity, case membership and channel credentials alone confer no authority.
 - **FR45:** Operator can view current configuration of a tenant (embedding provider, rate limits, index status)
 
 ### Graph & Causal Intelligence
@@ -1082,7 +1091,7 @@ These are the graph *mechanics* (MVP, Epics 1 and 4). What populates `caused_by`
 
 ### Developer Interfaces
 
-- **FR53:** Developers can ingest and retrieve memory through working, enrolled `Hexalith.McpCli` operations for the approved Phase 1 scope. Phase 1.5 adds its approved CLI capabilities. The compatibility table records the expected output and recovery behavior. **Status:** partial pending target delivery.
+- **FR53:** Developers can ingest and retrieve memory through working, enrolled `Hexalith.McpCli` operations for the approved Phase 1 scope. Phase 1.5 adds its approved CLI capabilities. Operations that require user authority must pass the NFR10 transport-specific admission checks before enrollment. The compatibility table records the expected output and recovery behavior. **Status:** partial pending target delivery.
 - **FR54:** Developer can interact with search, ingestion, traversal, and case-info capabilities via MCP tools. **Phase:** 1.5
 - **FR55:** CLI supports multiple output formats: human-readable (default), JSON, and table
 - **FR56:** CLI provides actionable error messages with recovery suggestions for, at minimum: server unreachable (name the boot command); authentication or tenant-claim mismatch (name the authenticated tenant without disclosing restricted evidence); unknown tenant or case id; true empty tenant or case (name an implemented next action); incomplete/delayed ingestion; active filters; stale evidence; unit `failed` (name the stage and error); backend degraded (name the unavailable/excluded axes); provider rate-limited (name the retry window). A generic "no results" message is insufficient, and unavailable target commands are never presented as completed actions. The CLI exit-code map (`CliExitCodes`) is the machine-readable side of this list
@@ -1098,9 +1107,9 @@ These are the graph *mechanics* (MVP, Epics 1 and 4). What populates `caused_by`
 
 ### Trust & Transparency
 
-- **FR63:** System returns a relevance confidence (0.0–1.0) with per-axis breakdowns for each search result
+- **FR63:** A hybrid result exposes relevance confidence in 0.0–1.0 and unweighted normalized per-axis rank contributions. Native single-axis results identify their own score measure (FR19/NFR24).
 - **FR64:** System tracks metadata origin (human-declared vs AI-inferred) and metadata confidence per metadata field on every memory unit
-- **FR65:** System records `ingested_by` as a mandatory field on every memory unit: normalized authenticated subject for external calls, or a canonical `system:*` principal derived from an authenticated app-ID allowlist plus an explicit tenant grant for internal calls; caller-supplied provenance cannot override it
+- **FR65:** Every memory unit records `ingested_by`. External attribution binds to the authenticated issuer and subject, normalized once at ingress and compared ordinally thereafter. The same subject at different issuers yields distinct actors. Trusted internal attribution uses the canonical `system:*` principal for the authenticated allowlisted workload after its active-tenant grant check. Caller-supplied provenance cannot override either identity.
 - **FR66:** When selected search axes degrade, the system returns a safe partial result if at least one selected axis can respond and fails only when none can. The Evidence Packet distinguishes unavailable, excluded, and available-with-no-hits axes and reports freshness impact plus recovery guidance; empty results distinguish true absence, empty/wrong scope, incomplete or delayed ingestion, filters, stale evidence, authorization refusal, and backend degradation. Unauthorized responses contain no restricted evidence, and no surface promotes an incomplete ingestion revision
 - **FR67:** System records search and access events per tenant as access telemetry (Glossary) — infrastructure telemetry that applications may build access records on; not a tamper-evident audit trail. Telemetry delivery failure never changes domain truth or rolls back an accepted product mutation
 
@@ -1112,7 +1121,7 @@ These are the graph *mechanics* (MVP, Epics 1 and 4). What populates `caused_by`
 
 ### Data Portability & System Health
 
-- **FR71:** Developer can export all memory units, metadata, and graph edges for a case or tenant in a portable format. **Phase:** Phase 2. Completed early as non-MVP (Story 8.3). Epic 26 covers operational backup/restore only — do not reschedule application-facing export as new Phase 2 work.
+- **FR71:** A developer can export all memory units, metadata and graph edges for a case or tenant in a portable format. Story 8.3 delivered basic streamed JSON ahead of Phase 2. The application capability belongs to Phase 2. Its deployed paths require verifiable origin and payload integrity, controlled custody transfer, cleanup of source-held copies and refusal of same-population imports from an erased origin. These safeguards also protect the active FR39/NFR16 erasure boundary under AD-16/AD-21. Epic 26 owns operational backup and recovery.
 - **FR72:** System exposes liveness for process viability and readiness for authentication configuration, the DAPR control boundary, and EventStore command availability. Search-backend outages report capability degradation while safe selected axes remain usable rather than making the entire server unready
 - **FR73:** Operator can detect index/graph divergence via consistency check
 - **FR74:** Operator can repair detected index/graph inconsistencies via a dry-run-then-apply consistency repair that cannot cross tenants, cannot silently delete units without provenance in access telemetry, and cannot invent edges the current authoritative EventStore revision does not support
@@ -1125,9 +1134,11 @@ These are the graph *mechanics* (MVP, Epics 1 and 4). What populates `caused_by`
 
 | Status | NFRs |
 |---|---|
-| Verified | NFR11, NFR17, NFR19–NFR20, NFR26–NFR28, NFR30 |
+| Verified | NFR11, NFR17, NFR20, NFR26–NFR28, NFR30 |
 | Verified against the *previous* wording; re-verification owed | NFR8–NFR10 (principal-driven isolation, data-plane secret path, and layered internal authorization), NFR13 (mixed-workload fairness), NFR18 (capability-aware failure boundary), NFR21 (negative envelope case), NFR22 (durable provider retry timing), NFR24–NFR25 (canonical cross-surface fusion/explain semantics) |
-| Partial mechanism and re-verification owed | NFR16 — the controlled Redis restart covered the previous wording. Authoritative replay and erased-tenant non-resurrection remain unverified. NFR31 — the compatibility walkthrough exists. Target operations and the Story 35.7 cold run remain outstanding. |
+| Partial mechanism and re-verification owed | NFR16 — the controlled Redis restart covered the previous wording. Authoritative replay and erased-tenant non-resurrection remain unverified. |
+| Partial mechanism and re-verification owed | NFR19 — native ingestion status and case failed-unit endpoints exist. The enrolled CLI and intentional-failure evidence across all stages are outstanding. [V1 route constants](../../src/Hexalith.Memories.Contracts/V1/MemoriesRoutes.cs) |
+| Partial mechanism and re-verification owed | NFR31 — the compatibility walkthrough exists. Target operations and the Story 35.7 cold run remain outstanding. |
 | Implemented, verification run not recorded in PRD evidence | NFR1–NFR5, NFR7, NFR12, NFR14, NFR23, NFR29, NFR33–NFR34. DW-735 tracks measurement of the NFR12 100K-unit workload. Epic 27 closed with local retention evidence. Production lifecycle writes remain disabled. The operator’s log platform controls retention. The lack of a Memories-enforced bound is accepted debt. The Production qualification campaign is parked. [November 1 decision](sprint-change-proposal-2026-11-01.md) |
 | Not started | NFR6 (event freshness measurement), NFR15 (extraction-point review), NFR32 and NFR35 (future web, Epic 17 delivered components but gates activate with the web surface), NFR36 (new 2026-09-08), NFR37 (active CLI accessibility contract; current-contract evidence absent) |
 
@@ -1149,9 +1160,9 @@ These are the graph *mechanics* (MVP, Epics 1 and 4). What populates `caused_by`
 
 | NFR | Requirement | Verification | Phase |
 |---|---|---|---|
-| **NFR8** | Zero cross-tenant data leakage — a principal whose tenant claims name tenant A cannot read, search, traverse, or ingest into tenant B's data, whatever tenant id the request carries | Automated suite driven by *principals*, not ids: authenticate as tenant A, then search, ingest, and traverse with `--tenant B`, with B's index names, and with malformed/empty ids; every call is rejected or returns only A's data. Graph-specific test: identical graph structures in A and B, traverse as A, zero B nodes even if edge ids collide. Re-run when Epic 24 (tenant-scoped principals) closes | MVP |
+| **NFR8** | Zero cross-tenant data leakage. Reject an explicit tenant conflict before any product data read, mutation or restricted output. Tenant A’s credentials cannot operate on tenant B even when index names or graph IDs overlap. | As A, search, ingest and traverse using B’s tenant ID or resource names. Require a denial with no restricted results or product side effects. Verify that malformed and explicitly empty tenant IDs are rejected before product work. Where an operation permits omitted scope, verify it derives only the authenticated tenant. Repeat with identical graph structures in A and B and assert zero B nodes. Re-run when Epic 24 closes. | MVP |
 | **NFR9** | Product services retrieve embedding-provider, application, and data-plane credentials exclusively through the DAPR Secrets API backed by OpenBao. Secret values never appear in application configuration, ordinary environment variables, workflow history, logs, or public contracts. Deployments may supply only documented minimum OpenBao bootstrap material outside that boundary; direct Redis/FalkorDB credential injection is an alignment gap, not an approved second path. | Structural dependency tests, secret scanning, AppHost/deployment topology tests, and integration tests proving DAPR reads from OpenBao without secret disclosure | Ongoing |
-| **NFR10** | External/delegated bearer authority survives REST, CLI, MCP, and internal hops. Trusted internal calls additionally use deny-by-default DAPR workload authorization and protected app channels, then map the authenticated app ID through one operator-owned finite allowlist to a canonical `system:*` principal with an explicit tenant grant. Unknown apps and ungranted tenants fail closed; channel authentication never substitutes for tenant authorization. | End-to-end authorization tests covering delegated subjects, allowed and unknown app IDs, granted and ungranted tenants, and protected DAPR channels | Ongoing |
+| **NFR10** | Native REST and compatibility CLI/MCP preserve validated bearer tenant and subject authority. The shared Gateway calls with workload authority and forwards no user credentials. Before enrolling an operation that requires a user, demonstrate authenticated tenant and user authorization on its selected transport. Refuse when that proof is absent. Ordinary trusted internal calls also require protected DAPR channels, an allowlisted app ID, an explicit tenant grant and authoritative `Active` state. | Exercise delegated requests on the bearer paths and workload requests on the Gateway. Verify authorized and denied user-scoped operations, absent user proof, unknown workloads, missing grants and inactive tenants. | Ongoing |
 | **NFR11** | External product REST/CLI ingress is authenticated for the active MVP HTTP surface. Health probes and required DAPR infrastructure routes are the only deliberate anonymous exceptions and are named and tested. Additional identity-provider hardening may remain operational-readiness work; unauthenticated product ingress is not a Phase 1.5 allowance. | Integration test with unauthenticated product requests plus named anonymous exceptions | MVP |
 
 ### Scalability
@@ -1159,7 +1170,7 @@ These are the graph *mechanics* (MVP, Epics 1 and 4). What populates `caused_by`
 | NFR | Requirement | Target | Phase |
 |---|---|---|---|
 | **NFR12** | Adding nine loaded tenants does not degrade an existing tenant's p95 query latency or ingestion throughput by more than 5% under the NFR13 reference mixed-load profile | Benchmark tenant 1 alone at 100K units, then repeat with 9 additional 100K-unit tenants running the NFR13 mix; compare p95 latency and throughput | Ongoing |
-| **NFR13** | Under the 10-minute reference mix—tenant A runs 10 concurrent syntactic, semantic, and hybrid queries; tenant B submits 100 ≤10 KB ingests/min; tenant C repairs 100 units—A remains within NFR1–NFR3 and ≤10% of its solo p95, B meets NFR5, and C completes ≥25 units/min. Every eligible non-empty tenant queue receives an admission within 5 seconds after capacity is available. Default pending caps are 1,000 units/tenant and 10,000 globally; the first item beyond either cap is rejected within 1 second with retry guidance, while accepted work is never dropped. `[ASSUMPTION: these mixed-load, fairness, and queue-cap numbers are the initial architecture-reconciliation budgets pending load-test calibration.]` | Reproducible three-tenant mixed-load and cap-plus-one tests, including interactive, batch, repair, recovery, and migration priority | Ongoing |
+| **NFR13** | Over ten measured minutes, A runs ten concurrent queries over a fixed mix of syntactic, semantic and hybrid search. For each query type, mixed-load p95 must meet NFR1–NFR3 and be ≤1.10 times its matched solo p95. B offers 120 ingests/min of ≤10 KB each and must complete >100/min on average (NFR5). C starts with 300 distinct units queued for repair and must complete ≥250 during the same window. Every eligible non-empty tenant queue receives an admission within 5 seconds after capacity is available. Default pending caps are 1,000 units/tenant and 10,000 globally. Reject the first excess item within 1 second with retry guidance, retaining all accepted work. | Reproducible three-tenant reference run and separate cap-plus-one tests covering interactive, batch, repair, recovery and migration. [Load-test procedure](addendum.md#nfr13-load-window) | Ongoing |
 | **NFR14** | Redis memory footprint per memory unit is predictable and documented — operator can estimate infrastructure costs before tenant provisioning | Published sizing guide: memory per unit by vector dimension and metadata size | Ongoing |
 | **NFR15** | Architecture must not preclude backend migration (Redis → Qdrant) — concrete implementation with clear extraction points identified, no premature interfaces | Architecture review: extraction points documented, no tight coupling to Redis-specific APIs in domain logic | Ongoing |
 
@@ -1170,14 +1181,14 @@ These are the graph *mechanics* (MVP, Epics 1 and 4). What populates `caused_by`
 | **NFR16** | No loss of EventStore-committed memory units across Redis restart or projection loss: every non-erased unit that reached `pending` or later becomes searchable again under the current schema and embedding configuration, either because projections survived or because authoritative EventStore replay rebuilt all axes. AOF is an optimisation, not the durability contract. Replay, restart, export restore, and backup restore must never resurrect content from a tenant whose erasure completed under FR39. | Commit N units, restart Redis, then separately destroy projections and replay EventStore truth through the FR6/FR13 completion contract. **AOF-intact:** all N `indexed` within 5 minutes for 10K units/tenant. **Rebuild:** progress visible via `status`, completion at no worse than NFR5 throughput, zero non-erased units missing. Restore an erased-tenant fixture and prove zero content rehydrates. The current architecture spine records the authoritative replay mechanism as missing. | MVP |
 | **NFR17** | Ingestion pipeline state survives process restarts — pending and in-progress units resume without data loss | DAPR Workflow / Durable Task history verified | MVP |
 | **NFR18** | Partial backend failure returns a safe result when at least one selected axis can respond and fails only when none can. The Evidence Packet distinguishes unavailable, excluded, and available-with-no-hits axes and includes freshness impact plus recovery guidance; incomplete ingestion revisions remain incomplete. | Chaos test each backend alone and in combinations; verify safe partial responses, exact Evidence Packet meanings, and the no-safe-axis failure boundary | Ongoing |
-| **NFR19** | Failed ingestion units are never silently dropped — all failures visible via CLI status with error details and failure stage | End-to-end test with intentional failures at each pipeline stage | Ongoing |
+| **NFR19** | The tenant-authorized enrolled CLI lists each failed ingestion unit with its failure stage and safe error details | Induce a failure at each pipeline stage through retry exhaustion. From the enrolled CLI, check that each unit appears in its tenant and case with the expected stage and safe error details | Ongoing |
 
 ### Integration
 
 | NFR | Requirement | Target | Phase |
 |---|---|---|---|
 | **NFR20** | MCP tool responses conform to MCP protocol specification — valid tool schemas, typed parameters, structured error responses | MCP protocol conformance test suite | P1.5 |
-| **NFR21** | DAPR pub/sub integration accepts the CloudEvents envelope as published by Hexalith.EventStore conventions (envelope attributes, CausationId/CorrelationId extension attributes, source-prefix routing). Envelopes from other DAPR publishers are accepted only for the fields the EventStore convention defines; processing them without custom code is the DAPR-generic *experiment* (Innovation #2), not a requirement | Integration test with EventStore-convention CloudEvents payloads; a documented negative test showing what a non-conforming envelope does | P1.5 |
+| **NFR21** | Admit EventStore-convention CloudEvents using the authenticated delivery channel. Match the subscribing component, topic and scoped publisher to one candidate tenant, then require the allowlisted publisher, explicit tenant grant and an active tenant. Read event attributes, including causation and correlation, only inside that authorized scope. Other publishers’ convention-compatible fields may be accepted through the same admission checks. Generic integration without custom code remains an experiment. | Deliver a conforming event on its authorized channel. Change only its envelope `source` and verify it cannot select another tenant. Reject unknown or ambiguous routes, contradictory envelope tenants, ungranted or unknown publishers and inactive tenants before mutation. Record a nonconforming-envelope test. | P1.5 |
 | **NFR22** | Embedding provider rate limits do not crash the pipeline or lose work: the system honors provider `Retry-After` through durable workflow timers and bounded queues, never retries before the stated instant, and resumes eligible work within 5 seconds after the window when capacity is available | Rate-limit simulation per provider across restart, queue saturation, and concurrent tenants; assert retry timing and no accepted-work loss | Ongoing |
 | **NFR23** | CLI connects to the memory server via configurable endpoint — supports local dev (localhost), container (docker service name), and remote (ingress URL) environments | Configuration layering test across all three environments | Ongoing |
 
@@ -1185,8 +1196,8 @@ These are the graph *mechanics* (MVP, Epics 1 and 4). What populates `caused_by`
 
 | NFR | Requirement | Target | Phase |
 |---|---|---|---|
-| **NFR24** | Hybrid fusion uses deterministic weighted reciprocal-rank fusion with per-axis rank contributions in 0.0-1.0; single-axis explain still documents axis-specific score semantics, and every evidence-bearing surface preserves the same contributions and null/empty meanings | Cross-surface fusion and explain contract tests with known rankings/weights | MVP |
-| **NFR25** | Fusion produces deterministic scores and ordering — the same query against the same data and active axes yields identical results across runs and surfaces, with deterministic memory-unit-ID tie breaking | Golden-vector contract tests across REST, CLI JSON, and MCP plus 100 repeated queries with zero score or ordering variance | MVP |
+| **NFR24** | Hybrid uses deterministic weighted RRF. Public hybrid per-axis values are unweighted `raw(r)/raw(1)` on 0.0–1.0. Native single-axis scores keep their own meaning. All evidence-bearing surfaces preserve the same contributions and null/empty meanings. | With a non-unit axis weight, assert rank one yields internal `1/11` and public `1.0`, rank two yields public `11/12`, and only the composite changes when relative weights change on a fixture with different axis ranks. Compare each active presenter. | MVP |
+| **NFR25** | The same query, data, configuration and active axes produce identical scores and order across runs and surfaces. Ties resolve by ordinal memory-unit ID. | G5 compares native REST with enrolled McpCli CLI JSON on fixed golden vectors and 100 repeated queries, including original Evidence Packet bytes. The shared offline serializer fixture checks the contract. L1 adds end-to-end MCP parity for the Phase 1.5 surface. | MVP on active surfaces, MCP at Phase 1.5 |
 | **NFR26** | Benchmark suite produces reproducible results — running benchmarks twice against the same dataset yields identical NDCG@10 scores | Reproducibility test in CI | MVP |
 
 ### Observability
@@ -1202,7 +1213,7 @@ These are the graph *mechanics* (MVP, Epics 1 and 4). What populates `caused_by`
 | NFR | Requirement | Target | Phase |
 |---|---|---|---|
 | **NFR30** | Every CLI command includes --help with at least one usage example | CLI help completeness test: parse all commands, verify example presence | MVP |
-| **NFR31** | A developer following the README on a clean machine can start AppHost, create a tenant and case, ingest a file or URL, and obtain the first correct search result through enrolled McpCli operations in <30 minutes. The clean machine for G3 and L2 is a fresh Windows 11, macOS or Ubuntu LTS user profile with only Docker and the SDK pinned in `global.json` preinstalled. Assume broadband access. Obtain the embedding-provider key before timing starts and enter it at the prompt. Count Aspire installation and image pulls in the elapsed time. L2 separately times the Phase 1.5 EventStore journey. | Story 35.7 records the date, OS, machine, tool versions, raw steps and elapsed time. Record missing operations or a missed threshold as a blocker. Compatibility runs are logged separately. The target run is pending. [Walkthrough log](../../docs/dev/quickstart-walkthrough-log.md) | MVP |
+| **NFR31** | A developer following the README on a clean machine can start AppHost, create a tenant and case, ingest a file or URL, and obtain the first correct search result through enrolled McpCli operations in <30 minutes. The clean machine for G3 and L2 is a fresh Windows 11, macOS or Ubuntu LTS user profile with only Docker and the SDK pinned in `global.json` preinstalled. Assume broadband access. Obtain the embedding-provider key before timing starts and enter it at the prompt. Count Aspire installation and image pulls in the elapsed time. For L2, stage the pinned starter checkout and use the time-zero state in the launch stopwatch. | Story 35.7 records the date, OS, machine, tool versions, raw steps and elapsed time. Record missing operations or a missed threshold as a blocker. Compatibility runs are logged separately. The target run is pending. [Walkthrough log](../../docs/dev/quickstart-walkthrough-log.md) | MVP |
 
 ### Future web, freshness, and telemetry
 
@@ -1249,6 +1260,6 @@ These are the graph *mechanics* (MVP, Epics 1 and 4). What populates `caused_by`
 - `[ASSUMPTION]` The NFR "implemented" status row reflects absence of recorded evidence in planning artifacts, not proof of absence in CI. (§ Non-Functional Requirements › NFR delivery status)
 - `[ASSUMPTION]` NFR33 is Evidence Packet freshness (rerun SCP) and NFR35 is future-web interaction performance (remediation-batch SCP) — the two August 2026 patch sets used the same NFR33 id for different requirements. (§ NFR33 / NFR35; index-only by design — the collision is history, not a live requirement)
 
-- `[ASSUMPTION]` NFR13 mixed-load budgets (10-minute three-tenant profile, 10% solo-p95 degradation, 25 repair units/min, 5-second admission bound, and 1,000/10,000 queue caps) are initial values pending load-test calibration. (§ NFR13)
+- `[ASSUMPTION]` The initial NFR13 reference profile uses ten measured minutes, a per-type mixed/solo p95 ratio ≤1.10, >100 completed small ingests/min, ≥250 repaired units, a 5-second admission bound and 1,000/10,000 pending caps. Revisit these budgets through change control after load-test calibration.
 
 Resolved in this Update (no longer assumptions): benchmark N (now a protocol number, G1); Phase 1 graph population (now a decision in MVP Feature Set).

@@ -1,0 +1,223 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Hexalith.Memories PRD validation</title><style>
+  :root {
+    --bg: #fafaf9;
+    --surface: #ffffff;
+    --border: #e7e5e4;
+    --text: #1c1917;
+    --muted: #78716c;
+
+    --verdict-strong: #16a34a;
+    --verdict-adequate: #65a30d;
+    --verdict-thin: #d97706;
+    --verdict-broken: #dc2626;
+
+    --sev-low: #64748b;
+    --sev-medium: #ca8a04;
+    --sev-high: #ea580c;
+    --sev-critical: #dc2626;
+
+    --grade-exc: #16a34a;
+    --grade-good: #65a30d;
+    --grade-fair: #d97706;
+    --grade-poor: #dc2626;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    font-size: 15px;
+  }
+  .container { max-width: 960px; margin: 0 auto; padding: 32px 24px 64px; }
+
+  header.report-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 24px;
+  }
+  .title h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+  .title .subtitle { color: var(--muted); font-size: 13px; margin-top: 4px; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .grade {
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-weight: 600;
+    color: white;
+    font-size: 15px;
+    white-space: nowrap;
+  }
+  .grade-excellent { background: var(--grade-exc); }
+  .grade-good { background: var(--grade-good); }
+  .grade-fair { background: var(--grade-fair); }
+  .grade-poor { background: var(--grade-poor); }
+
+  .synthesis {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--muted);
+    border-radius: 8px;
+    padding: 18px 22px;
+    margin-bottom: 24px;
+    font-size: 15.5px;
+  }
+  .synthesis p { margin: 0 0 10px; }
+  .synthesis p:last-child { margin-bottom: 0; }
+
+  .dimension-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+  .dim-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .dim-card .dim-name { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .dim-card .dim-verdict { font-size: 14px; font-weight: 600; }
+
+  section.dimension, section.reviewer-section { margin-bottom: 14px; }
+  section.dimension details, section.reviewer-section details {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  section summary {
+    padding: 14px 20px;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  section summary::-webkit-details-marker { display: none; }
+  section summary::before {
+    content: "▸";
+    display: inline-block;
+    color: var(--muted);
+    transition: transform 0.15s ease;
+  }
+  section details[open] summary::before { transform: rotate(90deg); }
+  section summary h2 {
+    display: inline;
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    flex: 1;
+  }
+  .verdict-pill {
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: white;
+  }
+  .verdict-strong { background: var(--verdict-strong); }
+  .verdict-adequate { background: var(--verdict-adequate); }
+  .verdict-thin { background: var(--verdict-thin); }
+  .verdict-broken { background: var(--verdict-broken); }
+
+  .dim-body { padding: 4px 20px 18px; }
+  .dim-judgment { color: var(--text); font-size: 14.5px; }
+  .dim-judgment p { margin: 0 0 10px; }
+
+  .findings-list { padding: 0 20px 4px; }
+  article.finding {
+    padding: 14px 0;
+    border-top: 1px solid var(--border);
+  }
+  article.finding:first-child { border-top: none; }
+  article.finding header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+  .badge {
+    font-size: 10.5px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    line-height: 1.4;
+  }
+  .badge-sev-low { background: rgba(100, 116, 139, 0.12); color: var(--sev-low); }
+  .badge-sev-medium { background: rgba(202, 138, 4, 0.14); color: var(--sev-medium); }
+  .badge-sev-high { background: rgba(234, 88, 12, 0.14); color: var(--sev-high); }
+  .badge-sev-critical { background: rgba(220, 38, 38, 0.14); color: var(--sev-critical); }
+  .finding-title { margin: 0; font-size: 15px; font-weight: 500; flex: 1; min-width: 200px; }
+  .finding-location { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; color: var(--muted); }
+  .finding-note, .finding-fix { margin-top: 6px; font-size: 14px; }
+  .finding-fix strong { color: var(--muted); font-weight: 500; }
+
+  .reviewer-source {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  .mechanical {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-top: 24px;
+    font-size: 14px;
+  }
+  .mechanical h3 { margin: 0 0 10px; font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .mechanical ul { margin: 0; padding-left: 20px; }
+  .mechanical li { margin-bottom: 4px; color: var(--text); }
+
+  footer.report-footer {
+    margin-top: 40px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--muted);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  footer .meta { display: flex; gap: 24px; flex-wrap: wrap; }
+
+.container{overflow-wrap:anywhere}.report-header a, .dim-judgment a, .finding-location a, footer a{color:#1e4e69}.reviewer-section summary .reviewer-source{font-family:monospace}.jump{font-size:.94em}.dimension-summary .dim-card{min-width:0}.grade-poor{background:#a42632}.scope p{margin:.35rem 0}@media print{.container{padding:0}details{display:block}details::details-content{display:block;content-visibility:visible}a{color:inherit}}</style></head><body><main class="container">
+<header class="report-header"><div class="title"><h1>Hexalith.Memories PRD validation</h1><div class="subtitle"><a href="../prd.md">November 20 PRD</a> · <a href="../addendum.md">Addendum</a> · <a href="validation-report.md">Markdown report</a></div></div><div class="grade grade-poor">Poor</div></header>
+<div class="synthesis"><p><b>1 critical · 11 high · 9 medium · 2 low</b></p><p>The November 20 PRD supports holding Phase 1. It states a falsifiable search thesis, keeps the eight-topic diagnostic separate from qualifying evidence and identifies when the release decision can be reopened. Its acceptance criteria still allow reviewers to reach different decisions from the same data.</p><p>The critical defect is in Phase 1.5 gate L1. Its held-out topics have no applicable relevance labels. Phase 1 also needs an explicit G1 scoring rule and a consistent G2 tenant-mismatch result. The planning sequence for Story 34.33 before 34.1 agrees with the architecture and can proceed within its existing scope.</p></div>
+<div class="dimension-summary">
+<div class="dim-card"><div class="dim-name">Decision-readiness</div><div class="dim-verdict" style="color:var(--verdict-adequate)">Adequate</div></div>
+<div class="dim-card"><div class="dim-name">Substance over theater</div><div class="dim-verdict" style="color:var(--verdict-adequate)">Adequate</div></div>
+<div class="dim-card"><div class="dim-name">Strategic coherence</div><div class="dim-verdict" style="color:var(--verdict-strong)">Strong</div></div>
+<div class="dim-card"><div class="dim-name">Done-ness clarity</div><div class="dim-verdict" style="color:var(--verdict-thin)">Thin</div></div>
+<div class="dim-card"><div class="dim-name">Scope honesty</div><div class="dim-verdict" style="color:var(--verdict-adequate)">Adequate</div></div>
+<div class="dim-card"><div class="dim-name">Downstream usability</div><div class="dim-verdict" style="color:var(--verdict-thin)">Thin</div></div>
+<div class="dim-card"><div class="dim-name">Shape fit</div><div class="dim-verdict" style="color:var(--verdict-adequate)">Adequate</div></div>
+</div>
+<section class="dimension"><details><summary><h2>Decision-readiness</h2><span class="verdict-pill verdict-adequate">adequate</span></summary><div class="dim-body"><div class="dim-judgment"><p>The November decision names the owner, the missed checkpoint and the evidence for reopening. L1 cannot yet produce a launch verdict, and G1 needs a reproducible scoring rule.</p></div></div><div class="findings-list"><article class="finding" id="PRD-C01"><header><span class="badge badge-sev-critical">critical</span><h3 class="finding-title">PRD-C01 · L1 has no labels for the topics it must score</h3><span class="finding-location">PRD 204</span></header><div class="finding-note">L1 requires topics excluded from G1 labelling, then uses the frozen G1 labels to decide whether a citation is relevant. It also permits more than ten topics while prescribing eight successes out of ten.</div><div class="finding-fix"><strong>Suggested correction</strong> · Freeze independent L1 topic–unit judgments and a relevance cutoff before the agent run. Specify exactly ten topics or a pass fraction across every preregistered topic. Retain the requirement that every response meet its token budget.</div><p class="jump"><a href="../prd.md#measurable-outcomes">PRD</a> · <a href="../epics.md">Approved stories</a></p></article><article class="finding" id="PRD-H01"><header><span class="badge badge-sev-high">high</span><h3 class="finding-title">PRD-H01 · G1 does not define the grades used by its scorer</h3><span class="finding-location">PRD 170–177, 191</span></header><div class="finding-note">Three reviewers can clear pairwise κ ≥ 0.6 and still disagree on an individual unit. Taking the mean or median of their grades can change whether a topic clears ΔNDCG@10 ≥ 0.02. The diagnostic scorer accepts binary relevance.</div><div class="finding-fix"><strong>Suggested correction</strong> · Agree on the grade scale, adjudication, gain mapping and unjudged-item treatment before labelling. Freeze the resulting topic–unit file and scorer version with the corpus.</div><p class="jump"><a href="../prd.md#measurable-outcomes">PRD</a> · <a href="../../../tests/Hexalith.Memories.Benchmarks/Scoring/NdcgScorer.cs">Diagnostic scorer</a></p></article></div></details></section>
+<section class="dimension"><details><summary><h2>Substance over theater</h2><span class="verdict-pill verdict-adequate">adequate</span></summary><div class="dim-body"><div class="dim-judgment"><p>The benchmark section explains why the eight-topic result earns no G1 credit. The market section goes further than its evidence supports.</p></div></div><div class="findings-list"><article class="finding" id="PRD-L01"><header><span class="badge badge-sev-low">low</span><h3 class="finding-title">PRD-L01 · Market defensibility is presented as an established outcome</h3><span class="finding-location">PRD 643–669</span></header><div class="finding-note">The competition table and causal-chain tests support technical differentiation. They do not establish the claim of a defensible product category.</div><div class="finding-fix"><strong>Suggested correction</strong> · Describe defensibility as a hypothesis with an adoption signal, or omit the claim.</div><p class="jump"><a href="../prd.md#innovation--novel-patterns">PRD</a></p></article></div></details></section>
+<section class="dimension"><details><summary><h2>Strategic coherence</h2><span class="verdict-pill verdict-strong">strong</span></summary><div class="dim-body"><div class="dim-judgment"><p>Phase 1 tests the incremental value of graph retrieval against BM25 plus semantic retrieval. Aggregate and worst-topic limits constrain that bet. A measured failure changes the default search behavior.</p></div></div><div class="findings-list"></div></details></section>
+<section class="dimension"><details open><summary><h2>Done-ness clarity</h2><span class="verdict-pill verdict-thin">thin</span></summary><div class="dim-body"><div class="dim-judgment"><p>Several tests permit opposite outcomes for the same run. The most consequential differences concern scoring, tenant rejection and which clients must supply gate evidence.</p></div></div><div class="findings-list"><article class="finding" id="PRD-H02"><header><span class="badge badge-sev-high">high</span><h3 class="finding-title">PRD-H02 · L3 alternates between events and whole chains</h3><span class="finding-location">PRD 185, 206, 679</span></header><div class="finding-note">With nineteen complete two-event chains and one missing twenty-event chain, a chain count yields 95% while an event count yields about 66%. Both denominators appear in the PRD.</div><div class="finding-fix"><strong>Suggested correction</strong> · Choose the scoring unit, define the expected path for each unit, and require the fixture report to give the numerator and denominator.</div><p class="jump"><a href="../prd.md#measurable-outcomes">PRD</a></p></article><article class="finding" id="PRD-H03"><header><span class="badge badge-sev-high">high</span><h3 class="finding-title">PRD-H03 · G2 permits silent tenant substitution where FR44 requires rejection</h3><span class="finding-location">PRD 192, 402, 1068, 1152</span></header><div class="finding-note">NFR8 allows a caller authenticated for A who explicitly requests B to receive A’s data. FR44 and Journey 5 require the request to fail. Both can prevent disclosure, but the caller and operator observe different outcomes.</div><div class="finding-fix"><strong>Suggested correction</strong> · Require rejection with zero restricted output and side effects for an explicit tenant conflict. Test permitted scope omission separately.</div><p class="jump"><a href="../prd.md#security">PRD</a> · <a href="../architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md">Architecture decisions</a></p></article><article class="finding" id="PRD-H04"><header><span class="badge badge-sev-high">high</span><h3 class="finding-title">PRD-H04 · NFR21 endorses two ways to select a tenant for an event</h3><span class="finding-location">PRD 273, 1180</span></header><div class="finding-note">The normative row includes source-prefix routing. The correction in the same PRD and AD-5 require tenant selection from the authenticated delivery channel. The envelope source is publisher-controlled.</div><div class="finding-fix"><strong>Suggested correction</strong> · Describe the prefix rule as legacy behavior. Test channel-based routing, tenant grant and active-state checks, including that changing the envelope source cannot change the authorized tenant.</div><p class="jump"><a href="../prd.md#integration">PRD</a> · <a href="../architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md">Architecture decisions</a></p></article><article class="finding" id="PRD-H05"><header><span class="badge badge-sev-high">high</span><h3 class="finding-title">PRD-H05 · G5 has two Phase 1 surface lists</h3><span class="finding-location">PRD 195–198, 1188–1190</span></header><div class="finding-note">Phase 1 explicitly excludes MCP, while NFR25 requires REST, CLI JSON and MCP golden vectors for the G5 determinism check. Reviewers could accept the same REST and CLI evidence or require an MCP run.</div><div class="finding-fix"><strong>Suggested correction</strong> · Enumerate the Phase 1 participants and identify any offline contract fixture separately. Assign end-to-end MCP parity to its activation gate.</div><p class="jump"><a href="../prd.md#algorithmic-quality">PRD</a></p></article><article class="finding" id="PRD-M01"><header><span class="badge badge-sev-medium">medium</span><h3 class="finding-title">PRD-M01 · L2 does not fix the stopwatch’s starting state</h3><span class="finding-location">PRD 205, 208–213, 947, 1205</span></header><div class="finding-note">The clock starts inside an existing EventStore service, but NFR31’s clean machine has only Docker and the SDK. The five steps then switch to a sample AppHost. Preparation time and the event-producing service can differ between runs.</div><div class="finding-fix"><strong>Suggested correction</strong> · Version the starting service and sample, define permitted tools and caches at time zero, and require the event at the finish to come from that service.</div><p class="jump"><a href="../prd.md#measurable-outcomes">PRD</a></p></article><article class="finding" id="PRD-M02"><header><span class="badge badge-sev-medium">medium</span><h3 class="finding-title">PRD-M02 · The NFR13 load test gives incompatible latency and throughput targets</h3><span class="finding-location">PRD 1162, 1252</span></header><div class="finding-note">“≤10% of its solo p95” asks for a tenfold speedup where the assumptions index permits 10% degradation. A 100-unit repair cannot sustain 25 units/minute throughout ten minutes.</div><div class="finding-fix"><strong>Suggested correction</strong> · State the maximum mixed-to-solo latency ratio and define whether repair throughput is measured during active repair or over the entire window. Size the workload accordingly.</div><p class="jump"><a href="../prd.md#scalability">PRD</a></p></article><article class="finding" id="PRD-M03"><header><span class="badge badge-sev-medium">medium</span><h3 class="finding-title">PRD-M03 · The public hybrid axis score has two meanings</h3><span class="finding-location">PRD 572–582, 1188 and addendum 22</span></header><div class="finding-note">The PRD describes a weighted contribution and the addendum gives a raw reciprocal rank. AD-9 and the implementation expose an unweighted, rank-one-normalized score. At rank one the public value is 1.0 and the raw term is 1/11.</div><div class="finding-fix"><strong>Suggested correction</strong> · Separate public per-axis values from the weighted composite calculation and use a rank-one fixture across presenters.</div><p class="jump"><a href="../prd.md#ai-reliability-and-trust-boundaries">PRD</a> · <a href="../architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md">Architecture decisions</a> · <a href="../../../src/Hexalith.Memories.Server/Search/FusionEngine.cs">Fusion engine</a></p></article></div></details></section>
+<section class="dimension"><details><summary><h2>Scope honesty</h2><span class="verdict-pill verdict-adequate">adequate</span></summary><div class="dim-body"><div class="dim-judgment"><p>The phase and release tables distinguish current, preview and deferred capabilities. Some delivery rows nevertheless credit a later acceptance contract or a user-facing operation that remains unavailable.</p></div></div><div class="findings-list"><article class="finding" id="PRD-H09"><header><span class="badge badge-sev-high">high</span><h3 class="finding-title">PRD-H09 · NFR19 marks a missing CLI failure path as verified</h3><span class="finding-location">PRD 903–910, 1009, 1128, 1173</span></header><div class="finding-note">The verified register includes failure visibility with stage and error details via CLI status. The compatibility command inventory exposes telemetry status and records the failed-unit operation as outstanding.</div><div class="finding-fix"><strong>Suggested correction</strong> · Link a rerunnable intentional-failure test on the applicable CLI or correct the status and name the outstanding target-surface evidence.</div><p class="jump"><a href="../prd.md#reliability">PRD</a></p></article><article class="finding" id="PRD-H10"><header><span class="badge badge-sev-high">high</span><h3 class="finding-title">PRD-H10 · FR43 marks the rebuild as delivered while its operator surface is unresolved</h3><span class="finding-location">PRD 918, 1003, 1067</span></header><div class="finding-note">FR43 requires a CLI warning, the Phase 1 inventory excludes a CLI verb, and the server currently sets a reindex-required flag after acknowledgement. The verified rebuild and cutover are still owed.</div><div class="finding-fix"><strong>Suggested correction</strong> · Name the Phase 1 acknowledgement surface and credit the shipped guard separately from the warning, rebuild and cutover.</div><p class="jump"><a href="../prd.md#tenant-management">PRD</a> · <a href="../../../src/Hexalith.Memories.Server/Actors/TenantConfigurationActor.cs">Current configuration guard</a> · <a href="../architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md">Architecture decisions</a></p></article><article class="finding" id="PRD-H11"><header><span class="badge badge-sev-high">high</span><h3 class="finding-title">PRD-H11 · FR74 credits the repair workflow with a dry run it does not provide</h3><span class="finding-location">PRD 911, 1003, 1118</span></header><div class="finding-note">The compatibility command confirms or accepts <code>--yes</code> and schedules repair. The request offers no dry run tied to an authoritative EventStore revision. An operator cannot inspect the proposed writes as the requirement promises.</div><div class="finding-fix"><strong>Suggested correction</strong> · Record FR74 as partial. Credit the existing consistency operation and require Story 34.30’s revision-bound preview, fenced apply and deletion provenance before claiming delivery.</div><p class="jump"><a href="../prd.md#data-portability--system-health">PRD</a> · <a href="../../../src/Hexalith.Memories.Server/Workflows/ConsistencyRepairWorkflow.cs">Repair workflow</a> · <a href="../epics.md">Approved stories</a></p></article><article class="finding" id="PRD-M04"><header><span class="badge badge-sev-medium">medium</span><h3 class="finding-title">PRD-M04 · The installation matrix designates the legacy CLI as its future tool</h3><span class="finding-location">PRD 36, 705–707, 893</span></header><div class="finding-note">The future column repeats the direct installation of <code>Hexalith.Memories.Cli</code>, even though the accepted migration names enrolled <code>Hexalith.McpCli</code> operations as the target.</div><div class="finding-fix"><strong>Suggested correction</strong> · Label the installation row as compatibility guidance and describe the approved McpCli target and operation-level migration status locally.</div><p class="jump"><a href="../prd.md#technical-architecture-considerations">PRD</a> · <a href="../../../references/Hexalith.McpCli/_bmad-output/implementation-artifacts/memories-migration-inventory-v1.1.0.md">McpCli owner inventory</a></p></article><article class="finding" id="PRD-M08"><header><span class="badge badge-sev-medium">medium</span><h3 class="finding-title">PRD-M08 · FR71 attributes the wrong export contract to Story 8.3</h3><span class="finding-location">PRD 914, 995, 1010, 1115</span></header><div class="finding-note">Story 8.3 delivered basic portable application export. Epic 26 covers operational backup and recovery. The delivery row conflates the two and can be read as credit for later origin, custody-transfer and source-cleanup requirements.</div><div class="finding-fix"><strong>Suggested correction</strong> · Assign each delivery to its actual owner and identify the outstanding custody safeguards. Keep the early application feature outside MVP credit.</div><p class="jump"><a href="../prd.md#data-portability--system-health">PRD</a> · <a href="../architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md">Architecture decisions</a> · <a href="../epics.md">Approved stories</a></p></article><article class="finding" id="PRD-M09"><header><span class="badge badge-sev-medium">medium</span><h3 class="finding-title">PRD-M09 · The FR2 and FR36 register omits the bounded DW-732 resolution</h3><span class="finding-location">PRD 1009, 1016</span></header><div class="finding-note">The same-day work register documents signed-URL display redaction in logs and case activity. The PRD still refers readers to the issue without recording what was verified.</div><div class="finding-fix"><strong>Suggested correction</strong> · Credit that specific resolution and its evidence. Keep target CLI delivery and durable workflow-history protection listed separately.</div><p class="jump"><a href="../prd.md#functional-requirements">PRD</a> · <a href="../../../_bmad-output/implementation-artifacts/deferred-work.md">DW-732 disposition</a></p></article></div></details></section>
+<section class="dimension"><details open><summary><h2>Downstream usability</h2><span class="verdict-pill verdict-thin">thin</span></summary><div class="dim-body"><div class="dim-judgment"><p>Stable requirement IDs support traceability. Contradictions in identity, routing and operator examples would lead implementers to write different behavior for the same request.</p></div></div><div class="findings-list"><article class="finding" id="PRD-H06"><header><span class="badge badge-sev-high">high</span><h3 class="finding-title">PRD-H06 · The target Gateway cannot forward the bearer identity NFR10 promises</h3><span class="finding-location">PRD 592, 764–769, 1085, 1154</span></header><div class="finding-note">Native and compatibility routes can preserve a delegated bearer. The shared Gateway calls with workload authority. The blanket CLI/MCP rule leaves an enrolled operation needing a user without a defined proof of that user’s authority.</div><div class="finding-fix"><strong>Suggested correction</strong> · State the identity on each transport. Require independent user and tenant authorization before enrolling an operation that needs it, with explicit denial when it cannot be demonstrated.</div><p class="jump"><a href="../prd.md#security">PRD</a> · <a href="../architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md">Architecture decisions</a> · <a href="../../../references/Hexalith.McpCli/_bmad-output/implementation-artifacts/memories-migration-inventory-v1.1.0.md">McpCli owner inventory</a></p></article><article class="finding" id="PRD-H07"><header><span class="badge badge-sev-high">high</span><h3 class="finding-title">PRD-H07 · FR65 omits the issuer from external provenance</h3><span class="finding-location">PRD 592, 769, 1103 and addendum 63</span></header><div class="finding-note">A subject can be unique within one issuer yet duplicated under another. The PRD’s normalized subject permits two different callers to receive one attribution, contrary to AD-13 and Story 34.27.</div><div class="finding-fix"><strong>Suggested correction</strong> · Bind external attribution to the authenticated issuer and subject. Verify two issuers with the same subject produce distinct provenance.</div><p class="jump"><a href="../prd.md#trust--transparency">PRD</a> · <a href="../architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md">Architecture decisions</a> · <a href="../epics.md">Approved stories</a></p></article><article class="finding" id="PRD-H08"><header><span class="badge badge-sev-high">high</span><h3 class="finding-title">PRD-H08 · The journeys teach callers to choose durable identifiers</h3><span class="finding-location">PRD 394–402, 478–490</span></header><div class="finding-note">Journey 5 supplies a descriptive tenant ID and Journey 9 supplies a case identifier. These examples can become fixtures even though AD-23 requires platform-issued opaque IDs and Story 34.52 refuses caller-selected tenant IDs.</div><div class="finding-fix"><strong>Suggested correction</strong> · Use display names for human input and reuse the identifiers returned by provisioning and case creation in the rest of each journey.</div><p class="jump"><a href="../prd.md#user-journeys">PRD</a> · <a href="../architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md">Architecture decisions</a> · <a href="../epics.md">Approved stories</a></p></article><article class="finding" id="PRD-M05"><header><span class="badge badge-sev-medium">medium</span><h3 class="finding-title">PRD-M05 · Operator examples present unavailable commands as usable next actions</h3><span class="finding-location">PRD 478–488, 800, 851–857, 903–911</span></header><div class="finding-note">The empty-state flow directs the reader to a stub ingestion command. Status and verification examples also differ from the registered compatibility commands. These instructions can halt the manual journey before a user reaches search.</div><div class="finding-fix"><strong>Suggested correction</strong> · Label aspirational interactions, use the native routes or working compatibility commands for current instructions, and update examples when an equivalent target operation is enrolled.</div><p class="jump"><a href="../prd.md#cli-specification">PRD</a> · <a href="../../../src/Hexalith.Memories.Cli/Commands/RootCommandFactory.cs">Command registration</a></p></article><article class="finding" id="PRD-M07"><header><span class="badge badge-sev-medium">medium</span><h3 class="finding-title">PRD-M07 · The service versioning statement contradicts its V1 routes</h3><span class="finding-location">PRD 784–789, 918</span></header><div class="finding-note">The document says “no versioned endpoints,” but native and Dapr-invoked methods use <code>/api/v1</code>. The Dapr application identifier and the route have different versioning rules.</div><div class="finding-fix"><strong>Suggested correction</strong> · Document the unversioned application identifier, V1 HTTP method paths and additive compatibility contract separately.</div><p class="jump"><a href="../prd.md#technical-architecture-considerations">PRD</a> · <a href="../../../src/Hexalith.Memories.Contracts/V1/MemoriesRoutes.cs">V1 route constants</a></p></article><article class="finding" id="PRD-L02"><header><span class="badge badge-sev-low">low</span><h3 class="finding-title">PRD-L02 · The case membership example switches tenants mid-journey</h3><span class="finding-location">PRD 374–384</span></header><div class="finding-note">Journey 4 adds a member in <code>acme</code> and then queries the same case in <code>engineering</code> without establishing a tenant switch or a second case.</div><div class="finding-fix"><strong>Suggested correction</strong> · Use one tenant for the successful path and a second tenant only in an explicit denial example.</div><p class="jump"><a href="../prd.md#user-journeys">PRD</a></p></article></div></details></section>
+<section class="dimension"><details><summary><h2>Shape fit</h2><span class="verdict-pill verdict-adequate">adequate</span></summary><div class="dim-body"><div class="dim-judgment"><p>Developer, operator and agent journeys suit this platform. Duplicating volatile deployment and package details across the PRD, addendum and manifest has introduced drift.</p></div></div><div class="findings-list"><article class="finding" id="PRD-M06"><header><span class="badge badge-sev-medium">medium</span><h3 class="finding-title">PRD-M06 · The package inventory omits a package and an executable host</h3><span class="finding-location">PRD 712–740 and addendum 90–93</span></header><div class="finding-note">The manifest includes the EventStoreExtensions package and the non-packable DomainService host. The PRD also describes the Web component library as the runnable specimen.</div><div class="finding-fix"><strong>Suggested correction</strong> · Reference or generate the inventory from the manifest. Identify DomainService’s command/replay role and the separate specimen host.</div><p class="jump"><a href="../prd.md#technical-architecture-considerations">PRD</a> · <a href="../../../tools/release-packages.json">Release manifest</a></p></article></div></details></section>
+<section class="reviewer-section"><details><summary><h2>Downstream story corrections</h2></summary><div class="dim-body"><p>Three epic findings, outside the PRD grade and counts.</p>
+<p><b>High · Stories 34.32 and 34.38 assign retention cleanup to the wrong owner and stream.</b> FR39 and NFR34 already specify the handoff. Update the story criteria so Platform Operations retires the partition and locator after verified expiry and writes the receipt to the dedicated retention-purge stream. <a href="../epics.md">epics.md 7935–7948, 8216–8218</a></p>
+<p><b>High · Stories 34.23 and 34.24 assume every tenant has a recoverable sample or an issued key.</b> Align the tests with AD-16’s affirmative empty or never-provisioned evidence. Exercise unreadable evidence and restart after key destruction. <a href="../epics.md">epics.md 7514–7521, 7561–7564</a></p>
+<p><b>Medium · Story 34.40 still offers public exposure of telemetry and clock routes.</b> Use AD-12’s internal caller boundary, wire registration and error mapping. Keep that inventory distinct from Story 34.33’s register guard. <a href="../epics.md">epics.md 8292–8305</a></p>
+</div></details></section>
+<section class="reviewer-section"><details><summary><h2>Gate scoring and reproducibility</h2><span class="reviewer-source">review-gates.md</span></summary><div class="dim-body"><p>Walks each relevant gate as a reviewer would score it.</p><p class="jump"><a href="#PRD-C01">PRD-C01</a>, <a href="#PRD-H01">PRD-H01</a>, <a href="#PRD-H02">PRD-H02</a>, <a href="#PRD-H03">PRD-H03</a>, <a href="#PRD-H05">PRD-H05</a>, <a href="#PRD-M01">PRD-M01</a></p><p><a href="review-gates.md">Full review</a></p></div></details></section>
+<section class="reviewer-section"><details><summary><h2>Source fidelity</h2><span class="reviewer-source">review-source-fidelity.md</span></summary><div class="dim-body"><p>Checks delivery claims against source, manifests, migration decisions and existing evidence.</p><p class="jump"><a href="#PRD-H04">PRD-H04</a>, <a href="#PRD-H07">PRD-H07</a>, <a href="#PRD-H10">PRD-H10</a>, <a href="#PRD-H11">PRD-H11</a>, <a href="#PRD-M03">PRD-M03</a>, <a href="#PRD-M04">PRD-M04</a>, <a href="#PRD-M05">PRD-M05</a>, <a href="#PRD-M06">PRD-M06</a>, <a href="#PRD-M07">PRD-M07</a>, <a href="#PRD-M08">PRD-M08</a>, <a href="#PRD-M09">PRD-M09</a></p><p><a href="review-source-fidelity.md">Full review</a></p></div></details></section>
+<section class="reviewer-section"><details><summary><h2>Downstream handoff</h2><span class="reviewer-source">review-downstream.md</span></summary><div class="dim-body"><p>Compares PRD instructions with the architecture, UX, epic acceptance criteria and Story 34.33.</p><p class="jump"><a href="#PRD-C01">PRD-C01</a>, <a href="#PRD-H01">PRD-H01</a>, <a href="#PRD-H03">PRD-H03</a>, <a href="#PRD-H06">PRD-H06</a>, <a href="#PRD-H08">PRD-H08</a>, <a href="#PRD-M08">PRD-M08</a></p><p><a href="review-downstream.md">Full review</a></p></div></details></section>
+<div class="mechanical"><h3>Mechanical notes and scope</h3><ul><li>FR1–FR75 and NFR1–NFR37 each have one normative definition and one delivery-status entry. The ten journeys and nine gates have contiguous identifiers.</li><li>All 13 original-input paths in the PRD frontmatter and the local Markdown links in the PRD and addendum were checked. The six live inline assumptions have index entries. The historical NFR identifier collision is marked index-only.</li><li>The PRD was reviewed at repository revision 75c5b5f5, PRD SHA-256 0c535e96e18f993f10d553cd89c1ea2abf3bac20a34ba65c160a3708dbf5de6e, with working-tree architecture 3c7bf368 and the Story 34.33 spec. No runtime or release-qualification tests were run.</li><li>September’s validation is preserved as an input to the change-controlled PRD. Severity counts here are unique current PRD/addendum findings across four reviews. Three additional epic corrections are recorded separately.</li></ul></div>
+<footer class="report-footer"><div class="meta"><a href="../../../.agents/skills/bmad-prd/assets/prd-validation-checklist.md">PRD quality rubric</a> · <a href="review-rubric.md">Full rubric review</a> · 2026-11-20T18:21:51+01:00</div></footer></main></body></html>
