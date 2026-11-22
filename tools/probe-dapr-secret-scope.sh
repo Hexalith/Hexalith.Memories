@@ -15,9 +15,14 @@ case "$port" in ''|*[!0-9]*) exit 2 ;; esac
 date -u '+%FT%TZ'
 
 request() {
-    # printf is a shell builtin. The header goes only to nc on pod loopback.
-    printf 'GET %s HTTP/1.0\r\nHost: localhost\r\ndapr-api-token: %s\r\nConnection: close\r\n\r\n' "$1" "$DAPR_API_TOKEN" |
-        busybox timeout 8 busybox nc -w 5 127.0.0.1 "$port" 2>/dev/null |
+    # nc -e hands the loopback socket to a child shell, which writes the request and reads
+    # the response without closing its write side. BusyBox nc half-closes at stdin EOF, and
+    # daprd cancels an in-flight secret-store read when its client closes. The child gets
+    # the token only from the environment; the printf builtin writes it only to the socket.
+    # The response, or an nc error, reaches the parser on stderr.
+    busybox timeout 8 busybox nc -w 5 127.0.0.1 "$port" -e busybox sh -c '
+        printf "GET %s HTTP/1.0\r\nHost: localhost\r\ndapr-api-token: %s\r\nConnection: close\r\n\r\n" "$1" "$DAPR_API_TOKEN"
+        exec busybox cat >&2' probe-request "$1" 2>&1 >/dev/null |
         busybox awk -v mode="$2" -v app="$app" '
         # Parse the JSON structure, including escaped strings. Compare only known top-level
         # fields and entries inside components. Never print input or server error messages.

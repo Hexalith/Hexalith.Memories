@@ -4,6 +4,8 @@ import json
 import os
 from pathlib import Path
 import secrets
+import select
+import socket
 import subprocess
 import threading
 import unittest
@@ -16,6 +18,7 @@ class ScopeProbeTests(unittest.TestCase):
         registered = [{"name": "secretstore", "type": "secretstores.hashicorp.vault"}]
         policy = {"errorCode": "ERR_PERMISSION_DENIED", "message": credential}
         unavailable = {"errorCode": "ERR_SECRET_STORE_NOT_FOUND", "message": credential}
+        canceled = {"errorCode": "ERR_SECRET_GET", "message": "context canceled " + credential}
 
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):
@@ -25,6 +28,10 @@ class ScopeProbeTests(unittest.TestCase):
                     status, body = 200, {"id": app, "components": components}
                 elif self.path == "/v1.0/secrets/secretstore/" + key:
                     status, body = response
+                    # daprd decides scope and name policy locally, then cancels the store read
+                    # when the client half-closes before the response, as BusyBox nc does at stdin EOF.
+                    if status not in (401, 403) and client_closed(self.connection):
+                        status, body = 500, canceled
                 else:
                     status, body = 404, {}
                 self.send_response(status)
@@ -33,6 +40,10 @@ class ScopeProbeTests(unittest.TestCase):
 
             def log_message(self, *args):
                 pass
+
+        def client_closed(connection):
+            ready, _, _ = select.select([connection], [], [], 0.25)
+            return bool(ready) and connection.recv(1, socket.MSG_PEEK) == b""
 
         cases = [
             ("memories", "allowed", registered, (200, {"password": credential}), True),
@@ -59,9 +70,11 @@ class ScopeProbeTests(unittest.TestCase):
                         env = dict(os.environ, DAPR_API_TOKEN=token, DAPR_HTTP_PORT=str(server.server_port))
                         probe = Path(__file__).resolve().parents[3] / "tools/probe-dapr-secret-scope.sh"
                         result = subprocess.run(["busybox", "sh", str(probe), app, check], env=env,
-                                                capture_output=True, timeout=12)
+                                                capture_output=True, timeout=20)
                         output = result.stdout + result.stderr
-                        self.assertFalse(any(value.encode() in output for value in (token, credential)),
+                        # The credential contains a quote, so also check its JSON-escaped form.
+                        leaks = (token, credential, json.dumps(credential)[1:-1])
+                        self.assertFalse(any(value.encode() in output for value in leaks),
                                          "Credential appeared in probe diagnostics")
                         self.assertEqual(result.returncode == 0, passed)
             finally:

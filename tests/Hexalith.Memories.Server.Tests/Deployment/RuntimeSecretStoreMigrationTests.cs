@@ -129,7 +129,11 @@ public sealed partial class RuntimeSecretStoreMigrationTests
         }
 
         VerifyRuntimeStore(Resources(Read(root, Component)).Single(IsRuntimeStore));
-        foreach (string overlay in new[] { "production", "qualification" })
+        string[] overlays = Directory.EnumerateDirectories(Path.Combine(root, "deploy/kubernetes/overlays"))
+            .Select(static directory => Path.GetFileName(directory)).Order(StringComparer.Ordinal).ToArray();
+        overlays.ShouldContain("production");
+        overlays.ShouldContain("qualification");
+        foreach (string overlay in overlays)
         {
             var resources = Resources(Run(root, "kubectl", "kustomize", "deploy/kubernetes/overlays/" + overlay)).ToList();
             VerifyRuntimeStore(resources.Single(IsRuntimeStore));
@@ -155,8 +159,31 @@ public sealed partial class RuntimeSecretStoreMigrationTests
                 consumer["auth"]["secretStore"].ToString().ShouldBe(name.StartsWith("access-telemetry-", StringComparison.Ordinal)
                     ? "access-telemetry-secrets" : "secretstore");
             }
+
+            // Every other component reference must resolve through an OpenBao store, never the Kubernetes default.
+            foreach (YamlMappingNode component in resources.Where(item => IsKind(item, "Component")))
+            {
+                string name = component["metadata"]["name"].ToString();
+                if (name is not ("secretstore" or "access-telemetry-secrets") && HasSecretKeyRef(component))
+                {
+                    (SecretStoreOf(component) is "secretstore" or "access-telemetry-secrets")
+                        .ShouldBeTrue($"{overlay}: component {name} must resolve its secretKeyRef through an OpenBao store.");
+                }
+            }
         }
     }
+
+    private static bool IsKind(YamlMappingNode resource, string kind)
+        => resource.Children.TryGetValue("kind", out var type) && type.ToString() == kind;
+
+    private static string? SecretStoreOf(YamlMappingNode resource)
+        => resource.Children.TryGetValue("auth", out var auth) && auth is YamlMappingNode map
+            && map.Children.TryGetValue("secretStore", out var store) ? store.ToString() : null;
+
+    private static bool HasSecretKeyRef(YamlMappingNode resource)
+        => resource.Children.TryGetValue("spec", out var spec) && spec is YamlMappingNode map
+            && map.Children.TryGetValue("metadata", out var metadata) && metadata is YamlSequenceNode items
+            && items.Children.OfType<YamlMappingNode>().Any(static item => item.Children.ContainsKey("secretKeyRef"));
 
     private static void VerifyRuntimeStore(YamlMappingNode resource)
         => VerifyVaultStore(resource, "runtime", ["eventstore", "memories"]);
@@ -167,6 +194,10 @@ public sealed partial class RuntimeSecretStoreMigrationTests
         resource["spec"]["version"].ToString().ShouldBe("v1");
         ((YamlSequenceNode)resource["scopes"]).Children.Select(scope => scope.ToString()).ShouldBe(scopes, ignoreOrder: true);
         var metadata = ((YamlSequenceNode)resource["spec"]["metadata"]).Children.ToDictionary(item => item["name"].ToString());
+        // An extra key such as vaultTokenMountPath, caCert or caPath would change authentication or trust.
+        metadata.Keys.ShouldBe(
+            ["vaultAddr", "tlsServerName", "skipVerify", "vaultKVPrefix", "vaultKVUsePrefix", "enginePath", "vaultValueType", "caPem", "vaultToken"],
+            ignoreOrder: true);
         Dictionary<string, string> values = new()
         {
             ["vaultAddr"] = "https://hexalith-keys.openbao.svc.cluster.local:8200",
@@ -241,12 +272,13 @@ public sealed partial class RuntimeSecretStoreMigrationTests
         rows.Select(row => (row[1], row[0])).ShouldBe(expected, ignoreOrder: true);
     }
 
-    // Only the five infrastructure/composition boundaries are excluded. New product projects enter automatically.
-    private static readonly HashSet<string> BoundaryProjects = ["AppHost", "Aspire", "ServiceDefaults", "Redis", "EventStore"];
+    // Only the three infrastructure/composition boundaries are excluded. EventStore and ServiceDefaults ship inside
+    // the Server and host products, so they are scanned. New product projects enter automatically.
+    private static readonly HashSet<string> BoundaryProjects = ["AppHost", "Aspire", "Redis"];
     private const string Provider = @"(?ix)openbao|vaultsharp|hashicorp[.:_-]?vault|\b(?:I?(?:Bao|Vault)(?:Api|Http)?Client\w*|TokenAuthMethodInfo)\b|
         (?:vault|bao)[:_.-]*(?:addr(?:ess)?|endpoint|token|client|credential|role[_-]?id|secret[_-]?id|url|uri|config|approle)|
         KubernetesClient|ReadNamespacedSecret|ListNamespacedSecret|x-vault-(?:token|namespace)|https?://[^""'\s/]*(?:vault|:8200\b)|/v1/(?:auth/|sys/|secret/(?:data|metadata)/)|
-        [""'](?:Vault|Bao)[""']|\bhv[sbr]\.[A-Za-z0-9_-]{8,}|\b[sbr]\.[A-Za-z0-9_-]{20,}";
+        [""'](?:Vault|Bao)[""']|\bhv[sbr]\.[A-Za-z0-9_-]{8,}|[""'][sbr]\.[A-Za-z0-9_-]{20,}";
 
     [Fact]
     public void ProductProjects_DoNotAccessTheSecretProviderDirectly()
@@ -254,23 +286,15 @@ public sealed partial class RuntimeSecretStoreMigrationTests
         string root = GetRepoRoot();
         var files = Run(root, "git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "src")
             .Split('\0', StringSplitOptions.RemoveEmptyEntries);
+        // git ls-files --cached also lists deleted but unstaged files.
+        files = files.Where(file => File.Exists(Path.Combine(root, file))).ToArray();
         var projects = files.Where(file => Path.GetExtension(file) == ".csproj")
             .Where(file => !BoundaryProjects.Contains(Path.GetFileNameWithoutExtension(file).Replace("Hexalith.Memories.", "", StringComparison.Ordinal)))
             .ToArray();
-        projects.Length.ShouldBeGreaterThanOrEqualTo(12);
+        projects.Length.ShouldBeGreaterThanOrEqualTo(14);
         foreach (string project in projects)
         {
-            XDocument xml = XDocument.Load(Path.Combine(root, project));
-            foreach (var package in xml.Descendants().Where(el => el.Name.LocalName == "PackageReference"))
-            {
-                string reference = (string?)package.Attribute("Include") ?? (string?)package.Attribute("Update") ?? "";
-                if (Regex.IsMatch(reference, @"(?i)(?:^|[._-])(?:vault|bao)(?:$|[._-])"))
-                {
-                    throw new ShouldAssertException($"Direct provider package in {project}.");
-                }
-
-                RejectProviderReference(reference, project);
-            }
+            RejectProviderPackages(project, root);
 
             string directory = project[..(project.LastIndexOf('/') + 1)];
             foreach (string path in files.Where(file => file.StartsWith(directory, StringComparison.Ordinal)
@@ -280,6 +304,28 @@ public sealed partial class RuntimeSecretStoreMigrationTests
             {
                 RejectProviderReference(Read(root, path), path);
             }
+        }
+
+        // Central build and package files apply to every product project.
+        foreach (string path in new[] { "Directory.Build.props", "Directory.Build.targets", "Directory.Packages.props" })
+        {
+            RejectProviderPackages(path, root);
+            RejectProviderReference(Read(root, path), path);
+        }
+    }
+
+    private static void RejectProviderPackages(string path, string root)
+    {
+        XDocument xml = XDocument.Load(Path.Combine(root, path));
+        foreach (var package in xml.Descendants().Where(el => el.Name.LocalName is "PackageReference" or "PackageVersion"))
+        {
+            string reference = (string?)package.Attribute("Include") ?? (string?)package.Attribute("Update") ?? "";
+            if (Regex.IsMatch(reference, @"(?i)(?:^|[._-])(?:vault|bao)(?:$|[._-])"))
+            {
+                throw new ShouldAssertException($"Direct provider package in {path}.");
+            }
+
+            RejectProviderReference(reference, path);
         }
     }
 

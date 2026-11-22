@@ -72,7 +72,7 @@ public sealed partial class RuntimeSecretStoreMigrationTests
             AssertNoCanary(log.Message + log.Exception + JsonSerializer.Serialize(log.Fields), canary, "log");
         }
 
-        AssertNoCanary(JsonSerializer.Serialize(new { activity.Tags, activity.Events, Audit = logs.AccessTelemetryCaptures[0].AuditEvent }), canary, "telemetry");
+        AssertNoCanary(JsonSerializer.Serialize(new { activity.Tags, activity.TagObjects, activity.Events, activity.StatusDescription, Audit = logs.AccessTelemetryCaptures[0].AuditEvent }), canary, "telemetry");
         response.Position = 0;
         using var reader = new StreamReader(response);
         string snapshot = await reader.ReadToEndAsync();
