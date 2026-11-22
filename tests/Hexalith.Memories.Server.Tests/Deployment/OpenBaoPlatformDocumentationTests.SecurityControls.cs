@@ -553,4 +553,210 @@ public sealed partial class OpenBaoPlatformDocumentationTests
             .Split('\n').Single(candidate => candidate.StartsWith($"| {key} |", StringComparison.Ordinal));
         return ReplaceSectionText(evidence, ReviewerEvaluationHeading, line + "\n", string.Empty);
     }
+
+    [Fact]
+    public void SoleOwnerCloseout_AcceptsTheDatedDecisionWithAllPrerequisites()
+    {
+        Dictionary<string, string> control = CreateOwnerSecurityControl();
+        ValidateSecurityReviewerEvidence(control["evidence"], new DateOnly(2026, 11, 22));
+        ValidateCurrentSecurityRecords(control, new DateOnly(2026, 11, 22));
+    }
+
+    [Theory]
+    [InlineData("Owner declaration")]
+    [InlineData("Decision provenance")]
+    [InlineData("Decision owner")]
+    [InlineData("Decision date")]
+    [InlineData("Waiver approver")]
+    [InlineData("Waiver scope")]
+    [InlineData("Waiver rationale")]
+    [InlineData("Compensating controls")]
+    [InlineData("Historical waiver reopen trigger")]
+    [InlineData("Accepted profile")]
+    [InlineData("Technical outcome")]
+    [InlineData("Peer-TLS finding")]
+    [InlineData("Checkpoint C4b state")]
+    [InlineData("Checkpoint C5b state")]
+    [InlineData("Checkpoint C7 state")]
+    public void SoleOwnerCloseout_RejectsMissingOrAlteredEvidence(string field)
+    {
+        Dictionary<string, string> control = CreateOwnerSecurityControl();
+        string evidence = control["evidence"];
+        foreach (string corrupt in new[]
+        {
+            RemoveSyntheticEvidenceRow(evidence, field),
+            ReplaceTableCell(evidence, ReviewerEvaluationHeading, field, 1, "signed by murat-tea-for-jpiquot"),
+        })
+        {
+            control["evidence"] = corrupt;
+            Should.Throw<ShouldAssertException>(() => ValidateCurrentSecurityRecords(control));
+        }
+    }
+
+    [Theory]
+    [InlineData("C1")]
+    [InlineData("C2")]
+    [InlineData("C3")]
+    [InlineData("C4a")]
+    [InlineData("C5a")]
+    [InlineData("C6")]
+    [InlineData("C4b")]
+    [InlineData("C5b")]
+    [InlineData("C7")]
+    public void SoleOwnerCloseout_RejectsMissingOrIncompleteMandatoryCheckpoints(string checkpoint)
+    {
+        Dictionary<string, string> control = CreateOwnerSecurityControl();
+        string story = control["story"];
+        string row = story.Split('\n').Single(line => line.StartsWith("| " + checkpoint + " -", StringComparison.Ordinal));
+        control["story"] = story.Replace(row + "\n", string.Empty, StringComparison.Ordinal);
+        Should.Throw<ShouldAssertException>(() => ValidateCurrentSecurityRecords(control));
+        control["story"] = ReplaceSyntheticCheckpointCell(story, checkpoint, 4, "pending");
+        Should.Throw<ShouldAssertException>(() => ValidateCurrentSecurityRecords(control));
+    }
+
+    [Theory]
+    [InlineData("evidence")]
+    [InlineData("story")]
+    [InlineData("runbook")]
+    [InlineData("epic")]
+    [InlineData("sprint")]
+    [InlineData("handoff")]
+    [InlineData("context")]
+    [InlineData("remediation")]
+    public void SoleOwnerCloseout_RejectsConflictingCurrentSummaries(string key)
+    {
+        Dictionary<string, string> control = CreateOwnerSecurityControl();
+        string summary = key == "remediation" ? PeerFindingStatus : OwnerSummary;
+        string original = control[key];
+        foreach (string conflict in new[] { "C4b remains pending.", "C7 is independently signed.", "The independent reviewer approved C7.", "EVAL-01 is closed by this decision." })
+        {
+            control[key] = original.Replace(summary, summary + " " + conflict, StringComparison.Ordinal);
+            Should.Throw<ShouldAssertException>(() => ValidateCurrentSecurityRecords(control));
+        }
+    }
+
+    [Fact]
+    public void SoleOwnerCloseout_RejectsMixedApprovalRoutesAndMisattributedSource()
+    {
+        Dictionary<string, string> control = CreateOwnerSecurityControl();
+        string evidence = control["evidence"];
+        control["evidence"] = AddSyntheticEvidenceRow(evidence, "Checkpoint C7 evaluation", "Signed by jpiquot on 2026-11-22");
+        Should.Throw<ShouldAssertException>(() => ValidateCurrentSecurityRecords(control));
+        control["evidence"] = evidence;
+        control["decision"] = control["decision"].Replace(DecisionOwner, "Codex", StringComparison.Ordinal);
+        Should.Throw<ShouldAssertException>(() => ValidateCurrentSecurityRecords(control));
+        control = CreateOwnerSecurityControl();
+        control["story"] = ReplaceSyntheticCheckpointCell(control["story"], "C1", 5, "2026-11-23");
+        Should.Throw<ShouldAssertException>(() => ValidateCurrentSecurityRecords(control, new DateOnly(2026, 11, 24)));
+        control = CreateSignedSecurityControl();
+        string attributedToOwner = control["evidence"].Replace("independent-security-reviewer", "jpiquot", StringComparison.Ordinal);
+        Should.Throw<ShouldAssertException>(() => ValidateSecurityReviewerEvidence(attributedToOwner));
+    }
+
+    [Fact]
+    public void SoleOwnerCloseout_RejectsChangedSignedBytesOrMissingOrMismatchedSignature()
+    {
+        Dictionary<string, string> control = CreateOwnerSecurityControl();
+        string decision = control["decision"];
+        foreach (string changed in new[]
+        {
+            decision.Replace("All 107 passed", "All 108 passed", StringComparison.Ordinal),
+            decision.Replace("/s/ Codex", "/s/ jpiquot", StringComparison.Ordinal),
+            decision.Replace(VerificationDigest, new string('0', 64), StringComparison.Ordinal),
+        })
+        {
+            control["decision"] = changed;
+            Should.Throw<ShouldAssertException>(() => ValidateCurrentSecurityRecords(control));
+        }
+
+        control["decision"] = decision[..decision.IndexOf("### " + SignatureHeading, StringComparison.Ordinal)];
+        Should.Throw<InvalidOperationException>(() => ValidateCurrentSecurityRecords(control));
+    }
+
+    [Fact]
+    public void SoleOwnerCloseout_RejectsBroadenedWaiverAndReportsOnlyTheTrustedField()
+    {
+        Dictionary<string, string> control = CreateOwnerSecurityControl();
+        string evidence = control["evidence"];
+        control["evidence"] = ReplaceTableCell(evidence, ReviewerEvaluationHeading, "Waiver scope", 1,
+            OwnerDecisionFields["Waiver scope"] + " Also covers C4b and C5b.");
+        Should.Throw<ShouldAssertException>(() => ValidateCurrentSecurityRecords(control));
+        const string candidate = "hvs.synthetic_scope_secret";
+        control["evidence"] = ReplaceTableCell(evidence, ReviewerEvaluationHeading, "Owner declaration", 1, candidate);
+        ShouldAssertException error = Should.Throw<ShouldAssertException>(() => ValidateCurrentSecurityRecords(control));
+        error.Message.ShouldBe("Story 31.1 closeout evidence mismatch: Owner declaration.");
+        error.ToString().Contains(candidate, StringComparison.Ordinal).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void SoleOwnerCloseout_RejectsContradictionsInCurrentEvidenceProseAndPriorSprintComments()
+    {
+        foreach (string conflict in new[] { "C4b is incomplete.", "The owner resolved EVAL-01.", "Production qualification is approved by this decision." })
+        {
+            Dictionary<string, string> control = CreateOwnerSecurityControl();
+            control["evidence"] = ReplaceSectionText(control["evidence"], ReviewerEvaluationHeading, OwnerSummary, OwnerSummary + " " + conflict);
+            Should.Throw<ShouldAssertException>(() => ValidateCurrentSecurityRecords(control));
+            control = CreateOwnerSecurityControl();
+            control["sprint"] = control["sprint"].Replace("  # " + OwnerSummary, "  # " + conflict + "\n  # " + OwnerSummary, StringComparison.Ordinal);
+            Should.Throw<ShouldAssertException>(() => ValidateCurrentSecurityRecords(control));
+        }
+
+        Dictionary<string, string> history = CreateOwnerSecurityControl();
+        history["handoff"] += "\n\nOn November 16 the signer reported no approval. If C4b is incomplete in a future review, record the evidence.";
+        history["remediation"] += "\n\n## Later independent work\n\nThe owner resolved EVAL-01 following separate approval.";
+        ValidateCurrentSecurityRecords(history);
+    }
+
+    // Fixed, in-memory inputs keep both the historical independent route and this dated exception
+    // testable regardless of which route current records exercise.
+    private static Dictionary<string, string> CreateOwnerSecurityControl()
+    {
+        Dictionary<string, string> control = CreateUnsignedSecurityControl();
+        SetSyntheticParentStatus(control, "done");
+        var fields = new Dictionary<string, string>(OwnerDecisionFields, StringComparer.Ordinal)
+        {
+            ["Reviewer of record"] = "Historical owner persona",
+            ["Waiver approved"] = "2026-07-28. Historical waiver.",
+            ["Approver independence"] = "**Not independent**",
+        };
+        foreach ((string checkpoint, string decision) in OwnerDispositions)
+        {
+            fields[$"Checkpoint {checkpoint} state"] = $"{DecisionDate} — {DecisionOwner} {decision} by sole-owner decision.";
+            string evidence = $"`31-1-openbao-platform-evidence.md` section 4, {checkpoint} decision for the section 9.1 measured profile";
+            string row = $"| {checkpoint} - {decision} | Platform Operations owner {DecisionOwner} | {evidence} | verified — {DecisionOwner} {decision} by sole-owner decision | complete | {DecisionDate} |";
+            string old = control["story"].Split('\n').Single(line => line.StartsWith("| " + checkpoint + " -", StringComparison.Ordinal));
+            control["story"] = control["story"].Replace(old, row, StringComparison.Ordinal);
+        }
+
+        control["story"] = control["story"].Replace("## " + CheckpointsHeading, "## " + CheckpointsHeading + "\n\n" + OwnerSummary, StringComparison.Ordinal) + "\n";
+        control["evidence"] = $"## {ReviewerEvaluationHeading}\n\n{OwnerSummary}\n\n| Field | Record |\n| --- | --- |\n"
+            + string.Join("\n", fields.Select(static entry => $"| {entry.Key} | {entry.Value} |"))
+            + $"\n\n## Measured deployment\n\n### {CurrentProfileEvidenceHeading}\n\n| Contract | Measured value on 2026-11-16 |\n| --- | --- |\n"
+            + "| Server version | `2.6.2` on all three servers |\n| Chart label | openbao-0.29.5 |\n"
+            + "| Raft voters | all Running on `node1`; three healthy servers observed, voting membership unmeasured |\n\n"
+            + $"### {OwnerSummaryHeading}\n\n{OwnerSummary} {WaiverHistory} Section 4 records the declaration and each disposition.\n";
+        control["runbook"] = $"""
+            Independent reviewer: **unassigned**. {OwnerSummary}
+
+            ## {DivergencesHeading}
+
+            | Divergence | Owner | Why it is open | Reopen trigger |
+            | --- | --- | --- | --- |
+            | The security reviewer of record is not independent of the platform owner | Platform Operations owner {DecisionOwner} | {OwnerSummary} {WaiverHistory} | Reassess on seal/ingress/voter changes or Story 31.2 activation. |
+
+            ## {LimitationsHeading}
+
+            On 2026-11-22 Jérôme Piquot (`jpiquot`) accepted the static file-based seal (C4b) and namespace-wide port 8200 ingress (C5b) for the measured profile without independent countersignatures. Each row records the consequence, compensating controls and reopen trigger.
+            """.ReplaceLineEndings("\n");
+        control["epic"] = "### Story 31.1: OpenBao Platform Hardening and Documentation\n\n**Status:** done. " + OwnerSummary + " Helm reproduction is separate Platform Operations work.";
+        control["sprint"] = "# Story 31.1 renamed\n  # " + OwnerSummary + "\n  31-1-openbao-platform-hardening-and-documentation: done\n  31-2-runtime-secret-store-migration: ready-for-dev";
+        control["context"] = "## Requirements & Constraints\n\n" + OwnerSummary;
+        control["handoff"] = "## " + HandoffHeading + "\n\n" + OwnerSummary;
+        control["decision"] = $"## Intent\n\nOn {DecisionDate} the sole contributor, Platform Operations owner {DecisionOwner}, approved the following Story 31.1 decision in the project conversation:\n\n> {OwnerDeclaration}";
+        // Only immutable, digest-pinned verification history comes from disk. The decision and all current states are fixture data.
+        var signedHistory = new MarkdownContractDocument(ReadRepoFile("_bmad-output/implementation-artifacts/" + CloseoutSpec));
+        control["decision"] += $"\n\n### {VerificationHeading}\n{signedHistory.GetSection(VerificationHeading)}\n### {SignatureHeading}\n{signedHistory.GetSection(SignatureHeading)}";
+        control["remediation"] = "## Story 31.1 decision on 2026-11-22\n\n" + PeerFindingStatus;
+        return control;
+    }
 }

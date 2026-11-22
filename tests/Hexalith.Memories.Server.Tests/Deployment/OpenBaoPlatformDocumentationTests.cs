@@ -733,7 +733,11 @@ public sealed partial class OpenBaoPlatformDocumentationTests
         record.ShouldContainKey("Checkpoint C7 state");
 
         string state = record["Checkpoint C7 state"];
-        if (state.Contains("waived", StringComparison.OrdinalIgnoreCase))
+        if (IsSoleOwnerRecord(record))
+        {
+            ValidateSoleOwnerEvidence(evidenceDocument, record, today);
+        }
+        else if (state.Contains("waived", StringComparison.OrdinalIgnoreCase))
         {
             // Closed by an approved waiver rather than by an evaluation. project-context requires a named
             // approver plus a time-bounded expiry or a measurable reopen trigger.
@@ -771,15 +775,16 @@ public sealed partial class OpenBaoPlatformDocumentationTests
             // so the signer must now be bound to the date.
             record.ShouldContainKey("Evaluation status");
             string evaluation = record["Evaluation status"];
-            if (evaluation.StartsWith("Per-checkpoint evaluations.", StringComparison.Ordinal))
+            bool separate = evaluation.StartsWith("Per-checkpoint evaluations.", StringComparison.Ordinal);
+            if (separate)
             {
                 record.ShouldContainKey("Checkpoint C7 evaluation", "Separate C7 completion needs its own signature.");
                 evaluation = record["Checkpoint C7 evaluation"];
             }
 
-            evaluation.ShouldMatch(
-                @"(?i)signed\s+by\s+\S+\s+on\s+20\d{2}-\d{2}-\d{2}",
-                "A signed C7 evaluation must name its evaluator and carry its date, in the form 'signed by <evaluator> on <YYYY-MM-DD>'.");
+            (string signer, _) = ValidateSignature(evaluation, separate ? "C7" : "C4b/C5b/C7", C7SignatureScope, today);
+            ValidateIndependence(record, separate ? "Checkpoint C7 independence" : "Evaluator independence", signer);
+            ValidateProvenance(record, separate ? "Checkpoint C7 provenance" : "Evaluator provenance", signer);
         }
     }
 
@@ -983,12 +988,17 @@ public sealed partial class OpenBaoPlatformDocumentationTests
         row[5].ShouldBe(result["Completion UTC"].Trim('`')[..10]);
     }
 
-    /// <summary>Loads the five current records for a pure state-dependent consistency check.</summary>
+    /// <summary>Loads the current records for a pure state-dependent consistency check.</summary>
     private static Dictionary<string, string> ReadCurrentSecurityRecords() => new(StringComparer.Ordinal)
     {
         ["evidence"] = ReadRepoFile(EvidenceRelativePath),
         ["story"] = ReadRepoFile(StoryRelativePath),
         ["runbook"] = ReadDoc(),
+        // Preserve the signed section, including repeated newlines, when canonicalizing for its CRLF digest.
+        ["decision"] = File.ReadAllText(ResolveRepoPath("_bmad-output/implementation-artifacts/" + CloseoutSpec)).ReplaceLineEndings("\n"),
+        ["remediation"] = ReadRepoFile("_bmad-output/implementation-artifacts/" + PeerTlsSpec),
+        ["context"] = ReadRepoFile("_bmad-output/implementation-artifacts/epic-31-context.md"),
+        ["handoff"] = ReadRepoFile("docs/governance/openbao-independent-security-review.md"),
         ["epic"] = ReadRepoFile("_bmad-output/planning-artifacts/epics.md"),
         ["sprint"] = ReadRepoFile("_bmad-output/implementation-artifacts/sprint-status.yaml"),
     };

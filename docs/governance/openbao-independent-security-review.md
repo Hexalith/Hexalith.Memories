@@ -261,3 +261,7 @@ This is my assistant technical sign-off, not an independent human countersignatu
 owner declaration. C4b/C5b/C7 remain pending without completion dates; Story 31.1, its epic and
 sprint remain in-progress. Independent evaluation, other platform findings and the separate
 closeout draft remain open. No waiver, migration activation or Production qualification changed.
+
+## Story 31.1 disposition on 2026-11-22
+
+On 2026-11-22, Jérôme Piquot (`jpiquot`) closed Story 31.1 by sole-owner risk acceptance for C4b, C5b and C7. No independent countersignatures were obtained. EVAL-01 remains open with Platform Operations. The earlier handoff and technical signature record the independent-review request and its status on November 16. The July C7 waiver expired on 2026-10-26. The November 16 technical evaluation requested changes. The owner declaration, its scope and the peer-TLS remediation reference are recorded in [platform evidence section 4](../../_bmad-output/implementation-artifacts/tests/31-1-openbao-platform-evidence.md#4-security-reviewer-evaluation-task-6-checkpoint-c7).

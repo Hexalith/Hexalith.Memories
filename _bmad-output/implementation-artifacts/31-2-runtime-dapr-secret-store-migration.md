@@ -13,9 +13,7 @@ Status: ready-for-dev
 
 **Do not start implementation until Story 31.1 checkpoints C1, C2, C3, C4a, C5a, and C6 all read
 `complete`.** This is Epic 31's canonical activation gate. The six documentation and guard checkpoints were
-re-derived as `complete` on 2026-08-02, so the gate is open. Story 31.1 remains `in-progress` because
-C4b/C5b/C7 retain the independent-security-countersignature obligation; those rows still block Story 31.1
-`done` but do not block Story 31.2 development.
+re-derived as `complete` on 2026-08-02, so the gate is open. The 2026-11-22 sole-owner decision closed Story 31.1. C4b/C5b/C7 do not enter this migration gate.
 
 This gate was amended by the approved 2026-08-01 Sprint Change Proposal (Story 31.1 checkpoint split and
 Epic 31 activation gate). The Epic copy was corrected then, but this local Blocking Activation Gate and
@@ -43,7 +41,7 @@ so that runtime secret resolution crosses one reviewed boundary and every remain
 
 - [ ] Task 0 - Verify the activation gate before any other work (blocking)
   - [ ] Re-read Story 31.1's `## Implementation Checkpoints` table and verify that C1, C2, C3, C4a, C5a, and C6 each occur exactly once and read `complete`. If any named row is absent, duplicated, or not complete, **halt and report the exact row**. Do not start Task 1, do not edit any owned implementation path, and do not set `review`.
-  - [ ] Do not require Story 31.1 itself to be `done`. C4b, C5b, and C7 remain independent Story 31.1 closure gates and are not transferred, waived, or weakened by this story.
+  - [ ] Do not require Story 31.1 itself to be `done`. The dispositions of C4b, C5b and C7 belong to Story 31.1.
   - [ ] Add `ActivationGate_MatchesEpicAndCurrentCheckpointSet` to `RuntimeSecretStoreMigrationTests`. Bind the Epic 31 gate, this Blocking Activation Gate, and Task 0 to the exact six-row set; mutation-prove that reintroducing the `done` condition or removing one checkpoint fails.
 
 - [ ] Task 1 - Re-measure the runtime secret boundary before changing anything (AC: 1)

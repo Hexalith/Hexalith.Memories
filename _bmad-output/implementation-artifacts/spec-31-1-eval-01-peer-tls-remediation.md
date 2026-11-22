@@ -24,9 +24,7 @@ fresh peer and Service verification against the resulting profile.
 ## Boundaries & Constraints
 
 **Always:** Limit work to EVAL-01. Preserve all attested reports, covered prefixes,
-secret-safety rules and peer-specific CA verification. Keep C4b/C5b/C7 pending
-without completion dates and Story 31.1 in-progress until authentic independent
-sign-off. Approval must precede live issuance/install/reload. The owner must
+secret-safety rules and peer-specific CA verification. Approval must precede live issuance/install/reload. The owner must
 identify the authoritative renewal source and protected install/restore procedure.
 
 **Never:** Read Secret payloads, keys, credentials or audit contents; invent owner
@@ -52,6 +50,10 @@ drift; restart Pods or change Raft membership as a certificate-only workaround.
   the existing owner procedure (complete and approve the executable plan) / retain
   the proposal locally until the owner supplies it (no live rollout). No private
   key, token or Secret payload is requested.
+
+## Story 31.1 decision on 2026-11-22
+
+EVAL-01 remained open with Platform Operations owner Jérôme Piquot (`jpiquot`) at Story 31.1 closeout. The decision did not approve or execute peer-TLS remediation.
 
 ## Code Map
 

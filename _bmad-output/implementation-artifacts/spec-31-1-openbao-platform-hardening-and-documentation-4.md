@@ -1,11 +1,12 @@
 ---
-title: '31.1: Record independent evaluation and close security checkpoints'
+title: '31.1: Close OpenBao documentation under the approved sole-owner decision'
 type: 'chore'
 created: '2026-11-16'
-status: 'draft'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: '0d79ebfbd8c16b49ef551ce3194198e5d8e990c1'
+closeout_base_commit: '719820dbca5fb95e2f16f796b8a1124b2194d210'
 story_key: '31-1-openbao-platform-hardening-and-documentation'
 context:
   - '{project-root}/_bmad-output/project-context.md'
@@ -16,54 +17,41 @@ context:
 
 ## Intent
 
-**Problem:** Story 31.1's implementation and today's platform-documentation refresh are complete. C4b/C5b/C7 remain pending: independent countersignatures for the seal and ingress limitations and a platform-wide evaluation. The C7 waiver expired on 2026-10-26; no independent signed evaluation is recorded.
+On 2026-11-22 the sole contributor, Platform Operations owner Jérôme Piquot (`jpiquot`), approved the following Story 31.1 decision in the project conversation:
 
-**Approach:** Once authentic independent evidence is supplied, incorporate its conclusions into the existing records, validate their consistency and close satisfied gates. This draft does not claim an evaluation occurred.
+> I approve sole-owner closeout for 31.1, accept the documented static seal and namespace-wide ingress, and will track the peer-TLS finding separately.
+
+Record the owner decision as the basis for closing the story. The earlier assistant technical signature covers the build and test results. The historical independent-review route and the expired July waiver remain distinguishable from this decision.
 
 ## Boundaries & Constraints
 
-**Always:** Verify evaluator identity, date, independence, evaluated profile and both limitations. Preserve historical observations, waiver history, secret-safe evidence, exactly two accepted limitations and repository line endings. Until all mandatory gates are discharged, keep the parent story in-progress and unsigned gates pending without completion dates. Administrator remains accountable for scheduling.
-
-**Never:** Invent approval, substitute an owner persona or coding agent for an independent authority, renew the waiver, deploy or read Secret contents, change runtime migration or Production qualification, discharge separate Helm reproduction work, or change Story 31.2's activation gate.
+The exception covers C4b (static seal), C5b (namespace-wide ingress) and C7 (sole-owner closeout of the documented profile under amended AC2). Preserve the absence of independent countersignatures and all historical measured findings. EVAL-01 stays open with the owner in the existing peer-TLS remediation spec. Story 31.2's status and activation criteria, Epic 31 status, Production qualification, other findings and all runtime assets are outside this decision. No deployment or external actions.
 
 ## I/O & Edge-Case Matrix
 
-| Scenario | Input / State | Expected result | Failure handling |
-|----------|---------------|-----------------|------------------|
-| Independent evaluation | Dated signed record covering current platform and both limitations | Record provenance and individual outcomes | Incomplete scope keeps affected gates open |
-| Missing evidence | No independent signed record | Gates pending; parent in-progress | Report external dependency |
-| Deployment drift | Evaluated seal, ingress, voters or identity differs | Renew measured-profile evaluation | Older smoke evidence supplies no approval |
+| Scenario | Evidence | Result |
+| --- | --- | --- |
+| Approved story-specific exception | Exact declaration, owner, date and provenance agree with the recorded profile, all required checkpoint dispositions and current summaries | Story 31.1 done under sole-owner risk acceptance |
+| Missing, altered or misattributed approval, missing mandatory checkpoint, contradictory summary, independent sign-off claim or peer-TLS closure credited to this decision | Incomplete or inconsistent evidence | Validation rejects the closeout |
+| Ordinary unsigned or independently signed records | Existing pending, appointment or per-checkpoint evidence | Existing review paths and regression controls continue to apply |
 
 </frozen-after-approval>
 
-## Open Questions
-
-1. Is an authentic independent signed evaluation now available for C4b/C5b/C7? **Available:** provide its repository path or durable reference, evaluator identity, date, independence and covered checkpoint outcomes so verification and closeout can proceed. **Not yet available:** retain this draft and the pending gates; Administrator remains accountable for scheduling. EVAL-03/EVAL-04 remediation is already complete in its separate spec and is no longer a proposed alternative. The owner-attested assistant report does not resolve the independent-evidence dependency.
-
 ## Code Map
 
-- Evidence section 4 is authoritative; sections 9.1/9.3 hold today's profile/smoke evidence; section 9.4 is the current unsigned summary.
-- The parent story holds separate C4b/C5b/C7 rows, cumulative File List and append-only phase ledger. All implementation tasks are checked.
-- The runbook reviewer header, Named divergences and limitation narrative must follow authentic evidence; preserve its runtime Secret inventory.
-- `tests/Hexalith.Memories.Server.Tests/Deployment/OpenBaoPlatformDocumentationTests.cs` and its `SecurityGuards` / `SecurityControls` partial files: reuse `ValidateCurrentSecurityRecords`, `ValidateSecurityReviewerEvidence` and the unsigned, independent-appointment, per-checkpoint and whole-review controls. The completed EVAL-03/EVAL-04 remediation supports separate checkpoint authorities and dates and keeps failure diagnostics secret-safe. This closeout scope executes the existing guards against authentic resulting records; no further guard implementation is planned.
-- `docs/governance/openbao-independent-security-review.md`: prepared evaluator handoff, exact measured-profile references, existing technical findings and required signed-return fields. This supporting document supplies no independent approval.
-- `_bmad-output/implementation-artifacts/tests/31-1-assistant-security-evaluation-2026-11-16.md` and its JSON companion: owner-requested direct assistant evaluation, live peer-DNS TLS defect, unauthenticated-denial controls and executable reproductions of the diagnostic/review-state defects. Overall technical outcome: changes requested; no independent signature. Preserve both attested files byte-for-byte; record later remediation in the separate remediation spec and handoff.
+- Platform evidence §4 holds the authoritative decision and §9.4 its current summary. Bind the owner decision to the measured profile (§9.1, 2026-11-16), technical outcome, and the EVAL-01 peer-TLS remediation spec.
+- The story checkpoint table, runbook, governance handoff, epics, epic context and sprint status publish current state. Preserve the dated record and the signed November 22 verification section. Update current language that otherwise contradicts this decision.
+- The existing `OpenBaoPlatformDocumentationTests` partial class validates evidence, reviewer identity, cross-document state and mandatory parent prerequisites. Extend that logic narrowly for this explicit dated exception. Use positive and negative controls and retain the independent-review tests.
+- The existing `spec-31-1-eval-01-peer-tls-remediation.md` owns the open finding. Reconcile any current parent-status assertion there and retain its pending execution and approval requirements.
 
 ## Tasks & Acceptance
 
-**Execution:**
+- [x] Record the owner, date, exact declaration, provenance, scope and decisions for the three checkpoints in the evidence. Record EVAL-01 ownership and reference the existing open work.
+- [x] Reconcile story, sprint, epic summary/context, runbook, and handoff. Mark only Story 31.1 done and give each affected checkpoint an accurate dated owner disposition. Append the story phase record.
+- [x] Update the documentation guards and regression controls for the matrix. Retain validation of all other mandatory prerequisites and reject owner/persona approval on the independent route.
+- [x] Build Server.Tests with .NET 11 in Debug and run the entire documentation class and pinned deployment regression. Record actual case counts and results. The prior disposable build under `/workspace/work/story-31-1/build` and the existing SDK/package cache are available. From the module root use `DOTNET_ROOT=/workspace/.memories-dotnet`, `PATH=/workspace/.memories-dotnet:$PATH`, `DOTNET_CLI_HOME=/workspace/.memories-dotnet-home`, `NUGET_PACKAGES=/workspace/.memories-nuget/packages`, `dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -c Debug -p:UseHexalithProjectReferences=true --artifacts-path /workspace/work/story-31-1/build --disable-build-servers -m:1 /nr:false -p:MinVerVersionOverride=1.0.0`. Run the built xUnit assembly directly using the selectors under Verification. Use distinct log names for the new run.
 
-- [ ] `_bmad-output/implementation-artifacts/tests/31-1-openbao-platform-evidence.md` — verify supplied provenance, independence and scope; record conclusions and each gate disposition; reconcile section 9.4.
-- [ ] `docs/operations/openbao.md` — align current reviewer/divergence/limitation summaries with verified outcomes, preserving dated observations.
-- [ ] `_bmad-output/implementation-artifacts/31-1-openbao-platform-hardening-and-documentation.md` — mirror evidenced gate dispositions; append actual validation and reconcile File List.
-- [ ] `_bmad-output/planning-artifacts/epics.md`, `_bmad-output/implementation-artifacts/sprint-status.yaml` and `_bmad-output/implementation-artifacts/epic-31-context.md` — reconcile current summaries only after mandatory gates pass; preserve Story 31.2 status and activation criteria.
-- [ ] `tests/Hexalith.Memories.Server.Tests/Deployment/OpenBaoPlatformDocumentationTests.cs` — execute existing guards and pinned deployment regression against resulting records; preserve signed/unsigned controls.
-
-**Acceptance Criteria:**
-
-- Given authentic independent evaluation of the current profile and both limitations, when provenance and scope are verified, then evidence and summaries agree on evaluator, date and individual outcomes.
-- Given absent, non-independent, stale or incomplete evidence, when closeout is considered, then unsatisfied gates remain pending without completion dates and the parent stays in-progress.
-- Given satisfied mandatory gates, when verification and workflow review pass, then Story 31.1 can close without platform changes or altered migration requirements.
+Given the dated owner decision, when the records and regression checks agree, Story 31.1 closes on a sole-owner basis. Given a missing prerequisite or a claim beyond that decision, the validator refuses closure. The changes-requested historical report and the open peer-TLS finding retain their provenance.
 
 ## Implementation Notes
 
@@ -174,6 +162,32 @@ staging, commit or push was performed.
 
 ## Review Triage Log
 
+The November 22 review covers the closeout diff against `closeout_base_commit`. The original draft baseline also spans unrelated work merged into main.
+
+| Review finding | Verdict | Evidence and disposition |
+| --- | --- | --- |
+| Blind review 1, post-change verification | Medium | The signed 106-case result predates the new route. Record the post-change build and both selectors separately. |
+| Blind review 2, phase and file list | Medium | The implementation entry identifies the changed files. Append the final review and counts to the parent ledger. |
+| Blind review 3, Task 6 instruction | Medium | The historical unsigned instruction needs a dated reference to the approved exception for this story. |
+| Blind review 4, handoff entry point | Low | The November 16 prefix is signed. Link active records to the November 22 disposition within the handoff. |
+| Blind review 5, prerequisite dates | Medium | The actual decision date bounds all prerequisite completion dates, including when rerun later. |
+| Blind review 6, July waiver fields | Medium | Require the historical approver, C7-only scope, rationale, controls and reopen trigger. |
+| Blind review 7, technical signature | Medium | Verify the linked signature and the previously published 1,205-byte section and digest. |
+| Blind review 8, declaration fixture | Low | A fixed digest binds the exact declaration independently of the synthetic fixture's text constant. |
+| Blind review 9, preceding sprint comments | Medium | A conflicting disposition can precede the dated summary in the same tracking block. Cover both positions. |
+| Blind review 10, contradictory dispositions | Medium | Cover the reported incomplete checkpoint and reversed-word-order peer-TLS closure claims. |
+| Blind review 11, assertion output | Medium | Use a field-only diagnostic for a corrupted owner decision cell. Test the exception text with synthetic input. |
+| Edge review 1, later prerequisite | Medium | The fixed decision-date comparison rejects the November 23 example. |
+| Edge review 2, section 4 prose | Medium | Check section 4’s decision narrative separately from its table and section 9.4. |
+| Edge review 3, scope of July waiver | Medium | Require and exercise the historical C7-only waiver scope. |
+| Edge review 4, earlier sprint comment | Medium | Exercise contradictory text before the November 22 disposition. |
+| Edge review 5, Production claims | Medium | Reject a claim granting Production qualification through this decision. |
+| Edge review 6, missing phase entry | Medium | The implementation and final review entries provide the closeout history. |
+| Edge review 7, earlier test count | Medium | Keep the signed pre-closeout result and publish the current result separately. |
+| Verification review 1, prerequisite cutoff | Medium | Run the prerequisite control with a clock later than the decision. |
+| Verification review 2, isolated narrative conflict | Medium | Corrupt only the section 4 narrative to verify that the authoritative record is checked. |
+| Verification review 3, altered signed section | Medium | Exercise a one-byte change in the signed content and a missing signature. |
+
 ## Verification
 
 Use `run-with-temp` to build Server.Tests in Debug with source references and disposable artifacts; retain useful logs outside TMPDIR. Copy the solution marker and required records/manifests into the temporary root for test discovery. Invoke the built assembly with `-class Hexalith.Memories.Server.Tests.Deployment.OpenBaoPlatformDocumentationTests -parallel none -noLogo`, then method `ProductionDeploymentArtifactsTests.OpenBaoDeploymentProfile_IsPinnedTlsOnlyPersistentAndInternal`. Expected after the completed guard remediation: 106 documentation cases and one regression pass without skips. The earlier 18-case preparation result below remains historical. Run `git diff --check`; compare checkpoint/status changes to the signed source. Existing synthetic controls cover independent closure, owner-persona rejection and stale-summary refusal; fixture signatures supply no real approval.
@@ -190,3 +204,65 @@ Both authored Markdown files passed local-link, CRLF and credential-shape checks
 candidate material. The frozen intent matches HEAD verbatim; draft status and authoritative
 checkpoint/status records are preserved. `git diff --check` passed. No new tests or test-method
 changes were introduced, and no runtime, deployment, credential or tenant surface changed.
+
+### 2026-11-22 closeout check
+
+Memories was at `719820dbca5fb95e2f16f796b8a1124b2194d210`. All ten direct
+submodules matched their fetched `origin/main`. The synchronized repositories and
+Memories GitHub issues and pull requests updated since November 16 yielded no
+independent signed evaluation. The assistant and owner report prefixes and full
+report each matched the SHA-256 in the JSON companion. The companion records
+`independent_human_signoff: false`. Evidence sections 4 and 9.4 still list the
+reviewer as unassigned. The Administrator owns scheduling for C4b, C5b and C7.
+
+The Debug build of `tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj`
+used .NET SDK 11.0.100, `-p:UseHexalithProjectReferences=true` and the repository's
+NuGet audit settings. It completed with zero warnings and errors. The xUnit runner
+executed the `OpenBaoPlatformDocumentationTests` class (106 cases) and
+`ProductionDeploymentArtifactsTests.OpenBaoDeploymentProfile_IsPinnedTlsOnlyPersistentAndInternal`
+(1 case). All 107 passed, with zero skipped. These checks cover the tracked records
+and deployment manifests. The missing signed evaluation remains the closeout dependency.
+
+### Signature for the November 22 verification
+
+At the contributor’s request (“I am the only contributor, sign!”), I attest that
+the November 22 Debug build completed with zero warnings and errors and that
+all 106 OpenBao documentation cases and the deployment regression passed.
+I verified the build and xUnit logs against the results recorded above.
+
+Signed electronically by **/s/ Codex**, AI assistant who ran the verification, at
+`2026-11-22T11:43:12Z` (UTC). This typed signature covers the preceding
+`2026-11-22 closeout check` from its heading through its final CRLF
+(1205 bytes, SHA-256 `748731eb663b76bdc7a9d53724683c48c46dc36c3db3fc60e325fecf7aa45b01`).
+The signature covers repository verification. The November 16 platform evaluation
+records a changes-requested decision, including the open peer TLS finding.
+
+### Implementation verification on 2026-11-22
+
+Platform evidence §4 records the exact conversation declaration, owner, date, measured profile and three dispositions. Story 31.1 is done under that decision. EVAL-01 remains with Jérôme Piquot in the separate peer-TLS draft. Of 238 sprint status values, only Story 31.1 changed. The six migration prerequisites, Story 31.2 status and Epic 31 status retain their prior values.
+
+Using SDK 11.0.100, the Debug Server.Tests build with project references and NuGet audit enabled passed with 0 warnings and 0 errors. The command in Tasks & Acceptance used the existing disposable build directory. Both runs used the built xUnit assembly directly, through `run-with-temp.sh` with the solution marker, required records and manifests copied into the temporary discovery root.
+
+| Selector | Passed | Failed | Errors | Skipped | Not run |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `-class Hexalith.Memories.Server.Tests.Deployment.OpenBaoPlatformDocumentationTests -parallel none -noLogo` | 135 | 0 | 0 | 0 | 0 |
+| `-method Hexalith.Memories.Server.Tests.Deployment.ProductionDeploymentArtifactsTests.OpenBaoDeploymentProfile_IsPinnedTlsOnlyPersistentAndInternal -parallel none -noLogo` | 1 | 0 | 0 | 0 | 0 |
+
+The five new test methods add 29 cases to the prior 106. The controls exercise the dated owner route, mismatched or missing approvals and checkpoints, inconsistent current records, and misattribution of independent approval or peer-TLS closure. Local logs are `/workspace/work/story-31-1/sole-owner-closeout-build.log`, `sole-owner-closeout-documentation.log` and `sole-owner-closeout-deployment.log` in the same directory. The November 22 signed verification section (1,205 bytes) and November 16 signed governance handoff prefix (17,729 bytes) each matched its recorded SHA-256. `git diff --check` passed.
+
+### Focused review fixes on 2026-11-22
+
+The decision guard now verifies the signed November 22 section, the Codex attestation, the exact declaration digest and the original C7-only waiver. Focused controls reject conflicting current statements, including claims about EVAL-01 and Production qualification, and check that a malformed decision cell cannot disclose its value in diagnostics.
+
+The Debug source-reference rebuild completed with zero warnings and errors. The eight `SoleOwnerCloseout_*` methods and the two real-record tests, `CurrentSecurityCheckpoints_AgreeWithUnsignedEvidenceAndReviewerDivergence` and `PlatformEvidence_RecordsExecutedSmokeTestAndReviewerState`, passed all 39 selected cases with zero failures, errors, skips or not-run cases. Discovery with `-preEnumerateTheories -list tests` found 143 cases in the documentation class. Local logs are `/workspace/work/story-31-1/sole-owner-review-patched-build.log`, `sole-owner-review-patched-focused.log` and `sole-owner-review-discovery.log`.
+
+### Final review verification on 2026-11-22
+
+The final .NET 11 Debug build completed with zero warnings and errors. The full
+OpenBao documentation class passed 143 cases and the pinned deployment regression
+passed one, with zero failed, skipped or unexecuted cases. All 37 prior method
+selectors were retained, with eight added. The review findings are resolved.
+
+The current story, sprint and evidence agree on all three dated owner dispositions.
+Both earlier technical attestations retain their original signed content. EVAL-01
+is tracked separately in the peer-TLS remediation spec.

@@ -427,37 +427,40 @@ earlier run's pod, because `backoffLimit: 0` and the reaped prior Job mean each 
 
 ## 4. Security reviewer evaluation (Task 6, checkpoint C7)
 
-**No reviewer signature was obtained.** The 2026-07-28 waiver closed C7 only until 2026-10-26. That
-date has passed without a dated, named evaluation, so checkpoint C7 is `pending` / `not complete`
-again. The historical waiver remains recorded below. Nothing in this section asserts that a security
-authority reviewed this platform.
+On 2026-11-22, Jérôme Piquot (`jpiquot`) closed Story 31.1 by sole-owner risk acceptance for C4b, C5b and C7. No independent countersignatures were obtained. EVAL-01 remains open with Platform Operations.
+
+The July 28 C7 waiver expired on 2026-10-26. Following expiry, the three security checkpoints awaited independent review without completion dates until the owner decision. The independent reviewer was unassigned.
 
 | Field | Record |
 | :---- | :----- |
 | Reviewer of record | Murat TEA for Jérôme (`murat-tea-for-jpiquot`), carried as namespace annotation `hexalith.io/security-reviewer` |
 | Platform Operations owner | Jérôme Piquot (`jpiquot`) |
-| Evaluation status | **Not signed.** No named evaluator reviewed the measured platform during the dev-story session or during code review |
-| Owner of the blocker | Independent security reviewer **unassigned**; Administrator (`jpiquot`) accountable for scheduling and escalation. The recorded persona is not an independent reviewer |
+| Evaluation status | Sole-owner closeout of Story 31.1 |
+| Decision owner | Sole contributor and Platform Operations owner Jérôme Piquot (`jpiquot`) |
+| Decision date | 2026-11-22 |
+| Owner declaration | I approve sole-owner closeout for 31.1, accept the documented static seal and namespace-wide ingress, and will track the peer-TLS finding separately. |
+| Decision provenance | Owner declaration in the project conversation, recorded in the [approved Story 31.1 closeout spec](../spec-31-1-openbao-platform-hardening-and-documentation-4.md#intent). |
+| Accepted profile | Section 9.1, measured 2026-11-16: OpenBao 2.6.2, chart label 0.29.5, three healthy servers on node1, voting membership unmeasured. |
+| Technical outcome | The [2026-11-16 assistant evaluation](31-1-assistant-security-evaluation-2026-11-16.md) requested changes. The [November 22 assistant signature](../spec-31-1-openbao-platform-hardening-and-documentation-4.md#signature-for-the-november-22-verification) covers the build and tests. |
+| Peer-TLS finding | EVAL-01 remains open with Platform Operations owner Jérôme Piquot (`jpiquot`). [Peer-TLS remediation](../spec-31-1-eval-01-peer-tls-remediation.md) requires separate approval and execution. |
 | Waiver approver | **Administrator / Jérôme Piquot (`jpiquot`)**, approved 2026-07-28 during Story 31.1 code review |
 | Approver independence | **Not independent, and recorded as a defect rather than repeated as a claim.** The waiver approver (`jpiquot`) is simultaneously the Platform Operations owner, a co-accountable owner of checkpoints C4 and C5, and the human the reviewer persona `murat-tea-for-jpiquot` acts for. Story 27.3 withdrew this exact pairing on 2026-07-26 because it "names one human plus a persona acting for that same human" and does not satisfy an independent-security-reviewer requirement (`27-3-production-adapter-and-deployment-profile.md:706`). Story 31.1's second-pass code review 2026-07-28 found the same pairing closing C7 here. The Administrator's decision was to keep the waiver and record the independence defect explicitly, so nothing in this story claims an independent authority evaluated the platform. Carried as a `Named divergences` row in `docs/operations/openbao.md` with its own reopen trigger |
 | Waiver approved | 2026-07-28. Recorded as accepted debt in the shape the `20.5-A41` accepted-debt clause of `project-context.md` models — no project rule authorizes waiving a mandatory checkpoint in general, so this is an Administrator decision recorded by analogy, not a rule being followed: named approver, scope, rationale, risk, compensating controls, and a time-bounded expiry |
 | Waiver scope | Checkpoint C7 only — the reviewer's recorded evaluation. It waives **no** acceptance criterion, neither accepted limitation, and no other checkpoint. AC2's documentation obligations were met independently and are asserted executably |
 | Waiver rationale | The platform is already deployed and this story documents rather than changes it. Both limitations are recorded with owner, consequence, compensating controls and reopen trigger, and the documentation is bound by an executed guard, so the record is reviewable on its own evidence while the evaluation is scheduled |
-| Consequence | Both accepted limitations are documented, but no independent security authority has evaluated the platform **as measured**. The static file-based seal and the namespace-wide port 8200 ingress stand accepted without a countersignature. Story 31.1 code review additionally found the seal row's compensating controls overstated — the `shamir` 2-of-3 shares live in this same namespace and are not yet escrowed, and the port 8200 NetworkPolicy is the subject of the other limitation — and corrected the row before this waiver was recorded, so the waiver covers an accurate record rather than the original one |
+| Historical waiver consequence | Both accepted limitations are documented, but no independent security authority has evaluated the platform **as measured**. The static file-based seal and the namespace-wide port 8200 ingress stand accepted without a countersignature. Story 31.1 code review additionally found the seal row's compensating controls overstated — the `shamir` 2-of-3 shares live in this same namespace and are not yet escrowed, and the port 8200 NetworkPolicy is the subject of the other limitation — and corrected the row before this waiver was recorded, so the waiver covers an accurate record rather than the original one |
 | Compensating controls | Historical waiver record from 2026-07-28: Restricted Pod Security enforced on the namespace; RBAC scoped to the platform ServiceAccounts; four `hexalith-keys*` Services `ClusterIP` with no ingress on those Services; persistent JSON audit device; `OpenBaoPlatformDocumentationTests` executing over both published records on every CI run so the accepted-limitation text cannot silently soften |
-| Waiver expiry | **2026-10-26** (90 days). On that date checkpoint C7 reopens automatically as `pending` / `not complete` unless a dated, named evaluation has been recorded |
+| Waiver expiry | **2026-10-26** (90 days). C7 reopened on expiry. The waiver is historical only. |
 | Historical waiver reopen trigger | Whichever comes first: the 2026-10-26 expiry; a dated, named evaluation by `murat-tea-for-jpiquot` covering the platform as measured, both accepted limitations and the amended AC2 qualifier, appended to this artifact as its own row; any change to the seal configuration, the NetworkPolicy ingress, or the voter count; or Story 31.2 activation |
 | Independent reviewer | **unassigned** — the owner persona supplies no independent authority |
-| Scheduling accountable owner | **Administrator (`jpiquot`)**; assign an independent reviewer and schedule the signed evaluation |
-| Reopen trigger | Expiry **2026-10-26 already fired**. Obtain a dated, named independent signed evaluation covering the current measured profile and both limitations; reassess on seal/ingress/voter changes or Story 31.2 activation |
-| Checkpoint C4b state | `pending` / `not complete`; no independent seal countersignature; completion date **none** |
-| Checkpoint C5b state | `pending` / `not complete`; no independent ingress countersignature; completion date **none** |
-| Checkpoint C7 state | `pending` / `not complete` — the 2026-10-26 waiver expired and no dated, named evaluation has been recorded |
+| Independent countersignatures | None. The owner accepted the risks without an independent signature for C4b, C5b or C7. |
+| Historical scheduling accountable owner | **Administrator (`jpiquot`)**; assign an independent reviewer and schedule the signed evaluation |
+| Reopen trigger | Reassess on seal/ingress/voter changes or Story 31.2 activation. |
+| Checkpoint C4b state | 2026-11-22 — Jérôme Piquot (`jpiquot`) accepted the documented static file-based seal by sole-owner decision. |
+| Checkpoint C5b state | 2026-11-22 — Jérôme Piquot (`jpiquot`) accepted the documented namespace-wide port 8200 ingress by sole-owner decision. |
+| Checkpoint C7 state | 2026-11-22 — Jérôme Piquot (`jpiquot`) closed documentation of the measured profile under amended AC2 by sole-owner decision. |
 
-The Task 1 measurements (section 1), the Task 2 reconciliation (section 2), and the executed smoke test
-(section 3) are the handover package for that evaluation. Recording a recommendation to seek review
-would not be a recorded evaluation; this row stays open until a named evaluator signs it. Story 27.3's
-unassigned AC4 security approver is the precedent for this record.
+Sections 1–3 retain the original measurements, reconciliation and smoke evidence used for the independent-review handoff. See the [2026-11-22 handoff disposition](../../../docs/governance/openbao-independent-security-review.md#story-311-disposition-on-2026-11-22). The owner decision applies only to the documented profile in section 9.1. Production qualification and the other findings retain their separate evidence requirements.
 
 ## 5. Test evidence (Task 7)
 
@@ -1016,13 +1019,9 @@ restart recovery, or independent security approval. Historical successes are pre
 
 ### 9.4 Current independent-review ownership
 
-As of **2026-11-16**, C4b/C5b/C7 are **pending / not complete**, with **no completion date**.
-Independent reviewer **unassigned**; **Administrator (`jpiquot`) accountable for scheduling and escalation**.
-No independent signed evidence exists. The July waiver expired on **2026-10-26**; it supplies no
-current approval and is neither extended nor replaced by passing guards. Section 4 is the current
-state record; its historical waiver fields remain dated. Story 31.1 stays **in-progress**.
-Story 31.2 activation still depends only on C1/C2/C3/C4a/C5a/C6; its activation does not discharge
-these security obligations. Helm reproduction remains separate Platform Operations work.
+On 2026-11-22, Jérôme Piquot (`jpiquot`) closed Story 31.1 by sole-owner risk acceptance for C4b, C5b and C7. No independent countersignatures were obtained. EVAL-01 remains open with Platform Operations. The July C7 waiver expired on 2026-10-26. Section 4 records the declaration and each disposition.
+
+### Supplementary measurements on 2026-11-16
 
 Additional read-only checks after the primary capture: `command -v helm` returned no path;
 `kubectl --context=jpiquot@local -n openbao get certificate,issuer -o name` returned no names.

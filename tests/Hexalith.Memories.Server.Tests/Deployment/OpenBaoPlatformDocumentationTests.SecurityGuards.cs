@@ -57,6 +57,17 @@ public sealed partial class OpenBaoPlatformDocumentationTests
         evidence.GetTableHeader(ReviewerEvaluationHeading).ShouldBe(["Field", "Record"]);
         Dictionary<string, string> record = evidence.GetTableRows(ReviewerEvaluationHeading)
             .ToDictionary(static row => row[0], static row => row[1], StringComparer.Ordinal);
+        var story = new MarkdownContractDocument(sources["story"]);
+        (string status, string epic, string tracking) = ReadParentTracking(sources);
+        if (IsSoleOwnerRecord(record))
+        {
+            ValidateSoleOwnerEvidence(evidence, record, today);
+            status.ShouldBe("done");
+            ValidateDocumentationPrerequisites(story, new DateOnly(2026, 11, 22));
+            ValidateSoleOwnerCloseout(sources, story, epic, tracking);
+            return;
+        }
+
         string evaluation = record["Evaluation status"].Replace("**", string.Empty, StringComparison.Ordinal);
         string reviewer = RemoveReviewMarkdown(record["Independent reviewer"]).Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
         bool assigned = !string.Equals(reviewer, "unassigned", StringComparison.OrdinalIgnoreCase);
@@ -91,7 +102,6 @@ public sealed partial class OpenBaoPlatformDocumentationTests
             RemoveReviewMarkdown(record["Reopen trigger"]).ShouldContain("2026-10-26 already fired", Case.Sensitive);
         }
 
-        var story = new MarkdownContractDocument(sources["story"]);
         foreach ((string checkpoint, string scope) in new[]
         {
             ("C4b", "static file-based seal"), ("C5b", "namespace-wide port 8200 ingress"), ("C7", C7SignatureScope),
@@ -152,42 +162,13 @@ public sealed partial class OpenBaoPlatformDocumentationTests
         divergence[3].ShouldContain("independent reviewer", Case.Sensitive);
         string preamble = sources["runbook"].Split("\n## ", StringSplitOptions.None)[0];
         NormalizeWhitespace(preamble).ShouldContain($"Independent reviewer: **{reviewer}**", Case.Sensitive);
-        string epic = NormalizeWhitespace(new MarkdownContractDocument(sources["epic"])
-            .GetSection("Story 31.1: OpenBao Platform Hardening and Documentation"));
-        epic.ShouldContain("Helm reproduction is separate Platform Operations work", Case.Sensitive);
-        Match storyStatus = Regex.Match(sources["story"], @"^Status: (?<status>in-progress|done)$", RegexOptions.Multiline, TimeSpan.FromSeconds(5));
-        storyStatus.Success.ShouldBeTrue();
-        string status = storyStatus.Groups["status"].Value;
-        epic.ShouldContain($"**Status:** {status}", Case.Sensitive);
-        string sprint = sources["sprint"];
-        MatchCollection declarations = Regex.Matches(sprint,
-            @"^[ \t]*31-1-openbao-platform-hardening-and-documentation:[ \t]*(?<status>[^\r\n]*)$",
-            RegexOptions.Multiline, TimeSpan.FromSeconds(5));
-        declarations.Count.ShouldBe(1, "Story 31.1 needs one status declaration, including opposite-value duplicates.");
-        declarations[0].Groups["status"].Value.Trim().ShouldBe(status);
-        int trackingStart = sprint.IndexOf("# Story 31.1 renamed", StringComparison.Ordinal);
-        trackingStart.ShouldBeGreaterThanOrEqualTo(0);
-        int trackingEnd = sprint.IndexOf("\n  31-2-", trackingStart, StringComparison.Ordinal);
-        trackingEnd.ShouldBeGreaterThan(trackingStart);
-        string tracking = sprint[trackingStart..trackingEnd];
         if (completed.Count < 3)
         {
             status.ShouldBe("in-progress", "All mandatory checkpoints are required for parent completion.");
         }
         else if (status == "done")
         {
-            foreach (string checkpoint in new[] { "C1", "C2", "C3", "C4a", "C5a", "C6" })
-            {
-                IReadOnlyList<string> row = ReadSecurityCheckpoint(story, checkpoint);
-                Regex.IsMatch(RemoveReviewMarkdown(row[4]), @"^complete(?: — \S.*)?$",
-                    RegexOptions.CultureInvariant, TimeSpan.FromSeconds(5)).ShouldBeTrue("Parent completion requires an unconditional complete state.");
-                Regex.IsMatch(RemoveReviewMarkdown(row[3]), @"^verified(?: — \S.*)?$",
-                    RegexOptions.CultureInvariant, TimeSpan.FromSeconds(5)).ShouldBeTrue("Parent completion requires a verified prerequisite review.");
-                ShouldBeSubstantiveCell(row[2], checkpoint, CheckpointsHeading);
-                DateOnly.TryParseExact(row[5], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateOnly date)
-                    .ShouldBeTrue("A completed checkpoint needs a valid completion date.");
-                date.ShouldBeLessThanOrEqualTo(today);
-            }
+            ValidateDocumentationPrerequisites(story, today);
         }
 
         ValidateReviewReopenTrigger(record["Reopen trigger"], completed.Count < 3);
@@ -254,6 +235,48 @@ public sealed partial class OpenBaoPlatformDocumentationTests
             epic.ShouldContain("C4b/C5b/C7 remain pending / not complete", Case.Sensitive);
             tracking.ShouldContain("C7 waiver expiry 2026-10-26 has fired", Case.Sensitive);
             tracking.ShouldContain("C4b/C5b/C7 are pending/not complete with no completion date", Case.Sensitive);
+        }
+    }
+
+    private static (string Status, string Epic, string Tracking) ReadParentTracking(IReadOnlyDictionary<string, string> sources)
+    {
+        string epic = NormalizeWhitespace(new MarkdownContractDocument(sources["epic"])
+            .GetSection("Story 31.1: OpenBao Platform Hardening and Documentation"));
+        epic.ShouldContain("Helm reproduction is separate Platform Operations work", Case.Sensitive);
+        MatchCollection statuses = Regex.Matches(sources["story"], @"^Status: (?<status>[^\r\n]+)$", RegexOptions.Multiline, TimeSpan.FromSeconds(5));
+        statuses.Count.ShouldBe(1, "Story 31.1 needs one current status.");
+        string status = statuses[0].Groups["status"].Value;
+        status.ShouldBeOneOf("done", "in-progress");
+        MatchCollection epicStatuses = Regex.Matches(epic, @"\*\*Status:\*\* (?<status>[\w-]+)", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(5));
+        epicStatuses.Count.ShouldBe(1);
+        epicStatuses[0].Groups["status"].Value.ShouldBe(status);
+        string sprint = sources["sprint"];
+        MatchCollection declarations = Regex.Matches(sprint,
+            @"^[ \t]*31-1-openbao-platform-hardening-and-documentation:[ \t]*(?<status>[^\r\n]*)$",
+            RegexOptions.Multiline, TimeSpan.FromSeconds(5));
+        declarations.Count.ShouldBe(1, "Story 31.1 needs one status declaration, including opposite-value duplicates.");
+        declarations[0].Groups["status"].Value.Trim().ShouldBe(status);
+        int trackingStart = sprint.IndexOf("# Story 31.1 renamed", StringComparison.Ordinal);
+        trackingStart.ShouldBeGreaterThanOrEqualTo(0);
+        int trackingEnd = sprint.IndexOf("\n  31-2-", trackingStart, StringComparison.Ordinal);
+        trackingEnd.ShouldBeGreaterThan(trackingStart);
+        string tracking = sprint[trackingStart..trackingEnd];
+        return (status, epic, tracking);
+    }
+
+    private static void ValidateDocumentationPrerequisites(MarkdownContractDocument story, DateOnly today)
+    {
+        foreach (string checkpoint in new[] { "C1", "C2", "C3", "C4a", "C5a", "C6" })
+        {
+            IReadOnlyList<string> row = ReadSecurityCheckpoint(story, checkpoint);
+            Regex.IsMatch(RemoveReviewMarkdown(row[4]), @"^complete(?: — \S.*)?$",
+                RegexOptions.CultureInvariant, TimeSpan.FromSeconds(5)).ShouldBeTrue("Parent completion requires an unconditional complete state.");
+            Regex.IsMatch(RemoveReviewMarkdown(row[3]), @"^verified(?: — \S.*)?$",
+                RegexOptions.CultureInvariant, TimeSpan.FromSeconds(5)).ShouldBeTrue("Parent completion requires a verified prerequisite review.");
+            ShouldBeSubstantiveCell(row[2], checkpoint, CheckpointsHeading);
+            DateOnly.TryParseExact(row[5], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateOnly date)
+                .ShouldBeTrue("A completed checkpoint needs a valid completion date.");
+            date.ShouldBeLessThanOrEqualTo(today);
         }
     }
 
