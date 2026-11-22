@@ -1,15 +1,26 @@
 ---
 project: memories
-date: '2026-10-08'
+date: '2026-11-21'
 intent: sprint-planning
 gate: FAIL
-baseline: aac6d905
+baseline: 45fb2308
+mcpcli_baseline: 8042275f
 tracking_updated: false
 ---
 
-# Implementation readiness — 2026-10-08
+# Implementation readiness — 2026-11-21
 
-## Current disposition, 2026-11-20
+**Gate verdict: FAIL.** The PRD and the owner records leave three decisions open. The tracker stays frozen while the owners resolve them. [Release decision](prd.md#release-decision-record) · [Course correction and trade-offs](sprint-change-proposal-2026-11-21.md)
+
+| Open item | Accountable owner | Evidence that reopens planning |
+| --- | --- | --- |
+| Epic 32 / Story 35.7, shared CLI search | Memories Contracts and McpCli owners | The [four-step preflight](../../docs/dev/quickstart-walkthrough-log.md#phase-1-shared-cli-preflight--21-november-2026) found a Tenants command and three missing Memories operations. Obtain the L03 owner amendment and verify the user authorization path. Register verified operation slices for the required journey. Delivery precedes the timed clean-machine walkthrough. [Epic 32](epics.md#epic-32-use-memories-through-the-shared-hexalith-cli) |
+| G1, independent labels | Administrator | Use the [prepared invitation](sprint-change-proposal-2026-11-21.md#g1-reviewer-invitation) to recruit two external reviewers. Record their identities, their independence from corpus curation and implementation, and their confirmed availability. Use those commitments to plan the label freeze and qualifying run. [PRD open questions](prd.md#open-questions) |
+| Story 34.58, per-tenant content storage | Administrator with the capacity owner | The PRD now defines the charged content and retry behavior. Use the [retained-byte sample](../../docs/operations/capacity-planning.md#tenant-content-store-measurement--21-november-2026) and supported deployment profile to approve a numeric limit. Verify the quota story against that decision before registering it. [Epic 34](epics.md#epic-34-keep-tenant-memory-durable-and-isolated) |
+
+**Next planning review.** Recheck these three items against their owner records, finish epic validation, then rerun sprint planning. The reviewed Epic 34 sequence starts with 34.33 → 34.1 → 34.8. Story 34.33 already has a specification. The existing tracker and the separate Epic 27 disposition remain authoritative for previously tracked work. [34.33 specification](../specs/spec-34-33-v1-wire-name-register/SPEC.md)
+
+## November 20 disposition
 
 The successor sprint tracker remains on hold. Two items in the October snapshot below have since moved.
 
@@ -18,6 +29,8 @@ The successor sprint tracker remains on hold. Two items in the October snapshot 
 - **R3, qualification.** The October 31 checkpoint lacks the required independent reviewer and run evidence. The PRD records the consequence for December 1. The [20 November audit correction](sprint-change-proposal-2026-11-20.md) lists the evidence, remediation owners and remaining decisions.
 
 ## Historical assessment, 2026-10-08
+
+The following inventory, findings and evidence describe the October 8 baseline `aac6d905`.
 
 The full plan is not ready for sprint tracking generation. The approved handoff
 stops before final validation, with missing target-surface stories, held
@@ -28,7 +41,7 @@ This is a planning-readiness verdict. It does not reopen completed history or
 infer release qualification from historical story status. No tracker rows or
 statuses were changed, and the tracking generator was not run.
 
-## Current artifact inventory
+### October artifact inventory
 
 | Artifact | Readiness relevance |
 | :--- | :--- |
@@ -46,7 +59,7 @@ or of slice independence. A missing architecture document is not a finding:
 the authoritative spine is final; older draft observations in the proposal
 are explicitly historical.
 
-## Findings, ordered by severity
+### October findings, ordered by severity
 
 | ID | Severity | Gap and consequence | Owner and resolution route |
 | :--- | :--- | :--- | :--- |
@@ -59,7 +72,7 @@ or release-test results alone were not treated as a planning failure. The
 recorded release posture remains no-go; the 2026-10-31 prerequisite checkpoint
 and 2026-12-01 decision date are unchanged.
 
-## Evidence checked on the current worktree
+### Evidence checked on the October worktree
 
 Run these commands from the Memories repository root:
 
@@ -95,7 +108,7 @@ source, and routing at line 67 uses publisher-provided source. These source
 observations support the recorded Story 34.2 dependency hold; they are not
 runtime qualification evidence.
 
-## Next action
+### Historical next action, superseded
 
 Finish the story/dependency revalidation beginning at Story 34.9 and resolve
 the owner-inventory and qualification handoffs. Then complete epic final

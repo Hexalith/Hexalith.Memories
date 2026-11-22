@@ -93,6 +93,24 @@ measurement below before customer-tenant approval. Add measured workflow/state, 
 FalkorDB, backup/replication, and policy headroom separately. If no valid coefficient exists for the proposed
 shape, stop provisioning rather than substituting another tenant's data or the float32 lower bound.
 
+## Tenant content-store measurement · 21 November 2026
+
+Story 34.58 will charge logical bytes of live tenant-owned content. This synthetic measurement exercised the existing four-argument `DaprWorkflowPayloadStore` with its Redis ownership ledger, the default `ContentChunker`, Dapr 1.19.1, and the Redis Stack image pinned in the deployment manifest. It used a disposable instance and a single synthetic tenant. It measured the claim-check store before cleanup. [Payload writer](../../src/Hexalith.Memories.Server/Ingestion/DaprWorkflowPayloadStore.cs) · [Image pin](../../deploy/kubernetes/base/redis-statefulset.yaml)
+
+| Input, cumulative | Live payload records | Logical payload bytes | Redis key memory, bytes |
+| --- | ---: | ---: | ---: |
+| 35 reference units | 140 | 142,473 | 399,095 |
+| Plus one 1 MiB text unit | 416 | 3,778,697 | 6,126,815 |
+| After replaying every write for the same large unit | 416 | 3,778,697 | 6,124,767 |
+
+**Reproduction.** At Memories `45fb2308`, use the [35-unit fixture](../../tests/Hexalith.Memories.Benchmarks/Data/synthetic-corpus.json), Git blob `f696480d5304675552634ffa6059152636a04362`. Use the fixture IDs and a single tenant, `capacity-canary`. For each input, write its UTF-8 text as source bytes (suffix `source`) and extracted text (no suffix). Split with default chunking and write each chunk’s UTF-8 text and 768 float32 vector bytes using its decimal sequence as suffix. Use the fixture vector for that unit. For the large input, repeat the 16-byte ASCII string `source document ` 65,536 times, use ID `mu-large` and the first fixture vector for every chunk. Repeat the identical write sequence with the same ID.
+
+After each phase, enumerate the tenant’s stored Dapr payload hashes and read their `data` field. Verify that the decoded payload length equals `reference.byteLength`. Sum that length once per stored key. Sum Redis `MEMORY USAGE key SAMPLES 0` across all keys of the otherwise empty instance, including ledger keys. This measures key allocations. RSS, persistence, backups and rewrite headroom require separate observations.
+
+The ordinary units contributed 11,651 bytes each of source, extracted text and chunk text in total, plus 107,520 vector bytes. The large input produced 137 chunks. Its incremental footprint comprised 1,048,576 source bytes, 1,048,576 extracted bytes, 1,118,208 chunk-text bytes and 420,864 vector bytes. Reusing the fixture embeddings and plain-text extraction makes the input reproducible. This run measures storage behavior, including retry identity. It does not exercise an embedding provider, the whole ingest workflow, or simultaneous tenant load.
+
+**Capacity decision still owed.** Platform Operations and the Administrator need the supported profile’s concurrent tenant count, representative retained workload over its retention window, allocatable storage and reserved headroom. Compare peak physical demand with that usable budget using the procedure below, then publish the per-tenant logical byte limit in the PRD. The 1 MiB input boundary, 100K-unit reference workload, per-unit ledger ceilings, and bootstrap PVC sizes each measure something different.
+
 ## Signals and evidence
 
 Capture a timestamped, access-controlled evidence bundle with secrets and content redacted:
