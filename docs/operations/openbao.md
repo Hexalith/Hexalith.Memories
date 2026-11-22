@@ -488,6 +488,36 @@ an externally-provisioned secret-store `IResourceBuilder<IDaprComponentResource>
 constructing one, so the library itself never depends on OpenBao, Kubernetes, or any other secret
 provider.
 
+### Runtime Kubernetes Secret inventory
+
+The July 28 names below come from the Story 31.2 creation measurement. On November 22 the requested context was unavailable. Current presence, absence, extra names, types and live consumers all await remeasurement. References below describe the tracked Kubernetes base and its production and qualification overlays. The four platform rows describe the July boundary in the separate `openbao` namespace. Platform Operations owns the comparison on restoring access to `jpiquot@local`.
+
+| Secret | Namespace | Referenced by | Justification class | Owner | Reopen trigger |
+| --- | --- | --- | --- | --- | --- |
+| openbao-runtime-bootstrap | hexalith-memories | Runtime Component uses Kubernetes secretKeyRef for token and CA. Memories and reserved eventstore Roles grant get. | openbao-bootstrap | Platform Operations | Runtime authentication, trust root or app scope changes |
+| openbao-access-telemetry-bootstrap | hexalith-memories | Telemetry Component uses Kubernetes secretKeyRef for token and CA. Base and qualification grant get to Memories, lifecycle and clock Roles. Production removes the Memories grant and scope. | openbao-bootstrap | Platform Operations / Story 27.3 | Telemetry bootstrap or scopes change |
+| app-api-token | hexalith-memories | Server, MCP, lifecycle and clock pod env and Dapr injector annotations. All five application Roles grant get. | direct-pod-input | Platform Operations | App-channel authentication changes |
+| dapr-api-token | hexalith-memories | Server, MCP, lifecycle and clock pod env and injector annotations. Qualification evidence reporter also consumes it. All five application Roles grant get. | direct-pod-input | Platform Operations | Sidecar API authentication changes |
+| redis-secret | hexalith-memories | Server env populates Redis and FalkorDB connection strings. Redis and FalkorDB StatefulSets consume password fields directly. Memories, eventstore and lifecycle Roles grant get. State and pub/sub components resolve the namesake key in runtime OpenBao. Telemetry configuration resolves it in telemetry OpenBao. | direct-pod-input | Memories Maintainer / data-plane owner | Review direct server credentials and excess grants when data-plane authentication changes |
+| llm-secret | hexalith-memories | Memories Role grants get. Conversation component resolves OPENAI_API_KEY from the namesake runtime OpenBao key. No tracked Kubernetes consumer. | residue | Memories Maintainer / Platform Operations | Inventory on restored access, confirm no direct consumer, then remove object and grant |
+| google-embedding-api-key | hexalith-memories | Memories Role grants get. Dapr runtime allow-list names the embedding key in OpenBao. No tracked Kubernetes consumer. | residue | Memories Maintainer / Platform Operations | Verify deployed references, then remove object and grant |
+| memories-embedding-client-secret | hexalith-memories | Memories Role grants get. Dapr runtime allow-list names the embedding client key in OpenBao. No tracked Kubernetes consumer. | residue | Memories Maintainer / Platform Operations | Verify deployed references, then remove object and grant |
+| access-telemetry-marker-key | hexalith-memories | Memories and lifecycle Roles grant get. Lifecycle env contains a key name for the telemetry OpenBao store. No tracked Kubernetes value reference. | residue | Story 27.3 / Platform Operations | Verify marker resolution and deployed references, then remove object and grants |
+| access-telemetry-clock-key | hexalith-memories | Lifecycle pod env reads the public verification key. Clock uses a signing-key name in the telemetry store. Clock Role grants get. | story-27.3-retained | Story 27.3 | Verification-key delivery or signing contract changes |
+| access-telemetry-clock-sources | hexalith-memories | Clock pod env references the three external time-source authentication tokens. | story-27.3-retained | Story 27.3 | Time-source authentication changes |
+| access-telemetry-postgresql | hexalith-memories | Telemetry PostgreSQL component resolves its connectionString from the telemetry OpenBao store. No tracked Kubernetes reference or Role grant. | residue | Story 27.3 / Platform Operations | Verify PostgreSQL component authentication and live references, then remove unused object |
+| access-telemetry-postgresql-bootstrap | hexalith-memories | PostgreSQL StatefulSet volume references the bootstrap object. | story-27.3-retained | Story 27.3 | PostgreSQL initialization changes |
+| access-telemetry-postgresql-tls | hexalith-memories | PostgreSQL and lifecycle pod volumes reference the TLS object. | story-27.3-retained | Story 27.3 | Certificate mount or database trust changes |
+| registry-credentials | hexalith-memories | imagePullSecrets on memories, memories-mcp, eventstore, lifecycle and clock ServiceAccounts. Kubelet consumes the registry credential. | direct-pod-input | Platform Operations | Images, registry or pull identity change |
+| openbao-seal | openbao | Platform file seal uses a mounted credential. | platform-31.1 | Platform Operations | Seal design changes |
+| openbao-server-tls | openbao | Platform server listener certificate and key. | platform-31.1 | Platform Operations | Listener trust or renewal changes |
+| hexalith-keys-pki | openbao | Platform PKI object from the July inventory. See the platform TLS record. | platform-31.1 | Platform Operations | CA or issuance changes |
+| openbao-operator-credentials | openbao | Platform operator bootstrap and recovery custody per the July inventory. | platform-31.1 | Platform Operations | Operator credential custody changes |
+
+The four story-27.3-retained rows are direct pod inputs for the clock or database qualification lane. Story 27.3 owns their delivery mechanisms. The base and qualification Memories reader Role names nine Secrets. Production removes the telemetry bootstrap grant and retains eight. Its four runtime allow-list names authorize Kubernetes reads in addition to the independent OpenBao path. The Redis object has direct pod consumers. That use does not require the application ServiceAccount to read the Kubernetes API. Owners must check all RoleBindings and live consumers before narrowing these grants. Pending disposal leaves a second copy potentially readable by a granted principal, or a stale credential awaiting reuse. Each residue row proposes owner action. Cleanup and acceptance remain open.
+
+The direct Redis/FalkorDB server inputs remain an alignment gap. They bypass Dapr application-secret resolution, and both backends and the server must stay synchronized on rotation. The runtime and access-telemetry prefixes are shared application scopes. Story 29.2 already migrated the standalone template under `deploy/dapr`. Its composition and bootstrap remain Epic 29 responsibilities.
+
 ## Health and access checks
 
 Run checks without printing secret values:

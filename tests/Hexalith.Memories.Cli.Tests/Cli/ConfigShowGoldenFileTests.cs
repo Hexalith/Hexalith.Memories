@@ -50,7 +50,7 @@ public sealed class ConfigShowGoldenFileTests
     {
         string output = InvokeConfigShow(
             endpoint: new Uri("https://memories.example.com/"),
-            apiToken: "UNIQUE-TOKEN-SENTINEL-DO-NOT-LEAK",
+            apiToken: "synthetic-" + Guid.NewGuid().ToString("N"),
             sourceName: "FlagConfigurationSource");
 
         output.ShouldBe(
@@ -58,8 +58,6 @@ public sealed class ConfigShowGoldenFileTests
             + "resolvedBy=FlagConfigurationSource\n"
             + "tokenConfigured=true\n");
 
-        // Task 9.9: token must never appear in any stdout path, including the 7.1 regression surface.
-        output.ShouldNotContain("UNIQUE-TOKEN-SENTINEL-DO-NOT-LEAK");
     }
 
     [Fact]
@@ -111,6 +109,13 @@ public sealed class ConfigShowGoldenFileTests
 
         Command command = ConfigShowCommand.Build(provider);
         int exitCode = command.Parse(Array.Empty<string>()).Invoke();
+
+        // Check both streams before any golden-file diff or assertion can render candidate bytes.
+        if (apiToken is not null && (stdout.ToString().Contains(apiToken, StringComparison.Ordinal)
+            || stderr.ToString().Contains(apiToken, StringComparison.Ordinal)))
+        {
+            throw new ShouldAssertException("Configured credential reached CLI output.");
+        }
 
         exitCode.ShouldBe(CliExitCodes.Success);
         stderr.ToString().ShouldBeEmpty();

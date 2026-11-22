@@ -5539,6 +5539,8 @@ severity: high
 reason: Discharge requires the qualifying run's `secret-store-substitution.json` to show the production `secretstores.hashicorp.vault` Components resolving `secretKeyRef`s through a live OpenBao rather than a merge-patched substitute. Independently verified 2026-09-02 against run `33400812038` / job `99516369413` (see DW-725 for the run/job-level CI verification) — the artifact was not re-downloaded and re-parsed in this pass (436 MB; no local copy available), so the specific `substitutionPerformed: false` / `substitutionVerified: true` / `dapr-statestore: Healthy` packet contents the story cites are accepted on the job-level `success` conclusion plus the story's own detailed 2026-08-31 dev-story transcription of that packet, not independently re-parsed byte-for-byte in this pass.
 status: resolved 2026-09-02 by code review, on the evidence above (job-level evidence independently verified; packet-level detail accepted from the story's existing transcription, not re-parsed)
 
+Story 31.2 reconciliation, 2026-11-22: retained the September staged-OpenBao disposition and its packet-verification limit. The current deployment preflight failed. See `tests/31-2-runtime-secret-store-evidence.md` for the separate scoped-read and inventory blockers.
+
 ### DW-727: ID: 27.3-CR30 — same reachable-OpenBao/secretKeyRef-resolution discharge condition as 27.3-CR29, tracked as a separate ID; the entry recording its discharge was never written to this register.
 origin: code review of 27-3-production-adapter-and-deployment-profile (2026-09-02), reconstructing a discharge the story file had cited at this ID since 2026-09-01 without a corresponding register entry
 location: _bmad-output/implementation-artifacts/27-3-production-adapter-and-deployment-profile.md:817,1039 (C2 checkpoint row and AC6 verification row)
@@ -5546,6 +5548,8 @@ source_spec: n/a — same discharge evidence as 27.3-CR29
 severity: high
 reason: See DW-726 — same run/job/artifact evidence, same job-level-verified/packet-level-accepted disclosure.
 status: resolved 2026-09-02 by code review, on the evidence above (job-level evidence independently verified; packet-level detail accepted from the story's existing transcription, not re-parsed)
+
+Story 31.2 reconciliation, 2026-11-22: retained the September staged-OpenBao disposition and its packet-verification limit. The current deployment preflight failed. See `tests/31-2-runtime-secret-store-evidence.md` for the separate scoped-read and inventory blockers.
 
 ### DW-728: `eventstore` AppHost gateway resource cannot start under Memories' mandated SDK 10.0.400 alone — Aspire always launches it via `dotnet run` against the EventStore submodule's own project, which pins SDK 10.0.302.
 

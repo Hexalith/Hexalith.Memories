@@ -21,7 +21,7 @@ public sealed partial class OpenBaoPlatformDocumentationTests
     private const string C7SignatureScope = "platform-wide evaluation, both accepted limitations and the amended AC2 qualifier";
     /// <summary>Runs the actual published-record detector without handing scanned text or collections
     /// to an assertion formatter. A timeout also omits the regex exception's input and inner exception.</summary>
-    private static void ValidateSecretSafeRecord(string text, string relativePath)
+    internal static void ValidateSecretSafeRecord(string text, string relativePath)
     {
         try
         {

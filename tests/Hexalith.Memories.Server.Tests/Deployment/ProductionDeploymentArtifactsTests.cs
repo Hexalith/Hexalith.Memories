@@ -947,7 +947,7 @@ public sealed class ProductionDeploymentArtifactsTests
         throw new ShouldAssertException($"Rendered manifest did not contain {kind} named with prefix {namePrefix}.");
     }
 
-    private static string Read(string root, string relativePath)
+    internal static string Read(string root, string relativePath)
         // Line endings are normalized here so multi-line literal assertions (for example the
         // `  ha:\n    enabled: true\n    replicas: 3\n` block) hold regardless of how the working tree
         // materializes the file. `.gitattributes` pins `*.yaml` to LF today, which is the only reason the
@@ -997,7 +997,7 @@ public sealed class ProductionDeploymentArtifactsTests
         Read(root, "deploy/openbao/smoke-test.yaml").ShouldContain("2.6.0@sha256:900bb64d0671cd1d82b693c56206f7263b582445f3a3bb6ba6e5213f524a6653");
     }
 
-    private static string Run(string root, string fileName, params string[] arguments)
+    internal static string Run(string root, string fileName, params string[] arguments)
     {
         var startInfo = new ProcessStartInfo(fileName)
         {
@@ -1020,7 +1020,7 @@ public sealed class ProductionDeploymentArtifactsTests
         return output;
     }
 
-    private static string GetRepoRoot()
+    internal static string GetRepoRoot()
     {
         DirectoryInfo? current = new(AppContext.BaseDirectory);
         while (current is not null && !File.Exists(Path.Combine(current.FullName, "Hexalith.Memories.slnx")))
