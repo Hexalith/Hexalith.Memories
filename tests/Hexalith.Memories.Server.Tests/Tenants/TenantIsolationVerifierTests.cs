@@ -35,22 +35,26 @@ public class TenantIsolationVerifierTests
 {
     private const int VectorDimensions = 768;
 
-    [Fact]
-    public void Constructor_NullEmbeddingConfigProvider_Throws()
+    [Theory]
+    [InlineData("registry")]
+    [InlineData("embeddingConfigProvider")]
+    [InlineData("redis")]
+    [InlineData("falkorDb")]
+    [InlineData("logger")]
+    public void Constructor_NullDependency_ThrowsForThatParameter(string parameterName)
     {
-        DaprClient daprClient = Substitute.For<DaprClient>();
         TenantRegistryService registry = new(
-            daprClient,
+            Substitute.For<DaprClient>(),
             Substitute.For<ILogger<TenantRegistryService>>());
 
         ArgumentNullException exception = Should.Throw<ArgumentNullException>(() => new TenantIsolationVerifier(
-            registry,
-            null!,
-            Substitute.For<IConnectionMultiplexer>(),
-            Substitute.For<IConnectionMultiplexer>(),
-            Substitute.For<ILogger<TenantIsolationVerifier>>()));
+            parameterName == "registry" ? null! : registry,
+            parameterName == "embeddingConfigProvider" ? null! : Substitute.For<ITenantEmbeddingConfigProvider>(),
+            parameterName == "redis" ? null! : Substitute.For<IConnectionMultiplexer>(),
+            parameterName == "falkorDb" ? null! : Substitute.For<IConnectionMultiplexer>(),
+            parameterName == "logger" ? null! : Substitute.For<ILogger<TenantIsolationVerifier>>()));
 
-        exception.ParamName.ShouldBe("embeddingConfigProvider");
+        exception.ParamName.ShouldBe(parameterName);
     }
 
     [Fact]
@@ -614,8 +618,12 @@ public class TenantIsolationVerifierTests
         AssertReadOnlyDependencyCalls(redisDb, falkorDb);
     }
 
-    [Fact]
-    public async Task VerifyAsync_DetectsSyntacticTenantIdMismatch_ReturnsFailed()
+    [Theory]
+    [InlineData("tenant-b", "has tenantId field 'tenant-b'")]
+    [InlineData(null, "is missing tenantId field")]
+    public async Task VerifyAsync_SyntacticMarkerDefect_ReportsNamedKeyAndProvenanceGuidance(
+        string? storedTenantId,
+        string expectedFinding)
     {
         (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer redisServer) = CreateVerifier(
             tenants:
@@ -627,7 +635,7 @@ public class TenantIsolationVerifierTests
         SetupSuccessfulIndexInfo(redisDb, "tenant-a");
         string plantedKey = IndexSchemaDefinitions.BuildSyntacticKey("tenant-a", "leaked-doc");
         SetupRedisKeyScan(redisServer, IndexSchemaDefinitions.GetSyntacticKeyPrefix("tenant-a"), plantedKey);
-        SetupTenantIdField(redisDb, plantedKey, "tenant-b");
+        SetupTenantIdField(redisDb, plantedKey, storedTenantId);
         SetupGraphList(falkorDb, "tenant-a", "tenant-b");
 
         TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
@@ -636,13 +644,23 @@ public class TenantIsolationVerifierTests
         TenantIsolationCheckResult syntacticCheck = result.Checks.First(c => c.CheckName == "SyntacticIsolation");
         syntacticCheck.Passed.ShouldBeFalse();
         syntacticCheck.Details.ShouldNotBeNull();
-        syntacticCheck.Details.ShouldContain("tenant-b");
+        syntacticCheck.Details.ShouldContain(plantedKey);
+        syntacticCheck.Details.ShouldContain(expectedFinding);
+        syntacticCheck.Remediation.ShouldNotBeNull();
+        syntacticCheck.Remediation.ShouldContain("Inspect and quarantine the keys named in the tenantId findings");
+        syntacticCheck.Remediation.ShouldContain("Verify their provenance");
+        syntacticCheck.Remediation.ShouldNotContain("remove mismatched");
+        syntacticCheck.Remediation.ShouldNotContain("re-provision");
+        AssertNoMutationDependencyCalls(redisDb, falkorDb);
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task VerifyAsync_SyntacticWrongType_ReportsKeyAndContinuesCheckingThePrefix(bool hasForeignMarker)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task VerifyAsync_SyntacticWrongType_ReportsKeyAndContinuesCheckingThePrefix(
+        bool hasForeignMarker,
+        bool hasInvalidIndexPrefix)
     {
         (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer redisServer) = CreateVerifier(
             [
@@ -652,6 +670,17 @@ public class TenantIsolationVerifierTests
         SetupSuccessfulIndexInfo(redisDb, "tenant-a");
         SetupGraphList(falkorDb, "tenant-a", "tenant-b");
         string prefix = IndexSchemaDefinitions.GetSyntacticKeyPrefix("tenant-a");
+        if (hasInvalidIndexPrefix)
+        {
+            SetupIndexInfo(
+                redisDb,
+                IndexSchemaDefinitions.GetSyntacticIndexName("tenant-a"),
+                CreateIndexInfo(
+                    IndexSchemaDefinitions.GetSyntacticKeyPrefix("tenant-b"),
+                    IndexSchemaDefinitions.GetSyntacticFieldIdentifiers(),
+                    1));
+        }
+
         RedisKey wrongTypeKey = prefix + "non-hash";
         string foreignMarkerKey = prefix + "foreign-marker";
         SetupRedisKeyScan(redisServer, prefix, wrongTypeKey.ToString(), foreignMarkerKey);
@@ -678,7 +707,9 @@ public class TenantIsolationVerifierTests
         syntactic.Details.ShouldNotContain("Backend unavailable");
         syntactic.Remediation.ShouldNotBeNull();
         syntactic.Remediation.ShouldContain("Inspect the reported non-hash keys");
-        syntactic.Remediation.ShouldNotContain("re-provision");
+        syntactic.Remediation.Contains("Verify their provenance", StringComparison.Ordinal).ShouldBe(hasForeignMarker);
+        syntactic.Remediation.Contains("re-provision", StringComparison.Ordinal).ShouldBe(hasInvalidIndexPrefix);
+        syntactic.Remediation.ShouldNotContain("remove mismatched");
         result.AllPassed.ShouldBeFalse();
         _ = await redisDb.Received(1).HashGetAsync((RedisKey)foreignMarkerKey, (RedisValue)"tenantId", Arg.Any<CommandFlags>());
         AssertNoMutationDependencyCalls(redisDb, falkorDb);
@@ -1422,6 +1453,86 @@ public class TenantIsolationVerifierTests
         AssertNoMutationDependencyCalls(redisDb, falkorDb);
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task VerifyAsync_LargeSemanticScan_BoundsEachEvidenceCategoryAndKeepsScanning(
+        bool interrupted,
+        bool hasClassificationGaps)
+    {
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer redisServer) = CreateVerifier(
+            [
+                new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
+                new TenantInfo("tenant-b", "Tenant B", TenantStatus.Active, DateTimeOffset.UtcNow),
+            ]);
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        SetupGraphList(falkorDb, "tenant-a", "tenant-b");
+        string rawPrefix = IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a");
+        string naturalLanguagePrefix = IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix("tenant-a");
+        List<string> rawKeys = [];
+        for (int i = 1; i <= 12; i++)
+        {
+            string foreignUnit = $"foreign-{i:D2}";
+            string foreignKey = rawPrefix + foreignUnit;
+            string missingUnit = $"missing-{i:D2}";
+            string missingKey = rawPrefix + missingUnit;
+            rawKeys.AddRange([foreignKey, missingKey]);
+            SetupSemanticRecord(redisDb, foreignKey, foreignUnit, "tenant-b");
+            SetupSemanticRecord(redisDb, missingKey, missingUnit, tenantId: null);
+            if (hasClassificationGaps)
+            {
+                string gapKey = $"{rawPrefix}gap:{i:D2}";
+                rawKeys.Add(gapKey);
+                SetupSemanticRecord(redisDb, gapKey, "different-unit", "tenant-a");
+            }
+        }
+
+        SetupRedisKeyScan(redisServer, rawPrefix, [.. rawKeys]);
+        string finalKey = naturalLanguagePrefix + "last-foreign";
+        SetupSemanticRecord(redisDb, finalKey, "last-foreign", "tenant-b", hasNaturalLanguageDescription: true);
+        if (interrupted)
+        {
+            string failingKey = naturalLanguagePrefix + "failing";
+            SetupRedisKeyScan(redisServer, naturalLanguagePrefix, finalKey, failingKey);
+            redisDb.HashGetAsync((RedisKey)failingKey, Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>())
+                .Throws(new RedisTimeoutException(CommandFlags.None, "internal-key-context", CommandStatus.Unknown));
+        }
+        else
+        {
+            SetupRedisKeyScan(redisServer, naturalLanguagePrefix, finalKey);
+        }
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
+
+        TenantIsolationCheckResult semantic = result.Checks.Single(check => check.CheckName == "SemanticIsolation");
+        semantic.Passed.ShouldBeFalse();
+        semantic.Details.ShouldNotBeNull();
+        string[] details = semantic.Details.Split("; ", StringSplitOptions.None);
+        details.Count(detail => detail.Contains("foreign tenantId marker", StringComparison.Ordinal)).ShouldBe(10);
+        details.Count(detail => detail.Contains("missing its tenantId marker", StringComparison.Ordinal)).ShouldBe(10);
+        details.Count(detail => detail.Contains("has an evidence-classification gap", StringComparison.Ordinal))
+            .ShouldBe(hasClassificationGaps ? 10 : 0);
+        details.ShouldContain("Omitted 3 additional foreign-marker finding(s)");
+        details.ShouldContain("Omitted 2 additional missing-marker finding(s)");
+        details.Contains("Omitted 2 additional classification-gap finding(s)", StringComparer.Ordinal)
+            .ShouldBe(hasClassificationGaps);
+        semantic.Details.ShouldNotContain(finalKey);
+        if (!hasClassificationGaps)
+        {
+            semantic.Remediation.ShouldNotBeNull();
+            semantic.Remediation.ShouldContain(rawPrefix + "foreign-01");
+            semantic.Remediation.ShouldContain(rawPrefix + "missing-01");
+            semantic.Remediation.ShouldNotContain(rawPrefix + "foreign-11");
+            semantic.Remediation.ShouldNotContain(rawPrefix + "missing-11");
+            semantic.Remediation.ShouldNotContain(finalKey);
+        }
+
+        semantic.Details.Contains("Natural-language semantic key scan incomplete", StringComparison.Ordinal).ShouldBe(interrupted);
+        _ = await redisDb.Received(1).HashGetAsync((RedisKey)finalKey, Arg.Any<RedisValue[]>(), CommandFlags.DemandMaster);
+        AssertNoMutationDependencyCalls(redisDb, falkorDb);
+    }
+
     [Fact]
     public async Task VerifyAsync_SemanticCursorMoveNextCancelled_PropagatesAndStopsLaterReads()
     {
@@ -1603,7 +1714,7 @@ public class TenantIsolationVerifierTests
     }
 
     [Fact]
-    public async Task VerifyAsync_MultipleRedisEndpoints_ScansAllConnectedServers()
+    public async Task VerifyAsync_MultipleRedisEndpoints_ScansAllConnectedPrimaries()
     {
         (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer firstServer, IServer secondServer) = CreateVerifierWithTwoRedisServers(
             tenants:
@@ -1626,6 +1737,73 @@ public class TenantIsolationVerifierTests
         TenantIsolationCheckResult syntacticCheck = result.Checks.First(c => c.CheckName == "SyntacticIsolation");
         syntacticCheck.Details.ShouldNotBeNull();
         syntacticCheck.Details.ShouldContain("2 target-prefix hash(es)");
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task VerifyAsync_RedisReplica_DisregardsReplicaKeysAndRequiresConnectedPrimary(bool primaryConnected)
+    {
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer primary, IServer replica) =
+            CreateVerifierWithTwoRedisServers(
+                [new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow)]);
+        primary.IsConnected.Returns(primaryConnected);
+        replica.IsReplica.Returns(true);
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        SetupGraphList(falkorDb, "tenant-a");
+        string prefix = IndexSchemaDefinitions.GetSyntacticKeyPrefix("tenant-a");
+        string primaryKey = prefix + "primary";
+        string replicaKey = prefix + "stale-replica";
+        SetupRedisKeyScan(primary, prefix, primaryKey);
+        SetupRedisKeyScan(replica, prefix, replicaKey);
+        SetupTenantIdField(redisDb, primaryKey, "tenant-a");
+        SetupTenantIdField(redisDb, replicaKey, "tenant-b");
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
+
+        TenantIsolationCheckResult syntactic = result.Checks.Single(check => check.CheckName == "SyntacticIsolation");
+        TenantIsolationCheckResult semantic = result.Checks.Single(check => check.CheckName == "SemanticIsolation");
+        result.AllPassed.ShouldBe(primaryConnected);
+        syntactic.Passed.ShouldBe(primaryConnected);
+        semantic.Passed.ShouldBe(primaryConnected);
+        if (primaryConnected)
+        {
+            syntactic.Details!.ShouldContain("1 target-prefix hash(es)");
+        }
+        else
+        {
+            syntactic.Details!.ShouldContain("Backend unavailable");
+            semantic.Details!.ShouldContain("Backend unavailable");
+        }
+
+        _ = replica.DidNotReceive().KeysAsync(
+            Arg.Any<int>(), Arg.Any<RedisValue>(), Arg.Any<int>(),
+            Arg.Any<long>(), Arg.Any<int>(), Arg.Any<CommandFlags>());
+        AssertNoMutationDependencyCalls(redisDb, falkorDb);
+    }
+
+    [Fact]
+    public async Task VerifyAsync_PrimaryLostAfterEnumeration_ReportsUnavailableMarkerRead()
+    {
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer primary) = CreateVerifier(
+            [new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow)]);
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        SetupGraphList(falkorDb, "tenant-a");
+        string prefix = IndexSchemaDefinitions.GetSyntacticKeyPrefix("tenant-a");
+        RedisKey key = prefix + "primary-lost";
+        SetupRedisKeyScan(primary, prefix, key.ToString());
+        redisDb.HashGetAsync(key, (RedisValue)"tenantId", CommandFlags.DemandMaster)
+            .Throws(new RedisConnectionException(
+                ConnectionFailureType.UnableToConnect, CommandFlags.DemandMaster, "Primary disappeared"));
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
+
+        TenantIsolationCheckResult syntactic = result.Checks.Single(check => check.CheckName == "SyntacticIsolation");
+        syntactic.Passed.ShouldBeFalse();
+        syntactic.Details.ShouldNotBeNull();
+        syntactic.Details.ShouldContain("Backend unavailable: storage connection failed");
+        result.Checks.Single(check => check.CheckName == "GraphIsolation").Passed.ShouldBeTrue();
+        AssertNoMutationDependencyCalls(redisDb, falkorDb);
     }
 
     [Fact]
@@ -1956,10 +2134,11 @@ public class TenantIsolationVerifierTests
             tenants:
             [
                 new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
+                new TenantInfo("tenant-b", "Tenant B", TenantStatus.Active, DateTimeOffset.UtcNow),
             ]);
 
         SetupSuccessfulIndexInfo(redisDb, "tenant-a");
-        SetupGraphList(falkorDb, "tenant-a");
+        SetupGraphList(falkorDb, "tenant-a", "tenant-b");
 
         TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
 
@@ -1967,7 +2146,12 @@ public class TenantIsolationVerifierTests
         graphCheck.Passed.ShouldBeTrue();
         graphCheck.Details.ShouldNotBeNull();
         graphCheck.Details.ShouldContain("Structural database-existence evidence only");
-        graphCheck.Details.ShouldContain("GRAPH.LIST");
+        graphCheck.Details.ShouldContain("target graph database 'tenant-a' appears in GRAPH.LIST");
+        graphCheck.Details.ShouldNotContain("tenant-b");
+        graphCheck.Details.ShouldNotContain("2 graph database");
+        TenantIsolationCheckResult orphanedCheck = result.Checks.Single(c => c.CheckName == "OrphanedDatabases");
+        orphanedCheck.Passed.ShouldBeTrue();
+        orphanedCheck.Details.ShouldBe("All FalkorDB databases correspond to registered tenants");
         graphCheck.Details.ShouldContain(OperationalRunbookSetTests.GraphContentProofCitation);
         graphCheck.Details.ShouldContain("independent execution");
 
@@ -2310,14 +2494,14 @@ public class TenantIsolationVerifierTests
                     {
                         SemanticDiscriminatorFieldsMatch(arguments[1] as RedisValue[]).ShouldBeTrue();
                     }
-                    ((CommandFlags)arguments[2]!).ShouldBe(CommandFlags.None);
+                    ((CommandFlags)arguments[2]!).ShouldBe(CommandFlags.DemandMaster);
                     break;
                 case nameof(IDatabase.HashExistsAsync):
                     arguments.Length.ShouldBe(3);
                     string? hashExistsKey = arguments[0]?.ToString();
                     hashExistsKey.ShouldNotBeNullOrWhiteSpace();
                     arguments[1]?.ToString().ShouldBe("naturalLanguageDescription");
-                    ((CommandFlags)arguments[2]!).ShouldBe(CommandFlags.None);
+                    ((CommandFlags)arguments[2]!).ShouldBe(CommandFlags.DemandMaster);
                     break;
                 default:
                     throw new ShouldAssertException(
@@ -2468,13 +2652,13 @@ public class TenantIsolationVerifierTests
             .Returns(_ => ToPendingAsyncKeys(moveNextEntered, releaseMoveNext));
     }
 
-    private static void SetupTenantIdField(IDatabase db, string key, string tenantId)
+    private static void SetupTenantIdField(IDatabase db, string key, string? tenantId)
     {
         db.HashGetAsync(
                 Arg.Is<RedisKey>(redisKey => string.Equals(redisKey.ToString(), key, StringComparison.Ordinal)),
                 Arg.Is<RedisValue>(field => string.Equals(field.ToString(), "tenantId", StringComparison.Ordinal)),
                 Arg.Any<CommandFlags>())
-            .Returns(new RedisValue(tenantId));
+            .Returns(tenantId is null ? RedisValue.Null : new RedisValue(tenantId));
     }
 
     private static void SetupSemanticRecord(

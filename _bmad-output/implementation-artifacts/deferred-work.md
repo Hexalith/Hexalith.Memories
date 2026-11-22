@@ -5184,7 +5184,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-7-tenant-configured-vector-dimension-verification (2026-08-13)"), 2026-09-01
 location: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs
 reason: - **TenantIsolationVerifier constructor leaves the four pre-existing parameters unguarded.** - ID: 24.7-CTOR-UNGUARDED-PARAMS - Status: carried-forward - Source story: 24-7-tenant-configured-vector-dimension-verification - Target artifact: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs - Re-open trigger: A future change to `TenantIsolationVerifier`'s constructor, or a dedicated null-safety hardening pass. - Rationale: Only the new `embeddingConfigProvider` parameter gained an ArgumentNullException guard; `registry`, `redis`, `falkorDb`, and `logger` predate Story 24.7 and still surface null as NullReferenceException at first use, deviating from the documented `ArgumentNullException.ThrowIfNull` boundary rule. Pre-existing behavior; only the new parameter was in Story 24.7's scope.
-status: open
+status: done 2026-11-22
+resolution: Both constructor paths validate the shared verifier dependencies by name. Evidence: `TenantIsolationVerifierTests.Constructor_NullDependency_ThrowsForThatParameter`.
 
 ### DW-681: Make the concrete tenant embedding configuration provider stop its actor read when caller cancellation wins.
 
@@ -5198,14 +5199,16 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-7-tenant-configured-vector-dimension-verification (2026-08-13)"), 2026-09-01
 location: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs
 reason: - **Bound semantic-isolation mismatch evidence returned for large tenant key sets.** - ID: 24.7-SEMANTIC-EVIDENCE-UNBOUNDED - Status: carried-forward - Source story: 24-7-tenant-configured-vector-dimension-verification - Target artifact: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs - Re-open trigger: The owning diagnostic-bounding slice is selected, or an operator reports an oversized `SemanticIsolation.Details` response. - Rationale: `ScanHashPrefixForTenantFieldMismatchesAsync` records every missing or foreign tenant marker and `CheckSemanticIsolationAsync` joins the full list into `Details`; this behavior predates Story 24.7 and can produce an unbounded diagnostic response when many hashes are contaminated. Pre-existing behavior; bounding it is out of Story 24.7's frozen scope.
-status: open
+status: done 2026-11-22
+resolution: Semantic verification retains up to ten examples per finding category across both prefixes, counts omitted findings and continues scanning. Timeout results preserve samples and counts collected before the failure. Evidence: `TenantIsolationVerifierTests.VerifyAsync_LargeSemanticScan_BoundsEachEvidenceCategoryAndKeepsScanning`.
 
 ### DW-683: `GraphIsolation` discloses a cluster-wide graph-database count over a per-tenant endpoint.
 
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence — eighth pass (2026-08-14)"), 2026-09-01
 location: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs
 reason: - **`GraphIsolation` discloses a cluster-wide graph-database count over a per-tenant endpoint.** - ID: 24.6-F8-W1 - Status: carried-forward - Source story: 24-6-graph-content-level-tenant-isolation-evidence - Target artifact: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs - Rationale: The success `Details` string reports `({graphDatabases.Count} graph database(s))` over `POST /api/v1/tenants/{tenantId}/verify`, which is a count of other tenants returned to a single tenant's caller. The count predates Story 24.6 and the endpoint is operator-facing rather than tenant-facing, so this is not a live cross-tenant data leak. It is recorded because this range rewrote that exact string for a story whose thesis is not overstating isolation evidence, and no existing entry covers it. - Re-open trigger: The verify endpoint becomes reachable by a tenant-scoped caller, or any story re-scopes `GraphIsolation` evidence semantics.
-status: open
+status: done 2026-11-22
+resolution: The structural graph and successful orphan checks omit the cluster database total. The structural result identifies the requested tenant and retains the content-proof citation. Evidence: `TenantIsolationVerifierTests.VerifyAsync_GraphIsolation_IsStructuralOnlyAndCitesContentProof`.
 
 ### DW-684: The allocation-failure cleanup path in `ReconnectPrimaryDaprClients` has no test in any lane.
 
@@ -5363,7 +5366,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence — eighth pass (2026-08-14)"), 2026-09-01
 location: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs
 reason: - **Add replica endpoint filtering in GetConnectedServers for clustered Redis deployments.** - ID: 24.6-F8-W10 - Status: carried-forward - Source story: 24-6-graph-content-level-tenant-isolation-evidence - Target artifact: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs - Re-open trigger: Redis cluster deployment topology validation is performed. - Rationale: `TenantIsolationVerifier.GetConnectedServers` does not filter out `server.IsReplica`, which can cause duplicate scans across replicas in clustered or primary-replica topologies. Pre-existing behavior outside story scope.
-status: open
+status: done 2026-11-22
+resolution: Both Redis cursor scans select connected primaries, and key inspection requires primary routing. A replica-only view or a missing primary during the read yields failed availability evidence. Evidence: `TenantIsolationVerifierTests.VerifyAsync_RedisReplica_DisregardsReplicaKeysAndRequiresConnectedPrimary` and `TenantIsolationVerifierTests.VerifyAsync_PrimaryLostAfterEnumeration_ReportsUnavailableMarkerRead`.
 
 ### DW-706: Tenants worktree HEAD `4a3eec38` is ahead of the staged gitlink `c5fa0082`.
 
@@ -5440,7 +5444,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-9-non-destructive-tenant-marker-diagnostics (2026-08-31)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-24-9-non-destructive-tenant-marker-diagnostics.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-24-9-non-destructive-tenant-marker-diagnostics.md` summary: `CheckSyntacticIsolationAsync` still returns the anti-template blanket-deletion wording Story 24.9 removed from `SemanticIsolation`. evidence: `src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs:216` still reads `"Repair or re-provision the tenant RediSearch index and remove mismatched target-prefix hashes"`. Story 24.9's Boundaries explicitly forbid touching the syntactic-only `ScanHashPrefixForTenantFieldMismatchesAsync`/`CheckSyntacticIsolationAsync` path ("a separate, non-semantic check outside this AC's `SemanticIsolation` scope"), so this is pre-existing and correctly out of this story's scope — but it now leaves an inconsistent operator experience: `SemanticIsolation` failures get non-destructive, named-key guidance while `SyntacticIsolation` failures still get blanket-deletion language. Reopen trigger: a follow-up story extending the non-destructive marker-diagnostic pattern to `SyntacticIsolation`.
-status: open
+status: done 2026-11-22
+resolution: Syntactic verification identifies the affected keys and gives independent guidance for marker, metadata and wrong-type findings. Marker repair requires provenance verification. Evidence: `TenantIsolationVerifierTests.VerifyAsync_SyntacticMarkerDefect_ReportsNamedKeyAndProvenanceGuidance` and `TenantIsolationVerifierTests.VerifyAsync_SyntacticWrongType_ReportsKeyAndContinuesCheckingThePrefix`.
 
 ### DW-716: Story 28.1 code review — CI provisioning-step duplication and unconfirmed AppHost resource start-ordering.
 
@@ -6451,3 +6456,15 @@ dotnet tests/Hexalith.Memories.IntegrationTests/bin/Debug/net11.0/Hexalith.Memor
 - source_spec: `_bmad-output/implementation-artifacts/spec-31-2-runtime-dapr-secret-store-migration.md`
   summary: Establish whether `tools/verify-access-telemetry-c1-linkage.ps1` hits the same daprd cancel-on-half-close defect through its `printf ... | nc -w 5 127.0.0.1 3500` request (unverified medium).
   evidence: Story 31.2 review (maybe-false). The 31.2 evidence shows that BusyBox nc half-closes at stdin EOF and that daprd then cancels an in-flight secret-store read. The linkage tool sends state requests the same way at line 316. It is parked under DW-730, so nothing runs it today. Settle by replaying its request against a local daprd with an outbound-backed store, or by switching to the `nc -e` transport used by the 31.2 probe. Owner: Story 27.3 / Memories Maintainer. Reopen trigger: DW-730's production-enablement trigger fires.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-five-deferred-tenant-isolation-diagnostics.md`
+  summary: Report incomplete Redis key coverage when a known cluster shard has no reachable primary.
+  evidence: The scanner proceeds with any connected primary and does not account for expected slot ownership. A cluster-topology check needs to distinguish missing shard coverage from a disconnected seed or a completed failover.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-five-deferred-tenant-isolation-diagnostics.md`
+  summary: Set a byte budget for individual stored values displayed in tenant isolation evidence.
+  evidence: Sampling bounds the number of findings. A single unusually large key or stored tenant marker can still dominate the response. Define a display form that preserves evidence and lets operators identify affected keys.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-five-deferred-tenant-isolation-diagnostics.md`
+  summary: Inspect surviving syntactic keys when the tenant index is missing and Redis is reachable.
+  evidence: The missing-index branch returns provisioning guidance before the prefix scan. Existing hashes can still need provenance review before the index is recreated.

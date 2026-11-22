@@ -79,7 +79,11 @@ public sealed partial class TenantIsolationVerifier
         ILogger<TenantIsolationVerifier> logger,
         TimeProvider timeProvider)
     {
+        ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(embeddingConfigProvider);
+        ArgumentNullException.ThrowIfNull(redis);
+        ArgumentNullException.ThrowIfNull(falkorDb);
+        ArgumentNullException.ThrowIfNull(logger);
         ArgumentNullException.ThrowIfNull(timeProvider);
         _registry = registry;
         _embeddingConfigProvider = embeddingConfigProvider;
@@ -218,23 +222,40 @@ public sealed partial class TenantIsolationVerifier
                 targetPrefix,
                 IndexSchemaDefinitions.GetSyntacticFieldIdentifiers());
 
-            (IReadOnlyList<string> mismatches, int scannedCount, bool hasWrongType) = await ScanHashPrefixForTenantFieldMismatchesAsync(
+            bool hasMetadataProblem = problems.Count > 0;
+            (IReadOnlyList<string> mismatches, int scannedCount, bool hasMarkerMismatch, bool hasWrongType) =
+                await ScanHashPrefixForTenantFieldMismatchesAsync(
                     "syntactic",
                     targetPrefix,
                     tenantId,
                     ct)
-                .ConfigureAwait(false);
+                    .ConfigureAwait(false);
             problems.AddRange(mismatches);
 
             sw.Stop();
             if (problems.Count > 0)
             {
+                List<string> remediation = [];
+                if (hasWrongType)
+                {
+                    remediation.Add("Inspect the reported non-hash keys and identify their writer before repairing tenant data.");
+                }
+
+                if (hasMarkerMismatch)
+                {
+                    remediation.Add(
+                        $"Inspect and quarantine the keys named in the tenantId findings. Verify their provenance before applying tenant-scoped marker repair or reindexing for tenant '{tenantId}'.");
+                }
+
+                if (hasMetadataProblem)
+                {
+                    remediation.Add($"Repair or re-provision the RediSearch index for tenant '{tenantId}'.");
+                }
+
                 return new TenantIsolationCheckResult("SyntacticIsolation", false, sw.Elapsed.TotalMilliseconds)
                 {
                     Details = string.Join("; ", problems),
-                    Remediation = hasWrongType
-                        ? "Inspect the reported non-hash keys and identify their writer before repairing tenant data. Address any other reported findings and retry verification."
-                        : "Repair or re-provision the tenant RediSearch index and remove mismatched target-prefix hashes",
+                    Remediation = string.Join(" ", remediation),
                 };
             }
 
@@ -363,8 +384,7 @@ public sealed partial class TenantIsolationVerifier
             }
 
             bool hasNonMarkerProblem = problems.Count > 0;
-            List<MarkerMismatchEvidence> markerMismatches = [];
-            List<string> classificationGaps = [];
+            SemanticScanEvidence evidence = new();
             int rawActiveCount;
             int rawExcludedCount;
             int naturalLanguageActiveCount;
@@ -373,24 +393,22 @@ public sealed partial class TenantIsolationVerifier
             try
             {
                 (rawActiveCount, rawExcludedCount) = await ScanSemanticHashPrefixForTenantEvidenceAsync(
-                    rawPrefix, tenantId, markerMismatches, classificationGaps, ct).ConfigureAwait(false);
+                    rawPrefix, tenantId, evidence, ct).ConfigureAwait(false);
                 scanName = "Natural-language";
                 (naturalLanguageActiveCount, naturalLanguageExcludedCount) = await ScanSemanticHashPrefixForTenantEvidenceAsync(
-                    naturalLanguagePrefix, tenantId, markerMismatches, classificationGaps, ct).ConfigureAwait(false);
+                    naturalLanguagePrefix, tenantId, evidence, ct).ConfigureAwait(false);
             }
             catch (Exception ex) when (IsBackendUnavailable(ex))
             {
                 sw.Stop();
                 TenantIsolationCheckResult failure = CreateBackendUnavailableResult(
                     "SemanticIsolation", ex, sw.Elapsed.TotalMilliseconds);
-                problems.AddRange(classificationGaps);
-                problems.AddRange(markerMismatches.Select(m => m.Detail));
+                evidence.AppendDetailsTo(problems);
                 problems.Add($"{scanName} semantic key scan incomplete. {failure.Details}");
                 return failure with { Details = string.Join("; ", problems) };
             }
 
-            problems.AddRange(classificationGaps);
-            problems.AddRange(markerMismatches.Select(m => m.Detail));
+            evidence.AppendDetailsTo(problems);
 
             sw.Stop();
             if (problems.Count > 0)
@@ -398,13 +416,13 @@ public sealed partial class TenantIsolationVerifier
                 return new TenantIsolationCheckResult("SemanticIsolation", false, sw.Elapsed.TotalMilliseconds)
                 {
                     Details = string.Join("; ", problems),
-                    Remediation = classificationGaps.Count > 0
+                    Remediation = evidence.HasClassificationGaps
                         ? $"Register or migrate the reported semantic key family for tenant '{tenantId}', then retry verification; no data or indexes were changed"
                         : BuildSemanticIsolationRemediation(
                             tenantId,
                             embeddingConfig.Dimensions,
                             hasNonMarkerProblem,
-                            markerMismatches),
+                            evidence.MarkerSamples),
                 };
             }
 
@@ -455,7 +473,7 @@ public sealed partial class TenantIsolationVerifier
 
             return new TenantIsolationCheckResult("GraphIsolation", true, sw.Elapsed.TotalMilliseconds)
             {
-                Details = $"Structural database-existence evidence only: target graph database '{tenantId}' appears in GRAPH.LIST ({graphDatabases.Count} graph database(s)); independent execution of the real-backend proof TenantIsolationIntegrationTests.VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes is required for content-isolation evidence",
+                Details = $"Structural database-existence evidence only: target graph database '{tenantId}' appears in GRAPH.LIST; independent execution of the real-backend proof TenantIsolationIntegrationTests.VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes is required for content-isolation evidence",
             };
         }
         catch (Exception ex) when (IsBackendUnavailable(ex))
@@ -493,7 +511,7 @@ public sealed partial class TenantIsolationVerifier
 
             return new TenantIsolationCheckResult("OrphanedDatabases", true, sw.Elapsed.TotalMilliseconds)
             {
-                Details = $"All {graphDatabases.Count} FalkorDB database(s) correspond to registered tenants",
+                Details = "All FalkorDB databases correspond to registered tenants",
             };
         }
         catch (Exception ex) when (IsBackendUnavailable(ex))
@@ -504,14 +522,15 @@ public sealed partial class TenantIsolationVerifier
     }
 
     /// <summary>Scans target tenant keys and flags hashes whose optional tenantId field contradicts the target tenant.</summary>
-    private async Task<(IReadOnlyList<string> Mismatches, int ScannedCount, bool HasWrongType)> ScanHashPrefixForTenantFieldMismatchesAsync(
-        string storageName,
-        string keyPrefix,
-        string tenantId,
-        CancellationToken ct)
+    private async Task<(IReadOnlyList<string> Mismatches, int ScannedCount, bool HasMarkerMismatch, bool HasWrongType)>
+        ScanHashPrefixForTenantFieldMismatchesAsync(
+            string storageName,
+            string keyPrefix,
+            string tenantId,
+            CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        IReadOnlyList<IServer> servers = GetConnectedServers(_redis);
+        IReadOnlyList<IServer> servers = GetConnectedPrimaryServers(_redis);
         if (servers.Count == 0)
         {
             throw CreateNoConnectedRedisServerException("tenant key cursor scan");
@@ -521,6 +540,7 @@ public sealed partial class TenantIsolationVerifier
         List<string> mismatches = [];
         HashSet<string> scannedKeys = new(StringComparer.Ordinal);
         int scannedCount = 0;
+        bool hasMarkerMismatch = false;
         bool hasWrongType = false;
         foreach (IServer server in servers)
         {
@@ -538,7 +558,7 @@ public sealed partial class TenantIsolationVerifier
                 RedisValue storedTenantId;
                 try
                 {
-                    storedTenantId = await db.HashGetAsync(key, "tenantId").WaitAsync(ct).ConfigureAwait(false);
+                    storedTenantId = await db.HashGetAsync(key, "tenantId", CommandFlags.DemandMaster).WaitAsync(ct).ConfigureAwait(false);
                 }
                 catch (RedisServerException ex) when (IsWrongType(ex))
                 {
@@ -550,6 +570,7 @@ public sealed partial class TenantIsolationVerifier
 
                 if (storedTenantId.IsNullOrEmpty)
                 {
+                    hasMarkerMismatch = true;
                     mismatches.Add(
                         $"{storageName} key '{key}' under tenant '{tenantId}' is missing tenantId field");
                     continue;
@@ -558,25 +579,25 @@ public sealed partial class TenantIsolationVerifier
                 string actualTenantId = storedTenantId.ToString();
                 if (!string.Equals(actualTenantId, tenantId, StringComparison.Ordinal))
                 {
+                    hasMarkerMismatch = true;
                     mismatches.Add(
                         $"{storageName} key '{key}' under tenant '{tenantId}' has tenantId field '{actualTenantId}'");
                 }
             }
         }
 
-        return (mismatches, scannedCount, hasWrongType);
+        return (mismatches, scannedCount, hasMarkerMismatch, hasWrongType);
     }
 
     /// <summary>Classifies semantic hashes and records findings as they are observed.</summary>
     private async Task<(int ActiveCount, int ExcludedCount)> ScanSemanticHashPrefixForTenantEvidenceAsync(
         string keyPrefix,
         string tenantId,
-        List<MarkerMismatchEvidence> markerMismatches,
-        List<string> classificationGaps,
+        SemanticScanEvidence evidence,
         CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        IReadOnlyList<IServer> servers = GetConnectedServers(_redis);
+        IReadOnlyList<IServer> servers = GetConnectedPrimaryServers(_redis);
         if (servers.Count == 0)
         {
             throw CreateNoConnectedRedisServerException("semantic tenant key cursor scan");
@@ -603,18 +624,18 @@ public sealed partial class TenantIsolationVerifier
                 try
                 {
                     discriminatorValues = await db
-                        .HashGetAsync(key, _semanticDiscriminatorFields)
+                        .HashGetAsync(key, _semanticDiscriminatorFields, CommandFlags.DemandMaster)
                         .WaitAsync(ct)
                         .ConfigureAwait(false);
                     ct.ThrowIfCancellationRequested();
                     hasNaturalLanguageDescription = await db
-                        .HashExistsAsync(key, "naturalLanguageDescription")
+                        .HashExistsAsync(key, "naturalLanguageDescription", CommandFlags.DemandMaster)
                         .WaitAsync(ct)
                         .ConfigureAwait(false);
                 }
                 catch (RedisServerException ex) when (IsWrongType(ex))
                 {
-                    classificationGaps.Add(
+                    evidence.AddClassificationGap(
                         $"Semantic key '{key}' under tenant '{tenantId}' has an evidence-classification gap (wrong Redis value type)");
                     continue;
                 }
@@ -630,7 +651,7 @@ public sealed partial class TenantIsolationVerifier
 
                 if (family is SemanticKeyFamily.Unknown or SemanticKeyFamily.Ambiguous)
                 {
-                    classificationGaps.Add(
+                    evidence.AddClassificationGap(
                         $"Semantic key '{key}' under tenant '{tenantId}' has an evidence-classification gap ({family.ToString().ToLowerInvariant()})");
                     continue;
                 }
@@ -652,7 +673,7 @@ public sealed partial class TenantIsolationVerifier
                 };
                 if (storedTenantId.IsNullOrEmpty)
                 {
-                    markerMismatches.Add(new MarkerMismatchEvidence(
+                    evidence.AddMarkerMismatch(new MarkerMismatchEvidence(
                         MarkerDefectKind.Missing,
                         keyText,
                         $"{storageName} key '{keyText}' under tenant '{tenantId}' is missing its tenantId marker: incomplete evidence, not confirmed cross-tenant leakage — expected tenant '{tenantId}'"));
@@ -662,7 +683,7 @@ public sealed partial class TenantIsolationVerifier
                 string actualTenantId = storedTenantId.ToString();
                 if (!string.Equals(actualTenantId, tenantId, StringComparison.Ordinal))
                 {
-                    markerMismatches.Add(new MarkerMismatchEvidence(
+                    evidence.AddMarkerMismatch(new MarkerMismatchEvidence(
                         MarkerDefectKind.Foreign,
                         keyText,
                         $"{storageName} key '{keyText}' under tenant '{tenantId}' has a foreign tenantId marker '{actualTenantId}': confirmed marker mismatch (possible contamination) — expected tenant '{tenantId}', observed tenant '{actualTenantId}'"));
@@ -877,13 +898,13 @@ public sealed partial class TenantIsolationVerifier
     private static string FormatDocumentCount(int? documentCount)
         => documentCount?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "unknown";
 
-    private static IReadOnlyList<IServer> GetConnectedServers(IConnectionMultiplexer redis)
+    private static IReadOnlyList<IServer> GetConnectedPrimaryServers(IConnectionMultiplexer redis)
     {
         List<IServer> servers = [];
         foreach (EndPoint endpoint in redis.GetEndPoints())
         {
             IServer server = redis.GetServer(endpoint);
-            if (server.IsConnected)
+            if (server.IsConnected && !server.IsReplica)
             {
                 servers.Add(server);
             }
@@ -896,7 +917,7 @@ public sealed partial class TenantIsolationVerifier
         => new(
             ConnectionFailureType.UnableToConnect,
             CommandFlags.None,
-            $"No connected Redis server endpoint is available for {scanName}.",
+            $"No connected Redis primary is available for {scanName}.",
             null);
 
     private async Task<HashSet<string>> ReadGraphDatabasesAsync(CancellationToken ct)
