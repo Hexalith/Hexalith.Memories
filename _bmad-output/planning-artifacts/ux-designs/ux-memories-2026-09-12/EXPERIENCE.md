@@ -24,6 +24,9 @@ implementation-evidence:
 
 # EXPERIENCE — Hexalith.Memories
 
+> **Current McpCli disposition (Story 5.11 candidate):** The proprietary CLI/MCP phases, ingress topology and installation commands below describe retained compatibility. There is no promised generic migration or diagnostics surface. No Memories operation is enrolled in the current shipped McpCli cohort. Forwarded per-user HTTP authority is necessary but insufficient for retirement; tenant/user/administrative authorization, semantics, release and rollback evidence remain. PS14 stays owner-held local tooling in all four modes, never counted retired.
+
+
 **Approved McpCli experience correction (2026-09-27):** New Hexalith-owned CLI/MCP setup targets the `hexalith` tool and `Hexalith.McpCli` stdio server. Memories CLI/MCP commands and outputs below are migration compatibility contracts: preserve search, ingest, traversal, tenant context, identity, token-budget results, error recovery, and accessibility in the approved shared-surface inventory before retiring the old packages.
 
 

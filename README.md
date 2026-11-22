@@ -41,7 +41,7 @@ On first AppHost run, a session-scoped OpenBao container starts and the AppHost 
 
 `src/Hexalith.Memories.AppHost` serves only this repository's own tests, including this walkthrough. A run of it is never evidence that Memories runs in the Platform composition. To run or debug Memories as a module, use the Platform workspace (see [Run and debug from the Platform workspace](#run-and-debug-from-the-platform-workspace)).
 
-### 5. Install the CLI (~1 min first time, ~10s subsequent)
+### 5. Install the retained compatibility CLI (~1 min first time, ~10s subsequent)
 
 ```bash
 dotnet pack src/Hexalith.Memories.Cli -c Release -o ./artifacts
@@ -108,7 +108,7 @@ Attach to the child running the server's `bin/Debug/net11.0/<Assembly>` executab
 - `http://localhost:5000/alive`
 - `http://localhost:5000/ready`
 
-## CLI (preview)
+## Retained compatibility CLI (preview)
 
 Story 7.2 expands the `memories` .NET global tool with `--format human|json|table`, multi-axis search (`memories search query`, including syntactic, semantic, natural-language, graph, and hybrid modes), memory-unit inspection (`memories search inspect`), and the `--explain` score breakdown. Story 7.3 adds actionable error messages: every failure renders `Error: <CODE>` + message + recovery suggestion in human/table modes, or a `{ schemaVersion, command, error: { code, message, suggestion } }` envelope on stdout in JSON mode; domain errors exit `1` and plumbing exits `2`. Story 7.4 wires the `memories quickstart` guided wizard that verifies prerequisites, probes server health, provisions a sample tenant, ingests a sample document, and runs a validation search. See the walkthrough log for timing evidence. Story 7.5 wires search + access telemetry: distributed traces (NFR28), custom Aspire Dashboard metrics (NFR29), and per-tenant audit events (FR67). See [docs/dev/telemetry.md](docs/dev/telemetry.md).
 
@@ -129,9 +129,9 @@ Use `--format json` for scripts and LLM agents — the envelope is versioned and
 
 These are versioned compatibility binaries. They are not retired and stay outside every Hexalith.Platform composition.
 
-- `Hexalith.Memories.Cli` (.NET tool `memories`): removal gate "Memories gates, including forwarded per-user identity in the HTTP release" ([technical-tools inventory 1.0.3](https://github.com/Hexalith/Hexalith.McpCli/blob/main/_bmad-output/implementation-artifacts/technical-tools-migration-inventory-v1.0.3.md) PS06; [Memories inventory 1.1.0](https://github.com/Hexalith/Hexalith.McpCli/blob/main/_bmad-output/implementation-artifacts/memories-migration-inventory-v1.1.0.md)). Forwarded per-user identity is necessary but not sufficient for retirement. Technical inventory SHA-256: `7f2810174ae929e569d9affaccabe745565dcfe4f0487b71847806f3eda1ef8c`. Memories inventory SHA-256: `fc3baee0f766f95db32df5fd226825b144927c2ad1bc60f867341d32b517bca1`.
-- `Hexalith.Memories.Mcp` (container `memories-mcp`): removal gate "Memories gates, including forwarded per-user identity in the HTTP release" ([technical-tools inventory 1.0.3](https://github.com/Hexalith/Hexalith.McpCli/blob/main/_bmad-output/implementation-artifacts/technical-tools-migration-inventory-v1.0.3.md) PS07; [Memories inventory 1.1.0](https://github.com/Hexalith/Hexalith.McpCli/blob/main/_bmad-output/implementation-artifacts/memories-migration-inventory-v1.1.0.md)). Forwarded per-user identity is necessary but not sufficient for retirement. Technical inventory SHA-256: `7f2810174ae929e569d9affaccabe745565dcfe4f0487b71847806f3eda1ef8c`. Memories inventory SHA-256: `fc3baee0f766f95db32df5fd226825b144927c2ad1bc60f867341d32b517bca1`.
-- `tools/MigrateEmbeddingVectors` (operator CLI): removal gate "Retained owner-held vector-migration exemption under merged AI.Tools plan 1.2.0; T01–T04 four-mode inventory recorded; independent safety gates remain" ([technical-tools inventory 1.0.3](https://github.com/Hexalith/Hexalith.McpCli/blob/main/_bmad-output/implementation-artifacts/technical-tools-migration-inventory-v1.0.3.md) PS14; [Memories inventory 1.1.0](https://github.com/Hexalith/Hexalith.McpCli/blob/main/_bmad-output/implementation-artifacts/memories-migration-inventory-v1.1.0.md)). Forwarded per-user identity does not make this owner-held tool agent-safe. Retained owner-held local exemption under merged AI.Tools plan 1.2.0; --dry-run, --live, --rollback and --abort are recorded in T01–T04 and still require independent tenant/credential/custody, consent, no-write dry-run, denial, rollback/abort and audit evidence. Never counted as retired. Technical inventory SHA-256: `7f2810174ae929e569d9affaccabe745565dcfe4f0487b71847806f3eda1ef8c`. [Memories inventory 1.1.0](https://github.com/Hexalith/Hexalith.McpCli/blob/main/_bmad-output/implementation-artifacts/memories-migration-inventory-v1.1.0.md) T01–T04 records --dry-run, --live, --rollback and --abort; no mode is retired. Memories inventory SHA-256: `fc3baee0f766f95db32df5fd226825b144927c2ad1bc60f867341d32b517bca1`.
+- `Hexalith.Memories.Cli` (.NET tool `memories`): removal gate "Memories gates, including forwarded per-user identity in the HTTP release" ([technical-tools inventory 1.0.4](https://github.com/Hexalith/Hexalith.McpCli/blob/main/_bmad-output/implementation-artifacts/technical-tools-migration-inventory-v1.0.4.md) PS06; [Memories inventory 1.1.0](https://github.com/Hexalith/Hexalith.McpCli/blob/main/_bmad-output/implementation-artifacts/memories-migration-inventory-v1.1.0.md)). Forwarded per-user identity is necessary but not sufficient for retirement. Technical inventory SHA-256: `94985d72232864ab8f40ba212cd0fc73dbd0c5497856073cfd19c2972b89e8b8`. Memories inventory SHA-256: `fc3baee0f766f95db32df5fd226825b144927c2ad1bc60f867341d32b517bca1`.
+- `Hexalith.Memories.Mcp` (container `memories-mcp`): removal gate "Memories gates, including forwarded per-user identity in the HTTP release" ([technical-tools inventory 1.0.4](https://github.com/Hexalith/Hexalith.McpCli/blob/main/_bmad-output/implementation-artifacts/technical-tools-migration-inventory-v1.0.4.md) PS07; [Memories inventory 1.1.0](https://github.com/Hexalith/Hexalith.McpCli/blob/main/_bmad-output/implementation-artifacts/memories-migration-inventory-v1.1.0.md)). Forwarded per-user identity is necessary but not sufficient for retirement. Technical inventory SHA-256: `94985d72232864ab8f40ba212cd0fc73dbd0c5497856073cfd19c2972b89e8b8`. Memories inventory SHA-256: `fc3baee0f766f95db32df5fd226825b144927c2ad1bc60f867341d32b517bca1`.
+- `tools/MigrateEmbeddingVectors` (operator CLI): removal gate "Retained owner-held vector-migration exemption under merged AI.Tools plan 1.2.0; T01–T04 four-mode inventory recorded; independent safety gates remain" ([technical-tools inventory 1.0.4](https://github.com/Hexalith/Hexalith.McpCli/blob/main/_bmad-output/implementation-artifacts/technical-tools-migration-inventory-v1.0.4.md) PS14; [Memories inventory 1.1.0](https://github.com/Hexalith/Hexalith.McpCli/blob/main/_bmad-output/implementation-artifacts/memories-migration-inventory-v1.1.0.md)). Forwarded per-user identity does not make this owner-held tool agent-safe. Retained owner-held local exemption under merged AI.Tools plan 1.2.0; --dry-run, --live, --rollback and --abort are recorded in T01–T04 and still require independent tenant/credential/custody, consent, no-write dry-run, denial, rollback/abort and audit evidence. Never counted as retired. Technical inventory SHA-256: `94985d72232864ab8f40ba212cd0fc73dbd0c5497856073cfd19c2972b89e8b8`. [Memories inventory 1.1.0](https://github.com/Hexalith/Hexalith.McpCli/blob/main/_bmad-output/implementation-artifacts/memories-migration-inventory-v1.1.0.md) T01–T04 records --dry-run, --live, --rollback and --abort; no mode is retired. Memories inventory SHA-256: `fc3baee0f766f95db32df5fd226825b144927c2ad1bc60f867341d32b517bca1`.
 
 ## Integration Guides
 
@@ -142,3 +142,20 @@ These are versioned compatibility binaries. They are not retired and stay outsid
 - [Rate limiting — per-tenant ceilings, 429 handling, extraction gate](docs/operations/rate-limiting.md)
 - [Failure recovery — failed-unit registry, re-ingestion, retry policy overrides](docs/operations/failure-recovery.md)
 - [Pipeline persistence — Redis durability, restart validation, warm restart and throughput benchmark](docs/operations/pipeline-persistence.md)
+
+## Shared McpCli access (reconciliation candidate)
+
+The proprietary CLI/MCP phases, ingress topology and installation commands below describe retained compatibility. There is no promised generic migration or diagnostics surface. No Memories operation is enrolled in the current shipped McpCli cohort. Forwarded per-user HTTP authority is necessary but insufficient for retirement; tenant/user/administrative authorization, semantics, release and rollback evidence remain. PS14 stays owner-held local tooling in all four modes, never counted retired.
+
+For the verified 2.0.1 examples, install `dotnet tool install --global Hexalith.McpCli --version 2.0.1`.
+Run `hexalith modules`, `hexalith operations tenants` or
+`hexalith operations parties`, and `hexalith describe tenants.list-tenants`
+for offline discovery of the installed cohort. Start the MCP server with
+`hexalith mcp --transport stdio`; it offers five generic tools, never a tool or
+CLI subcommand per operation. Configure a McpCli profile with the documented
+`hexalith config --help` flow before authorized `query` or `send` submission.
+Do not copy the Admin `profiles.json`. Offline Catalog discovery proves neither
+Gateway authorization, live availability nor retirement. A missing operation
+fails safely; confidential human actions hand off to the owning UI, never to
+an alternative module endpoint. No Gateway call is needed for this setup check.
+

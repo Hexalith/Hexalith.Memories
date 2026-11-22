@@ -18,6 +18,9 @@ date: '2026-03-24'
 
 # Architecture Decision Document
 
+> **Current McpCli disposition (Story 5.11 candidate):** The proprietary CLI/MCP phases, ingress topology and installation commands below describe retained compatibility. There is no promised generic migration or diagnostics surface. No Memories operation is enrolled in the current shipped McpCli cohort. Forwarded per-user HTTP authority is necessary but insufficient for retirement; tenant/user/administrative authorization, semantics, release and rollback evidence remain. PS14 stays owner-held local tooling in all four modes, never counted retired.
+
+
 **Approved McpCli course correction (2026-09-27):** `Hexalith.McpCli` is the target Hexalith-owned CLI/MCP presentation for eligible Memories operations. `Hexalith.Memories.Cli` and `.Mcp` are obsolete migration sources; they remain compatibility assets until search, ingest, traversal, tenant isolation, identity, output, and accessibility behavior passes approved replacement or withdrawal gates. Descriptions below of their direct HTTP/Dapr hosting and distribution are historical or migration requirements, not the target topology.
 
 
@@ -192,7 +195,7 @@ These failures produce no errors — the system returns results, but quality deg
 
 ### Phase Compatibility Requirement
 
-The MVP architecture (Phase 1: CLI-only, no MCP, no EventStore integration) must accommodate Phase 1.5 additions as **additive, not transformative**. MCP Server and EventStore Integration must be pluggable into the existing architecture without rearchitecting the memory engine, search pipeline, or tenant model. The composition root (Aspire AppHost) is the extension point — new services register alongside existing ones.
+The historical compatibility MVP architecture (Phase 1: CLI-only, no MCP, no EventStore integration) must accommodate Phase 1.5 additions as **additive, not transformative**. The retained compatibility MCP Server and EventStore Integration must be pluggable into the existing architecture without rearchitecting the memory engine, search pipeline, or tenant model. The composition root (Aspire AppHost) is the extension point — new services register alongside existing ones.
 
 ### Graph Axis Architecture Decision
 
@@ -1460,8 +1463,8 @@ Hexalith.Memories/
 │   │
 │   ├── Hexalith.Memories.Client/              # Phase 1.5
 │   ├── Hexalith.Memories.Client.Rest/         # Phase 1.5
-│   ├── Hexalith.Memories.Cli/                 # MVP essentials; Phase 1.5 polish expansion
-│   ├── Hexalith.Memories.Mcp/                 # Phase 1.5
+│   ├── Hexalith.Memories.Cli/                 # Retained compatibility; historical MVP/Phase 1.5
+│   ├── Hexalith.Memories.Mcp/                 # Retained compatibility; historical Phase 1.5
 │   ├── Hexalith.Memories.EventStore/          # Phase 1.5
 │   │
 │   ├── Hexalith.Memories.AppHost/

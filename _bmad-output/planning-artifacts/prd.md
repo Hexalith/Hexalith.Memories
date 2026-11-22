@@ -34,6 +34,9 @@ workflowType: 'prd'
 
 # Product Requirements Document - Hexalith.Memories
 
+> **Current McpCli disposition (Story 5.11 candidate):** The proprietary CLI/MCP phases, ingress topology and installation commands below describe retained compatibility. There is no promised generic migration or diagnostics surface. No Memories operation is enrolled in the current shipped McpCli cohort. Forwarded per-user HTTP authority is necessary but insufficient for retirement; tenant/user/administrative authorization, semantics, release and rollback evidence remain. PS14 stays owner-held local tooling in all four modes, never counted retired.
+
+
 **Updated 2026-11-20.** Phase 1 remains **no-go**. This revision reconciles the release tests, operator journeys and delivery register with the November audit, the current architecture and the McpCli migration inventory. [Release decision and evidence needed to reopen](#release-decision-record)
 
 **Author:** Jerome
