@@ -354,3 +354,25 @@ Review fixes followed at 16:00Z–16:03Z. `ProductProjects_DoNotAccessTheSecretP
 Moving a tracked Server source away left the guard passing, and the file was restored byte-for-byte. The probe test now also rejects the JSON-escaped canary, with a 20 s timeout per case, and passed again. `fail_closed.py` passed both cases at 16:00:58Z.
 
 The deployed read, both denials, the names/types inventory and the drift comparison are current as of 2026-11-22T15:23:34Z. Residue disposal, grant narrowing, drift reconciliation and any acceptance remain with the named owners. This record claims no deployment qualification and no residue acceptance.
+
+### Story 31.2 recheck at 17:10Z
+
+On 2026-11-22 from 17:10:35Z to 17:12:22Z, kubectl v1.36.1 rechecked `jpiquot@local` in `hexalith-memories`. The names/types and pod app-ID projections reproduced the inventory above. At 17:13:05Z, the workload-template projections under Read-only replay again found no `eventstore` app ID.
+
+The six in-pod calls used the commands under Read-only replay, targeting the same four pod and container pairs listed under Scoped reads and denials. Each call exited 0.
+
+| UTC | Pods | Check | Result |
+| --- | --- | --- | --- |
+| 17:11:40Z–17:11:41Z | Both memories pods | `memories allowed` | `redis-secret` returned HTTP 200 with the password field present. |
+| 17:11:41Z | Both memories pods | `memories outside` | HTTP 403 from the allow-list. |
+| 17:11:42Z | Both memories-mcp pods | `memories-mcp unscoped` | HTTP 401 with the runtime store unavailable. Authenticated metadata confirmed the store was absent. |
+
+The metadata-only replay under Built-in Kubernetes secret store again listed `secretstores.kubernetes` in all four pods. The live Deployment annotations and Configuration scopes provided no restriction for that store. The Role and RoleBinding projections confirmed nine named grants for `memories` and two for `memories-mcp`. All four residue Secrets still appeared in the names/types projection. C2 remains pending the owner decisions on the built-in store and those four Secrets. The probes emitted no credential values or response bodies and made no cluster changes.
+
+The Debug source-reference build succeeded with zero warnings or errors. Direct execution of the three classes above passed all 164 cases. The BusyBox probe unittest passed its 13 subTests. The following disposable check passed both cases with daprd 1.19.1. Missing bootstrap failed component initialization, and unreachable OpenBao returned HTTP 500 without a successful read or fallback.
+
+```bash
+run-with-temp python3 -B tests/tooling/runtime_secret_store/fail_closed.py deploy/kubernetes/base/dapr/secretstore.yaml
+```
+
+The tenant isolation evidence checker printed `No tenant-isolation surface changed; evidence check is a no-op.`
