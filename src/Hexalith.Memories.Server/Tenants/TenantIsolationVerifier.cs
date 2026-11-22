@@ -39,11 +39,14 @@ public sealed partial class TenantIsolationVerifier
         "chunkEndOffset",
     ];
 
+    private static readonly TimeSpan _embeddingConfigurationLookupTimeout = TimeSpan.FromSeconds(5);
+
     private readonly TenantRegistryService _registry;
     private readonly ITenantEmbeddingConfigProvider _embeddingConfigProvider;
     private readonly IConnectionMultiplexer _redis;
     private readonly IConnectionMultiplexer _falkorDb;
     private readonly ILogger<TenantIsolationVerifier> _logger;
+    private readonly TimeProvider _timeProvider;
 
     /// <summary>Initializes a new instance of the <see cref="TenantIsolationVerifier"/> class.</summary>
     /// <param name="registry">The tenant registry service.</param>
@@ -57,13 +60,33 @@ public sealed partial class TenantIsolationVerifier
         IConnectionMultiplexer redis,
         IConnectionMultiplexer falkorDb,
         ILogger<TenantIsolationVerifier> logger)
+        : this(registry, embeddingConfigProvider, redis, falkorDb, logger, TimeProvider.System)
+    {
+    }
+
+    /// <summary>Initializes the verifier with a clock for the configuration lookup deadline.</summary>
+    /// <param name="registry">The tenant registry.</param>
+    /// <param name="embeddingConfigProvider">The tenant embedding configuration provider.</param>
+    /// <param name="redis">The Redis search and vector connection.</param>
+    /// <param name="falkorDb">The FalkorDB connection.</param>
+    /// <param name="logger">The diagnostic logger.</param>
+    /// <param name="timeProvider">The clock used to enforce the lookup deadline.</param>
+    internal TenantIsolationVerifier(
+        TenantRegistryService registry,
+        ITenantEmbeddingConfigProvider embeddingConfigProvider,
+        IConnectionMultiplexer redis,
+        IConnectionMultiplexer falkorDb,
+        ILogger<TenantIsolationVerifier> logger,
+        TimeProvider timeProvider)
     {
         ArgumentNullException.ThrowIfNull(embeddingConfigProvider);
+        ArgumentNullException.ThrowIfNull(timeProvider);
         _registry = registry;
         _embeddingConfigProvider = embeddingConfigProvider;
         _redis = redis;
         _falkorDb = falkorDb;
         _logger = logger;
+        _timeProvider = timeProvider;
     }
 
     /// <summary>Runs all tenant isolation verification checks.</summary>
@@ -73,6 +96,7 @@ public sealed partial class TenantIsolationVerifier
     public async Task<TenantIsolationVerificationResult> VerifyAsync(string tenantId, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ct.ThrowIfCancellationRequested();
         LogVerificationStarted(_logger, tenantId);
 
         IReadOnlyList<TenantInfo> allTenants = await _registry.ListTenantsAsync(ct).ConfigureAwait(false);
@@ -103,6 +127,7 @@ public sealed partial class TenantIsolationVerifier
             });
         }
 
+        ct.ThrowIfCancellationRequested();
         bool allPassed = checks.All(c => c.Passed);
         List<string> failedNames = checks.Where(c => !c.Passed).Select(c => c.CheckName).ToList();
         int passedCount = checks.Count(c => c.Passed);
@@ -122,6 +147,7 @@ public sealed partial class TenantIsolationVerifier
 
     private async Task<TenantIsolationCheckResult> CheckIndexExistenceAsync(string tenantId, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         Stopwatch sw = Stopwatch.StartNew();
         try
         {
@@ -132,14 +158,11 @@ public sealed partial class TenantIsolationVerifier
 
             List<string> missing = [];
 
-            _ = await TryGetIndexInfoAsync(db, syntacticIndex, missing).ConfigureAwait(false);
-            _ = await TryGetIndexInfoAsync(db, semanticIndex, missing).ConfigureAwait(false);
-            _ = await TryGetIndexInfoAsync(db, naturalLanguageSemanticIndex, missing).ConfigureAwait(false);
+            _ = await TryGetIndexInfoAsync(db, syntacticIndex, missing, ct).ConfigureAwait(false);
+            _ = await TryGetIndexInfoAsync(db, semanticIndex, missing, ct).ConfigureAwait(false);
+            _ = await TryGetIndexInfoAsync(db, naturalLanguageSemanticIndex, missing, ct).ConfigureAwait(false);
 
-            // Check FalkorDB database exists via GRAPH.LIST
-            IDatabase falkorDb = _falkorDb.GetDatabase();
-            RedisResult graphListResult = await falkorDb.ExecuteAsync("GRAPH.LIST").ConfigureAwait(false);
-            HashSet<string> graphDatabases = ParseGraphList(graphListResult);
+            HashSet<string> graphDatabases = await ReadGraphDatabasesAsync(ct).ConfigureAwait(false);
             if (!graphDatabases.Contains(tenantId))
             {
                 missing.Add($"FalkorDB database '{tenantId}'");
@@ -160,12 +183,7 @@ public sealed partial class TenantIsolationVerifier
                 Details = "All indexes and databases exist",
             };
         }
-        catch (RedisConnectionException ex)
-        {
-            sw.Stop();
-            return CreateBackendUnavailableResult("IndexExistence", ex, sw.Elapsed.TotalMilliseconds);
-        }
-        catch (RedisServerException ex)
+        catch (Exception ex) when (IsBackendUnavailable(ex))
         {
             sw.Stop();
             return CreateBackendUnavailableResult("IndexExistence", ex, sw.Elapsed.TotalMilliseconds);
@@ -176,6 +194,7 @@ public sealed partial class TenantIsolationVerifier
         string tenantId,
         CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         Stopwatch sw = Stopwatch.StartNew();
         try
         {
@@ -183,7 +202,7 @@ public sealed partial class TenantIsolationVerifier
             string targetIndex = IndexSchemaDefinitions.GetSyntacticIndexName(tenantId);
             string targetPrefix = IndexSchemaDefinitions.GetSyntacticKeyPrefix(tenantId);
             List<string> missing = [];
-            (bool found, RedisResult info) = await TryGetIndexInfoAsync(db, targetIndex, missing).ConfigureAwait(false);
+            (bool found, RedisResult info) = await TryGetIndexInfoAsync(db, targetIndex, missing, ct).ConfigureAwait(false);
             if (!found)
             {
                 sw.Stop();
@@ -199,7 +218,7 @@ public sealed partial class TenantIsolationVerifier
                 targetPrefix,
                 IndexSchemaDefinitions.GetSyntacticFieldIdentifiers());
 
-            (IReadOnlyList<string> mismatches, int scannedCount) = await ScanHashPrefixForTenantFieldMismatchesAsync(
+            (IReadOnlyList<string> mismatches, int scannedCount, bool hasWrongType) = await ScanHashPrefixForTenantFieldMismatchesAsync(
                     "syntactic",
                     targetPrefix,
                     tenantId,
@@ -213,7 +232,9 @@ public sealed partial class TenantIsolationVerifier
                 return new TenantIsolationCheckResult("SyntacticIsolation", false, sw.Elapsed.TotalMilliseconds)
                 {
                     Details = string.Join("; ", problems),
-                    Remediation = "Repair or re-provision the tenant RediSearch index and remove mismatched target-prefix hashes",
+                    Remediation = hasWrongType
+                        ? "Inspect the reported non-hash keys and identify their writer before repairing tenant data. Address any other reported findings and retry verification."
+                        : "Repair or re-provision the tenant RediSearch index and remove mismatched target-prefix hashes",
                 };
             }
 
@@ -224,12 +245,7 @@ public sealed partial class TenantIsolationVerifier
                     : $"Target syntactic index metadata and {scannedCount} target-prefix hash(es) verified; indexed docs: {FormatDocumentCount(targetDocumentCount)}",
             };
         }
-        catch (RedisConnectionException ex)
-        {
-            sw.Stop();
-            return CreateBackendUnavailableResult("SyntacticIsolation", ex, sw.Elapsed.TotalMilliseconds);
-        }
-        catch (RedisServerException ex)
+        catch (Exception ex) when (IsBackendUnavailable(ex))
         {
             sw.Stop();
             return CreateBackendUnavailableResult("SyntacticIsolation", ex, sw.Elapsed.TotalMilliseconds);
@@ -240,13 +256,14 @@ public sealed partial class TenantIsolationVerifier
         string tenantId,
         CancellationToken ct)
     {
-        Stopwatch sw = Stopwatch.StartNew();
         ct.ThrowIfCancellationRequested();
+        Stopwatch sw = Stopwatch.StartNew();
 
         TenantEmbeddingConfig? embeddingConfig;
+        Task<TenantEmbeddingConfig>? lookup = null;
         try
         {
-            Task<TenantEmbeddingConfig>? lookup = _embeddingConfigProvider.GetAsync(tenantId, ct);
+            lookup = _embeddingConfigProvider.GetAsync(tenantId, ct);
             if (lookup is null)
             {
                 sw.Stop();
@@ -255,21 +272,18 @@ public sealed partial class TenantIsolationVerifier
             }
 
             embeddingConfig = await lookup
-                .WaitAsync(ct)
+                .WaitAsync(_embeddingConfigurationLookupTimeout, _timeProvider, ct)
                 .ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        catch (Exception ex) when (ex is OperationCanceledException || IsEmbeddingConfigurationUnavailable(ex))
         {
-            throw;
-        }
-        catch (OperationCanceledException ex)
-        {
-            sw.Stop();
-            LogEmbeddingConfigurationLookupFailed(_logger, tenantId, ex.GetType().Name);
-            return CreateEmbeddingConfigurationUnavailableResult(tenantId, sw.Elapsed.TotalMilliseconds);
-        }
-        catch (Exception ex) when (IsEmbeddingConfigurationUnavailable(ex))
-        {
+            if (lookup is not null)
+            {
+                _ = ObserveLookupCompletionAsync(lookup);
+            }
+
+            ct.ThrowIfCancellationRequested();
             sw.Stop();
             LogEmbeddingConfigurationLookupFailed(_logger, tenantId, ex.GetType().Name);
             return CreateEmbeddingConfigurationUnavailableResult(tenantId, sw.Elapsed.TotalMilliseconds);
@@ -305,8 +319,8 @@ public sealed partial class TenantIsolationVerifier
             string naturalLanguagePrefix = IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix(tenantId);
 
             List<string> missing = [];
-            (bool rawFound, RedisResult rawInfo) = await TryGetIndexInfoAsync(db, rawIndex, missing).ConfigureAwait(false);
-            (bool naturalLanguageFound, RedisResult naturalLanguageInfo) = await TryGetIndexInfoAsync(db, naturalLanguageIndex, missing).ConfigureAwait(false);
+            (bool rawFound, RedisResult rawInfo) = await TryGetIndexInfoAsync(db, rawIndex, missing, ct).ConfigureAwait(false);
+            (bool naturalLanguageFound, RedisResult naturalLanguageInfo) = await TryGetIndexInfoAsync(db, naturalLanguageIndex, missing, ct).ConfigureAwait(false);
             if (!rawFound || !naturalLanguageFound)
             {
                 sw.Stop();
@@ -348,37 +362,35 @@ public sealed partial class TenantIsolationVerifier
                     $"Raw semantic index '{rawIndex}' has {rawDimensions.Value} dimensions but natural-language semantic index '{naturalLanguageIndex}' has {naturalLanguageDimensions.Value}");
             }
 
-            (
-                IReadOnlyList<MarkerMismatchEvidence> rawMarkerMismatches,
-                IReadOnlyList<string> rawClassificationGaps,
-                int rawActiveCount,
-                int rawExcludedCount) = await ScanSemanticHashPrefixForTenantEvidenceAsync(
-                    rawPrefix,
-                    tenantId,
-                    ct)
-                .ConfigureAwait(false);
-            (
-                IReadOnlyList<MarkerMismatchEvidence> naturalLanguageMarkerMismatches,
-                IReadOnlyList<string> naturalLanguageClassificationGaps,
-                int naturalLanguageActiveCount,
-                int naturalLanguageExcludedCount) = await ScanSemanticHashPrefixForTenantEvidenceAsync(
-                    naturalLanguagePrefix,
-                    tenantId,
-                    ct)
-                .ConfigureAwait(false);
-            // Snapshot before classification gaps and marker mismatches are appended below: this is the exact
-            // set of non-marker problems (index prefix/field metadata and configured-dimension mismatches)
-            // BuildSemanticIsolationRemediation needs, computed directly from its source rather than inferred
-            // by subtracting the marker count from the final combined total.
             bool hasNonMarkerProblem = problems.Count > 0;
+            List<MarkerMismatchEvidence> markerMismatches = [];
+            List<string> classificationGaps = [];
+            int rawActiveCount;
+            int rawExcludedCount;
+            int naturalLanguageActiveCount;
+            int naturalLanguageExcludedCount;
+            string scanName = "Raw";
+            try
+            {
+                (rawActiveCount, rawExcludedCount) = await ScanSemanticHashPrefixForTenantEvidenceAsync(
+                    rawPrefix, tenantId, markerMismatches, classificationGaps, ct).ConfigureAwait(false);
+                scanName = "Natural-language";
+                (naturalLanguageActiveCount, naturalLanguageExcludedCount) = await ScanSemanticHashPrefixForTenantEvidenceAsync(
+                    naturalLanguagePrefix, tenantId, markerMismatches, classificationGaps, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (IsBackendUnavailable(ex))
+            {
+                sw.Stop();
+                TenantIsolationCheckResult failure = CreateBackendUnavailableResult(
+                    "SemanticIsolation", ex, sw.Elapsed.TotalMilliseconds);
+                problems.AddRange(classificationGaps);
+                problems.AddRange(markerMismatches.Select(m => m.Detail));
+                problems.Add($"{scanName} semantic key scan incomplete. {failure.Details}");
+                return failure with { Details = string.Join("; ", problems) };
+            }
 
-            List<MarkerMismatchEvidence> allMarkerMismatches =
-                [.. rawMarkerMismatches, .. naturalLanguageMarkerMismatches];
-            problems.AddRange(rawClassificationGaps);
-            problems.AddRange(naturalLanguageClassificationGaps);
-            problems.AddRange(allMarkerMismatches.Select(m => m.Detail));
-            bool hasClassificationGap = rawClassificationGaps.Count > 0
-                || naturalLanguageClassificationGaps.Count > 0;
+            problems.AddRange(classificationGaps);
+            problems.AddRange(markerMismatches.Select(m => m.Detail));
 
             sw.Stop();
             if (problems.Count > 0)
@@ -386,13 +398,13 @@ public sealed partial class TenantIsolationVerifier
                 return new TenantIsolationCheckResult("SemanticIsolation", false, sw.Elapsed.TotalMilliseconds)
                 {
                     Details = string.Join("; ", problems),
-                    Remediation = hasClassificationGap
+                    Remediation = classificationGaps.Count > 0
                         ? $"Register or migrate the reported semantic key family for tenant '{tenantId}', then retry verification; no data or indexes were changed"
                         : BuildSemanticIsolationRemediation(
                             tenantId,
                             embeddingConfig.Dimensions,
                             hasNonMarkerProblem,
-                            allMarkerMismatches),
+                            markerMismatches),
                 };
             }
 
@@ -405,12 +417,7 @@ public sealed partial class TenantIsolationVerifier
                     : $"Target raw and natural-language vector index metadata verified against the requested tenant's validated {embeddingConfig.Dimensions}-dimension configuration; active marker evidence covered {rawActiveCount} raw base/chunk and {naturalLanguageActiveCount} current natural-language hash(es), excluding {totalExcluded} proven non-active hash(es); indexed docs: raw={FormatDocumentCount(rawDocumentCount)}, nl={FormatDocumentCount(naturalLanguageDocumentCount)}",
             };
         }
-        catch (RedisConnectionException ex)
-        {
-            sw.Stop();
-            return CreateBackendUnavailableResult("SemanticIsolation", ex, sw.Elapsed.TotalMilliseconds);
-        }
-        catch (RedisServerException ex)
+        catch (Exception ex) when (IsBackendUnavailable(ex))
         {
             sw.Stop();
             return CreateBackendUnavailableResult("SemanticIsolation", ex, sw.Elapsed.TotalMilliseconds);
@@ -421,17 +428,13 @@ public sealed partial class TenantIsolationVerifier
         string tenantId,
         CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         // This check is deliberately structural-only. Content isolation is proven by the manifest-bound,
         // real-backend collision test cited in the successful result below, not by a production graph scan.
         Stopwatch sw = Stopwatch.StartNew();
         try
         {
-            ct.ThrowIfCancellationRequested();
-            IDatabase falkorDb = _falkorDb.GetDatabase();
-
-            // Get all graph databases
-            RedisResult graphListResult = await falkorDb.ExecuteAsync("GRAPH.LIST").ConfigureAwait(false);
-            HashSet<string> graphDatabases = ParseGraphList(graphListResult);
+            HashSet<string> graphDatabases = await ReadGraphDatabasesAsync(ct).ConfigureAwait(false);
 
             List<string> structuralProblems = [];
 
@@ -455,12 +458,7 @@ public sealed partial class TenantIsolationVerifier
                 Details = $"Structural database-existence evidence only: target graph database '{tenantId}' appears in GRAPH.LIST ({graphDatabases.Count} graph database(s)); independent execution of the real-backend proof TenantIsolationIntegrationTests.VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes is required for content-isolation evidence",
             };
         }
-        catch (RedisConnectionException ex)
-        {
-            sw.Stop();
-            return CreateBackendUnavailableResult("GraphIsolation", ex, sw.Elapsed.TotalMilliseconds);
-        }
-        catch (RedisServerException ex)
+        catch (Exception ex) when (IsBackendUnavailable(ex))
         {
             sw.Stop();
             return CreateBackendUnavailableResult("GraphIsolation", ex, sw.Elapsed.TotalMilliseconds);
@@ -469,13 +467,13 @@ public sealed partial class TenantIsolationVerifier
 
     private async Task<TenantIsolationCheckResult> CheckOrphanedDatabasesAsync(CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         Stopwatch sw = Stopwatch.StartNew();
         try
         {
-            IDatabase falkorDb = _falkorDb.GetDatabase();
-            RedisResult graphListResult = await falkorDb.ExecuteAsync("GRAPH.LIST").ConfigureAwait(false);
-            HashSet<string> graphDatabases = ParseGraphList(graphListResult);
+            HashSet<string> graphDatabases = await ReadGraphDatabasesAsync(ct).ConfigureAwait(false);
 
+            ct.ThrowIfCancellationRequested();
             IReadOnlyList<TenantInfo> registeredTenants = await _registry.ListTenantsAsync(ct).ConfigureAwait(false);
             HashSet<string> registeredIds = new(registeredTenants.Select(t => t.Id), StringComparer.Ordinal);
 
@@ -498,12 +496,7 @@ public sealed partial class TenantIsolationVerifier
                 Details = $"All {graphDatabases.Count} FalkorDB database(s) correspond to registered tenants",
             };
         }
-        catch (RedisConnectionException ex)
-        {
-            sw.Stop();
-            return CreateBackendUnavailableResult("OrphanedDatabases", ex, sw.Elapsed.TotalMilliseconds);
-        }
-        catch (RedisServerException ex)
+        catch (Exception ex) when (IsBackendUnavailable(ex))
         {
             sw.Stop();
             return CreateBackendUnavailableResult("OrphanedDatabases", ex, sw.Elapsed.TotalMilliseconds);
@@ -511,12 +504,13 @@ public sealed partial class TenantIsolationVerifier
     }
 
     /// <summary>Scans target tenant keys and flags hashes whose optional tenantId field contradicts the target tenant.</summary>
-    private async Task<(IReadOnlyList<string> Mismatches, int ScannedCount)> ScanHashPrefixForTenantFieldMismatchesAsync(
+    private async Task<(IReadOnlyList<string> Mismatches, int ScannedCount, bool HasWrongType)> ScanHashPrefixForTenantFieldMismatchesAsync(
         string storageName,
         string keyPrefix,
         string tenantId,
         CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         IReadOnlyList<IServer> servers = GetConnectedServers(_redis);
         if (servers.Count == 0)
         {
@@ -527,10 +521,13 @@ public sealed partial class TenantIsolationVerifier
         List<string> mismatches = [];
         HashSet<string> scannedKeys = new(StringComparer.Ordinal);
         int scannedCount = 0;
+        bool hasWrongType = false;
         foreach (IServer server in servers)
         {
+            ct.ThrowIfCancellationRequested();
             await foreach (RedisKey key in server.KeysAsync(pattern: keyPrefix + "*", pageSize: 250).WithCancellation(ct))
             {
+                ct.ThrowIfCancellationRequested();
                 string? keyText = key.ToString();
                 if (string.IsNullOrWhiteSpace(keyText) || !scannedKeys.Add(keyText))
                 {
@@ -538,7 +535,19 @@ public sealed partial class TenantIsolationVerifier
                 }
 
                 scannedCount++;
-                RedisValue storedTenantId = await db.HashGetAsync(key, "tenantId").ConfigureAwait(false);
+                RedisValue storedTenantId;
+                try
+                {
+                    storedTenantId = await db.HashGetAsync(key, "tenantId").WaitAsync(ct).ConfigureAwait(false);
+                }
+                catch (RedisServerException ex) when (IsWrongType(ex))
+                {
+                    hasWrongType = true;
+                    mismatches.Add(
+                        $"{storageName} key '{key}' under tenant '{tenantId}' has the wrong Redis value type (expected a hash)");
+                    continue;
+                }
+
                 if (storedTenantId.IsNullOrEmpty)
                 {
                     mismatches.Add(
@@ -555,19 +564,18 @@ public sealed partial class TenantIsolationVerifier
             }
         }
 
-        return (mismatches, scannedCount);
+        return (mismatches, scannedCount, hasWrongType);
     }
 
-    /// <summary>Classifies semantic hashes before evaluating tenant-marker evidence.</summary>
-    private async Task<(
-        IReadOnlyList<MarkerMismatchEvidence> MarkerMismatches,
-        IReadOnlyList<string> ClassificationGaps,
-        int ActiveCount,
-        int ExcludedCount)> ScanSemanticHashPrefixForTenantEvidenceAsync(
+    /// <summary>Classifies semantic hashes and records findings as they are observed.</summary>
+    private async Task<(int ActiveCount, int ExcludedCount)> ScanSemanticHashPrefixForTenantEvidenceAsync(
         string keyPrefix,
         string tenantId,
+        List<MarkerMismatchEvidence> markerMismatches,
+        List<string> classificationGaps,
         CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         IReadOnlyList<IServer> servers = GetConnectedServers(_redis);
         if (servers.Count == 0)
         {
@@ -575,15 +583,15 @@ public sealed partial class TenantIsolationVerifier
         }
 
         IDatabase db = _redis.GetDatabase();
-        List<MarkerMismatchEvidence> markerMismatches = [];
-        List<string> classificationGaps = [];
         HashSet<string> scannedKeys = new(StringComparer.Ordinal);
         int activeCount = 0;
         int excludedCount = 0;
         foreach (IServer server in servers)
         {
+            ct.ThrowIfCancellationRequested();
             await foreach (RedisKey key in server.KeysAsync(pattern: keyPrefix + "*", pageSize: 250).WithCancellation(ct))
             {
+                ct.ThrowIfCancellationRequested();
                 string? keyText = key.ToString();
                 if (string.IsNullOrWhiteSpace(keyText) || !scannedKeys.Add(keyText))
                 {
@@ -598,6 +606,7 @@ public sealed partial class TenantIsolationVerifier
                         .HashGetAsync(key, _semanticDiscriminatorFields)
                         .WaitAsync(ct)
                         .ConfigureAwait(false);
+                    ct.ThrowIfCancellationRequested();
                     hasNaturalLanguageDescription = await db
                         .HashExistsAsync(key, "naturalLanguageDescription")
                         .WaitAsync(ct)
@@ -661,7 +670,7 @@ public sealed partial class TenantIsolationVerifier
             }
         }
 
-        return (markerMismatches, classificationGaps, activeCount, excludedCount);
+        return (activeCount, excludedCount);
     }
 
     /// <summary>Distinguishes a missing tenant marker (incomplete evidence) from a foreign tenant marker
@@ -739,11 +748,13 @@ public sealed partial class TenantIsolationVerifier
     private static async Task<(bool Found, RedisResult Info)> TryGetIndexInfoAsync(
         IDatabase db,
         string indexName,
-        List<string> missing)
+        List<string> missing,
+        CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         try
         {
-            return (true, await db.ExecuteAsync("FT.INFO", indexName).ConfigureAwait(false));
+            return (true, await db.ExecuteAsync("FT.INFO", indexName).WaitAsync(ct).ConfigureAwait(false));
         }
         catch (RedisServerException ex) when (IsUnknownIndex(ex))
         {
@@ -757,7 +768,8 @@ public sealed partial class TenantIsolationVerifier
             || ex.Message.Contains("no such index", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsWrongType(RedisServerException ex)
-        => ex.Message.Contains("WRONGTYPE", StringComparison.OrdinalIgnoreCase);
+        => string.Equals(ex.Message, "WRONGTYPE", StringComparison.OrdinalIgnoreCase)
+            || ex.Message.StartsWith("WRONGTYPE ", StringComparison.OrdinalIgnoreCase);
 
     private static TenantIsolationCheckResult CreateMissingResourcesResult(
         string checkName,
@@ -828,6 +840,10 @@ public sealed partial class TenantIsolationVerifier
         }
     }
 
+    // The verifier can stop waiting while the provider's actor request is still in flight.
+    private static async Task ObserveLookupCompletionAsync(Task lookup)
+        => await lookup.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+
     private static bool IsEmbeddingConfigurationUnavailable(Exception ex)
         => ex is ActorMethodInvocationException
             or Dapr.DaprException
@@ -883,6 +899,14 @@ public sealed partial class TenantIsolationVerifier
             $"No connected Redis server endpoint is available for {scanName}.",
             null);
 
+    private async Task<HashSet<string>> ReadGraphDatabasesAsync(CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        IDatabase database = _falkorDb.GetDatabase();
+        RedisResult result = await database.ExecuteAsync("GRAPH.LIST").WaitAsync(ct).ConfigureAwait(false);
+        return ParseGraphList(result);
+    }
+
     private static HashSet<string> ParseGraphList(RedisResult result)
     {
         HashSet<string> databases = new(StringComparer.Ordinal);
@@ -909,9 +933,18 @@ public sealed partial class TenantIsolationVerifier
         return databases;
     }
 
+    private static bool IsBackendUnavailable(Exception exception)
+        => exception is RedisConnectionException or RedisServerException or RedisTimeoutException;
+
     private static TenantIsolationCheckResult CreateBackendUnavailableResult(string checkName, Exception ex, double durationMs)
     {
-        string details = $"Backend unavailable: {ex.Message}";
+        string reason = ex switch
+        {
+            RedisTimeoutException => "storage command timed out",
+            RedisConnectionException => "storage connection failed",
+            _ => "storage server rejected the command",
+        };
+        string details = $"Backend unavailable: {reason}";
         if (string.Equals(checkName, "GraphIsolation", StringComparison.Ordinal))
         {
             details = $"Structural database-existence evidence only: {details}";

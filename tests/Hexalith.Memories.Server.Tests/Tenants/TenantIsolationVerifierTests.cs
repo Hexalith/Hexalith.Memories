@@ -21,6 +21,7 @@ using Hexalith.Memories.Server.Tests.Deployment;
 using Hexalith.Memories.Server.Tenants;
 
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Time.Testing;
 
 using NSubstitute;
 using NSubstitute.Core;
@@ -545,6 +546,39 @@ public class TenantIsolationVerifierTests
     }
 
     [Fact]
+    public async Task VerifyAsync_EmbeddingConfigLookupDeadline_FailsClosedAndContinuesIndependentChecks()
+    {
+        FakeTimeProvider time = new();
+        TaskCompletionSource<TenantEmbeddingConfig> pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ITenantEmbeddingConfigProvider provider = Substitute.For<ITenantEmbeddingConfigProvider>();
+        provider.GetAsync("tenant-a", CancellationToken.None).Returns(pending.Task);
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, _) = CreateVerifier(
+            [new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow)],
+            provider,
+            timeProvider: time);
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        SetupGraphList(falkorDb, "tenant-a");
+
+        Task<TenantIsolationVerificationResult> verification = verifier.VerifyAsync("tenant-a", CancellationToken.None);
+        _ = await provider.Received(1).GetAsync("tenant-a", CancellationToken.None);
+        time.Advance(TimeSpan.FromSeconds(4));
+        verification.IsCompleted.ShouldBeFalse();
+
+        time.Advance(TimeSpan.FromSeconds(1));
+        TenantIsolationVerificationResult result = await verification
+            .WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        pending.Task.IsCompleted.ShouldBeFalse();
+        result.AllPassed.ShouldBeFalse();
+        TenantIsolationCheckResult semantic = result.Checks.Single(check => check.CheckName == "SemanticIsolation");
+        semantic.Passed.ShouldBeFalse();
+        semantic.Details.ShouldBe("Embedding configuration is unavailable for requested tenant 'tenant-a'");
+        result.Checks.Where(check => check.CheckName != "SemanticIsolation").Count(check => check.Passed).ShouldBe(4);
+        AssertReadOnlyDependencyCalls(redisDb, falkorDb);
+        _ = await redisDb.Received(4).ExecuteAsync("FT.INFO", Arg.Any<object[]>());
+    }
+
+    [Fact]
     public async Task VerifyAsync_ProviderSideCancellationWithoutCallerCancellation_FailsClosed()
     {
         using CancellationTokenSource providerCts = new();
@@ -603,6 +637,84 @@ public class TenantIsolationVerifierTests
         syntacticCheck.Passed.ShouldBeFalse();
         syntacticCheck.Details.ShouldNotBeNull();
         syntacticCheck.Details.ShouldContain("tenant-b");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task VerifyAsync_SyntacticWrongType_ReportsKeyAndContinuesCheckingThePrefix(bool hasForeignMarker)
+    {
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer redisServer) = CreateVerifier(
+            [
+                new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
+                new TenantInfo("tenant-b", "Tenant B", TenantStatus.Active, DateTimeOffset.UtcNow),
+            ]);
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        SetupGraphList(falkorDb, "tenant-a", "tenant-b");
+        string prefix = IndexSchemaDefinitions.GetSyntacticKeyPrefix("tenant-a");
+        RedisKey wrongTypeKey = prefix + "non-hash";
+        string foreignMarkerKey = prefix + "foreign-marker";
+        SetupRedisKeyScan(redisServer, prefix, wrongTypeKey.ToString(), foreignMarkerKey);
+        redisDb.HashGetAsync(wrongTypeKey, (RedisValue)"tenantId", Arg.Any<CommandFlags>())
+            .Returns(Task.FromException<RedisValue>(RedisExceptionFactory.CreateServerException(
+                "WRONGTYPE Operation against a key holding the wrong kind of value")));
+        SetupTenantIdField(redisDb, foreignMarkerKey, hasForeignMarker ? "tenant-b" : "tenant-a");
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
+
+        TenantIsolationCheckResult syntactic = result.Checks.Single(check => check.CheckName == "SyntacticIsolation");
+        syntactic.Passed.ShouldBeFalse();
+        syntactic.Details.ShouldNotBeNull();
+        syntactic.Details.ShouldContain($"key '{wrongTypeKey}' under tenant 'tenant-a' has the wrong Redis value type");
+        if (hasForeignMarker)
+        {
+            syntactic.Details.ShouldContain($"key '{foreignMarkerKey}' under tenant 'tenant-a' has tenantId field 'tenant-b'");
+        }
+        else
+        {
+            syntactic.Details.ShouldNotContain(foreignMarkerKey);
+        }
+
+        syntactic.Details.ShouldNotContain("Backend unavailable");
+        syntactic.Remediation.ShouldNotBeNull();
+        syntactic.Remediation.ShouldContain("Inspect the reported non-hash keys");
+        syntactic.Remediation.ShouldNotContain("re-provision");
+        result.AllPassed.ShouldBeFalse();
+        _ = await redisDb.Received(1).HashGetAsync((RedisKey)foreignMarkerKey, (RedisValue)"tenantId", Arg.Any<CommandFlags>());
+        AssertNoMutationDependencyCalls(redisDb, falkorDb);
+    }
+
+    [Fact]
+    public async Task VerifyAsync_PendingSyntacticHashRead_StopsWaitingWhenCancelled()
+    {
+        using CancellationTokenSource cancellation = new();
+        TaskCompletionSource<RedisValue> pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer redisServer) = CreateVerifier(
+            [new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow)]);
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        SetupGraphList(falkorDb, "tenant-a");
+        string prefix = IndexSchemaDefinitions.GetSyntacticKeyPrefix("tenant-a");
+        string blockedKey = prefix + "blocked";
+        string laterKey = prefix + "later";
+        SetupRedisKeyScan(redisServer, prefix, blockedKey, laterKey);
+        TaskCompletionSource readStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        redisDb.HashGetAsync((RedisKey)blockedKey, (RedisValue)"tenantId", Arg.Any<CommandFlags>())
+            .Returns(_ =>
+            {
+                readStarted.SetResult();
+                return pending.Task;
+            });
+
+        Task<TenantIsolationVerificationResult> verification = verifier.VerifyAsync("tenant-a", cancellation.Token);
+        await readStarted.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        cancellation.Cancel();
+
+        OperationCanceledException error = await Should.ThrowAsync<OperationCanceledException>(() =>
+            verification.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+        error.CancellationToken.ShouldBe(cancellation.Token);
+        pending.Task.IsCompleted.ShouldBeFalse();
+        _ = await redisDb.DidNotReceive().HashGetAsync((RedisKey)laterKey, Arg.Any<RedisValue>(), Arg.Any<CommandFlags>());
+        _ = await falkorDb.Received(1).ExecuteAsync("GRAPH.LIST");
     }
 
     [Fact]
@@ -1271,6 +1383,46 @@ public class TenantIsolationVerifierTests
     }
 
     [Fact]
+    public async Task VerifyAsync_NaturalLanguageScanTimeout_RetainsAllPreviouslyCollectedEvidence()
+    {
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer redisServer) = CreateVerifier(
+            [
+                new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
+                new TenantInfo("tenant-b", "Tenant B", TenantStatus.Active, DateTimeOffset.UtcNow),
+            ]);
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        SetupGraphList(falkorDb, "tenant-a");
+        string rawPrefix = IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a");
+        string naturalLanguagePrefix = IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix("tenant-a");
+        string foreignMarkerKey = rawPrefix + "foreign-marker";
+        string unknownShapeKey = rawPrefix + "unknown:family";
+        string naturalLanguageMarkerKey = naturalLanguagePrefix + "nl-foreign";
+        string failingKey = naturalLanguagePrefix + "failing";
+        SetupRedisKeyScan(redisServer, rawPrefix, foreignMarkerKey, unknownShapeKey);
+        SetupRedisKeyScan(redisServer, naturalLanguagePrefix, naturalLanguageMarkerKey, failingKey);
+        SetupSemanticRecord(redisDb, foreignMarkerKey, "foreign-marker", "tenant-b");
+        SetupSemanticRecord(redisDb, unknownShapeKey, "different-unit", "tenant-a");
+        SetupSemanticRecord(redisDb, naturalLanguageMarkerKey, "nl-foreign", "tenant-b", hasNaturalLanguageDescription: true);
+        redisDb.HashGetAsync((RedisKey)failingKey, Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>())
+            .Returns(Task.FromException<RedisValue[]>(new RedisTimeoutException(CommandFlags.None, "internal-key-context", CommandStatus.Unknown)));
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
+
+        TenantIsolationCheckResult semantic = result.Checks.Single(check => check.CheckName == "SemanticIsolation");
+        semantic.Passed.ShouldBeFalse();
+        semantic.Details.ShouldNotBeNull();
+        semantic.Details.ShouldContain($"key '{foreignMarkerKey}' under tenant 'tenant-a' has a foreign tenantId marker 'tenant-b'");
+        semantic.Details.ShouldContain($"key '{unknownShapeKey}' under tenant 'tenant-a' has an evidence-classification gap");
+        semantic.Details.ShouldContain($"key '{naturalLanguageMarkerKey}' under tenant 'tenant-a' has a foreign tenantId marker 'tenant-b'");
+        semantic.Details.ShouldContain("Natural-language semantic key scan incomplete. Backend unavailable: storage command timed out");
+        semantic.Details.ShouldNotContain("internal-key-context");
+        semantic.Remediation.ShouldBe("Check Redis/FalkorDB connectivity and retry");
+        result.AllPassed.ShouldBeFalse();
+        result.Checks.Single(check => check.CheckName == "GraphIsolation").Passed.ShouldBeTrue();
+        AssertNoMutationDependencyCalls(redisDb, falkorDb);
+    }
+
+    [Fact]
     public async Task VerifyAsync_SemanticCursorMoveNextCancelled_PropagatesAndStopsLaterReads()
     {
         using CancellationTokenSource cts = new();
@@ -1637,6 +1789,139 @@ public class TenantIsolationVerifierTests
         }
     }
 
+    [Theory]
+    [InlineData(false, "storage command timed out")]
+    [InlineData(true, "storage connection failed")]
+    public async Task VerifyAsync_CommandTimeouts_ReportEveryAffectedCheckWithoutDriverDetails(
+        bool disconnectedBacklog,
+        string expectedReason)
+    {
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, _) = CreateVerifier(
+            [new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow)]);
+        Exception error = disconnectedBacklog
+            ? new RedisConnectionException(ConnectionFailureType.UnableToConnect, CommandFlags.None, "Backlog timed out: internal-key-context")
+            : new RedisTimeoutException(CommandFlags.None, "internal-key-context", CommandStatus.Unknown);
+        Task<RedisResult> timeout = Task.FromException<RedisResult>(error);
+        redisDb.ExecuteAsync("FT.INFO", Arg.Any<object[]>()).Returns(timeout);
+        falkorDb.ExecuteAsync("GRAPH.LIST").Returns(timeout);
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
+
+        result.AllPassed.ShouldBeFalse();
+        result.Checks.Select(check => check.CheckName).ShouldBe(
+            ["IndexExistence", "SyntacticIsolation", "SemanticIsolation", "GraphIsolation", "OrphanedDatabases"]);
+        foreach (TenantIsolationCheckResult check in result.Checks)
+        {
+            check.Passed.ShouldBeFalse();
+            check.Details.ShouldNotBeNull();
+            check.Details.ShouldContain($"Backend unavailable: {expectedReason}");
+            check.Details.ShouldNotContain("internal-key-context");
+            check.Remediation.ShouldBe("Check Redis/FalkorDB connectivity and retry");
+        }
+
+        result.Checks.Single(check => check.CheckName == "GraphIsolation").Details!
+            .ShouldStartWith("Structural database-existence evidence only");
+    }
+
+    [Theory]
+    [InlineData("cursor", "storage command timed out")]
+    [InlineData("hash", "storage command timed out")]
+    [InlineData("server error", "storage server rejected the command")]
+    public async Task VerifyAsync_SyntacticScanAndInitialGraphFailures_AffectOnlyThoseChecks(
+        string failure,
+        string expectedReason)
+    {
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer redisServer) = CreateVerifier(
+            [new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow)]);
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        RedisTimeoutException timeout = new(CommandFlags.None, "driver diagnostic", CommandStatus.Unknown);
+        RedisResult graphList = RedisResult.Create([RedisResult.Create(new RedisValue("tenant-a"))]);
+        falkorDb.ExecuteAsync("GRAPH.LIST")
+            .Returns(Task.FromException<RedisResult>(timeout), Task.FromResult(graphList));
+        string prefix = IndexSchemaDefinitions.GetSyntacticKeyPrefix("tenant-a");
+        if (failure == "cursor")
+        {
+            TaskCompletionSource failedMoveNext = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            failedMoveNext.SetException(timeout);
+            SetupPendingRedisKeyScan(redisServer, prefix, new TaskCompletionSource(), failedMoveNext);
+        }
+        else
+        {
+            string key = prefix + "unit";
+            SetupRedisKeyScan(redisServer, prefix, key);
+            Exception readFailure = failure == "hash"
+                ? timeout
+                : RedisExceptionFactory.CreateServerException("ERR backend diagnostic referencing WRONGTYPE");
+            redisDb.HashGetAsync((RedisKey)key, (RedisValue)"tenantId", Arg.Any<CommandFlags>())
+                .Returns(Task.FromException<RedisValue>(readFailure));
+        }
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
+
+        result.AllPassed.ShouldBeFalse();
+        TenantIsolationCheckResult existence = result.Checks.Single(check => check.CheckName == "IndexExistence");
+        existence.Passed.ShouldBeFalse();
+        existence.Details.ShouldBe("Backend unavailable: storage command timed out");
+        TenantIsolationCheckResult syntactic = result.Checks.Single(check => check.CheckName == "SyntacticIsolation");
+        syntactic.Passed.ShouldBeFalse();
+        syntactic.Details.ShouldBe($"Backend unavailable: {expectedReason}");
+        result.Checks.Skip(2).Count(check => check.Passed).ShouldBe(3);
+        _ = await falkorDb.Received(3).ExecuteAsync("GRAPH.LIST");
+    }
+
+    [Theory]
+    [InlineData("FT.INFO")]
+    [InlineData("GRAPH.LIST")]
+    public async Task VerifyAsync_PendingIndexOrGraphRead_StopsWaitingWhenCancelled(string command)
+    {
+        using CancellationTokenSource cancellation = new();
+        TaskCompletionSource<RedisResult> pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, _) = CreateVerifier(
+            [new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow)]);
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        IDatabase blockedDatabase = command == "FT.INFO" ? redisDb : falkorDb;
+        TaskCompletionSource readStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        blockedDatabase.ExecuteAsync(command, Arg.Any<object[]>())
+            .Returns(_ =>
+            {
+                readStarted.SetResult();
+                return pending.Task;
+            });
+
+        Task<TenantIsolationVerificationResult> verification = verifier.VerifyAsync("tenant-a", cancellation.Token);
+        await readStarted.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        cancellation.Cancel();
+
+        OperationCanceledException error = await Should.ThrowAsync<OperationCanceledException>(() =>
+            verification.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+        error.CancellationToken.ShouldBe(cancellation.Token);
+        pending.Task.IsCompleted.ShouldBeFalse();
+        _ = await redisDb.Received(command == "FT.INFO" ? 1 : 3).ExecuteAsync("FT.INFO", Arg.Any<object[]>());
+        _ = await falkorDb.Received(command == "FT.INFO" ? 0 : 1).ExecuteAsync("GRAPH.LIST");
+    }
+
+    [Fact]
+    public async Task VerifyAsync_AlreadyCancelled_DoesNotDispatchBackendReads()
+    {
+        using CancellationTokenSource cancellation = new();
+        cancellation.Cancel();
+        ITenantEmbeddingConfigProvider provider = Substitute.For<ITenantEmbeddingConfigProvider>();
+        DaprClient daprClient = Substitute.For<DaprClient>();
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, _) = CreateVerifier(
+            [new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow)],
+            provider,
+            daprClient: daprClient);
+
+        OperationCanceledException error = await Should.ThrowAsync<OperationCanceledException>(() =>
+            verifier.VerifyAsync("tenant-a", cancellation.Token));
+
+        error.CancellationToken.ShouldBe(cancellation.Token);
+        daprClient.ReceivedCalls().ShouldBeEmpty();
+        provider.ReceivedCalls().ShouldBeEmpty();
+        redisDb.ReceivedCalls().ShouldBeEmpty();
+        falkorDb.ReceivedCalls().ShouldBeEmpty();
+    }
+
     [Fact]
     public async Task VerifyAsync_SingleTenant_PerformsTargetStructuralChecks()
     {
@@ -1814,10 +2099,12 @@ public class TenantIsolationVerifierTests
     private static (TenantIsolationVerifier Verifier, IDatabase RedisDb, IDatabase FalkorDb, IServer RedisServer) CreateVerifier(
         IReadOnlyList<TenantInfo> tenants,
         ITenantEmbeddingConfigProvider? embeddingConfigProvider = null,
-        ILogger<TenantIsolationVerifier>? logger = null)
+        ILogger<TenantIsolationVerifier>? logger = null,
+        TimeProvider? timeProvider = null,
+        DaprClient? daprClient = null)
     {
         (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IReadOnlyList<IServer> redisServers) =
-            CreateVerifierCore(tenants, redisServerCount: 1, embeddingConfigProvider, logger);
+            CreateVerifierCore(tenants, redisServerCount: 1, embeddingConfigProvider, logger, timeProvider, daprClient);
         return (verifier, redisDb, falkorDb, redisServers[0]);
     }
 
@@ -1833,10 +2120,12 @@ public class TenantIsolationVerifierTests
         IReadOnlyList<TenantInfo> tenants,
         int redisServerCount,
         ITenantEmbeddingConfigProvider? embeddingConfigProvider = null,
-        ILogger<TenantIsolationVerifier>? logger = null)
+        ILogger<TenantIsolationVerifier>? logger = null,
+        TimeProvider? timeProvider = null,
+        DaprClient? daprClient = null)
     {
         // Set up TenantRegistryService with mocked DaprClient
-        DaprClient daprClient = Substitute.For<DaprClient>();
+        daprClient ??= Substitute.For<DaprClient>();
         ILogger<TenantRegistryService> registryLogger = Substitute.For<ILogger<TenantRegistryService>>();
         TenantRegistryService registry = new(daprClient, registryLogger);
 
@@ -1888,7 +2177,8 @@ public class TenantIsolationVerifierTests
 
         ITenantEmbeddingConfigProvider effectiveEmbeddingConfigProvider = embeddingConfigProvider
             ?? CreateEmbeddingConfigProvider(EmbeddingProviderDefaults.Google());
-        TenantIsolationVerifier verifier = new(registry, effectiveEmbeddingConfigProvider, redis, falkorDb, effectiveLogger);
+        TenantIsolationVerifier verifier = new(
+            registry, effectiveEmbeddingConfigProvider, redis, falkorDb, effectiveLogger, timeProvider ?? TimeProvider.System);
         return (verifier, redisDb, falkorDatabase, redisServers);
     }
 
@@ -2011,9 +2301,15 @@ public class TenantIsolationVerifierTests
                     arguments.Length.ShouldBe(3);
                     string? hashGetKey = arguments[0]?.ToString();
                     hashGetKey.ShouldNotBeNullOrWhiteSpace();
-                    RedisValue[]? fields = arguments[1] as RedisValue[];
-                    fields.ShouldNotBeNull();
-                    SemanticDiscriminatorFieldsMatch(fields).ShouldBeTrue();
+                    if (arguments[1] is RedisValue field)
+                    {
+                        field.ToString().ShouldBe("tenantId");
+                        hashGetKey.ShouldStartWith(IndexSchemaDefinitions.GetSyntacticKeyPrefix("tenant-a"));
+                    }
+                    else
+                    {
+                        SemanticDiscriminatorFieldsMatch(arguments[1] as RedisValue[]).ShouldBeTrue();
+                    }
                     ((CommandFlags)arguments[2]!).ShouldBe(CommandFlags.None);
                     break;
                 case nameof(IDatabase.HashExistsAsync):

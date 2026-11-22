@@ -5289,7 +5289,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence — eighth pass (2026-08-14)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-publish-approved-module-baselines-2026-08-01.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-publish-approved-module-baselines-2026-08-01.md` summary: Bound tenant-isolation embedding-configuration lookup time independently of caller cancellation. evidence: `TenantIsolationVerifier.CheckSemanticIsolationAsync` waits only on the caller token, so a provider that ignores cancellation can hang verification indefinitely.
-status: open
+status: done 2026-11-22
+resolution: The verifier caps the requested tenant's configuration wait at five seconds. A stalled provider produces a failed, sanitized SemanticIsolation check while the other checks continue. Evidence: VerifyAsync_EmbeddingConfigLookupDeadline_FailsClosedAndContinuesIndependentChecks in the 81-case verifier run recorded in `spec-five-deferred-tenant-isolation-reliability.md`. Reopen if a stalled lookup blocks verification past its deadline or supplies an unchecked semantic result.
 
 ### DW-696: Ensure scheduled nightly runs execute the fast integration lane.
 
@@ -5317,21 +5318,24 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence — eighth pass (2026-08-14)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-24-8-semantic-isolation-key-family-classification.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-24-8-semantic-isolation-key-family-classification.md` summary: Convert Redis command timeouts across tenant-isolation checks into structured backend-unavailable evidence. evidence: `TenantIsolationVerifier` catches connection and server exceptions but not `RedisTimeoutException`, so an index-info, cursor-adjacent, or hash-field timeout can escape `VerifyAsync` instead of returning the verifier's backend-unavailable result contract.
-status: open
+status: done 2026-11-22
+resolution: All five checks report structured backend-unavailable results for Redis/FalkorDB timeouts. Driver messages are omitted, including for a disconnected backlog reported as a connection exception. Evidence: VerifyAsync_CommandTimeouts_ReportEveryAffectedCheckWithoutDriverDetails and VerifyAsync_SyntacticScanAndInitialGraphFailures_AffectOnlyThoseChecks in the 81-case verifier run recorded in `spec-five-deferred-tenant-isolation-reliability.md`. Reopen if a command or cursor timeout escapes the verifier, discloses driver diagnostics, or suppresses an independent check.
 
 ### DW-700: Missing CancellationToken and unhandled WRONGTYPE in syntactic hash prefix scan.
 
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence — eighth pass (2026-08-14)"), 2026-09-01
 location: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs
 reason: - **Missing CancellationToken and unhandled WRONGTYPE in syntactic hash prefix scan.** - ID: 24.6-F8-W5 - Status: carried-forward - Source story: 24-6-graph-content-level-tenant-isolation-evidence - Target artifact: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs - Re-open trigger: Syntactic isolation verification fails on non-hash Redis keys under tenant prefix or is unable to cancel in-flight hash inspections. - Rationale: `TenantIsolationVerifier.ScanHashPrefixForTenantFieldMismatchesAsync` calls `await db.HashGetAsync(key, "tenantId")` without passing `CancellationToken ct` and does not handle `RedisServerException` on WRONGTYPE non-hash keys. Pre-existing behavior outside story scope.
-status: open
+status: done 2026-11-22
+resolution: Syntactic hash reads stop waiting on caller cancellation. WRONGTYPE identifies the affected key and still allows later keys under the requested tenant prefix to be inspected. Evidence: VerifyAsync_SyntacticWrongType_ReportsKeyAndContinuesCheckingThePrefix and VerifyAsync_PendingSyntacticHashRead_StopsWaitingWhenCancelled in the 81-case verifier run recorded in `spec-five-deferred-tenant-isolation-reliability.md`. Reopen if a non-hash key prevents later marker checks or a canceled hash read keeps verification waiting.
 
 ### DW-701: Inconsistent entry CancellationToken checks in TenantIsolationVerifier methods.
 
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence — eighth pass (2026-08-14)"), 2026-09-01
 location: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs
 reason: - **Inconsistent entry CancellationToken checks in TenantIsolationVerifier methods.** - ID: 24.6-F8-W6 - Status: carried-forward - Source story: 24-6-graph-content-level-tenant-isolation-evidence - Target artifact: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs - Re-open trigger: Cancellation token propagation standards are audited across all server verification services. - Rationale: `CheckIndexExistenceAsync`, `CheckSyntacticIsolationAsync`, and `CheckOrphanedDatabasesAsync` lack entry `ct.ThrowIfCancellationRequested()` and do not bind Redis operations to `ct`. Pre-existing behavior outside story scope.
-status: open
+status: done 2026-11-22
+resolution: The verifier rejects cancellation before its first dependency read and checks cancellation before dispatching index, graph and key reads. Evidence: VerifyAsync_AlreadyCancelled_DoesNotDispatchBackendReads and VerifyAsync_PendingIndexOrGraphRead_StopsWaitingWhenCancelled in the 81-case verifier run recorded in `spec-five-deferred-tenant-isolation-reliability.md`. Reopen if a canceled invocation reaches the registry or places further Redis/FalkorDB commands.
 
 ### DW-702: Optimize ScanSemanticHashPrefixForTenantEvidenceAsync to single Redis command round-trip per key.
 
@@ -5382,7 +5386,8 @@ resolution: 2026-10-28 — `spec-five-deferred-embedding-regressions.md`: Alread
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-8-semantic-isolation-key-family-classification (2026-08-31)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-24-8-semantic-isolation-key-family-classification.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-24-8-semantic-isolation-key-family-classification.md` summary: Transient Redis exception during the second of two sequential semantic scans discards already-collected first-scan evidence. evidence: `CheckSemanticIsolationAsync` awaits the raw-prefix scan then the natural-language-prefix scan under one shared `try`/`catch (RedisConnectionException/RedisServerException)`; if the second scan throws, any marker mismatches or classification gaps the first scan already collected are discarded and the check returns a generic backend-unavailable result instead of surfacing the already-detected isolation problem. Pre-existing pattern predating Story 24.8 (the same shared-try shape already existed for `ScanHashPrefixForTenantFieldMismatchesAsync`'s raw/NL split); this diff extends it to also carry classification-gap evidence.
-status: open
+status: done 2026-11-22
+resolution: The failed semantic check retains classification and marker evidence already gathered across both scans, including findings before an interruption during the natural-language scan. Evidence: VerifyAsync_NaturalLanguageScanTimeout_RetainsAllPreviouslyCollectedEvidence in the 81-case verifier run recorded in `spec-five-deferred-tenant-isolation-reliability.md`. Reopen if a scan interruption drops previously collected findings or produces a passing semantic check.
 
 ### DW-709: `Remediation` text still does not support dual guidance when a classification gap co-occurs with another problem.
 
