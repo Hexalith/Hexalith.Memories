@@ -1,10 +1,9 @@
 # Contributing
 
-This checkout prepares migration to Hexalith.CiCd. Root npm release tooling and
-module story/evidence hooks have been retired. References below to those old
-automated gates describe the previous process; keep the human scope/review
-conventions, and use the product checks and project inventories documented here.
-Shared adoption and hosted release qualification await the released prerequisites.
+This checkout prepares migration to Hexalith.CiCd. Root npm release tooling has
+been retired. The module still runs the story and evidence checks described below
+and uses root npm tooling for local commit validation. Shared adoption and hosted
+release qualification await the released prerequisites.
 
 ## Setup
 
@@ -52,7 +51,8 @@ Forbidden by default:
 - `src/**/*.cs`
 ```
 
-The writable contract is the direct bullet list under `Allowed files for this story:`. The validator
+The writable contract is the direct bullet list under `Allowed files for this story:`. Existing
+artifacts may also use `Expected files to add or edit:` or `Allowed to modify:`. The validator
 extracts only backtick-wrapped paths or globs from that list. `Read/verify only:` and
 `Forbidden by default:` are reviewer guidance and diagnostic context; they do not grant write access.
 An unbackticked direct bullet in the writable list produces a warning on stderr with the artifact
@@ -73,9 +73,10 @@ Local input and artifact paths in diagnostics are relative POSIX-style paths. On
 on another drive use an `<external>/` prefix with the drive or UNC anchor omitted. These display
 rules do not change filesystem lookup or authorization.
 
-Changed-file inputs are normalized to repository-relative POSIX-style paths. Added, modified, copied,
-renamed, and deleted paths are validated; for renames, Git's `--name-only` output supplies the
-destination path.
+Manually supplied changed-file inputs are normalized to repository-relative POSIX-style paths.
+Blank lines are ignored. A nonblank entry that normalizes to an empty path fails validation.
+The local hooks use Git's NUL-delimited path list so spaces, Unicode, and newlines are preserved.
+The hooks treat renames as a deletion and an addition and check both paths.
 
 The story scope check discovers the artifact owner key in the same order locally and in CI:
 
@@ -93,11 +94,10 @@ branch: fix/spec-resolve-story-gate-commit-path
 Story-Key: spec-resolve-story-gate-commit-path
 ```
 
-An extended key does not fall back to a shorter artifact: `spec-example-extra` selects only
-`spec-example-extra.md`, never `spec-example.md`. A changed set on `main` with no numeric story or
-standalone-spec owner still fails closed at the definitive `commit-msg` and CI gates. The earlier
-`pre-commit` phase may defer only a completely absent owner because the proposed message does not
-exist yet.
+An extended key selects the exact artifact. `spec-example-extra` selects `spec-example-extra.md`.
+The scope check reports a no-op when the arguments, commit message, and branch name supply no owner.
+This rule also covers ownerless dependency automation. Use the controls in the cross-tenant evidence
+and story-readiness sections for changes those checks govern.
 
 If two non-empty sources disagree, the check fails closed and reports each `source=key` pair so you
 know which input to fix. Keep the branch name and commit trailer aligned when both are present.
@@ -112,10 +112,19 @@ If `git interpret-trailers` is unavailable (Git missing or not on `PATH`), the v
 a clean validation error that names the missing tool and points at the install/`PATH` fix; it does
 not emit a Python `FileNotFoundError` traceback.
 
-The repository-managed story/evidence hooks are retired. Conventional Commit
-validation belongs to the shared Builds guard; no root `npm ci` installation is
-required. Story scope and negative evidence remain human review information,
-without local story trailers or a module CI workflow enforcing those ledgers.
+Enable the repository-managed hooks with `git config core.hooksPath .githooks`. Use Node.js 22.12
+or newer, run `npm ci` for local commitlint, and make Python 3.9 or newer available as `python3`
+or `python`.
+The `pre-commit` hook checks the current index using the branch name. The `commit-msg` hook reads
+the index again so files staged during pre-commit are checked with the proposed message. It shares
+that snapshot with the scope, tenant-isolation evidence, and review-readiness checks.
+
+The Markdown `File List` uses normalized, single-line paths. It cannot represent literal newlines
+or backslashes in filenames. The pull-request `story-file-scope` job supplies a line-oriented path
+list, so Git filenames that require quoting can be reported differently in that job and in the
+local hooks.
+
+Run the focused story-scope fixtures with `python3 -m unittest discover -s tests/tooling/story_scope -p '*_test.py'`.
 
 Use `Scope-Override:` only for narrow, audited exceptions:
 
@@ -651,7 +660,7 @@ python3 -m unittest discover -s tests/tooling/release_preflight -p '*_test.py'
 ```
 
 After authenticated adoption, the central nightly process owns publication.
-Root semantic-release dry-run commands are retired with the root Node tooling.
+Root semantic-release dry-run commands are retired. The root npm installation supplies local commitlint.
 
 Do not run a real `dotnet nuget push` locally. Publishing is CI-only.
 

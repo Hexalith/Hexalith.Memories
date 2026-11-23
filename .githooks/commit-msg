@@ -2,15 +2,10 @@
 set -eu
 
 repo_root="$(git rev-parse --show-toplevel)"
-git_dir="$(git rev-parse --git-dir)"
 cd "$repo_root"
 
 branch_name="$(git branch --show-current)"
 message_file="$1"
-changed_file="$git_dir/story-scope-changed-$$.txt"
-trap 'rm -f "$changed_file"' EXIT
-
-git -c core.quotepath=false diff --cached --no-renames --name-only -- > "$changed_file"
 
 # Conventional Commits gate. semantic-release derives the version and changelog solely from
 # commit subjects, so a malformed message silently breaks releases. Runs before the trailer
@@ -26,19 +21,21 @@ else
   exit 1
 fi
 
-if command -v python3 >/dev/null 2>&1; then
-  py=python3
-else
-  py=python
-fi
+. .githooks/python-interpreter.sh
 
-"$py" tools/check-story-file-scope.py --branch-name "$branch_name" --commit-message-file "$message_file" --changed-files-file "$changed_file"
+# Read the index after pre-commit completes and share it across all message checks.
+git_dir="$(git rev-parse --absolute-git-dir)"
+changed_file="$(mktemp "$git_dir/story-scope-changed-XXXXXXXX")"
+trap 'rm -f "$changed_file"' EXIT
+git diff --cached --no-renames --name-only -z -- > "$changed_file"
+
+"$py" tools/check-story-file-scope.py --branch-name "$branch_name" --commit-message-file "$message_file" --changed-files0-file "$changed_file"
 
 # Cross-tenant negative evidence gate. Runs here (not pre-commit) because the
 # bypass/Story trailers live in the commit message, which pre-commit cannot see.
-"$py" tools/check-tenant-isolation-evidence.py --branch-name "$branch_name" --commit-message-file "$message_file" --changed-files-file "$changed_file"
+"$py" tools/check-tenant-isolation-evidence.py --branch-name "$branch_name" --commit-message-file "$message_file" --changed-files0-file "$changed_file"
 
 # Story review-readiness gate. Runs here for the same trailer reason as the
 # gates above. --derive-cumulative anchors C1 on the story's baseline_commit,
 # because the staged set is one commit's files, not the story's cumulative diff.
-"$py" tools/check-story-review-readiness.py --branch-name "$branch_name" --commit-message-file "$message_file" --changed-files-file "$changed_file" --derive-cumulative
+"$py" tools/check-story-review-readiness.py --branch-name "$branch_name" --commit-message-file "$message_file" --changed-files0-file "$changed_file" --derive-cumulative

@@ -5,12 +5,13 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
-import os
 import re
 import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+from story_git_paths import GitPathError, display_git_path, display_path, git_diff_paths, read_git_paths
 
 
 STORY_KEY_PATTERN = re.compile(
@@ -161,7 +162,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--commit-sha", help="Commit SHA whose message should be parsed.")
     parser.add_argument("--changed-file", action="append", default=[], help="Changed file path. May be repeated.")
     parser.add_argument("--changed-files-file", help="File containing changed paths, one per line.")
-    parser.add_argument("--staged", action="store_true", help="Use git diff --cached --name-only -- as changed files.")
+    parser.add_argument("--changed-files0-file", help="File containing NUL-terminated Git paths.")
+    parser.add_argument("--staged", action="store_true", help="Add staged paths, including both rename endpoints.")
     parser.add_argument(
         "--artifacts-root",
         default="_bmad-output/implementation-artifacts",
@@ -413,17 +415,27 @@ def parse_allowed_scope(story_path: Path) -> list[str]:
 
 
 def collect_changed_files(args: argparse.Namespace) -> list[str]:
-    values: list[str] = []
-    values.extend(args.changed_file)
+    values = list(args.changed_file)
     if args.changed_files_file:
         changed_file = Path(args.changed_files_file)
         if not changed_file.exists():
             raise ValidationError(f"Changed-files input does not exist: {display_path(changed_file)}")
         values.extend(read_utf8(changed_file, "Changed-files input").splitlines())
-    if args.staged:
-        values.extend(run_git(["diff", "--cached", "--name-only", "--"]).splitlines())
 
-    return [normalized for value in values if (normalized := normalize_path(value))]
+    paths = []
+    for value in values:
+        if not value.strip():
+            continue
+        normalized = normalize_path(value)
+        if not normalized:
+            raise ValidationError(f"Changed path {value!r} does not identify a repository file.")
+        paths.append(normalized)
+
+    if args.changed_files0_file:
+        paths.extend(read_git_paths(Path(args.changed_files0_file)))
+    if args.staged:
+        paths.extend(git_diff_paths("--cached"))
+    return paths
 
 
 def matches_glob(path: str, pattern: str) -> bool:
@@ -491,16 +503,6 @@ def override_matches(path: str, override: Override) -> bool:
     if any(ch in override.pattern for ch in "*?[]"):
         return matches_glob(path, override.pattern)
     return path == override.pattern
-
-
-def display_path(path: Path) -> str:
-    """Render local paths relative to the working directory without drive prefixes."""
-    try:
-        return os.path.relpath(path, Path.cwd()).replace("\\", "/")
-    except ValueError:
-        # Windows cannot relativize paths on different drives. Preserve the
-        # useful location beneath the anchor without printing its drive/UNC root.
-        return "<external>/" + "/".join(path.parts[1:])
 
 
 def read_utf8(path: Path, description: str) -> str:
@@ -571,27 +573,27 @@ def validate(args: argparse.Namespace) -> int:
     if allowed_files:
         print("In-scope changed files:")
         for path in allowed_files:
-            print(f"  - {path}")
+            print(f"  - {display_git_path(path)}")
 
     if overridden:
         print("Audited Scope-Override entries:")
         for path in overridden:
-            print(f"  - {path}")
+            print(f"  - {display_git_path(path)}")
 
     if forbidden_overridden:
         print("Forbidden-default files cannot be authorized by Scope-Override:")
         for path in forbidden_overridden:
-            print(f"  - {path}")
+            print(f"  - {display_git_path(path)}")
 
     if forbidden_no_override:
         print("Forbidden-default files (no override; D5-class):")
         for path in forbidden_no_override:
-            print(f"  - {path}")
+            print(f"  - {display_git_path(path)}")
 
     if out_of_scope:
         print("Out-of-scope files:")
         for path in out_of_scope:
-            print(f"  - {path}")
+            print(f"  - {display_git_path(path)}")
 
     if out_of_scope or forbidden_overridden or forbidden_no_override:
         print("Accepted override format: Scope-Override: path/or/narrow-glob - short rationale")
@@ -604,7 +606,7 @@ def validate(args: argparse.Namespace) -> int:
 def main(argv: list[str]) -> int:
     try:
         return validate(parse_args(argv))
-    except ValidationError as error:
+    except (ValidationError, GitPathError) as error:
         print(error)
         return 1
 

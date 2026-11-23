@@ -36,6 +36,8 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
+from story_git_paths import GitPathError, git_diff_paths, read_git_paths
+
 
 STORY_KEY_PATTERN = re.compile(
     r"(?<![\w-])(\d+-\d+-[a-z](?:[a-z0-9-]*[a-z0-9])?)(?![\w-])",
@@ -217,6 +219,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--commit-sha", help="Commit SHA whose message should be parsed.")
     parser.add_argument("--changed-file", action="append", default=[], help="Changed file path. May be repeated.")
     parser.add_argument("--changed-files-file", help="File containing changed paths, one per line.")
+    parser.add_argument("--changed-files0-file", help="File containing NUL-terminated Git paths from the index.")
     parser.add_argument("--staged", action="store_true", help="Add staged paths, including both rename endpoints, to the changed set.")
     parser.add_argument(
         "--derive-cumulative",
@@ -626,16 +629,21 @@ def collect_supplied_changed(args: argparse.Namespace) -> list[str]:
         if not changed_file.exists():
             raise ValidationError(f"Changed-files input does not exist: {changed_file}")
         values.extend(changed_file.read_text(encoding="utf-8").splitlines())
+    paths = [normalized for value in values if (normalized := normalize_path(value))]
+    if args.changed_files0_file:
+        paths.extend(read_git_paths(Path(args.changed_files0_file)))
     if args.staged:
-        values.extend(run_git(["diff", "--cached", "--no-renames", "--name-only", "--"]).splitlines())
-    return [normalized for value in values if (normalized := normalize_path(value))]
+        paths.extend(git_diff_paths("--cached"))
+    return paths
 
 
 def current_branch() -> str:
     return run_git(["rev-parse", "--abbrev-ref", "HEAD"], check=False).strip()
 
 
-def derive_cumulative_changed(baseline: str, supplied: list[str]) -> tuple[list[str], str | None]:
+def derive_cumulative_changed(
+    baseline: str, supplied: list[str], *, include_staged: bool,
+) -> tuple[list[str], str | None]:
     """Union of baseline..HEAD, the staged set, and any supplied paths.
 
     Returns (paths, skip_reason). `baseline..HEAD` is only the story's diff on a
@@ -657,11 +665,10 @@ def derive_cumulative_changed(baseline: str, supplied: list[str]) -> tuple[list[
             "C1 cannot run without a resolvable baseline; unverifiable must not render as passed."
         )
 
-    values = list(supplied)
-    # The line-oriented interface represents a rename by both exact endpoints.
-    values.extend(run_git(["diff", "--no-renames", "--name-only", f"{resolved}..HEAD"]).splitlines())
-    values.extend(run_git(["diff", "--cached", "--no-renames", "--name-only", "--"]).splitlines())
-    return [normalized for value in values if (normalized := normalize_path(value))], None
+    paths = supplied + git_diff_paths(f"{resolved}..HEAD")
+    if include_staged:
+        paths.extend(git_diff_paths("--cached"))
+    return paths, None
 
 
 def is_ledger_placeholder(value: str) -> bool:
@@ -989,7 +996,9 @@ def validate(args: argparse.Namespace) -> int:
                 )
                 changed = supplied
             else:
-                changed, skip_reason = derive_cumulative_changed(baseline, supplied)
+                changed, skip_reason = derive_cumulative_changed(
+                    baseline, supplied, include_staged=not (args.changed_files0_file or args.staged),
+                )
         else:
             changed = supplied
 
@@ -1005,7 +1014,7 @@ def validate(args: argparse.Namespace) -> int:
             unlisted = sorted(changed_paths - file_list)
             stale = sorted(file_list - changed_paths)
             for path in unlisted:
-                failures.append(f"C1: '{path}' changed but is not in the File List.")
+                failures.append(f"C1: {path!r} changed but is not in the File List.")
             for path in stale:
                 failures.append(f"C1: '{path}' is in the File List but not in the in-scope changed set.")
             if not unlisted and not stale:
@@ -1046,7 +1055,7 @@ def validate(args: argparse.Namespace) -> int:
 def main(argv: list[str]) -> int:
     try:
         return validate(parse_args(argv))
-    except ValidationError as error:
+    except (ValidationError, GitPathError) as error:
         print(error)
         return 1
 

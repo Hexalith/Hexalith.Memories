@@ -1049,14 +1049,16 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of story-12.3 (2026-05-01)"), 2026-09-01
 location: tools/check-story-file-scope.py:168-172
 reason: - **12.3-RV4 — Branch with no story key + no `Story:` trailer fails closed across all CI.** No allowlist for automation branches (dependabot, renovate). Defer until automation PRs are configured for this repo. [tools/check-story-file-scope.py:168-172]
-status: open
+status: done 2026-11-24
+resolution: The shared validator explicitly treats a missing owner as a no-op. CONTRIBUTING.md records the current rule, and the dependency-automation fixture proves an absent owner passes while an invalid owner fails.
 
 ### DW-163: 12.3-RV5: `commit-msg` re-reads index after pre-commit may have modified it. File set seen by the two hooks can differ in environments that auto-format during pre-commit. Low impact in this repo; reconsider if formatters are introduced.
 
 origin: migrated from legacy ledger ("Deferred from: code review of story-12.3 (2026-05-01)"), 2026-09-01
 location: .githooks/commit-msg:12
 reason: - **12.3-RV5 — `commit-msg` re-reads index after pre-commit may have modified it.** File set seen by the two hooks can differ in environments that auto-format during pre-commit. Low impact in this repo; reconsider if formatters are introduced. [.githooks/commit-msg:12]
-status: open
+status: done 2026-11-24
+resolution: Both hooks read the current index at their own phase. The real Git commit fixture stages a file during pre-commit and proves all three message checks receive the same refreshed snapshot.
 
 ### DW-164: 12.3-RV6: `read_commit_message` raises `UnicodeDecodeError` on non-UTF-8 messages. Edge case; clean error wrapping is a follow-up nicety.
 
@@ -1075,7 +1077,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of story-12.3 (2026-05-01)"), 2026-09-01
 location: tools/check-story-file-scope.py:250
 reason: - **12.3-RV8 — `collect_changed_files` silently drops paths normalizing to empty.** Theoretical; `..`-only inputs are not produced by `git diff --name-only`. [tools/check-story-file-scope.py:250]
-status: open
+status: done 2026-11-24
+resolution: The scope validator rejects a nonblank operand that normalizes to no path. The changed-file input fixture checks invalid entries, and verifies that a genuinely empty diff still passes.
 
 ### DW-167: 12.3-RV9: Pre-commit fails closed during rebase / cherry-pick / detached-HEAD. `git branch --show-current` returns empty; with no other story-key source the validator blocks. Needs UX design before patching.
 
@@ -1088,14 +1091,16 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of story-12.3 (2026-05-01)"), 2026-09-01
 location: .githooks/pre-commit:13-17
 reason: - **12.3-RV10 — `python` fallback may land on Python 2 on legacy systems.** Not a target environment today. [.githooks/pre-commit:13-17]
-status: open
+status: done 2026-11-24
+resolution: Both hooks use the shared Python 3.9 or newer interpreter selection. The staged-path fixture checks recovery guidance with an incompatible interpreter and successful use of a compatible python fallback.
 
 ### DW-169: 12.3-RV11: Hooks consume newline-separated `git diff --name-only` output. Filenames containing newlines (legal POSIX) mishandled. No such filenames in repo.
 
 origin: migrated from legacy ledger ("Deferred from: code review of story-12.3 (2026-05-01)"), 2026-09-01
 location: .githooks/pre-commit:12
 reason: - **12.3-RV11 — Hooks consume newline-separated `git diff --name-only` output.** Filenames containing newlines (legal POSIX) mishandled. No such filenames in repo. [.githooks/pre-commit:12]
-status: open
+status: done 2026-11-24
+resolution: Both hooks use NUL-delimited staged path records and preserve both rename endpoints. The real Git fixtures cover spaces, Unicode, newlines and the forbidden-path decision.
 
 ### DW-170: 12.3-RV12: `is_vague` mixes raw `pattern` and post-normalized `normalized` for special-char check. Backslashes get normalized away before the test. Pair with override-vagueness rework P6.
 
@@ -1114,7 +1119,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of story-12.3 (2026-05-01)"), 2026-09-01
 location: tools/check-story-file-scope.py:19-23
 reason: - **12.3-RV14 — `ALLOWED_LABELS` set has aliases (`Expected files to add or edit:`, `Allowed to modify:`) not in CONTRIBUTING.md.** Either remove the aliases or document them in a follow-up. [tools/check-story-file-scope.py:19-23]
-status: open
+status: done 2026-11-24
+resolution: CONTRIBUTING.md documents both supported historical labels. The scope fixture verifies that each label still authorizes backticked paths and warns about bare entries.
 
 ### DW-173: 12.3-RV15 [resolved in 14.1] — Multiple `Allowed files for this story:` blocks in one story merge silently.
 
@@ -2303,14 +2309,16 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of story-12.4 (2026-05-01)"), 2026-09-01
 location: tools/check-story-file-scope.py:204-212
 reason: - **12.4-RV10. `extract_backtick_path` silently drops bare-token bullets without an author-facing diagnostic.** `tools/check-story-file-scope.py:204-212` — author who forgets backticks gets no warning. Story 12.3 author UX.
-status: open
+status: done 2026-11-24
+resolution: The current parser emits a file-and-line warning for an unbackticked allowed-scope bullet. The scope fixture proves the warning and the subsequent refusal if the bare path is changed.
 
 ### DW-350: 12.4-RV11. `to_posix(path)` embeds Windows drive letter in diagnostic header.
 
 origin: migrated from legacy ledger ("Deferred from: code review of story-12.4 (2026-05-01)"), 2026-09-01
 location: tools/check-story-file-scope.py:347-348
 reason: - **12.4-RV11. `to_posix(path)` embeds Windows drive letter in diagnostic header.** `tools/check-story-file-scope.py:347-348` — emit `story_path.relative_to(REPO_ROOT).as_posix()` instead. Story 12.3 territory; cosmetic.
-status: open
+status: done 2026-11-24
+resolution: The current display_path helper omits Windows drive and UNC anchors. The diagnostics fixture covers same-drive, cross-drive and UNC paths with Windows path semantics.
 
 ### DW-351: 12.4-RV12 [resolved in 14.1]. Code-fence toggle mis-parses fences of length > 3 with nested 3-backtick content.
 
@@ -2474,14 +2482,16 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Closed by: Story 14.1 CI Story-Scope Enforcement Hardening (2026-05-04)"), 2026-09-01
 location: n/a
 reason: - **12.4-RV10** — the existing `Out-of-scope files:` diagnostic surfaces dropped bare-token bullets whenever a contributor's changed-file landing references one. A separate parse-time stderr warning would help story authors before any commit, but adding it was not part of 14.1's ACs and risks noisy false positives on legitimate non-bullet prose. Re-open trigger: an author-confusion incident or a story template redesign that needs pre-commit author warnings.
-status: open
+status: done 2026-11-24
+resolution: The current parser issues a parse-time warning for a bare bullet even when that file is absent from the changed set. The scope fixture checks both the warning and the later scope refusal.
 
 ### DW-378: 12.4-RV11: cosmetic only. CI uses a repo-relative `_bmad-output/implementation-artifacts`
 
 origin: migrated from legacy ledger ("Closed by: Story 14.1 CI Story-Scope Enforcement Hardening (2026-05-04)"), 2026-09-01
 location: _bmad-output/implementation-artifacts
 reason: - **12.4-RV11** — cosmetic only. CI uses a repo-relative `_bmad-output/implementation-artifacts` artifacts root, so production diagnostics never embed a drive letter; the issue surfaces only in local Windows runs. Re-open trigger: a maintainer-visible diagnostic that exposes a local Windows path in a maintainer-facing channel.
-status: open
+status: done 2026-11-24
+resolution: The Windows diagnostics fixture verifies repo-relative same-drive paths and drive-free external diagnostics. CONTRIBUTING.md documents both forms.
 
 ### DW-379: 12.4-RV19: out of 14.1 scope (deferred-work parser brittleness in `CiTestInventoryTests`).
 
@@ -5806,3 +5816,13 @@ dotnet tests/Hexalith.Memories.IntegrationTests/bin/Debug/net11.0/Hexalith.Memor
   summary: Preserve Bash test failure details when dotnet exits without writing TRX.
   evidence: When dotnet fails before emitting the report, the pre-existing Bash report loop raises a missing-file error before reporting the native test process status. Preserve both the failure status and report diagnostics where a report exists.
   status: open
+
+## Deferred from: review of spec-ten-deferred-story-scope-hooks.md (2026-11-24)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-ten-deferred-story-scope-hooks.md`
+  summary: Represent literal Git filenames in the story review-readiness File List.
+  evidence: A disposable repository proved C1 cannot represent a filename containing a literal newline or backslash, even when File Scope authorizes the parent glob. The Markdown path grammar needs a lossless representation for that case.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-ten-deferred-story-scope-hooks.md`
+  summary: Preserve literal Git filenames in the hosted story-scope job.
+  evidence: The hosted job still sends Git's C-quoted, newline-delimited path list. A disposable reproduction showed the legacy parser reports a different path for a filename containing a newline. Hexalith.CiCd owns the workflow.

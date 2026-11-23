@@ -47,7 +47,8 @@ class CommitMessageHookTests(unittest.TestCase):
         self.git("config", "core.hooksPath", ".githooks")
         hooks = self.repo / ".githooks"
         hooks.mkdir()
-        shutil.copy2(REPO_ROOT / ".githooks/commit-msg", hooks / "commit-msg")
+        for name in ("commit-msg", "pre-commit", "python-interpreter.sh"):
+            shutil.copy2(REPO_ROOT / ".githooks" / name, hooks / name)
         shutil.copy2(REPO_ROOT / "commitlint.config.mjs", self.repo / "commitlint.config.mjs")
         tools = self.repo / "tools"
         tools.mkdir()
@@ -58,8 +59,12 @@ class CommitMessageHookTests(unittest.TestCase):
             "check-story-review-readiness.py",
         ):
             (tools / name).write_text(
+                "import sys\n"
                 "from pathlib import Path\n"
-                "with Path('downstream.txt').open('a') as out: out.write(__file__ + '\\n')\n",
+                "if '--changed-files0-file' in sys.argv:\n"
+                "    path = Path(sys.argv[sys.argv.index('--changed-files0-file') + 1])\n"
+                "    Path(Path(__file__).stem + '.paths').write_bytes(path.read_bytes())\n"
+                "    with Path('downstream.txt').open('a') as out: out.write(__file__ + '\\n')\n",
                 encoding="utf-8",
             )
         (self.repo / "change.txt").write_text("fixture\n", encoding="utf-8")
@@ -83,7 +88,7 @@ class CommitMessageHookTests(unittest.TestCase):
         self.assertNotEqual(0, result.returncode, stdio(result))
         self.assertNotEqual(0, self.git("rev-parse", "--verify", "HEAD", check=False).returncode)
         self.assertFalse((self.repo / "downstream.txt").exists(), stdio(result))
-        self.assertEqual([], list((self.repo / ".git").glob("story-scope-changed-*.txt")))
+        self.assertEqual([], list((self.repo / ".git").glob("story-scope-changed-*")))
 
     def test_missing_commitlint_blocks_commit_with_recovery_guidance(self) -> None:
         result = self.commit("fix(tooling): Correct ordering")
@@ -118,7 +123,30 @@ class CommitMessageHookTests(unittest.TestCase):
             "check-story-file-scope.py", "check-tenant-isolation-evidence.py",
             "check-story-review-readiness.py",
         ], invoked)
-        self.assertEqual([], list((self.repo / ".git").glob("story-scope-changed-*.txt")))
+        self.assertEqual([], list((self.repo / ".git").glob("story-scope-changed-*")))
+
+    @unittest.skipIf(os.name == "nt", "Windows filenames cannot contain newlines")
+    def test_message_checks_share_the_index_after_pre_commit(self) -> None:
+        self.install_commitlint()
+        self.git("commit", "-m", "test: Seed a rename source")
+        for old_snapshot in self.repo.glob("*.paths"):
+            old_snapshot.unlink()
+
+        renamed = "renamed café\nentry.txt"
+        self.git("mv", "change.txt", renamed)
+        hook = self.repo / ".githooks/pre-commit"
+        with hook.open("a", encoding="utf-8") as file:
+            file.write("\nprintf 'staged by hook\\n' > 'pre commit.txt'\ngit add -- 'pre commit.txt'\n")
+
+        result = self.commit("test: Verify the final staged snapshot")
+        self.assertEqual(0, result.returncode, stdio(result))
+        snapshots = sorted(self.repo.glob("*.paths"))
+        self.assertEqual(3, len(snapshots))
+        expected = {b"change.txt", b"pre commit.txt", renamed.encode("utf-8"), b""}
+        for snapshot in snapshots:
+            with self.subTest(check=snapshot.stem):
+                self.assertEqual(expected, set(snapshot.read_bytes().split(b"\0")))
+        self.assertEqual([], list((self.repo / ".git").glob("story-scope-changed-*")))
 
     def test_valid_message_reaches_all_downstream_gates_and_creates_commit(self) -> None:
         self.assert_commit_passes("fix(tooling): Correct ordering\n\nStory-Key: spec-fixture")

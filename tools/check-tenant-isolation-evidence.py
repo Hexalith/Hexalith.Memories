@@ -20,6 +20,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from story_git_paths import GitPathError, display_git_path, git_diff_paths, read_git_paths
+
 
 STORY_KEY_PATTERN = re.compile(
     r"(?<![\w-])(\d+-\d+-[a-z](?:[a-z0-9-]*[a-z0-9])?)(?![\w-])",
@@ -145,7 +147,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--commit-sha", help="Commit SHA whose message should be parsed.")
     parser.add_argument("--changed-file", action="append", default=[], help="Changed file path. May be repeated.")
     parser.add_argument("--changed-files-file", help="File containing changed paths, one per line.")
-    parser.add_argument("--staged", action="store_true", help="Use git diff --cached --name-only -- as changed files.")
+    parser.add_argument("--changed-files0-file", help="File containing NUL-terminated Git paths.")
+    parser.add_argument("--staged", action="store_true", help="Add staged paths, including both rename endpoints.")
     parser.add_argument(
         "--artifacts-root",
         default="_bmad-output/implementation-artifacts",
@@ -363,10 +366,12 @@ def collect_changed_files(args: argparse.Namespace) -> list[str]:
         if not changed_file.exists():
             raise ValidationError(f"Changed-files input does not exist: {changed_file}")
         values.extend(read_text(changed_file, "changed-files input").splitlines())
+    paths = [normalized for value in values if (normalized := normalize_path(value))]
+    if args.changed_files0_file:
+        paths.extend(read_git_paths(Path(args.changed_files0_file)))
     if args.staged:
-        values.extend(run_git(["diff", "--cached", "--name-only", "--"]).splitlines())
-
-    return [normalized for value in values if (normalized := normalize_path(value))]
+        paths.extend(git_diff_paths("--cached"))
+    return paths
 
 
 def extract_section(story_path: Path, heading: str) -> list[str] | None:
@@ -508,7 +513,7 @@ def validate(args: argparse.Namespace) -> int:
 
     print("Tenant-isolation surface(s) changed:")
     for path in triggered:
-        print(f"  - {path}")
+        print(f"  - {display_git_path(path)}")
 
     message = read_commit_message(args)
     trailer_keys, bypass = parse_trailers(message)
@@ -549,7 +554,7 @@ def validate(args: argparse.Namespace) -> int:
 def main(argv: list[str]) -> int:
     try:
         return validate(parse_args(argv))
-    except ValidationError as error:
+    except (ValidationError, GitPathError) as error:
         print(error)
         return 1
 
