@@ -21,13 +21,11 @@
     <MemoriesEventStoreMinimumVersion>5.4.0</MemoriesEventStoreMinimumVersion>
     <HexalithEventStoreVersion Condition="('$(HexalithEventStoreFromSource)' != 'true' or '$(MemoriesPublishedHostedTestProfile)' == 'true') and ('$(HexalithEventStoreVersion)' == '' or $([MSBuild]::VersionLessThan('$(HexalithEventStoreVersion)', '$(MemoriesEventStoreMinimumVersion)')))">$(MemoriesEventStoreMinimumVersion)</HexalithEventStoreVersion>
     <HexalithAspireAppHostSdkVersion>17.0.0</HexalithAspireAppHostSdkVersion>
-    <HexalithAspireHostingDaprVersion>17.0.0-beta.1078</HexalithAspireHostingDaprVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Update="Hexalith.EventStore.*" Version="$(HexalithEventStoreVersion)" />
   </ItemGroup>
-  <!-- Owner Aspire 17 selection: keep hosting packages on 17.0.0 while Builds catalog remains on 13.6.5.
-       CommunityToolkit Dapr has no stable 17.0.0 yet; use the latest 17.0.0-aligned preview. -->
+  <!-- Keep the module's Aspire 17 hosting selection. The Builds catalog supplies the Dapr integration version. -->
   <ItemGroup>
     <PackageVersion Update="Aspire.Azure.Messaging.ServiceBus" Version="17.0.0" />
     <PackageVersion Update="Aspire.Azure.Security.KeyVault" Version="17.0.0" />
@@ -42,7 +40,6 @@
     <PackageVersion Update="Aspire.Hosting.Redis" Version="17.0.0" />
     <PackageVersion Update="Aspire.Hosting.Testing" Version="17.0.0" />
     <PackageVersion Update="Aspire.Microsoft.Azure.Cosmos" Version="17.0.0" />
-    <PackageVersion Update="CommunityToolkit.Aspire.Hosting.Dapr" Version="$(HexalithAspireHostingDaprVersion)" />
   </ItemGroup>
   <!-- Existing public compatibility packages are consumed only by the explicit hosted-test profile. -->
   <ItemGroup Condition="'$(HexalithUsePublishedSdkForHostedTests)' == 'true' and '$(IsPublishing)' != 'true'">
