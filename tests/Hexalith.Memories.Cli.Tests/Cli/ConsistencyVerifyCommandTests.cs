@@ -5,6 +5,7 @@
 
 namespace Hexalith.Memories.Cli.Tests.Cli;
 
+using System.Globalization;
 using System.Text.Json;
 
 using Hexalith.Memories.Cli;
@@ -273,45 +274,47 @@ public sealed class ConsistencyVerifyCommandTests
         doc.RootElement.GetProperty("data").GetProperty("notes")[0].GetProperty("consistencyNoteKind").GetString().ShouldBe("naturalLanguageEmbeddingQueued");
     }
 
-    [Fact]
-    public async Task Run_TableFormatWithWait_NoteOnlyResult_IncludesNotesColumn()
+    [Theory]
+    [InlineData(10_001, 2)]
+    [InlineData(2, 10_001)]
+    public async Task Run_TableFormatWithWait_ShowsRetainedCountsInNamedColumns(int totalNotes, int totalDiscrepancies)
     {
+        ConsistencyDiscrepancy[] notes = Enumerable.Range(0, Math.Min(10_000, totalNotes))
+            .Select(i => new ConsistencyDiscrepancy($"note-{i}", true, true, true, ConsistencyRepairRecommendation.NoOp)
+            {
+                ConsistencyNoteKind = ConsistencyNoteKind.NaturalLanguageEmbeddingQueued,
+            }).ToArray();
+        ConsistencyDiscrepancy[] discrepancies = Enumerable.Range(0, Math.Min(10_000, totalDiscrepancies))
+            .Select(i => new ConsistencyDiscrepancy($"repair-{i}", true, false, true, ConsistencyRepairRecommendation.ReIndexSemantic))
+            .ToArray();
+        DateTimeOffset now = DateTimeOffset.UnixEpoch;
+        ConsistencyVerificationResult result = new("acme", totalNotes + totalDiscrepancies, totalNotes, totalDiscrepancies,
+            discrepancies, totalDiscrepancies, now, false, now, now, TimeSpan.Zero)
+        {
+            NoteCount = notes.Length,
+            TotalNoteCount = totalNotes,
+            Notes = notes,
+        };
+        const string InstanceId = "verify-consistency-acme-table";
         ConsistencyStubClient stub = new()
         {
-            VerifyInstanceId = "verify-consistency-acme-table-notes",
-            VerifyStatusSequence =
-            [
-                CreateVerificationStatus(
-                    "verify-consistency-acme-table-notes",
-                    "Completed",
-                    new ConsistencyVerificationResult(
-                        "acme",
-                        TotalUnits: 1,
-                        ConsistentCount: 1,
-                        InconsistentCount: 0,
-                        Discrepancies: [],
-                        TotalDiscrepancyCount: 0,
-                        TruncatedAt: null,
-                        EnumerationTruncated: false,
-                        StartedAt: DateTimeOffset.UtcNow.AddMinutes(-1),
-                        CompletedAt: DateTimeOffset.UtcNow,
-                        Duration: TimeSpan.FromSeconds(1))
-                    {
-                        NoteCount = 1,
-                        TotalNoteCount = 1,
-                    }),
-            ],
+            VerifyInstanceId = InstanceId,
+            VerifyStatusSequence = [CreateVerificationStatus(InstanceId, "Completed", result)],
         };
-        (IServiceProvider services, StringWriter stdout, StringWriter stderr) =
-            BuildServices(OutputFormat.Table, stub);
+        (IServiceProvider services, StringWriter stdout, StringWriter stderr) = BuildServices(OutputFormat.Table, stub);
 
         int exit = await InvokeAsync(services, ["verify", "--tenant", "acme", "--wait"]);
 
         exit.ShouldBe(CliExitCodes.Success);
-        string output = stdout.ToString();
-        output.ShouldContain("NOTES");
-        output.ShouldContain("DISCREPANCIES");
         stderr.ToString().ShouldBeEmpty();
+        string[] lines = stdout.ToString().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
+        lines.Length.ShouldBe(3);
+        string[] headers = lines[0].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        string[] values = lines[2].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        headers.Length.ShouldBe(values.Length);
+        var columns = headers.Zip(values).ToDictionary(pair => pair.First, pair => pair.Second, StringComparer.Ordinal);
+        columns["notes"].ShouldBe(notes.Length.ToString(CultureInfo.InvariantCulture));
+        columns["discrepancies"].ShouldBe(discrepancies.Length.ToString(CultureInfo.InvariantCulture));
     }
 
     private static async Task<int> InvokeAsync(IServiceProvider services, string[] args)

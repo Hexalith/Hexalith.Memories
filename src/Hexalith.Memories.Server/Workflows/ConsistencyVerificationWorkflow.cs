@@ -143,7 +143,8 @@ public sealed partial class ConsistencyVerificationWorkflow
                     : consistencyNoteKind != ConsistencyNoteKind.None
                         ? consistencyNoteKind.ToString()
                         : "InformationalNote";
-                LogDiscrepancyDetected(logger, input.TenantId, unitId, discrepancyLabel);
+                LogDiscrepancyDetected(logger, input.TenantId, unitId, discrepancyLabel,
+                    isNoteOnlyObservation ? "Note" : "Discrepancy", context.InstanceId);
 
                 ConsistencyDiscrepancy entry = new ConsistencyDiscrepancy(
                     unitId,
@@ -252,9 +253,9 @@ public sealed partial class ConsistencyVerificationWorkflow
     [LoggerMessage(
         EventId = 8201,
         Level = LogLevel.Information,
-        Message = "DiscrepancyDetected tenant '{TenantId}' unit '{MemoryUnitId}' recommendation {Recommendation}")]
+        Message = "DiscrepancyDetected tenant '{TenantId}' unit '{MemoryUnitId}' recommendation {Recommendation} entry kind {EntryKind} workflow {WorkflowInstanceId}")]
     private static partial void LogDiscrepancyDetected(
-        ILogger logger, string tenantId, string memoryUnitId, string recommendation);
+        ILogger logger, string tenantId, string memoryUnitId, string recommendation, string entryKind, string workflowInstanceId);
 
     // S6-P6 (re-review 2026-04-25): restore the original DiscrepancyListTruncated message prefix
     // so operator dashboards keyed on the literal text continue to fire. With independent caps

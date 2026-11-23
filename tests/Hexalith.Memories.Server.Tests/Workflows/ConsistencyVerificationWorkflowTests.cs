@@ -9,6 +9,7 @@ using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Indexing;
+using Hexalith.Memories.Server.Tests.Telemetry.Infrastructure;
 using Hexalith.Memories.Server.Workflows;
 
 using Microsoft.Extensions.Logging;
@@ -67,6 +68,90 @@ public class ConsistencyVerificationWorkflowTests
         result.NoteCount.ShouldBe(0);
         result.Discrepancies.Count.ShouldBe(0);
         result.Notes.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task RunAsync_MixedFindingsAcrossMinimumSizeBatches_RetainsOrderedEntriesAndTotals()
+    {
+        WorkflowContext context = CreateContext();
+        string[] ids = Enumerable.Range(0, 21).Select(i => $"unit-{i}").ToArray();
+        SetEnumeration(context, ids);
+        SetAllProbes(context, new ConsistencyResult(true, true, true));
+        foreach (string id in new[] { ids[9], ids[18], ids[20] })
+        {
+            context.CallActivityAsync<ConsistencyResult>(
+                nameof(VerifyConsistencyActivity),
+                Arg.Is<ConsistencyInput>(input => input!.MemoryUnitId == id),
+                Arg.Any<WorkflowTaskOptions>()).Returns(new ConsistencyResult(true, true, true) { ConsistencyNote = "Review embedding" });
+        }
+
+        foreach (string id in new[] { ids[8], ids[10], ids[19] })
+        {
+            context.CallActivityAsync<ConsistencyResult>(
+                nameof(VerifyConsistencyActivity),
+                Arg.Is<ConsistencyInput>(input => input!.MemoryUnitId == id),
+                Arg.Any<WorkflowTaskOptions>()).Returns(new ConsistencyResult(true, false, true) { ConsistencyNote = "Review embedding" });
+        }
+
+        ConsistencyVerificationResult result = await new ConsistencyVerificationWorkflow()
+            .RunAsync(context, new ConsistencyVerificationInput(TestTenantId, BatchSize: 1));
+
+        context.Received(1).SetCustomStatus(new ConsistencyWorkflowProgress("completed", 3, 3));
+        result.TotalUnits.ShouldBe(21);
+        result.ConsistentCount.ShouldBe(18);
+        result.InconsistentCount.ShouldBe(3);
+        result.TotalDiscrepancyCount.ShouldBe(3);
+        result.TotalNoteCount.ShouldBe(3);
+        result.NoteCount.ShouldBe(3);
+        result.Notes.Select(note => note.MemoryUnitId).ShouldBe(new[] { ids[9], ids[18], ids[20] });
+        result.Discrepancies.Select(entry => entry.MemoryUnitId).ShouldBe(new[] { ids[8], ids[10], ids[19] });
+    }
+
+    [Fact]
+    public async Task RunAsync_Event8201_SeparatesNotesFromRepairsAndPreservesRecommendation()
+    {
+        WorkflowContext context = CreateContext();
+        using CapturingAuditLoggerProvider logs = new();
+        context.CreateReplaySafeLogger<ConsistencyVerificationWorkflow>()
+            .Returns(logs.CreateLogger(nameof(ConsistencyVerificationWorkflow)));
+        SetEnumeration(context, ["clean", "note", "free-text", "repair"]);
+        SetAllProbes(context, new ConsistencyResult(true, true, true));
+        context.CallActivityAsync<ConsistencyResult>(
+            nameof(VerifyConsistencyActivity),
+            Arg.Is<ConsistencyInput>(input => input!.MemoryUnitId == "note"),
+            Arg.Any<WorkflowTaskOptions>()).Returns(new ConsistencyResult(true, true, true)
+            {
+                ConsistencyNoteKind = ConsistencyNoteKind.NaturalLanguageEmbeddingQueued,
+            });
+        context.CallActivityAsync<ConsistencyResult>(
+            nameof(VerifyConsistencyActivity),
+            Arg.Is<ConsistencyInput>(input => input!.MemoryUnitId == "free-text"),
+            Arg.Any<WorkflowTaskOptions>()).Returns(new ConsistencyResult(true, true, true) { ConsistencyNote = "Manual observation" });
+        context.CallActivityAsync<ConsistencyResult>(
+            nameof(VerifyConsistencyActivity),
+            Arg.Is<ConsistencyInput>(input => input!.MemoryUnitId == "repair"),
+            Arg.Any<WorkflowTaskOptions>()).Returns(new ConsistencyResult(true, false, true)
+            {
+                ConsistencyNoteKind = ConsistencyNoteKind.NaturalLanguageEmbeddingQueued,
+            });
+
+        await new ConsistencyVerificationWorkflow().RunAsync(context, new ConsistencyVerificationInput(TestTenantId));
+
+        var findings = logs.Captures.Where(entry => entry.EventId == 8201).Select(entry => entry.Fields.ToDictionary()).ToArray();
+        findings.Length.ShouldBe(3);
+        foreach (var fields in findings)
+        {
+            fields["TenantId"].ShouldBe(TestTenantId);
+            fields["WorkflowInstanceId"].ShouldBe(context.InstanceId);
+        }
+
+        findings.Select(fields => (fields["MemoryUnitId"], fields["EntryKind"], fields["Recommendation"]))
+            .ShouldBe(new (object?, object?, object?)[]
+            {
+                ("note", "Note", "NaturalLanguageEmbeddingQueued"),
+                ("free-text", "Note", "InformationalNote"),
+                ("repair", "Discrepancy", "ReIndexSemantic"),
+            });
     }
 
     [Fact]
@@ -204,26 +289,39 @@ public class ConsistencyVerificationWorkflowTests
             Arg.Any<WorkflowTaskOptions>());
     }
 
-    [Fact]
-    public async Task RunAsync_TenThousandAndOneDiscrepancies_ResultTruncatedAt10000()
+    [Theory]
+    [InlineData(false, "Discrepancy")]
+    [InlineData(true, "Note")]
+    public async Task RunAsync_CapExceeded_LogsFindingOmittedFromPayload(bool noteOnly, string expectedKind)
     {
         WorkflowContext context = CreateContext();
+        using CapturingAuditLoggerProvider logs = new();
+        context.CreateReplaySafeLogger<ConsistencyVerificationWorkflow>()
+            .Returns(logs.CreateLogger(nameof(ConsistencyVerificationWorkflow)));
         List<string> ids = Enumerable.Range(0, 10_001).Select(i => $"u{i:D6}").ToList();
         SetEnumeration(context, ids);
-        SetAllProbes(context, new ConsistencyResult(false, true, false)); // RemoveOrphanedSemantic
+        SetAllProbes(context, noteOnly
+            ? new ConsistencyResult(true, true, true) { ConsistencyNote = "Review embedding" }
+            : new ConsistencyResult(false, true, false));
 
-        ConsistencyVerificationWorkflow workflow = new();
-        ConsistencyVerificationResult result = await workflow.RunAsync(
-            context,
-            new ConsistencyVerificationInput(TestTenantId, BatchSize: 5000));
+        ConsistencyVerificationResult result = await new ConsistencyVerificationWorkflow()
+            .RunAsync(context, new ConsistencyVerificationInput(TestTenantId, BatchSize: 5000));
 
-        result.Discrepancies.Count.ShouldBe(10_000);
-        result.TotalDiscrepancyCount.ShouldBe(10_001);
         result.TruncatedAt.ShouldNotBeNull();
-        result.InconsistentCount.ShouldBe(10_001);
-        result.NoteCount.ShouldBe(0);
-        result.TotalNoteCount.ShouldBe(0);
-        result.Notes.ShouldBeEmpty();
+        result.TotalNoteCount.ShouldBe(noteOnly ? 10_001 : 0);
+        result.NoteCount.ShouldBe(noteOnly ? 10_000 : 0);
+        result.TotalDiscrepancyCount.ShouldBe(noteOnly ? 0 : 10_001);
+        result.InconsistentCount.ShouldBe(result.TotalDiscrepancyCount);
+        result.Discrepancies.Count.ShouldBe(noteOnly ? 0 : 10_000);
+        result.Notes.Count.ShouldBe(result.NoteCount);
+        var retained = noteOnly ? result.Notes : result.Discrepancies;
+        retained.ShouldNotContain(entry => entry.MemoryUnitId == ids[10_000]);
+
+        var findings = logs.Captures.Where(entry => entry.EventId == 8201).ToArray();
+        findings.Length.ShouldBe(10_001);
+        var last = findings[^1].Fields.ToDictionary();
+        last["MemoryUnitId"].ShouldBe(ids[10_000]);
+        last["EntryKind"].ShouldBe(expectedKind);
     }
 
     [Fact]

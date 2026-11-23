@@ -63,6 +63,38 @@ public class ConsistencyContractSerializationTests
     }
 
     [Fact]
+    public void ConsistencyVerificationResult_RoundTripsThroughMemoriesJsonContext()
+    {
+        DateTimeOffset now = DateTimeOffset.UnixEpoch;
+        ConsistencyDiscrepancy note = new("unit-note", true, true, true, ConsistencyRepairRecommendation.NoOp)
+        {
+            ConsistencyNoteKind = ConsistencyNoteKind.NaturalLanguageEmbeddingQueued,
+            ConsistencyNote = "Embedding queued",
+        };
+        ConsistencyDiscrepancy discrepancy = new("unit-repair", true, false, true, ConsistencyRepairRecommendation.ReIndexSemantic);
+        ConsistencyVerificationResult original = new("tenant-1", 12, 11, 1, [discrepancy], 1, now, false, now, now, TimeSpan.Zero)
+        {
+            Notes = [note],
+            NoteCount = 1,
+            TotalNoteCount = 11,
+        };
+
+        var typeInfo = MemoriesJsonContext.Options.GetTypeInfo(typeof(ConsistencyVerificationResult));
+        typeInfo.OriginatingResolver.ShouldBeAssignableTo<System.Text.Json.Serialization.JsonSerializerContext>();
+        string json = JsonSerializer.Serialize(original, typeInfo);
+        using JsonDocument wire = JsonDocument.Parse(json);
+        wire.RootElement.GetProperty("notes")[0].GetProperty("memoryUnitId").GetString().ShouldBe("unit-note");
+        wire.RootElement.GetProperty("noteCount").GetInt32().ShouldBe(1);
+        wire.RootElement.GetProperty("totalNoteCount").GetInt32().ShouldBe(11);
+
+        var restored = JsonSerializer.Deserialize(json, typeInfo).ShouldBeOfType<ConsistencyVerificationResult>();
+        restored.Notes.ShouldBe(original.Notes);
+        restored.NoteCount.ShouldBe(1);
+        restored.TotalNoteCount.ShouldBe(11);
+        restored.Discrepancies.ShouldBe(original.Discrepancies);
+    }
+
+    [Fact]
     public void ConsistencyInspectionResult_RoundTripsThroughMemoriesJsonContext()
     {
         DateTimeOffset checkedAt = DateTimeOffset.UtcNow;

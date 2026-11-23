@@ -2307,28 +2307,32 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of 9-2-dual-embedding-and-causal-chain-indexing Session 6 (2026-04-25)"), 2026-09-01
 location: n/a
 reason: - **S6-F9. Add `BatchSize=1` accumulator test for the notes/discrepancies routing across batch boundaries.** The current `[10_001]` test always bumps batches in chunks of 64 (default); a `BatchSize=2` mixed-result test would catch carry-over off-by-one.
-status: open
+status: done 2026-11-23
+resolution: The mixed-result workflow test requests batch size one and verifies the exact order, totals, and completion of three batches at the supported minimum of ten. See [consistency reporting verification](spec-five-deferred-consistency-reporting.md).
 
 ### DW-303: S6-FA. Operator-runbook PR — 9173 multi-reason documentation + Notes-split documentation in `docs/dev/consistency.md`.
 
 origin: migrated from legacy ledger ("Deferred from: code review of 9-2-dual-embedding-and-causal-chain-indexing Session 6 (2026-04-25)"), 2026-09-01
 location: docs/dev/consistency.md
 reason: - **S6-FA. Operator-runbook PR — 9173 multi-reason documentation + Notes-split documentation in `docs/dev/consistency.md`.** Resolves S6-D4 (9173 EventId now overloaded with `workflow-name-reflection-null` / `sidecar-query-timeout` / `sidecar-query-exception` / `metadata-field-missing`) and S6-P15 (consistency.md still describes Discrepancies as the all-encompassing list, missing the Notes split + independent-cap behavior). One docs PR covers both: enumerate the four 9173 reasons + per-reason triage steps; update the consistency.md "Discrepancies" section to describe the structural split and the new EventId 8210 NotesListTruncated.
-status: open
+status: done 2026-11-23
+resolution: The consistency runbook documents both independent caps, per-list counts and log recovery, plus event 9173 triage for current and older hosts. See [consistency reporting verification](spec-five-deferred-consistency-reporting.md).
 
 ### DW-304: S6-FB. Extend `LogDiscrepancyDetected` (EventId 8201) with an `EntryKind` parameter (Discrepancy | Note) so operators consuming the spec-documented truncation-fallback log can disambiguate Note entries from Discrepancy entries.
 
 origin: migrated from legacy ledger ("Deferred from: code review of 9-2-dual-embedding-and-causal-chain-indexing Session 6 (2026-04-25)"), 2026-09-01
 location: n/a
 reason: - **S6-FB. Extend `LogDiscrepancyDetected` (EventId 8201) with an `EntryKind` parameter (Discrepancy | Note) so operators consuming the spec-documented truncation-fallback log can disambiguate Note entries from Discrepancy entries.** Currently the `{Recommendation}` field is overloaded with `ConsistencyNoteKind` strings (e.g., `Recommendation NaturalLanguageEmbeddingMissing`) for note-only entries. This is a wire-shape change for log consumers; should land alongside S6-FA so the operator runbook can be updated atomically.
-status: open
+status: done 2026-11-23
+resolution: Verification event 8201 includes a structured EntryKind of Note or Discrepancy alongside the existing Recommendation field. The workflow test inspects captured structured fields. See [consistency reporting verification](spec-five-deferred-consistency-reporting.md).
 
 ### DW-305: S6-FC. Add `ConsistencyVerificationResult_RoundTripsThroughMemoriesJsonContext` test asserting `Notes`, `NoteCount`, `TotalNoteCount` round-trip via the source-gen path.
 
 origin: migrated from legacy ledger ("Deferred from: code review of 9-2-dual-embedding-and-causal-chain-indexing Session 6 (2026-04-25)"), 2026-09-01
 location: tests/Hexalith.Memories.Contracts.Tests/V1/ConsistencyContractSerializationTests.cs
 reason: - **S6-FC. Add `ConsistencyVerificationResult_RoundTripsThroughMemoriesJsonContext` test asserting `Notes`, `NoteCount`, `TotalNoteCount` round-trip via the source-gen path.** Existing CLI JSON round-trip already exercises these properties end-to-end; the standalone source-gen contract test is helpful but not blocking. Track in `tests/Hexalith.Memories.Contracts.Tests/V1/ConsistencyContractSerializationTests.cs`.
-status: open
+status: done 2026-11-23
+resolution: ConsistencyVerificationResult_RoundTripsThroughMemoriesJsonContext checks the generated resolver, wire fields and deserialized note records with distinct retained and total counts. See [consistency reporting verification](spec-five-deferred-consistency-reporting.md).
 
 ### DW-306: S6-FD. Add `TryGetWorkflowName` end-to-end test that constructs a real `Dapr.Workflow.WorkflowState` (or a credible test double) and exercises both the happy path AND the `MetadataField is null` short-circuit.
 
@@ -2350,7 +2354,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of 9-2-dual-embedding-and-causal-chain-indexing Session 6 (2026-04-25)"), 2026-09-01
 location: n/a
 reason: - **S6-FF. Strengthen the CLI table-formatter tests with `Shouldly.Case.Sensitive` + numeric-value assertions for the `notes`/`discrepancies` columns.** Existing tests pass against the corrected D6 column semantic; this is a test-quality follow-up. <!-- End of deferred items -->
-status: open
+status: done 2026-11-23
+resolution: The CLI command test checks case-sensitive column names and their numeric contents with each list independently truncated. See [consistency reporting verification](spec-five-deferred-consistency-reporting.md).
 
 ### DW-309: W1 [resolved in 14.2]. SHA-pin actions in `release.yml`.
 

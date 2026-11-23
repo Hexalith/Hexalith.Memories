@@ -184,27 +184,62 @@ time ranges.
 
 ## Discrepancy truncation
 
-`ConsistencyVerificationResult.Discrepancies` is truncated to at most **10,000
-entries**. The DAPR workflow state store budgets ~1 MB per instance; emitting
-the full list for a tenant with many inconsistent units would exceed that
-budget.
+A completed verification returns two lists. `Discrepancies` contains units with
+a repair recommendation. A unit that also has an informational note carries it
+in the same discrepancy record. `Notes` contains observations about units whose
+three primary backends agree, such as a queued natural-language embedding. These
+units count toward `ConsistentCount`.
 
-- `TotalDiscrepancyCount` is the un-truncated count (not limited).
-- `TruncatedAt` is a non-null timestamp when truncation occurs.
-- Each discrepancy logged individually via structured `EventId 8201
-  DiscrepancyDetected` — operators can consume the full log stream to recover
-  the truncated tail.
+Each list retains up to 10,000 records independently. `TruncatedAt` is set if
+either list dropped records. The JSON result identifies which list was cut short.
+
+| List | Retained count | Full count | Truncation warning from `ConsistencyVerificationWorkflow` |
+| --- | --- | --- | --- |
+| `Discrepancies` | Length of `discrepancies` | `totalDiscrepancyCount` | 8204 `DiscrepancyListTruncated` |
+| `Notes` | `noteCount` (length of `notes`) | `totalNoteCount` | 8210 `NotesListTruncated` |
+
+When a full count exceeds its retained count, use the workflow's information-level
+event 8201 (`DiscrepancyDetected`) to recover individual findings from retained
+logs for the verification run. Match `TenantId` and `WorkflowInstanceId` to the
+scheduling receipt, then filter `EntryKind` for `Discrepancy` or `Note`. Each
+event includes the memory-unit ID.
+The `Recommendation` field carries the repair action, the note kind, or
+`InformationalNote` for a free-text-only observation. The CLI table shows
+retained counts in its `discrepancies` and `notes` columns.
+
+When reviewing logs across an upgrade, include older 8201 events that lack
+`EntryKind`. A repair action in `Recommendation` identifies a discrepancy. A
+note kind or `InformationalNote` identifies a note. Older events also lack
+`WorkflowInstanceId`. If runs overlap for a tenant, attributing those events
+to an individual run requires correlation from the log sink.
+
+## Replay-safety startup warning
+
+Critical event 9173 comes from `WorkflowReplaySafetyHostedService` during
+ingestion startup. On a query failure the gate fails open and the host proceeds
+with startup. Keep intake quiesced and pause the rollout until direct Dapr
+workflow-state evidence confirms the in-flight ingestion work has drained.
+Use the structured `Reason` field to select the next check.
+
+| Reason | Where it appears | Operator action |
+| --- | --- | --- |
+| `sidecar-query-timeout` | Current hosts | Check Dapr sidecar health and latency for workflow-state reads or instance enumeration. Retry the drain check after reads respond within the ten-second per-query timeout. |
+| `sidecar-query-exception` | Current hosts | Inspect the attached exception. Check connectivity to the Redis in-flight registry and Dapr workflow state, then repeat the failed read. |
+| `workflow-name-reflection-null` | Older hosts using SDK reflection | Inspect the active instance in Dapr to identify its workflow. Confirm ingestion instances have drained before continuing. |
+| `metadata-field-missing` | Older hosts using SDK reflection | Check the deployed Dapr SDK version against the server build. Restore a supported pairing or upgrade to the registry-based host, and verify drain independently. |
+
+Follow the rollout stop and resume criteria in the [upgrade runbook](../operations/upgrade-migration.md).
 
 ## CLI walkthrough
 
 Recommended operator flow:
 
 ```shell
-# 1. Audit — read-only
-memories consistency verify --tenant acme --wait
+# 1. Run the read-only audit once and save the completed result
+memories consistency verify --tenant acme --wait --format json > verify.json
 
-# 2. Review the plan (optional — the verify result contains the Recommendation per unit)
-memories consistency verify --tenant acme --format json > verify.json
+# 2. Review repair recommendations from that run
+jq '.data.discrepancies[] | {memoryUnitId, recommendation}' verify.json
 
 # 3. Per-unit diagnosis (optional)
 memories consistency inspect --tenant acme --id wf-file-instance-7
@@ -268,7 +303,8 @@ The following are explicitly NOT delivered by Story 8.2:
 | 8205 | Info | `VerificationCompleted` |
 | 8206 | Info | `RepairCompleted` |
 | 8207 | Debug | `RepairPassStarted` |
-| 8210 | Info | `SemanticReIndexStarted` |
+| 8210 | Warning | `NotesListTruncated` (verification workflow) |
+| 8210 | Info | `SemanticReIndexStarted` (semantic indexer) |
 | 8211 | Info | `GraphReMergeCompleted` |
 | 8220 | Warning | `RedisScanFailed` |
 | 8221 | Warning | `GraphEnumerationFailed` |
