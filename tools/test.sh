@@ -144,6 +144,10 @@ if [[ -n "$RESULTS_DIRECTORY" ]]; then
     echo "--results-directory must be a repository-relative path without '..' segments." >&2
     exit 1
   fi
+  if ! python3 -c 'import sys; import xml.etree.ElementTree; sys.exit(sys.version_info.major != 3)' >/dev/null 2>&1; then
+    echo "--results-directory requires python3 to read test reports. Install or repair Python 3 and retry." >&2
+    exit 1
+  fi
   RESULTS_ROOT="$REPO_ROOT/${RESULTS_DIRECTORY#./}"
   rm -rf -- "$RESULTS_ROOT"
   mkdir -p "$RESULTS_ROOT"
@@ -244,7 +248,8 @@ import xml.etree.ElementTree as ET
 
 trx_path, project, test_filter, expected_text = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 root = ET.parse(trx_path).getroot()
-counters = root.find(".//{*}Counters")
+namespace = root.tag.partition("}")[0] + "}" if root.tag.startswith("{") else ""
+counters = root.find(f"{namespace}ResultSummary/{namespace}Counters")
 executed = int(counters.attrib.get("executed", "0")) if counters is not None else 0
 not_executed = int(counters.attrib.get("notExecuted", "0")) if counters is not None else 0
 

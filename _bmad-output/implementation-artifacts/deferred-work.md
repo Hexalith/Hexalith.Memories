@@ -2041,14 +2041,16 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of stories 11-1 + 11-2 (2026-04-26)"), 2026-09-01
 location: tools/test.sh
 reason: - **W3. `tools/test.sh` Python heredoc has no error path if `python3` is missing.** Linux/macOS runners always have it; Windows uses `test.ps1`. Add `command -v python3` guard with a clear error if Linux/macOS distros are added later that omit it. (`tools/test.sh:134`)
-status: open
+status: done 2026-11-23
+resolution: 2026-11-23 — spec-five-deferred-integration-tooling.md. The Bash wrapper checks that python3 can run and import the report parser before replacing the results directory or running dotnet. Isolated PATH regressions prove that existing reports survive when Python is missing or broken and that runs without a results directory still work.
 
 ### DW-312: W4. Python `{*}Counters` namespace XPath requires Python ≥ 3.8.
 
 origin: migrated from legacy ledger ("Deferred from: code review of stories 11-1 + 11-2 (2026-04-26)"), 2026-09-01
 location: tools/test.sh:140
 reason: - **W4. Python `{*}Counters` namespace XPath requires Python ≥ 3.8.** Current ubuntu-latest ships 3.10+; document as a runner-version floor or hardcode the TRX namespace `http://microsoft.com/schemas/VisualStudio/TeamTest/2010`. (`tools/test.sh:140`, `tools/verify-integration-fast-coverage.py:54`)
-status: open
+status: done 2026-11-23
+resolution: 2026-11-23 — spec-five-deferred-integration-tooling.md. The Bash runner and integration-fast verifier qualify element names from the TRX root namespace, avoiding wildcard XPath. The focused suite exercises standard namespaced and namespace-free reports through both entry points.
 
 ### DW-313: W5. `if-no-files-found: error` + `if: always()` upgrades a build failure to two red checks.
 
@@ -2075,7 +2077,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of stories 11-1 + 11-2 (2026-04-26)"), 2026-09-01
 location: n/a
 reason: - **W9. CONTRIBUTING.md skip wording (`Requires Docker - see CONTRIBUTING.md`) is documented but not wired into any test SkipAttribute.** Spec text is aspirational, not enforced as a contract. Wire it via a custom SkipAttribute when Docker-required local skips are needed. (`CONTRIBUTING.md:76-81`)
-status: open
+status: done 2026-11-23
+resolution: 2026-11-23 — spec-five-deferred-integration-tooling.md. CONTRIBUTING.md now points contributors without Docker to the unit and contract lane and describes a running engine as a prerequisite for integration and benchmarks. The guide no longer promises a skip diagnostic.
 
 ### DW-317: W11. `branch-protection.md` is a manual checklist with no automation.
 
@@ -2120,7 +2123,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of stories 11-1 + 11-2 (2026-04-26)"), 2026-09-01
 location: tools/verify-integration-fast-coverage.py
 reason: - **W17. `verify-integration-fast-coverage.py` exit codes don't distinguish "missing surface" from "tool error".** Both yield exit 1; use distinct codes (e.g., 2 for parse error, 3 for empty results, 1 for missing surfaces). (`tools/verify-integration-fast-coverage.py`)
-status: open
+status: done 2026-11-23
+resolution: 2026-11-23 — spec-five-deferred-integration-tooling.md. The integration-fast verifier distinguishes covered surfaces (0), missing surfaces (1), invalid input (2) and unusable evidence (3). Focused subprocess tests cover the exit codes and input diagnostics.
 
 ### DW-324: W18. CI `runs-on: ubuntu-latest` is unpinned.
 
@@ -2147,7 +2151,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of stories 11-1 + 11-2 (2026-04-26)"), 2026-09-01
 location: tools/test.sh
 reason: - **W21. `tools/test.sh` Slow/Integration arms collapsed via `|`.** Functionally correct today (same project list); diverges from `test.ps1`. Resync if Slow ever gets its own list. (`tools/test.sh:79`)
-status: open
+status: done 2026-11-23
+resolution: 2026-11-23 — spec-five-deferred-integration-tooling.md. The separated fast and slow inventories already route correctly in Bash and PowerShell. Added executable regressions for both wrappers covering project selection and trait arguments for the all-integration, fast, slow and performance selectors.
 
 ### DW-328: W22. `PublicContractSerializationCoverageTests` uses name-suffix filter (`Validator`/`Defaults`/`Taxonomy`).
 
@@ -5761,3 +5766,13 @@ dotnet tests/Hexalith.Memories.IntegrationTests/bin/Debug/net11.0/Hexalith.Memor
   summary: Inspect surviving syntactic keys when the tenant index is missing and Redis is reachable.
   evidence: The missing-index branch returns provisioning guidance before the prefix scan. Existing hashes can still need provenance review before the index is recreated.
   resolution: 2026-11-23 — VerifyAsync_MissingSyntacticIndex_RetainsSurvivingKeyFindings proves the tenant prefix is scanned after the index disappears and that partial evidence survives a backend timeout.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-five-deferred-integration-tooling.md`
+  summary: Refuse Bash test results paths that resolve to the repository root.
+  evidence: Independent review reproduced the pre-existing defect in a disposable copy. A dot-only results path passes the relative-path guard and lets report cleanup remove the checkout. Match the PowerShell wrapper's strict descendant check.
+  status: open
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-five-deferred-integration-tooling.md`
+  summary: Preserve Bash test failure details when dotnet exits without writing TRX.
+  evidence: When dotnet fails before emitting the report, the pre-existing Bash report loop raises a missing-file error before reporting the native test process status. Preserve both the failure status and report diagnostics where a report exists.
+  status: open

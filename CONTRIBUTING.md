@@ -443,19 +443,19 @@ this workaround as evidence for Docker, DAPR sidecar, Aspire, browser, or other 
 when those lanes cannot run in the sandbox, record the limitation and run them later in an environment
 that provides the required infrastructure.
 
-Docker-required tests are isolated in the integration lane. The standard skip/diagnostic wording for
-Docker-only paths is:
+Use the `Category!=Integration` selector for the Docker-free unit and contract lane. The integration
+and benchmark lanes require a running Docker engine. If Docker is unavailable, select the Docker-free
+lane explicitly. The integration runner treats an unavailable engine as a failed prerequisite.
 
-```text
-Requires Docker - see CONTRIBUTING.md
-```
-
-Run the fast Docker-backed integration gate when Docker is available:
+Run the fast Docker-backed integration gate after starting Docker:
 
 ```powershell
 ./tools/test.ps1 -Filter "Category=Integration&Category!=IntegrationSlow&Category!=Performance" -Configuration Release -ResultsDirectory "TestResults/integration-fast"
 python tools/verify-integration-fast-coverage.py --results-directory TestResults/integration-fast
 ```
+
+The verifier exits with `0` when all required surfaces passed, `1` when usable TRX evidence lacks
+required surfaces, `2` for invalid input, and `3` when there are no usable passed results.
 
 The scheduled `.github/workflows/nightly.yml` workflow remains the Tier 3 slow integration bridge:
 
@@ -506,7 +506,8 @@ quality JSON separately as `nightly-benchmark-trx` and `nightly-benchmark-qualit
 lanes write TRX files under `TestResults/<lane>` and upload those folders as workflow artifacts. The test scripts fail if a
 selected project executes zero tests **when `--results-directory` (or `-ResultsDirectory`) is passed**;
 local invocations without the flag skip TRX emission and therefore skip the zero-test guard. Pass the
-flag locally if you want the same protection CI uses.
+flag locally to enable the same guard CI uses. The Bash wrapper requires `python3` on `PATH` when
+collecting those reports.
 
 The same required job runs the `release_packages` and `publish_nuget` fixtures, then exercises the
 real inventory-driven package path without publishing:

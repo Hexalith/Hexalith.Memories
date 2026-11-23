@@ -4,9 +4,18 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
+import stat
 import sys
 import xml.etree.ElementTree as ET
+
+
+TRX_NAMESPACE = "{http://microsoft.com/schemas/VisualStudio/TeamTest/2010}"
+
+
+class NoUsableResultsError(Exception):
+    """The test run produced no passed results with a known method identity."""
 
 
 def parse_args() -> argparse.Namespace:
@@ -29,42 +38,67 @@ def load_requirements(path: Path) -> dict[str, tuple[str, str | None]]:
 
         parts = [part.strip() for part in line.split("|")]
         if len(parts) not in (2, 3):
-            raise SystemExit(f"Invalid requirement line in {path}: {raw_line}")
+            raise ValueError(f"Invalid requirement line in {path}: {raw_line}")
 
         surface, class_name = parts[:2]
         method_name = parts[2] if len(parts) == 3 else None
         if not surface or not class_name or (len(parts) == 3 and not method_name):
-            raise SystemExit(f"Invalid requirement line in {path}: {raw_line}")
+            raise ValueError(f"Invalid requirement line in {path}: {raw_line}")
         if surface in requirements:
-            raise SystemExit(f"Duplicate requirement surface in {path}: {surface}")
+            raise ValueError(f"Duplicate requirement surface in {path}: {surface}")
 
         requirements[surface] = (class_name, method_name)
 
     if not requirements:
-        raise SystemExit(f"No integration-fast requirements found in {path}.")
+        raise ValueError(f"No integration-fast requirements found in {path}.")
 
     return requirements
 
 
+def raise_scan_error(error: OSError) -> None:
+    raise error
+
+
+def find_trx_files(results_directory: Path) -> list[Path]:
+    try:
+        mode = results_directory.stat().st_mode
+    except FileNotFoundError:
+        return []
+    if not stat.S_ISDIR(mode):
+        raise ValueError(f"Results path is not a directory: {results_directory}")
+    return sorted(
+        Path(directory) / name
+        for directory, _, files in os.walk(results_directory, onerror=raise_scan_error)
+        for name in files
+        if Path(name).match("*.trx")
+    )
+
+
 def passed_tests(results_directory: Path) -> set[tuple[str, str]]:
     passed: set[tuple[str, str]] = set()
-    trx_files = sorted(results_directory.rglob("*.trx"))
+    trx_files = find_trx_files(results_directory)
     if not trx_files:
-        raise SystemExit(f"No TRX files found under {results_directory}.")
+        raise NoUsableResultsError(f"No TRX files found under {results_directory}.")
 
     total_passed_results = 0
     for trx_file in trx_files:
-        root = ET.parse(trx_file).getroot()
+        try:
+            root = ET.parse(trx_file).getroot()
+        except (ET.ParseError, LookupError, OSError, ValueError) as exc:
+            raise ValueError(f"Cannot read TRX file {trx_file}: {exc}") from exc
+        if root.tag not in ("TestRun", f"{TRX_NAMESPACE}TestRun"):
+            raise ValueError(f"Invalid TRX file {trx_file}: expected a TestRun root element.")
+        namespace = TRX_NAMESPACE if root.tag.startswith("{") else ""
         definitions: dict[str, tuple[str, str]] = {}
-        for unit_test in root.findall(".//{*}UnitTest"):
-            method = unit_test.find(".//{*}TestMethod")
+        for unit_test in root.findall(f"{namespace}TestDefinitions/{namespace}UnitTest"):
+            method = unit_test.find(f"{namespace}TestMethod")
             test_id = unit_test.attrib.get("id")
             class_name = method.attrib.get("className") if method is not None else None
             method_name = method.attrib.get("name") if method is not None else None
             if test_id and class_name and method_name:
                 definitions[test_id] = (class_name, method_name)
 
-        for result in root.findall(".//{*}UnitTestResult"):
+        for result in root.findall(f"{namespace}Results/{namespace}UnitTestResult"):
             if result.attrib.get("outcome") != "Passed":
                 continue
 
@@ -74,12 +108,12 @@ def passed_tests(results_directory: Path) -> set[tuple[str, str]]:
                 passed.add(identity)
 
     if total_passed_results <= 0:
-        raise SystemExit(
+        raise NoUsableResultsError(
             f"No UnitTestResult with outcome=Passed was found under {results_directory}."
         )
 
     if not passed:
-        raise SystemExit(
+        raise NoUsableResultsError(
             f"Passed TRX results under {results_directory} did not map to TestMethod definitions."
         )
 
@@ -109,8 +143,15 @@ def format_requirement(class_name: str, method_name: str | None) -> str:
 def main() -> int:
     args = parse_args()
     results_directory = Path(args.results_directory)
-    requirements = load_requirements(Path(args.requirements))
-    passed = passed_tests(results_directory)
+    try:
+        requirements = load_requirements(Path(args.requirements))
+        passed = passed_tests(results_directory)
+    except (OSError, ValueError) as exc:
+        print(f"integration-fast invalid input: {exc}", file=sys.stderr)
+        return 2
+    except NoUsableResultsError as exc:
+        print(f"integration-fast no usable results: {exc}", file=sys.stderr)
+        return 3
     classes = {class_name for class_name, _ in passed}
 
     print("integration-fast classes with passed tests:")
