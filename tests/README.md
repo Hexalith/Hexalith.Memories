@@ -86,9 +86,11 @@ dotnet test
 
 ### Coverage
 
-The required `test-unit-contract` PR/push job collects the nine-project Docker-free inventory and then
-enforces unioned first-party line coverage. Run the same blocking sequence locally from the repository
-root after a Release build:
+The required `test-unit-contract` PR/push job collects nine Docker-free projects, including
+`Hexalith.Memories.AccessTelemetry.Tests`, and enforces unioned first-party line coverage.
+See the [test project inventory](../tools/test-projects.unit-contract.txt) and the
+[required report projects](tooling/coverage_gate/line-coverage-gate.json).
+Run the same blocking sequence locally from the repository root after a Release build:
 
 ```bash
 bash ./tools/test.sh --filter "Category!=Integration" --configuration Release --no-build --coverage --results-directory TestResults/test-unit-contract

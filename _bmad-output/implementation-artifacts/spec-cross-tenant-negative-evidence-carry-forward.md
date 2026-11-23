@@ -75,7 +75,20 @@ The root bridge is an exact forwarding/control document, not an implementation-p
 
 ## Verification
 
-**Commands:**
+**Current project-context check (2026-11-23)**
+
+The project-context override moved to [`bmad-project-context.toml`](../../_bmad/custom/bmad-project-context.toml). From the repository root, resolve the active override for both agent surfaces:
+
+```bash
+for agent_surface in .agents .claude; do
+  python3 _bmad/scripts/resolve_customization.py --project-root "$PWD" --skill "$agent_surface/skills/bmad-project-context" --key workflow.activation_steps_append
+done
+```
+
+Each output should contain one `PROJECT_CONTEXT_BRIDGE:` directive that selects
+`_bmad-output/project-context.md` as the only update/write target.
+
+**Commands used on 2026-07-16**
 - `python3 -m unittest discover -s tests/tooling/bmad_customization -p "*_test.py"` -- expected: all customization fixtures pass.
 - `uv run _bmad/scripts/resolve_customization.py --skill .agents/skills/bmad-spec --key workflow` -- expected: JSON contains exactly one root `project-context.md` persistent fact.
 - `uv run _bmad/scripts/resolve_customization.py --skill .agents/skills/bmad-generate-project-context --key workflow` -- expected: exactly one `PROJECT_CONTEXT_BRIDGE:` directive selecting the canonical writer target.
@@ -100,8 +113,8 @@ The root bridge is an exact forwarding/control document, not an implementation-p
 - Forwarding bridge makes canonical context mandatory and fail-closed.
   [`project-context.md:3`](../../project-context.md#L3)
 
-- Writer directive preserves the bridge while allowing context discovery.
-  [`bmad-generate-project-context.toml:6`](../../_bmad/custom/bmad-generate-project-context.toml#L6)
+- The current writer directive preserves the bridge while allowing context discovery.
+  [`bmad-project-context.toml:6`](../../_bmad/custom/bmad-project-context.toml#L6)
 
 **Acceptance and evidence**
 

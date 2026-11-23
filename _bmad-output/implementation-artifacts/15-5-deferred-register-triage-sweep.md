@@ -42,7 +42,7 @@ so that historical noise, consciously accepted risks, and true backlog candidate
   - [x] Do not mark a risk `resolved` without repository evidence such as code, test, documentation, or a prior story record.
 
 - [x] Task 3 - Reconcile Epic 14 retrospective carry-forward list (AC: 3)
-  - [x] For `S11-FC`, `13.2-RV4`, `13.1-RV6` and related provider work, and `13.6-RV1`, record that the current Epic 15 backlog already has dedicated ready stories: 15.1, 15.4, 15.2, and 15.3 respectively.
+  - [x] Record the existing Epic 15 owners. Story 15.1 owns `S11-FC`, Story 15.4 owns `13.2-RV4`, Story 15.2 owns `13.1-RV6`, `13.1-RV10`, `13.1-RV11`, and `13.3-RV8`, and Story 15.3 owns `13.6-RV1`.
   - [x] For `13.7-RV4`, point to the current resolved structured entry in `deferred-work.md` and do not recreate a new backlog item.
   - [x] If the retrospective's "Preparation For The Next Work" section is now stale because Epic 15 exists, record the reconciliation in this story artifact or the deferred-work rollup rather than editing the retrospective unless a maintainer explicitly wants retro history rewritten.
 
@@ -235,9 +235,20 @@ GPT-5
 - No external technology research was needed for this story. The implementation surface is repository-owned governance, deferred-register triage, and planning hygiene.
 - Moved Story 15.5 from `ready-for-dev` to `in-progress` on 2026-05-15 before editing, then to `review` after validation.
 - Validation initially hit a stale `testhost` process (`100128`) locking CLI test binaries; stopping that process cleared the local build/test blockage.
-- `git diff --check -- _bmad-output/implementation-artifacts/deferred-work.md _bmad-output/implementation-artifacts/15-5-deferred-register-triage-sweep.md` passed with only expected LF-to-CRLF working-copy warnings.
+- The recorded `git diff --check` pass covered only `deferred-work.md` and this story. A 2026-11-23 replay using the historical Git attributes confirmed 19 trailing-whitespace diagnostics in the full range ending at `c2e575c186a744ca534bb86d29c720722f01445f`. All came from `_15-5-review-diff.patch`. The full range ending at `5fd04aace1f29a86b9edf374e729faf56bd55b29` passed after review removed the patch.
 - Manual structured-block validation passed for five Story 15.5 dispositions: each block has exactly one `ID`, `Status`, `Source story`, `Target artifact`, `Re-open trigger`, and `Rationale`.
 - `dotnet test tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj --filter "FullyQualifiedName~CiTestInventoryTests"` passed: 48 passed, 0 failed, 0 skipped.
+
+To reproduce the full-range check with the attributes in effect at each endpoint, use the
+same base revision for both checks:
+
+```bash
+base=9042c173264d577cc619f04e6bd98d8551e091d1
+before_review=c2e575c186a744ca534bb86d29c720722f01445f
+after_review=5fd04aace1f29a86b9edf374e729faf56bd55b29
+git --attr-source="$before_review" diff --check "$base" "$before_review"
+git --attr-source="$after_review" diff --check "$base" "$after_review"
+```
 
 ### Completion Notes List
 

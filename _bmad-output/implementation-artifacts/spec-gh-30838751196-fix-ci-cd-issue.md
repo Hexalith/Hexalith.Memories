@@ -79,6 +79,22 @@ The standalone `AccessTelemetryAspireRoutedIntegrationTests` initially remained 
 
 ## Verification
 
+### Current routed proof
+
+The routed telemetry method runs in the shared `AspireIngestionPipeline` collection.
+[Shared AppHost change](spec-gh-31871199175-fix-ci-cd.md)
+
+Run from the repository root with Docker and Dapr running. If local placement or scheduler
+uses ports other than `50005` or `50006`, set `MEMORIES_DAPR_PLACEMENT_HOST_ADDRESS` and
+`MEMORIES_DAPR_SCHEDULER_HOST_ADDRESS` to the active host and port before running the test.
+
+```bash
+dotnet build tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj --configuration Debug
+DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.IntegrationTests/bin/Debug/net11.0/Hexalith.Memories.IntegrationTests.dll -method Hexalith.Memories.IntegrationTests.Telemetry.AccessTelemetryAspireRoutedIntegrationTests.AppHost_DaprRoutesClockHeartbeatActorStateInspectionAndHealth
+```
+
+### August 2026 investigation
+
 **Commands:**
 - `dotnet build tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj --configuration Release --disable-build-servers -m:1 /nr:false -p:NuGetAudit=false -p:MinVerVersionOverride=1.0.0` -- expected: zero warnings and errors.
 - `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.IntegrationTests/bin/Release/net10.0/Hexalith.Memories.IntegrationTests.dll -class Hexalith.Memories.IntegrationTests.Fixtures.AspireIngestionPipelineFixtureTests -parallel none -noLogo` -- expected: all focused guards pass.

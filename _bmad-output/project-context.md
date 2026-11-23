@@ -17,11 +17,11 @@ _This file contains critical rules and patterns that AI agents must follow when 
 
 ## Technology Stack & Versions
 
-- **.NET 10 / C# 14** - all projects target `net10.0`; SDK is pinned by `global.json` to `10.0.400` with `rollForward=latestFeature`.
+- **.NET 11 / C# 14** - the root build defaults to `net11.0`. `global.json` selects SDK `11.0.100` with `rollForward=latestFeature`.
 - **Central package management is mandatory** - package versions live in `Directory.Packages.props`; project files use versionless `PackageReference` entries.
 - **Warnings are build failures** - `Nullable=enable`, `ImplicitUsings=enable`, and `TreatWarningsAsErrors=true` are set at repo root.
 - **Dapr 1.18.4 is load-bearing** - workflows, actors, pub/sub, state, service invocation, client APIs, and Dapr AI all use the aligned `1.18.4` package set.
-- **Aspire owns local orchestration** - AppHost uses `Aspire.AppHost.Sdk/13.3.3`, `Aspire.Hosting.Testing` `13.4.6`, and `CommunityToolkit.Aspire.Hosting.Dapr` `13.4.0-preview.1.260602-0230`.
+- **Aspire owns local orchestration** - AppHost uses `Aspire.AppHost.Sdk/17.0.0`. `Directory.Packages.props` selects `Aspire.Hosting.Testing` `17.0.0`. The Builds catalog supplies the `CommunityToolkit.Aspire.Hosting.Dapr` version through `HexalithAspireHostingDaprVersion`.
 - **MCP SDK 1.4.1 backs the agent surface** - `ModelContextProtocol` and `ModelContextProtocol.AspNetCore` must remain aligned.
 - **OpenTelemetry is split by package maturity** - core/exporter/hosting/in-memory packages are `1.16.0`; ASP.NET Core instrumentation is `1.15.2`; HTTP/runtime instrumentation is `1.15.1`; StackExchange.Redis instrumentation is `1.15.1-beta.2`.
 - **Redis Stack + FalkorDB are the storage backends** - RediSearch, Redis Vector, Redis state/pubsub, and FalkorDB graph storage are wired through AppHost/Dapr.

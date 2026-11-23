@@ -210,7 +210,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of 15-5-deferred-register-triage-sweep (2026-05-15)"), 2026-09-01
 location: n/a
 reason: - **15.5-RV1 — `git diff --check` validation claim is inaccurate.** Story 15.5 Dev Agent Record states `git diff --check ... passed with only expected LF-to-CRLF working-copy warnings`, but actual `git diff --check 9042c17..c2e575c` reports trailing-whitespace errors on `_15-5-review-diff.patch`. Re-open trigger: any future story's validation block reuses the same tolerance wording without verifying `--check` output is genuinely error-free.
-status: open
+status: done 2026-11-23
+resolution: Story 15.5 distinguishes the scoped check from the historical full-range failure and verifies the range after patch removal. See spec-ten-deferred-verification-references.md.
 
 ### DW-33: 15.5-RV2: `sprint-status.yaml:last_updated` not advanced when post-implementation commit `c2e575c` landed. Cosmetic drift; the dev-story timestamp `2026-05-15T12:45:15+02:00` predates the 15:55 follow-on commit. Re-open trigger: a tool starts treating `last_updated` as a freshness proxy across all commits on a story.
 
@@ -224,7 +225,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of 15-5-deferred-register-triage-sweep (2026-05-15)"), 2026-09-01
 location: n/a
 reason: - **15.5-RV3 — Task 3 prose "`13.1-RV6` and related provider work" is looser than the rollup's explicit 4-ID enumeration.** `15-5-deferred-register-triage-sweep.md:79` lists one ID; `deferred-work.md:119` enumerates `13.1-RV6`, `13.1-RV10`, `13.1-RV11`, `13.3-RV8`. Rollup is accurate; task description was provisional. Re-open trigger: a future story re-reads Task 3 prose as a complete ownership list and misses one of the four IDs.
-status: open
+status: done 2026-11-23
+resolution: Story 15.5 Task 3 names all four provider findings assigned to Story 15.2. See spec-ten-deferred-verification-references.md.
 
 ### DW-35: 15.5-RV4: `Target artifact:` field uses `;`-joined multi-paths in `12.4-RV20` and `Story-9.3-ProjectionRegistryCrossCheck` blocks. `deferred-work.md:68,92` — the Story 14.5 schema describes `Target artifact:` as singular, but Story 15.4's `13.2-RV4` (line 178) and Story 15.2's HybridSearch entry (line 293) already use multi-path joined formats and the `CiTestInventoryTests` parser tolerates them (48/48 PASS). Pre-existing pattern; a Story-14.5-owned schema-cleanliness pass should either tighten the parser to require single-path values or formalize a multi-path separator. Re-open trigger: a parser regression where the joined string is treated as one literal path and a target-artifact filter misses a real consumer.
 
@@ -3846,7 +3848,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of 27-3-retention-verification-operations-runbook-and-a41-close-out (2026-07-18)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/27-3-retention-verification-operations-runbook-and-a41-close-out.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/27-3-retention-verification-operations-runbook-and-a41-close-out.md` summary: Reconcile the canonical project context's stale Aspire AppHost SDK version with the repository pin. evidence: `_bmad-output/project-context.md` still names `Aspire.AppHost.Sdk/13.3.3`, while `src/Hexalith.Memories.AppHost/Hexalith.Memories.AppHost.csproj` and the reviewed story use the actual `13.4.6` SDK pin. The context drift predates Story 27.3; current source remains authoritative until its owning documentation lane repairs the canonical context.
-status: open
+status: done 2026-11-23
+resolution: The canonical project context records Aspire AppHost SDK and Aspire.Hosting.Testing 17.0.0 and identifies the Builds Dapr version property. See spec-ten-deferred-verification-references.md.
 
 ### DW-583: Sibling helper `ContractDocumentGuard.cs`'s private `NormalizeLineEndings` has the same repeated-CR mishandling bug just fixed in `MarkdownContractDocument.cs`.
 
@@ -4168,7 +4171,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("DW 27.3-CR24 - the deferred-work status verifier is wired to nothing"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-gh-30423676094-access-telemetry-coverage-collector.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-gh-30423676094-access-telemetry-coverage-collector.md` summary: Contributor coverage guidance still describes six projects although the authoritative Docker-free inventory contains seven. evidence: The mismatch predates this fix; `tests/README.md` and `CONTRIBUTING.md` omit AccessTelemetry while `tools/test-projects.unit-contract.txt` and `requiredReportProjects` include it.
-status: open
+status: done 2026-11-23
+resolution: The contributor guide, coverage inventory and required report projects agree on nine projects, including AccessTelemetry. The test README links to both machine-readable sources. See spec-ten-deferred-verification-references.md.
 
 ### DW-628: Chunked review is incomplete. Chunk 3 (governance/planning records) of the 2026-07-29 three-chunk review has not started, and 15 chunk-1 findings remain unchecked (2 `[Review][Decision]`, 13 `[Review][Patch]`). Already tracked as `DW 27.3-CR28` with the reopen trigger "before Story 27.3 leaves `in-progress`"; recorded here because `story-phase-ledger.md` makes it a fail-closed blocker — an intermediate chunk cannot finalize the ledger or set `done`. Owner: Story 27.3 review owner.
 
@@ -4216,7 +4220,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of 27-3-production-adapter-and-deployment-profile (2026-07-31)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-gh-30990821240-bmad-customization-fixtures.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-gh-30990821240-bmad-customization-fixtures.md` summary: Refresh historical governance docs that still cite `_bmad/custom/bmad-generate-project-context.toml` after the skill rename. evidence: Cross-tenant carry-forward and related process notes still document the deleted generate custom path and generate-skill verification commands; this fixture fix deleted that path without updating those historical references.
-status: open
+status: done 2026-11-23
+resolution: The carry-forward spec links the current bmad-project-context override and gives rerun commands for both agent surfaces. See spec-ten-deferred-verification-references.md.
 
 ### DW-635: Historical container rebuilds are not bit-identical, so re-running Recover Partial Release after a successful image push hits immutable digest conflicts with no release-only workflow path.
 
@@ -4262,7 +4267,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of 27-3-production-adapter-and-deployment-profile (2026-07-31)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-epic-24-verifier-residual-backlog-2026-08-04.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-epic-24-verifier-residual-backlog-2026-08-04.md` summary: Add a retrospective addendum or reopen note when epic-24 returns to in-progress after epic-24-retrospective is done for Stories 24.6-24.9. evidence: sprint-status.yaml reopens epic-24 while leaving epic-24-retrospective done with no addendum covering the residual backlog registration.
-status: open
+status: done 2026-11-23
+resolution: A dated Epic 24 retrospective addendum documents the residual backlog registration and current sprint state. See spec-ten-deferred-verification-references.md.
 decision: 2026-09-01 Append dated addendum — Add a dated correction with links to the governing artifacts and preserve the original record.
 decision: 2026-09-01 Append dated addendum — Add a dated correction with links to the governing artifacts and preserve the original record.
 
@@ -4271,7 +4277,8 @@ decision: 2026-09-01 Append dated addendum — Add a dated correction with links
 origin: migrated from legacy ledger ("Deferred from: code review of 27-3-production-adapter-and-deployment-profile (2026-07-31)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-epic-24-verifier-residual-backlog-2026-08-04.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-epic-24-verifier-residual-backlog-2026-08-04.md` summary: Align Story 24.6 accepted-blocker schema so “proof boundary” is required consistently across proposal and registered story/epics text. evidence: Registered AC4 requires a proof boundary field while the matching proposal AC omits it.
-status: open
+status: done 2026-11-23
+resolution: The 2026-08-04 proposal requires a proof boundary. Its V7 check validates the three criteria and the existing Story 24.6 blocker. See spec-ten-deferred-verification-references.md.
 decision: 2026-09-01 Require proof boundary — Add the field to the proposal schema, migrate the entry, and guard it in validation.
 decision: 2026-09-01 Require proof boundary — Add the field to the proposal schema, migrate the entry, and guard it in validation.
 
@@ -4280,7 +4287,8 @@ decision: 2026-09-01 Require proof boundary — Add the field to the proposal sc
 origin: migrated from legacy ledger ("Deferred from: code review of 27-3-production-adapter-and-deployment-profile (2026-07-31)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-epic-24-verifier-residual-backlog-2026-08-04.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-epic-24-verifier-residual-backlog-2026-08-04.md` summary: Name the concrete RedisEmbeddingMigrationStoreTests method required by Story 24.8 Cross-Tenant Negative Evidence. evidence: Planned Verification commands the migration store tests without a named assertion contract in the evidence table.
-status: open
+status: done 2026-11-23
+resolution: Story 24.8 names and provides the exact runner command for StagingSemanticWrites_UseCanonicalMarkerlessShapesWithoutLifecycleMutation. See spec-ten-deferred-verification-references.md.
 decision: 2026-09-01 Name exact method — Record the exact RedisEmbeddingMigrationStoreTests method and verify the command selects it.
 decision: 2026-09-01 Name exact method — Record the exact RedisEmbeddingMigrationStoreTests method and verify the command selects it.
 
@@ -4289,7 +4297,8 @@ decision: 2026-09-01 Name exact method — Record the exact RedisEmbeddingMigrat
 origin: migrated from legacy ledger ("Deferred from: code review of 27-3-production-adapter-and-deployment-profile (2026-07-31)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-epic-23-documentation-verification.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-epic-23-documentation-verification.md` summary: Add a reciprocal pointer from docs/operations/route-surface.md to the new directory-ingestion authoritative contract. evidence: Directory guidance links to route-surface as the prior route home, but route-surface is outside this story File Scope and gained no back-link.
-status: open
+status: done 2026-11-23
+resolution: The REST route contract links to Directory Ingestion Operations for the directory submission and status routes. See spec-ten-deferred-verification-references.md.
 
 ### DW-645: Reconcile AccessTelemetry C1 ownership guard text with Story 27.21 C1.15 registration and the frozen Never/test File Scope carve-out.
 
@@ -4581,7 +4590,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence — eighth pass (2026-08-14)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-gh-31871199175-fix-ci-cd.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-gh-31871199175-fix-ci-cd.md` summary: Older Story 27.2 and `spec-gh-30838751196` still describe a standalone Access Telemetry AppHost for the routed Dapr proof. evidence: This change joined that proof to `AspireIngestionPipeline`; those artifacts were outside file scope and still document a second AppHost.
-status: open
+status: done 2026-11-23
+resolution: Story 27.2 and the historical CI spec direct current routed Dapr reruns to the shared AspireIngestionPipeline fixture. See spec-ten-deferred-verification-references.md.
 
 ### DW-688: Backfill unavailable historical command-level validation and pruning logs for the five completed pushall synchronization specs.
 

@@ -148,6 +148,10 @@ These checkpoints are facets of one bounded-runtime outcome. A later checkpoint 
 | C6 - Portable composition and focused proof | Story 27.2 owner | `tests/Hexalith.Memories.IntegrationTests/Telemetry/AccessTelemetryLifecycleIntegrationCheckpointTests.cs` and `tests/Hexalith.Memories.IntegrationTests/Telemetry/AccessTelemetryAspireRoutedIntegrationTests.cs` plus reconciled story ledger/File List; run each focused class through the IntegrationTests runner | reviewed 2026-07-18 | complete; portable 8/8 and live Aspire/Dapr route 1/1 green; Production remains disabled pending Story 27.3 |
 | Story 27.3 handoff | Operations + adapter owner | Exact Production adapter, physical-reclamation/failover evidence, runbook, and A41 coordination in Story 27.3 artifacts | out of Story 27.2 | not started; must remain open |
 
+**C6 rerun guidance (2026-11-23).** The routed Dapr method now uses the shared
+`AspireIngestionPipeline` collection and its named sidecar clients.
+[Current prerequisites and focused command](spec-gh-30838751196-fix-ci-cd-issue.md#current-routed-proof)
+
 ## Dev Notes
 
 ### Scope and Authority

@@ -184,8 +184,9 @@ So that structural database existence is not mistaken for NFR8 leakage evidence.
    the focused integration command for content-level leakage proof; they do not claim `GRAPH.LIST`
    proves content isolation.
 4. **Given** the integration lane cannot run, **when** the story is reviewed, **then** it remains
-   blocked or records an accepted blocker with owner, consequence, and reopen trigger; unit mocks or
-   comments cannot substitute for NFR8 graph evidence.
+   blocked or records an accepted blocker with owner, consequence, proof boundary, and reopen trigger.
+   The proof boundary states which required integration claims the available evidence supports and
+   which claims must stay open. Unit mocks or comments cannot substitute for NFR8 graph evidence.
 
 ##### Dev Notes
 
@@ -668,3 +669,32 @@ tracked and untracked Markdown diff checks reported no whitespace errors (only e
 normalization warnings). The focused V0 build and verifier suite were rerun after registration with
 0 warnings/errors and 16/16 tests passing. Verdict: `confirmed` approved planning transaction; the
 four implementation stories intentionally remain `backlog` with their declared test results pending.
+
+**V7 — Story 24.6 accepted-blocker schema (2026-11-23)**
+
+Run from the repository root to compare the three acceptance criteria and the recorded blocker.
+
+```bash
+python3 - <<'PY'
+import re
+from pathlib import Path
+
+story = Path("_bmad-output/implementation-artifacts/24-6-graph-content-level-tenant-isolation-evidence.md")
+planning = Path("_bmad-output/planning-artifacts")
+proposal = planning / "sprint-change-proposal-2026-08-04-story-24-3-verifier-residual-backlog-decisions.md"
+for record in (story, planning / "epics.md", proposal):
+    source = record.read_text()
+    heading = re.search(r"(?m)^(#+) Story 24\.6: .+$", source)
+    assert heading, f"Missing Story 24.6 in {record}"
+    section = re.split(rf"(?m)^#{{1,{len(heading[1])}}} ", source[heading.end():], maxsplit=1)[0]
+    criteria = re.split(r"(?m)^(?:## Acceptance Criteria|\*\*Acceptance Criteria:\*\*)$", section, maxsplit=1)[1]
+    criteria_list = criteria.lstrip("\n").split("\n\n", 1)[0]
+    ac4 = re.search(r"(?ms)^4\. (.*?)(?=^[0-9]+\. |\Z)", criteria_list)
+    assert ac4 and "with owner, consequence, proof boundary, and reopen trigger" in " ".join(ac4[1].split()), record
+
+blocker = re.search(r"(?ms)^AC4 accepted blocker .*?(?=\n\n|\Z)", story.read_text())
+assert blocker, "Story 24.6 accepted blocker is missing"
+fields = re.search(r"Owner:\s*(.*?)\s+Consequence:\s*(.*?)\s+Proof boundary:\s*(.*?)\s+Reopen trigger:\s*(.*)", blocker[0], re.S)
+assert fields and all(value.strip() for value in fields.groups()), "Accepted blocker has a missing or empty field"
+PY
+```
