@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 
-APPROVED_BUILDS_SHA = "38e038d1179b1c829ba47a45bfa0a4683ea5e2a5"
+APPROVED_BUILDS_SHA = "b80f3e85fc803f71bf7b2809965db0aceafdc3c5"
 EXPECTED_PACKAGE_COUNT = 10
 IMAGE_REPOSITORIES = (
     "memories",
