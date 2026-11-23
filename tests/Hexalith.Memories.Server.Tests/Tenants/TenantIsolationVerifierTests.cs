@@ -234,6 +234,8 @@ public class TenantIsolationVerifierTests
     [InlineData("actor", nameof(ActorMethodInvocationException))]
     [InlineData("timeout", nameof(TimeoutException))]
     [InlineData("http", nameof(HttpRequestException))]
+    [InlineData("io", nameof(IOException))]
+    [InlineData("rpc", nameof(Grpc.Core.RpcException))]
     public async Task VerifyAsync_EmbeddingConfigUnavailable_FailsClosed(
         string failureKind,
         string expectedFailureType)
@@ -244,6 +246,8 @@ public class TenantIsolationVerifierTests
             "actor" => new ActorMethodInvocationException("sensitive actor payload", isTransient: true),
             "timeout" => new TimeoutException("tenant configuration timed out"),
             "http" => new HttpRequestException("tenant configuration transport unavailable"),
+            "io" => new IOException("sensitive transport detail"),
+            "rpc" => new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.Unavailable, "sensitive transport detail")),
             _ => throw new ArgumentOutOfRangeException(nameof(failureKind), failureKind, "Unknown failure kind."),
         };
         ITenantEmbeddingConfigProvider embeddingConfigProvider = Substitute.For<ITenantEmbeddingConfigProvider>();
@@ -276,7 +280,14 @@ public class TenantIsolationVerifierTests
         result.AllPassed.ShouldBeFalse();
         _ = await embeddingConfigProvider.Received(1).GetAsync("tenant-a", Arg.Any<CancellationToken>());
         embeddingConfigProvider.DidNotReceive().Invalidate(Arg.Any<string>());
+        result.Checks.Where(check => check.CheckName != "SemanticIsolation").Count(check => check.Passed).ShouldBe(4);
         AssertEmbeddingConfigurationFailureLogged(logger, expectedFailureType, exception.Message);
+        if (failureKind is "rpc" or "io")
+        {
+            semanticCheck.Details.ShouldNotContain("sensitive transport detail");
+            semanticCheck.Remediation.ShouldNotContain("sensitive transport detail");
+            AssertEmbeddingConfigurationFailureLogged(logger, expectedFailureType, "sensitive transport detail");
+        }
         AssertReadOnlyDependencyCalls(redisDb, falkorDb);
     }
 
@@ -619,8 +630,143 @@ public class TenantIsolationVerifierTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task VerifyAsync_MissingSyntacticIndex_RetainsSurvivingKeyFindings(bool scanInterrupted)
+    {
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer redisServer) = CreateVerifier(
+            [
+                new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
+                new TenantInfo("tenant-b", "Tenant B", TenantStatus.Active, DateTimeOffset.UtcNow),
+            ]);
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        string missingIndex = IndexSchemaDefinitions.GetSyntacticIndexName("tenant-a");
+        SetupMissingIndex(redisDb, missingIndex);
+        string markerKey = IndexSchemaDefinitions.BuildSyntacticKey("tenant-a", "survivor");
+        string secondKey = IndexSchemaDefinitions.BuildSyntacticKey("tenant-a", "second");
+        string wrongType = IndexSchemaDefinitions.BuildSyntacticKey("tenant-a", "non-hash");
+        SetupRedisKeyScan(redisServer, IndexSchemaDefinitions.GetSyntacticKeyPrefix("tenant-a"), markerKey, wrongType, secondKey);
+        redisDb.HashGetAsync((RedisKey)wrongType, "tenantId", CommandFlags.DemandMaster)
+            .Throws(RedisExceptionFactory.CreateServerException("WRONGTYPE key is not a hash"));
+        SetupTenantIdField(redisDb, markerKey, "tenant-b");
+        if (scanInterrupted)
+        {
+            redisDb.HashGetAsync((RedisKey)secondKey, "tenantId", CommandFlags.DemandMaster)
+                .Throws(new RedisTimeoutException(CommandFlags.None, "internal-key-context", CommandStatus.Unknown));
+        }
+        else
+        {
+            SetupTenantIdField(redisDb, secondKey, "tenant-a");
+        }
+
+        SetupGraphList(falkorDb, "tenant-a", "tenant-b");
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
+
+        result.Checks.Single(check => check.CheckName == "IndexExistence").Remediation.ShouldNotBeNull()
+            .ShouldContain("Review SyntacticIsolation for surviving keys before provisioning");
+        TenantIsolationCheckResult syntactic = result.Checks.Single(check => check.CheckName == "SyntacticIsolation");
+        syntactic.Passed.ShouldBeFalse();
+        syntactic.Details.ShouldNotBeNull();
+        syntactic.Details.ShouldContain($"Missing tenant isolation resources: {missingIndex}");
+        syntactic.Details.ShouldContain($"key '{markerKey}' under tenant 'tenant-a' has tenantId field 'tenant-b'");
+        syntactic.Details.ShouldContain($"key '{wrongType}' under tenant 'tenant-a' has the wrong Redis value type");
+        syntactic.Remediation.ShouldNotBeNull();
+        syntactic.Remediation.ShouldContain("Verify their provenance");
+        syntactic.Remediation.ShouldContain("identify their writer");
+        if (scanInterrupted)
+        {
+            syntactic.Details.ShouldContain("Syntactic key scan incomplete. Backend unavailable");
+            syntactic.Details.ShouldNotContain("internal-key-context");
+            syntactic.Remediation.ShouldContain("connectivity and retry");
+        }
+        else
+        {
+            syntactic.Details.ShouldContain("Examined 3 surviving target-prefix key(s)");
+            syntactic.Remediation.ShouldContain("Verify the provenance of the surviving keys before recreating the index");
+            syntactic.Remediation.IndexOf("re-provision", StringComparison.Ordinal)
+                .ShouldBeGreaterThan(syntactic.Remediation.IndexOf("identify their writer", StringComparison.Ordinal));
+        }
+
+        result.Checks.Single(check => check.CheckName == "SemanticIsolation").Passed.ShouldBeTrue();
+        AssertNoMutationDependencyCalls(redisDb, falkorDb);
+    }
+
+    [Fact]
+    public async Task VerifyAsync_MissingSyntacticAndSemanticIndexes_ReportsEmptyScanBeforeProvisioning()
+    {
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, _) = CreateVerifier(
+            [new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow)]);
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        SetupMissingIndex(redisDb, IndexSchemaDefinitions.GetSyntacticIndexName("tenant-a"));
+        SetupMissingIndex(redisDb, IndexSchemaDefinitions.GetSemanticIndexName("tenant-a"));
+        SetupGraphList(falkorDb, "tenant-a");
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
+
+        TenantIsolationCheckResult syntactic = result.Checks.Single(check => check.CheckName == "SyntacticIsolation");
+        syntactic.Passed.ShouldBeFalse();
+        syntactic.Details.ShouldNotBeNull().ShouldContain("Examined 0 surviving target-prefix key(s)");
+        TenantIsolationCheckResult semantic = result.Checks.Single(check => check.CheckName == "SemanticIsolation");
+        semantic.Passed.ShouldBeFalse();
+        semantic.Remediation.ShouldNotBeNull().ShouldContain("Review SyntacticIsolation for surviving keys before running tenant provisioning");
+        AssertNoMutationDependencyCalls(redisDb, falkorDb);
+    }
+
+    [Fact]
+    public async Task VerifyAsync_LargeSyntacticScan_BoundsAllThreeCategoriesAndCountsEveryKey()
+    {
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer server) = CreateVerifier(
+            [new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow)]);
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        SetupMissingIndex(redisDb, IndexSchemaDefinitions.GetSyntacticIndexName("tenant-a"));
+        SetupGraphList(falkorDb, "tenant-a");
+        string prefix = IndexSchemaDefinitions.GetSyntacticKeyPrefix("tenant-a");
+        List<string> keys = [];
+        for (int index = 1; index <= 12; index++)
+        {
+            string missingKey = $"{prefix}missing-{index:D2}";
+            string foreignKey = $"{prefix}foreign-{index:D2}";
+            string wrongTypeKey = $"{prefix}non-hash-{index:D2}";
+            keys.AddRange([missingKey, foreignKey, wrongTypeKey]);
+            SetupTenantIdField(redisDb, missingKey, null);
+            SetupTenantIdField(redisDb, foreignKey, "tenant-b");
+            redisDb.HashGetAsync((RedisKey)wrongTypeKey, "tenantId", CommandFlags.DemandMaster)
+                .Throws(RedisExceptionFactory.CreateServerException("WRONGTYPE key is not a hash"));
+        }
+
+        SetupRedisKeyScan(server, prefix, [.. keys]);
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
+
+        TenantIsolationCheckResult syntactic = result.Checks.Single(check => check.CheckName == "SyntacticIsolation");
+        syntactic.Passed.ShouldBeFalse();
+        syntactic.Details.ShouldNotBeNull();
+        syntactic.Details.ShouldContain("Examined 36 surviving target-prefix key(s)");
+        foreach (string category in new[] { "missing-marker", "foreign-marker", "non-hash" })
+        {
+            syntactic.Details.ShouldContain($"Omitted 2 additional {category} finding(s)");
+        }
+
+        foreach (string sampled in keys.Take(30))
+        {
+            syntactic.Details.ShouldContain(sampled);
+        }
+
+        foreach (string omitted in keys.Skip(30))
+        {
+            syntactic.Details.ShouldNotContain(omitted);
+            _ = await redisDb.Received(1).HashGetAsync((RedisKey)omitted, "tenantId", CommandFlags.DemandMaster);
+        }
+
+        syntactic.Remediation.ShouldNotBeNull().ShouldContain("Review the remaining findings");
+        AssertNoMutationDependencyCalls(redisDb, falkorDb);
+    }
+
+    [Theory]
     [InlineData("tenant-b", "has tenantId field 'tenant-b'")]
     [InlineData(null, "is missing tenantId field")]
+    [InlineData(" \t", "is missing tenantId field")]
     public async Task VerifyAsync_SyntacticMarkerDefect_ReportsNamedKeyAndProvenanceGuidance(
         string? storedTenantId,
         string expectedFinding)
@@ -841,10 +987,14 @@ public class TenantIsolationVerifierTests
 
     [Theory]
     [InlineData(nameof(SemanticKeyFamily.ActiveRawBase), null)]
+    [InlineData(nameof(SemanticKeyFamily.ActiveRawBase), "")]
+    [InlineData(nameof(SemanticKeyFamily.ActiveRawBase), " \t")]
     [InlineData(nameof(SemanticKeyFamily.ActiveRawBase), "tenant-b")]
     [InlineData(nameof(SemanticKeyFamily.ActiveRawChunk), null)]
+    [InlineData(nameof(SemanticKeyFamily.ActiveRawChunk), "\u00A0")]
     [InlineData(nameof(SemanticKeyFamily.ActiveRawChunk), "tenant-b")]
     [InlineData(nameof(SemanticKeyFamily.ActiveNaturalLanguage), null)]
+    [InlineData(nameof(SemanticKeyFamily.ActiveNaturalLanguage), "\t")]
     [InlineData(nameof(SemanticKeyFamily.ActiveNaturalLanguage), "tenant-b")]
     public async Task VerifyAsync_ActiveFamilyMarkerEvidence_MissingAndForeignFailClosed(
         string familyName,
@@ -893,12 +1043,12 @@ public class TenantIsolationVerifierTests
             SemanticKeyFamily.ActiveNaturalLanguage => "natural-language semantic",
             _ => throw new InvalidOperationException($"Unexpected active family '{family}'."),
         });
-        semanticCheck.Details.ShouldContain(storedTenantId is null
+        semanticCheck.Details.ShouldContain(string.IsNullOrWhiteSpace(storedTenantId)
             ? "is missing its tenantId marker: incomplete evidence, not confirmed cross-tenant leakage"
             : "has a foreign tenantId marker 'tenant-b': confirmed marker mismatch (possible contamination)");
         semanticCheck.Details.ShouldNotContain("evidence-classification gap");
         semanticCheck.Remediation.ShouldNotBeNull();
-        semanticCheck.Remediation.ShouldContain(storedTenantId is null
+        semanticCheck.Remediation.ShouldContain(string.IsNullOrWhiteSpace(storedTenantId)
             ? "incomplete evidence (missing marker, not confirmed leakage)"
             : "confirmed marker mismatch (possible contamination)");
         semanticCheck.Remediation.ShouldContain($"'{key}'");
@@ -1297,8 +1447,10 @@ public class TenantIsolationVerifierTests
         AssertNoMutationDependencyCalls(redisDb, falkorDb);
     }
 
-    [Fact]
-    public async Task VerifyAsync_ClassificationGapAndActiveMarkerDefect_PreservesBothDiagnostics()
+    [Theory]
+    [InlineData(VectorDimensions)]
+    [InlineData(1536)]
+    public async Task VerifyAsync_ClassificationGapAndActiveMarkerDefect_PreservesAllRemediation(int rawDimensions)
     {
         (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer redisServer) = CreateVerifier(
             tenants:
@@ -1306,7 +1458,7 @@ public class TenantIsolationVerifierTests
                 new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
             ]);
 
-        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a", rawDimensions: rawDimensions);
         const string FutureKey = "tenant-a:vec:future:run-1:mu-1";
         string activeChunk = IndexSchemaDefinitions.BuildSemanticChunkKey("tenant-a", "active-chunk", 2);
         SetupRedisKeyScan(
@@ -1333,12 +1485,18 @@ public class TenantIsolationVerifierTests
         semanticCheck.Details.ShouldContain($"Semantic key '{FutureKey}' under tenant 'tenant-a' has an evidence-classification gap (unknown)");
         semanticCheck.Details.ShouldContain($"raw semantic chunk key '{activeChunk}' under tenant 'tenant-a' has a foreign tenantId marker 'tenant-b': confirmed marker mismatch (possible contamination)");
 
-        // Pinning current accepted behavior: when a classification gap co-occurs with an active marker defect,
-        // Remediation is exactly the classification-gap-only sentence. The marker-specific guidance is
-        // intentionally NOT composed in alongside it — this ternary-exclusivity is the pre-existing, separately
-        // tracked `24.6-F8-W9` deferred item and is out of Story 24.9's scope to change.
-        semanticCheck.Remediation.ShouldBe(
-            "Register or migrate the reported semantic key family for tenant 'tenant-a', then retry verification; no data or indexes were changed");
+        semanticCheck.Remediation.ShouldNotBeNull();
+        semanticCheck.Remediation.ShouldContain("Register or migrate the reported semantic key family for tenant 'tenant-a'");
+        semanticCheck.Remediation.ShouldContain($"on '{activeChunk}', inspect and quarantine");
+        semanticCheck.Remediation.ShouldContain("after provenance is verified");
+        semanticCheck.Remediation.Contains($"validated {VectorDimensions}-dimension", StringComparison.Ordinal)
+            .ShouldBe(rawDimensions != VectorDimensions);
+        if (rawDimensions != VectorDimensions)
+        {
+            semanticCheck.Remediation.IndexOf("Repair or re-provision", StringComparison.Ordinal)
+                .ShouldBeGreaterThan(semanticCheck.Remediation.IndexOf("Register or migrate", StringComparison.Ordinal));
+        }
+
         AssertNoMutationDependencyCalls(redisDb, falkorDb);
     }
 
@@ -1518,9 +1676,10 @@ public class TenantIsolationVerifierTests
         details.Contains("Omitted 2 additional classification-gap finding(s)", StringComparer.Ordinal)
             .ShouldBe(hasClassificationGaps);
         semantic.Details.ShouldNotContain(finalKey);
-        if (!hasClassificationGaps)
+        if (!interrupted)
         {
             semantic.Remediation.ShouldNotBeNull();
+            semantic.Remediation.ShouldContain("including those omitted from the sample");
             semantic.Remediation.ShouldContain(rawPrefix + "foreign-01");
             semantic.Remediation.ShouldContain(rawPrefix + "missing-01");
             semantic.Remediation.ShouldNotContain(rawPrefix + "foreign-11");
@@ -2535,6 +2694,10 @@ public class TenantIsolationVerifierTests
             })
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .Select(value => value!.Trim());
+
+    private static void SetupMissingIndex(IDatabase db, string indexName) =>
+        db.ExecuteAsync("FT.INFO", Arg.Is<object[]>(args => args.Length == 1 && Equals(args[0], indexName)))
+            .Throws(RedisExceptionFactory.CreateServerException("Unknown index name"));
 
     private static void SetupSuccessfulIndexInfo(
         IDatabase db,

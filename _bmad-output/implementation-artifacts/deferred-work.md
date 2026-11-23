@@ -4884,7 +4884,8 @@ decision: 2026-09-01 Fail closed — Return incomplete verification whenever any
 origin: migrated from legacy ledger ("Deferred from: code review of 27-3-production-adapter-and-deployment-profile (2026-07-31)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-epic-24-verifier-residual-backlog-2026-08-04.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-epic-24-verifier-residual-backlog-2026-08-04.md` summary: Define blank or whitespace-only tenantId handling for Story 24.9 marker diagnostics. evidence: Edge-case review showed proven-active hashes with empty/whitespace tenantId are unclassified and can be mislabeled as foreign contamination.
-status: open
+status: done 2026-11-23
+resolution: Blank and whitespace-only markers now use the missing-marker diagnosis. VerifyAsync_ActiveFamilyMarkerEvidence_MissingAndForeignFailClosed covers all three active semantic families.
 decision: 2026-09-01 Treat as missing marker — Classify blank tenantId as incomplete structural evidence and use non-destructive remediation.
 decision: 2026-09-01 Treat as missing marker — Classify blank tenantId as incomplete structural evidence and use non-destructive remediation.
 
@@ -5352,14 +5353,16 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence — eighth pass (2026-08-14)"), 2026-09-01
 location: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs
 reason: - **Broaden IsEmbeddingConfigurationUnavailable exception filters in TenantIsolationVerifier.** - ID: 24.6-F8-W8 - Status: carried-forward - Source story: 24-6-graph-content-level-tenant-isolation-evidence - Target artifact: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs - Re-open trigger: Story 24.7 audits provider lookup error handling. - Rationale: `IsEmbeddingConfigurationUnavailable` filters for four specific exception types; unexpected I/O or RPC exceptions during provider lookups could surface as unhandled 500 errors instead of structured check results. Pre-existing behavior owned by Story 24.7.
-status: open
+status: done 2026-11-23
+resolution: VerifyAsync_EmbeddingConfigUnavailable_FailsClosed covers I/O and gRPC lookup failures, sanitized evidence and completion of independent checks.
 
 ### DW-704: Support dual remediation when classification gap and dimension mismatch co-occur.
 
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence — eighth pass (2026-08-14)"), 2026-09-01
 location: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs
 reason: - **Support dual remediation when classification gap and dimension mismatch co-occur.** - ID: 24.6-F8-W9 - Status: carried-forward - Source story: 24-6-graph-content-level-tenant-isolation-evidence - Target artifact: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs - Re-open trigger: Story 24.8 addresses dual remediation formatting. - Rationale: `TenantIsolationVerifier.CheckSemanticIsolationAsync` suppresses vector dimension remediation guidance when a key classification gap is also present. Pre-existing behavior owned by Story 24.8.
-status: open
+status: done 2026-11-23
+resolution: VerifyAsync_ClassificationGapAndActiveMarkerDefect_PreservesAllRemediation verifies configured-dimension guidance alongside a classification gap.
 
 ### DW-705: Add replica endpoint filtering in GetConnectedServers for clustered Redis deployments.
 
@@ -5398,7 +5401,8 @@ resolution: The failed semantic check retains classification and marker evidence
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-8-semantic-isolation-key-family-classification (2026-08-31)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-24-8-semantic-isolation-key-family-classification.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-24-8-semantic-isolation-key-family-classification.md` summary: `Remediation` text still does not support dual guidance when a classification gap co-occurs with another problem. evidence: `CheckSemanticIsolationAsync`'s `hasClassificationGap ? "Register or migrate..." : "Repair or re-provision..."` ternary always picks gap wording over marker-mismatch (or dimension-mismatch) wording when both are present in `Details`. This is the same unresolved gap as carried-forward ledger item `24.6-F8-W9` ("dual remediation when classification gap and dimension mismatch co-occur"), which already named Story 24.8 as its natural closure point; this diff did not close it, only extended the same single-priority pattern to also cover the new classification-gap case.
-status: open
+status: done 2026-11-23
+resolution: Duplicate of DW-704 and DW-714. The same mixed-finding tests verify both the dimension and marker guidance.
 
 ### DW-710: The two-round-trip discriminator read was not folded into one batched call.
 
@@ -5437,7 +5441,8 @@ decision: 2026-09-01 Own a domain service — Add a Memories-owned EventStore do
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-9-non-destructive-tenant-marker-diagnostics (2026-08-31)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-24-9-non-destructive-tenant-marker-diagnostics.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-24-9-non-destructive-tenant-marker-diagnostics.md` summary: Classification-gap co-occurring with an active marker defect still suppresses marker-specific `Remediation` entirely. evidence: `TenantIsolationVerifier.CheckSemanticIsolationAsync`'s `Remediation` ternary (`src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs:389-395`) still selects only the classification-gap sentence whenever a classification gap co-occurs with a marker mismatch in the same `SemanticIsolation` check, giving the operator no inspect/quarantine/named-key guidance for the marker defect at all in that case. Pre-existing behavior, not introduced by Story 24.9; already tracked as ledger item `24.6-F8-W9` below, and Story 24.9's own spec Boundaries ("Ask First") explicitly declined to resolve it here since it is a different axis than this story's AC. Reopen trigger: Story 24.8/24.9 follow-up work touching the same ternary, or an operator report that this suppression hid actionable marker guidance during a real co-occurring incident.
-status: open
+status: done 2026-11-23
+resolution: VerifyAsync_ClassificationGapAndActiveMarkerDefect_PreservesAllRemediation and VerifyAsync_LargeSemanticScan_BoundsEachEvidenceCategoryAndKeepsScanning verify provenance guidance for sampled marker defects alongside classification gaps.
 
 ### DW-715: `CheckSyntacticIsolationAsync` still returns the anti-template blanket-deletion wording Story 24.9 removed from `SemanticIsolation`.
 
@@ -6468,3 +6473,4 @@ dotnet tests/Hexalith.Memories.IntegrationTests/bin/Debug/net11.0/Hexalith.Memor
 - source_spec: `_bmad-output/implementation-artifacts/spec-five-deferred-tenant-isolation-diagnostics.md`
   summary: Inspect surviving syntactic keys when the tenant index is missing and Redis is reachable.
   evidence: The missing-index branch returns provisioning guidance before the prefix scan. Existing hashes can still need provenance review before the index is recreated.
+  resolution: 2026-11-23 — VerifyAsync_MissingSyntacticIndex_RetainsSurvivingKeyFindings proves the tenant prefix is scanned after the index disappears and that partial evidence survives a backend timeout.
