@@ -46,15 +46,18 @@ public class OidcTokenProviderTests
         handler.Requests[0].Form["scope"].ShouldBe("embeddings.write");
     }
 
-    [Fact]
-    public async Task GetAccessTokenAsync_CacheHit_DoesNotSendSecondHttpRequest()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" \t ")]
+    public async Task GetAccessTokenAsync_CacheHit_DoesNotSendSecondHttpRequest(string? firstScope)
     {
         // Arrange
         ScriptedTokenHandler handler = new((_, _) => TokenResponse("token-1", 3600));
         OidcTokenProvider provider = CreateProvider(handler);
 
         // Act
-        string first = await provider.GetAccessTokenAsync(TokenEndpoint, ClientId, ClientSecret, null, CancellationToken.None);
+        string first = await provider.GetAccessTokenAsync(TokenEndpoint, ClientId, ClientSecret, firstScope, CancellationToken.None);
         string second = await provider.GetAccessTokenAsync(TokenEndpoint, ClientId, ClientSecret, null, CancellationToken.None);
 
         // Assert

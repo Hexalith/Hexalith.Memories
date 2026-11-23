@@ -202,6 +202,72 @@ public sealed class EmbeddingVectorMigrationServiceTests
         store.SetConfigCalls.ShouldBe(0);
     }
 
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData("GoOgLe", true)]
+    [InlineData("OlLaMa", false)]
+    public async Task DryRunShouldUseTargetProviderDefaultsAndPreserveRequestedCasing(string? provider, bool google)
+    {
+        const string tenant = "tenant-a";
+        FakeStore store = new();
+        store.Tenants.Add(tenant);
+        store.Counts[tenant] = new EmbeddingMigrationTenantCounts(1, 1, 0, 1, 0);
+        EmbeddingVectorMigrationService service = new(store, new FakeVectorGenerator());
+        TenantEmbeddingConfig defaults = google ? EmbeddingProviderDefaults.Google() : EmbeddingProviderDefaults.Ollama();
+
+        EmbeddingMigrationResult result = await service.RunAsync(
+            new EmbeddingMigrationOptions { Mode = EmbeddingMigrationMode.DryRun, TargetProvider = provider },
+            CancellationToken.None);
+
+        result.ExitCode.ShouldBe(EmbeddingMigrationExitCodes.Success);
+        result.Tenants.ShouldHaveSingleItem().TargetConfig.ShouldBe(defaults with { Provider = provider ?? defaults.Provider });
+        store.Operations.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task DryRunShouldApplyValidTargetOverridesToRegistryDefaults()
+    {
+        FakeStore store = new();
+        EmbeddingVectorMigrationService service = new(store, new FakeVectorGenerator());
+
+        EmbeddingMigrationResult result = await service.RunAsync(
+            new EmbeddingMigrationOptions
+            {
+                Mode = EmbeddingMigrationMode.DryRun,
+                TenantId = "tenant-a",
+                TargetProvider = "Google",
+                TargetModel = "Gemini-Embedding-001",
+                TargetDimensions = 3072,
+            },
+            CancellationToken.None);
+
+        result.ExitCode.ShouldBe(EmbeddingMigrationExitCodes.Success);
+        result.Tenants.ShouldHaveSingleItem().TargetConfig.ShouldBe(EmbeddingProviderDefaults.Google() with
+        {
+            Provider = "Google",
+            Model = "Gemini-Embedding-001",
+            Dimensions = 3072,
+        });
+    }
+
+    [Theory]
+    [InlineData("unregistered", "Supported providers")]
+    [InlineData(" ollama", "leading or trailing whitespace")]
+    public async Task DryRunShouldRejectInvalidTargetProviderBeforeReadingStorage(string provider, string diagnostic)
+    {
+        IEmbeddingMigrationStore store = Substitute.For<IEmbeddingMigrationStore>();
+        EmbeddingVectorMigrationService service = new(store, new FakeVectorGenerator());
+
+        EmbeddingMigrationResult result = await service.RunAsync(
+            new EmbeddingMigrationOptions { Mode = EmbeddingMigrationMode.DryRun, TargetProvider = provider },
+            CancellationToken.None);
+
+        result.ExitCode.ShouldBe(EmbeddingMigrationExitCodes.Plumbing);
+        result.Message.ShouldContain("Invalid target embedding configuration");
+        result.Message.ShouldContain(diagnostic);
+        store.ReceivedCalls().ShouldBeEmpty();
+    }
+
     [Fact]
     public async Task DryRunShouldReportAffectedTenantsWithoutWrites()
     {

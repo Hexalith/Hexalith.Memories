@@ -5,7 +5,9 @@
 
 namespace Hexalith.Memories.Server.Tests.Actors;
 
+using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Actors;
+using Hexalith.Memories.Server.Ingestion;
 
 using Microsoft.Extensions.Time.Testing;
 
@@ -217,6 +219,34 @@ public class RateLimiterLogicTests
         newState.CeilingPerMinute.ShouldBe(250);
         newState.Remaining.ShouldBe(249);
         newState.WindowStart.ShouldBe(timeProvider.GetUtcNow().UtcDateTime);
+    }
+
+    [Fact]
+    public void TryConsume_MaximumOllamaRate_RefillsAndDebitsAfterOneMinute()
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Ollama() with { RateLimitPerMinute = 60_000 };
+        EmbeddingProviderDefaults.Validate(config);
+        FakeTimeProvider timeProvider = new(new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        RateLimiterLogic logic = new(timeProvider);
+        RateLimitState exhausted = logic.CreateDefaultState() with { Remaining = 0 };
+
+        timeProvider.Advance(TimeSpan.FromSeconds(59));
+        (bool allowedBeforeRefill, RateLimitState stillExhausted) = logic.TryConsume(exhausted, config.RateLimitPerMinute);
+        allowedBeforeRefill.ShouldBeFalse();
+        stillExhausted.Remaining.ShouldBe(0);
+        stillExhausted.CeilingPerMinute.ShouldBe(60_000);
+
+        timeProvider.Advance(TimeSpan.FromSeconds(1));
+        (bool allowedAfterRefill, RateLimitState refilled) = logic.TryConsume(stillExhausted, config.RateLimitPerMinute);
+        allowedAfterRefill.ShouldBeTrue();
+        refilled.Remaining.ShouldBe(59_999);
+        refilled.CeilingPerMinute.ShouldBe(60_000);
+        refilled.WindowStart.ShouldBe(timeProvider.GetUtcNow().UtcDateTime);
+
+        (bool allowedInRefilledWindow, RateLimitState debited) = logic.TryConsume(refilled, config.RateLimitPerMinute);
+        allowedInRefilledWindow.ShouldBeTrue();
+        debited.Remaining.ShouldBe(59_998);
+        debited.WindowStart.ShouldBe(refilled.WindowStart);
     }
 
     [Fact]

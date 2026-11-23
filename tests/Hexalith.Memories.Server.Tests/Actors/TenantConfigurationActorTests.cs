@@ -209,6 +209,39 @@ public class TenantConfigurationActorTests
             Arg.Any<CancellationToken>());
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SetEmbeddingConfigAsync_CasingOnlyUpdate_ShouldPreserveSpellingAndReindexFlag(bool reindexRequired)
+    {
+        (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        TenantEmbeddingConfig current = CreateOllamaOidcConfig() with { ReindexRequired = reindexRequired };
+        SetupExistingState(stateManager, current);
+        TenantEmbeddingConfig proposed = current with
+        {
+            Provider = "Ollama",
+            Model = "Qwen3-Embedding:4B",
+            ReindexRequired = !reindexRequired,
+        };
+
+        await actor.SetEmbeddingConfigAsync(proposed, forceReindex: false);
+
+        object?[] writeArguments = stateManager.ReceivedCalls()
+            .Where(call => call.GetMethodInfo().Name == nameof(IActorStateManager.SetStateAsync))
+            .ShouldHaveSingleItem()
+            .GetArguments();
+        writeArguments[0].ShouldBe("embeddingConfig");
+        StoredTenantEmbeddingConfig stored = writeArguments[1].ShouldBeOfType<StoredTenantEmbeddingConfig>();
+        stored.Provider.ShouldBe(proposed.Provider);
+        stored.Model.ShouldBe(proposed.Model);
+        stored.ReindexRequired.ShouldBe(reindexRequired);
+
+        stateManager.TryGetStateAsync<StoredTenantEmbeddingConfig>("embeddingConfig", Arg.Any<CancellationToken>())
+            .Returns(new ConditionalValue<StoredTenantEmbeddingConfig>(true, stored));
+        TenantEmbeddingConfig read = await actor.GetEmbeddingConfigAsync();
+        read.ShouldBe(proposed with { ReindexRequired = reindexRequired });
+    }
+
     [Fact]
     public async Task SetEmbeddingConfigAsync_OllamaBaseUrlChanged_WithoutForceReindex_ShouldThrow()
     {

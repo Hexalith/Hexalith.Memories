@@ -277,7 +277,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Closed/Accepted by: Story 15.2 Provider Model Dimension Registry (2026-05-13)"), 2026-09-01
 location: src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs
 reason: - **13.1-RV10 - accepted.** Provider and model validation remains case-insensitive for compatibility, and caller-provided casing is preserved rather than normalized at validation time. - ID: 13.1-RV10 - Status: accepted - Source story: 15-2-provider-model-dimension-registry - Target artifact: src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs - Re-open trigger: A persisted mixed-case provider/model value causes runtime dispatch, reindex detection, search metadata, or migration state comparisons to diverge. - Rationale: Ollama model tags may be case-sensitive outside the committed `qwen3-embedding:4b` model, so Story 15.2 keeps validation case-insensitive while preserving original values. Evidence is pinned by `EmbeddingProviderDefaultsTests.Validate_MixedCaseProviderAndModel_ShouldUseCaseInsensitiveRegistryLookup`; compatibility consumers continue to use `OrdinalIgnoreCase` where provider/model equality matters.
-status: open
+status: done 2026-11-23
+resolution: Case-insensitive registry validation and the actor casing-only update test verify that registered provider and model spelling survives storage and does not trigger a reindex. See spec-ten-deferred-embedding-configuration.md.
 
 ### DW-43: 13.1-RV11: resolved. Provider/model/dimension validation now uses a
 
@@ -297,7 +298,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of 15-2-provider-model-dimension-registry (2026-05-14)"), 2026-09-01
 location: tests/Hexalith.Memories.Contracts.Tests/V1/TenantEmbeddingConfigSerializationTests.cs
 reason: - **15.2-RV1 - accepted.** AC5 contract-tier serialization test not updated. - ID: 15.2-RV1 - Status: accepted - Source story: 15-2-provider-model-dimension-registry - Target artifact: tests/Hexalith.Memories.Contracts.Tests/V1/TenantEmbeddingConfigSerializationTests.cs - Re-open trigger: A casing/canonicalization change at the contract boundary is later considered. - Rationale: Task 2 chose `accepted` for casing semantics, so contract-tier serialization is intentionally unchanged. Recorded for traceability against AC5's "contract/server tests cover ... deferred-work dispositions" wording. Story 19.4 (2026-06-30) re-reviewed the current contract serializer against live code and accepts this until the contract boundary changes: the contract tests still preserve JSON shape and value round-trip, and provider/model validation lives in server/provider paths, not the contract serializer, so no contract-tier change is warranted now. Natural future home: a contract casing/canonicalization story, only if the contract boundary changes. Owner: Contracts / Server maintainer.
-status: open
+status: done 2026-11-23
+resolution: TenantEmbeddingConfigSerializationTests verifies the raw JSON values and round-trip spelling for mixed-case Google and tagged Ollama configurations. See spec-ten-deferred-embedding-configuration.md.
 
 ### DW-46: 15.2-RV2: accepted. Actor reindex tests lost same-Provider/different-Model isolation.
 
@@ -330,14 +332,16 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of 15-2-provider-model-dimension-registry (2026-05-14)"), 2026-09-01
 location: src/Hexalith.Memories.Server/Migration/EmbeddingVectorMigrationService.cs
 reason: - **15.2-RV6 - accepted.** Migration tool uses binary Google/Ollama coin-flip, not registry. - ID: 15.2-RV6 - Status: accepted - Source story: 15-2-provider-model-dimension-registry - Target artifact: src/Hexalith.Memories.Server/Migration/EmbeddingVectorMigrationService.cs - Re-open trigger: Registry adds a third provider, OR a migration plan needs to target a new provider. - Rationale: `TargetProvider` defaults to `Ollama()` if not Google (lines 125-149). Related to 15.2-RV4. Out of File Scope. Story 19.4 (2026-06-30) confirmed `EmbeddingVectorMigrationService.TryBuildTargetConfig(...)` still chooses Google defaults for a Google target and Ollama defaults otherwise, then relies on `EmbeddingProviderDefaults.Validate(...)` to reject unsupported providers — safe for two providers but a binary defaulting path, accepted until a third provider or a new migration target lands. Natural future home: a migration target factory/registry story for a third provider (bundled with `15.2-RV4`/`15.2-RV5`). Owner: Server / migration maintainer.
-status: open
+status: done 2026-11-23
+resolution: EmbeddingVectorMigrationService gets target defaults from the configuration registry. Dry-run tests cover omitted, mixed-case registered, and invalid providers. See spec-ten-deferred-embedding-configuration.md.
 
 ### DW-51: 15.2-RV7: accepted. Whitespace-prefixed provider not trimmed before registry lookup.
 
 origin: migrated from legacy ledger ("Deferred from: code review of 15-2-provider-model-dimension-registry (2026-05-14)"), 2026-09-01
 location: src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs
 reason: - **15.2-RV7 - accepted.** Whitespace-prefixed provider not trimmed before registry lookup. - ID: 15.2-RV7 - Status: accepted - Source story: 15-2-provider-model-dimension-registry - Target artifact: src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs - Re-open trigger: Operator reports an unhelpful "Provider ' google' is not supported" error and the registry path needs to suggest the whitespace cause. - Rationale: `ArgumentException.ThrowIfNullOrWhiteSpace` accepts `" google"`, then `FindProvider` misses (no trim). Already family-deferred as `13.1-RV4`; surfaces again in the registry path. Story 19.4 (2026-06-30) accepts this until an operator UX issue justifies whitespace-specific diagnostics in `EmbeddingProviderDefaults.Validate(...)`. Natural future home: a provider validation UX cleanup if whitespace diagnostics become operator-visible. Owner: Server / ingestion maintainer.
-status: open
+status: done 2026-11-23
+resolution: Provider validation gives a whitespace-specific Provider error for a padded registered name. Validator and dry-run migration tests pin the behavior. See spec-ten-deferred-embedding-configuration.md.
 
 ### DW-52: 15.2-RV8: accepted. Already-persisted invalid configs not surfaced on read.
 
@@ -723,7 +727,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of story-13.3 (2026-05-02)"), 2026-09-01
 location: src/Hexalith.Memories.Server/Ingestion/EmbeddingClient.cs:139-146
 reason: - **13.3-RV8 — Asymmetric provider/model casing in parser output.** `src/Hexalith.Memories.Server/Ingestion/EmbeddingClient.cs:139-146` — Provider lowercased, model preserved verbatim. May be intentional (Ollama tags can be case-sensitive). Re-open trigger: Story 13.4 / 13.5 introduces a persisted-config consumer that needs round-trip equality.
-status: open
+status: done 2026-11-23
+resolution: The identifier parser tests verify that the provider normalizes and the tagged model retains its spelling. IndexSemanticActivityTests verifies acceptance by the runtime migration marker guard and verifies the spelling of the written fields. See spec-ten-deferred-embedding-configuration.md.
 
 ### DW-114: 13.3-RV9: No per-tenant circuit-breaker on persistent OIDC 401s. `src/Hexalith.Memories.Server/Ingestion/EmbeddingClient.cs:213-234` — AC5 mandates "exactly once" per request. Across many requests with a misconfigured client, each call still hits the IdP. Re-open trigger: a production incident where Keycloak traffic spikes correlate with embedding 401 storms.
 
@@ -773,14 +778,16 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of story-13.4 (2026-05-02)"), 2026-09-01
 location: src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs:147-161
 reason: - **13.4-RV1 — `RateLimitPerMinute` boundary / arithmetic overflow concerns.** `src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs:147-161` — Validator caps the value but downstream arithmetic on it is not audited. Pre-existing. Re-open trigger: any throughput refactor that multiplies rate by a window size or uses it in token-bucket math.
-status: open
+status: done 2026-11-23
+resolution: The rate limiter uses a fixed one-minute window, a minimum clamp, and a single decrement. RateLimiterLogicTests exercises the validated 60,000 Ollama ceiling before and at refill. See spec-ten-deferred-embedding-configuration.md.
 
 ### DW-122: 13.4-RV2: `OidcScope` whitespace-only not validated. `src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs:163-181` — Spec leaves `OidcScope` optional and unvalidated; a non-null whitespace-only value would silently flow into the token request and surface as `invalid_scope` from Keycloak. Out of story scope. Re-open trigger: Story 13.2 / 13.3 surfaces an IdP-side regression caused by malformed scope.
 
 origin: migrated from legacy ledger ("Deferred from: code review of story-13.4 (2026-05-02)"), 2026-09-01
 location: src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs:163-181
 reason: - **13.4-RV2 — `OidcScope` whitespace-only not validated.** `src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs:163-181` — Spec leaves `OidcScope` optional and unvalidated; a non-null whitespace-only value would silently flow into the token request and surface as `invalid_scope` from Keycloak. Out of story scope. Re-open trigger: Story 13.2 / 13.3 surfaces an IdP-side regression caused by malformed scope.
-status: open
+status: done 2026-11-23
+resolution: OidcTokenProviderTests verifies that a blank or omitted scope on the first request omits the form field and shares the unscoped cache entry. See spec-ten-deferred-embedding-configuration.md.
 
 ### DW-123: 13.4-RV3: OIDC mode does not enforce `ApiSecretKeyName` distinctness/role. `src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs:163-181` — A tenant migrating from Google to OIDC Ollama could carry over a Google API-key secret name (`google-embedding-api-key`); validator only enforces the regex shape. Operator footgun. Re-open trigger: Story 13.5 surface change that exposes a tenant-config diff/mutation endpoint where naive carry-over is plausible.
 
@@ -879,7 +886,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of story-13.1 (2026-05-02)"), 2026-09-01
 location: src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs:99-104
 reason: - **13.1-RV4 — Provider whitespace UX gap.** `Validate(... with { Provider = " ollama" })` throws `Provider ' ollama' is not supported. Supported providers: 'google', 'ollama'.` — technically correct but obscures the leading-whitespace root cause. No security risk. Trim before comparing or surface a "leading/trailing whitespace?" hint. (`src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs:99-104`)
-status: open
+status: done 2026-11-23
+resolution: Registered provider names with leading or trailing whitespace now report the exact validation problem. EmbeddingProviderDefaultsTests covers both edges and both providers. See spec-ten-deferred-embedding-configuration.md.
 
 ### DW-139: 13.1-RV5: Per-provider rate-limit ternary fragile for future providers. `int maxRateLimit = provider == ollama ? 60_000 : 3_000` silently uses Google's ceiling for any unknown provider added through `IsSupportedProvider`. Refactor to `IDictionary<string,int>` ceiling lookup at the same pass that introduces the per-model dim registry (Round 1 finding §2 / spec "When a third Ollama model is added"). (`src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs:140-145`)
 
@@ -910,14 +918,16 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of story-13.1 (2026-05-02)"), 2026-09-01
 location: src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs:50-57
 reason: - **13.1-RV9 — Default Ollama RateLimit (6000) vs ceiling (60_000) divergence undocumented at call-site.** Spec rationale exists but the constant doc on `OllamaMaxRateLimitPerMinute` only documents the ceiling. Add an inline XML comment at `Ollama()`'s `RateLimitPerMinute = 6000` line when 13.5 wires the actor surface. (`src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs:50-57`)
-status: open
+status: done 2026-11-23
+resolution: The Ollama factory documents why its 6,000 requests-per-minute default is lower than the registry ceiling. See spec-ten-deferred-embedding-configuration.md.
 
 ### DW-144: 13.1-RV10: Mixed-case provider/model strings persisted verbatim. `OrdinalIgnoreCase` matching but no normalization of stored values. A tenant config persisting `Provider="Ollama"` survives validation; a downstream comparator using ordinal equality (e.g., the `{provider}:{model}` parser owed by Story 13.3) would silently disagree. Story 13.3's `ParseProvider` contract test is the natural enforcement point. (`src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs:99-104`)
 
 origin: migrated from legacy ledger ("Deferred from: code review of story-13.1 (2026-05-02)"), 2026-09-01
 location: src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs:99-104
 reason: - **13.1-RV10 — Mixed-case provider/model strings persisted verbatim.** `OrdinalIgnoreCase` matching but no normalization of stored values. A tenant config persisting `Provider="Ollama"` survives validation; a downstream comparator using ordinal equality (e.g., the `{provider}:{model}` parser owed by Story 13.3) would silently disagree. Story 13.3's `ParseProvider` contract test is the natural enforcement point. (`src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs:99-104`)
-status: open
+status: done 2026-11-23
+resolution: TenantConfigurationActorTests verifies that a casing-only Ollama update preserves provider and model spelling and retains the durable reindex flag for both prior states. See spec-ten-deferred-embedding-configuration.md.
 
 ### DW-145: 13.1-RV11: Tolerant defaults in `Validate(...)`: cross-pollinated configs slip through (HIGH, owner Story 13.4). The dim assertion is keyed on model name only (not provider+model), and `ModelNamePattern` (`^[A-Za-z0-9.:_-]+$`) requires no alphanumeric. Validator currently accepts: (a) `Provider="google", Model="qwen3-embedding:4b", Dimensions=2560`; (b) `Provider="ollama", Model="gemini-embedding-001", Dimensions=768`; (c) `Provider="ollama", Model="totally-fake", Dimensions=1`; (d) `Model=":::"` / `Model="-"`. Action when 13.4 lands: (1) introduce `provider→{model→dim-allowlist}` registry, (2) tighten regex to `^[A-Za-z0-9][A-Za-z0-9.:_-]*$`, (3) add cross-pollination negative tests. Re-open trigger if 13.4 ships without: any 13.2/13.3 test having to special-case a cross-provider config; any operational incident where config validates but embedding fails. Bundled per `feedback_tolerance_idioms.md`. (`src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs:117-145, 167`)
 

@@ -122,6 +122,34 @@ public class IndexSemanticActivityTests
     }
 
     [Fact]
+    public async Task RunAsync_ActiveMigrationMarkerWithMixedCaseTaggedModel_AllowsCompatibleWrite()
+    {
+        IndexInput input = CreateTestInput() with
+        {
+            EmbeddingProvider = "Ollama:Qwen3-Embedding:4B",
+            EmbeddingModel = "Qwen3-Embedding:4B",
+            EmbeddingDimensions = 2560,
+            EmbeddingVector = new float[2560],
+        };
+        IDatabase db = Substitute.For<IDatabase>();
+        RedisKey markerKey = EmbeddingMigrationMarkerReader.GetActiveMarkerKey(input.TenantId);
+        db.HashGetAllAsync(markerKey, CommandFlags.DemandMaster)
+            .Returns(Task.FromResult(CreateActiveMarkerEntries(input.TenantId)));
+        IConnectionMultiplexer redis = CreateMockMultiplexer(db, existingIndexDimensions: input.EmbeddingDimensions);
+        IndexSemanticActivity activity = new(redis, Substitute.For<ILogger<IndexSemanticActivity>>());
+
+        await activity.RunAsync(Substitute.For<WorkflowActivityContext>(), input);
+
+        await db.Received(1).HashGetAllAsync(markerKey, CommandFlags.DemandMaster);
+        await db.Received(1).HashSetAsync(
+            (RedisKey)IndexSchemaDefinitions.BuildSemanticKey(input.TenantId, input.MemoryUnitId),
+            Arg.Is<HashEntry[]>(entries =>
+                HasEntry(entries, "embeddingProvider", input.EmbeddingProvider) &&
+                HasEntry(entries, "embeddingModel", input.EmbeddingModel)),
+            Arg.Any<CommandFlags>());
+    }
+
+    [Fact]
     public async Task RunAsync_InvalidTenantId_ShouldThrow()
     {
         IDatabase db = Substitute.For<IDatabase>();

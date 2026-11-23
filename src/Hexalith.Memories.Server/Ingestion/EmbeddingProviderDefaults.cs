@@ -131,6 +131,8 @@ public static partial class EmbeddingProviderDefaults
             Provider = OllamaProviderName,
             Model = OllamaModelName,
             Dimensions = 2560,
+            // Start with a conservative budget for a single self-hosted node.
+            // Operators can tune it up to the registry ceiling for their deployment.
             RateLimitPerMinute = 6000,
             ApiSecretKeyName = "memories-embedding-client-secret",
             BaseUrl = options.Ollama.BaseUrl,
@@ -151,6 +153,16 @@ public static partial class EmbeddingProviderDefaults
     /// <returns>A <see cref="TenantEmbeddingConfig"/> with Ollama defaults.</returns>
     public static TenantEmbeddingConfig Ollama()
         => FindRequiredProvider(OllamaProviderName).CreateDefaultConfig();
+
+    /// <summary>Creates the default configuration for a registered provider.</summary>
+    /// <param name="provider">The configured provider name (case-insensitive).</param>
+    /// <returns>The provider's default configuration.</returns>
+    /// <exception cref="ArgumentException">Thrown when the provider name is invalid or unsupported.</exception>
+    internal static TenantEmbeddingConfig CreateDefaultForProvider(string provider)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(provider, nameof(TenantEmbeddingConfig.Provider));
+        return ResolveConfiguredProvider(provider).CreateDefaultConfig();
+    }
 
     /// <summary>Gets the configuration fields that require a full reindex when changed.</summary>
     /// <param name="currentConfig">The currently stored configuration.</param>
@@ -216,13 +228,7 @@ public static partial class EmbeddingProviderDefaults
         ArgumentException.ThrowIfNullOrWhiteSpace(config.Provider, nameof(config.Provider));
         ArgumentException.ThrowIfNullOrWhiteSpace(config.Model, nameof(config.Model));
 
-        ProviderRegistryEntry? provider = FindProvider(config.Provider);
-        if (provider is null)
-        {
-            throw new ArgumentException(
-                $"Provider '{config.Provider}' is not supported. Supported providers: {FormatQuoted(GetSupportedProviderNames())}.",
-                nameof(config.Provider));
-        }
+        ProviderRegistryEntry provider = ResolveConfiguredProvider(config.Provider);
 
         if (!ModelNamePattern().IsMatch(config.Model))
         {
@@ -327,6 +333,27 @@ public static partial class EmbeddingProviderDefaults
                 "ApiSecretKeyName must match ^[a-z0-9-]+$ (lowercase alphanumeric and hyphens only).",
                 nameof(config.ApiSecretKeyName));
         }
+    }
+
+    private static ProviderRegistryEntry ResolveConfiguredProvider(string provider)
+    {
+        ProviderRegistryEntry? entry = FindProvider(provider);
+        if (entry is not null)
+        {
+            return entry;
+        }
+
+        string trimmed = provider.Trim();
+        if (trimmed.Length != provider.Length && FindProvider(trimmed) is not null)
+        {
+            throw new ArgumentException(
+                "Provider must not contain leading or trailing whitespace.",
+                nameof(TenantEmbeddingConfig.Provider));
+        }
+
+        throw new ArgumentException(
+            $"Provider '{provider}' is not supported. Supported providers: {FormatQuoted(GetSupportedProviderNames())}.",
+            nameof(TenantEmbeddingConfig.Provider));
     }
 
     private static ProviderRegistryEntry FindRequiredProvider(string provider)

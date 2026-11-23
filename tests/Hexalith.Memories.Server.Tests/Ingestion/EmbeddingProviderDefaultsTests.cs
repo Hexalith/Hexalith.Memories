@@ -181,6 +181,20 @@ public class EmbeddingProviderDefaultsTests
         Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
     }
 
+    [Theory]
+    [InlineData(" google")]
+    [InlineData("Google\t")]
+    [InlineData("\tOllama ")]
+    public void Validate_ProviderWithSurroundingWhitespace_ShouldExplainRejection(string provider)
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { Provider = provider };
+
+        ArgumentException error = Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
+
+        error.ParamName.ShouldBe(nameof(config.Provider));
+        error.Message.ShouldContain("leading or trailing whitespace");
+    }
+
     [Fact]
     public void Validate_DimensionsZero_ShouldThrow()
     {

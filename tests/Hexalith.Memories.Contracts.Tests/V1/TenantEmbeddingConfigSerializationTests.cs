@@ -76,6 +76,22 @@ public class TenantEmbeddingConfigSerializationTests
         deserialized.ReindexRequired.ShouldBeFalse();
     }
 
+    [Theory]
+    [InlineData("Google", "Gemini-Embedding-001", 768)]
+    [InlineData("Ollama", "Qwen3-Embedding:4B", 2560)]
+    public void RoundTrip_MixedCaseProviderAndModel_ShouldPreserveSpelling(string provider, string model, int dimensions)
+    {
+        TenantEmbeddingConfig original = CreateFullConfig() with { Provider = provider, Model = model, Dimensions = dimensions };
+
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+        using JsonDocument document = JsonDocument.Parse(json);
+        TenantEmbeddingConfig? deserialized = JsonSerializer.Deserialize<TenantEmbeddingConfig>(json, MemoriesJsonContext.Options);
+
+        document.RootElement.GetProperty("provider").GetString().ShouldBe(provider);
+        document.RootElement.GetProperty("model").GetString().ShouldBe(model);
+        deserialized.ShouldBe(original);
+    }
+
     [Fact]
     public void RoundTrip_OllamaOidcFields_ShouldPreserveAllValues()
     {

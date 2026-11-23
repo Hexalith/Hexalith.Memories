@@ -122,28 +122,24 @@ public sealed class EmbeddingVectorMigrationService(
     private static (TenantEmbeddingConfig? Config, string? Error) TryBuildTargetConfig(EmbeddingMigrationOptions options)
     {
         string provider = options.TargetProvider ?? EmbeddingProviderDefaults.OllamaProviderName;
-        TenantEmbeddingConfig defaults = string.Equals(provider, EmbeddingProviderDefaults.GoogleProviderName, StringComparison.OrdinalIgnoreCase)
-            ? EmbeddingProviderDefaults.Google()
-            : EmbeddingProviderDefaults.Ollama();
-
-        TenantEmbeddingConfig target = defaults with
-        {
-            Provider = provider,
-            Model = options.TargetModel ?? defaults.Model,
-            Dimensions = options.TargetDimensions ?? defaults.Dimensions,
-            ReindexRequired = false,
-        };
-
         try
         {
+            TenantEmbeddingConfig defaults = EmbeddingProviderDefaults.CreateDefaultForProvider(provider);
+            TenantEmbeddingConfig target = defaults with
+            {
+                Provider = provider,
+                Model = options.TargetModel ?? defaults.Model,
+                Dimensions = options.TargetDimensions ?? defaults.Dimensions,
+                ReindexRequired = false,
+            };
+
             EmbeddingProviderDefaults.Validate(target);
+            return (target, null);
         }
         catch (ArgumentException ex)
         {
             return (null, $"Invalid target embedding configuration: {EmbeddingMigrationRedactor.Redact(ex.Message)}");
         }
-
-        return (target, null);
     }
 
     private async Task<EmbeddingMigrationResult> DryRunAsync(
