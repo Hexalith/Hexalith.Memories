@@ -93,7 +93,7 @@ measurement below before customer-tenant approval. Add measured workflow/state, 
 FalkorDB, backup/replication, and policy headroom separately. If no valid coefficient exists for the proposed
 shape, stop provisioning rather than substituting another tenant's data or the float32 lower bound.
 
-## Tenant content-store measurement · 21 November 2026
+### Tenant content-store measurement · 21 November 2026
 
 Story 34.58 will charge logical bytes of live tenant-owned content. This synthetic measurement exercised the existing four-argument `DaprWorkflowPayloadStore` with its Redis ownership ledger, the default `ContentChunker`, Dapr 1.19.1, and the Redis Stack image pinned in the deployment manifest. It used a disposable instance and a single synthetic tenant. It measured the claim-check store before cleanup. [Payload writer](../../src/Hexalith.Memories.Server/Ingestion/DaprWorkflowPayloadStore.cs) · [Image pin](../../deploy/kubernetes/base/redis-statefulset.yaml)
 
