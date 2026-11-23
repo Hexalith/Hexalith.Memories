@@ -6,6 +6,7 @@
 namespace Hexalith.Memories.IntegrationTests.Tenants;
 
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
@@ -30,6 +31,8 @@ using StackExchange.Redis;
 public sealed class TenantIsolationIntegrationTests
 {
     private const long GraphQueryTimeoutMilliseconds = 30_000;
+    // Below the fixture Redis client's 5-second default asynchronous timeout.
+    private const long GraphMutationTimeoutMilliseconds = 2_000;
     private const string CollisionSourceNodeId = "shared-source";
     private const string CollisionTargetNodeId = "shared-target";
 
@@ -100,6 +103,43 @@ public sealed class TenantIsolationIntegrationTests
 
         AssertTraversalIsFixtureLocal(tenantATraversal, nodeMarkerA, edgeMarkerA, nodeMarkerB);
         AssertTraversalIsFixtureLocal(tenantBTraversal, nodeMarkerB, edgeMarkerB, nodeMarkerA);
+
+        TraversalNode original = tenantATraversal.Nodes[0];
+        TraversalNode foreign = tenantBTraversal.Nodes.Single(node => node.MemoryUnitId == original.MemoryUnitId);
+        (TraversalNode Node, string Field)[] plantedNodes =
+        [
+            (original with { ContentSnippet = foreign.ContentSnippet }, nameof(TraversalNode.ContentSnippet)),
+            (original with { ContentSnippet = original.ContentSnippet + " " + foreign.ContentSnippet }, nameof(TraversalNode.ContentSnippet)),
+            (original with { SourceUri = foreign.SourceUri }, nameof(TraversalNode.SourceUri)),
+            (original with { SourceUri = original.SourceUri + "/" + foreign.SourceUri }, nameof(TraversalNode.SourceUri)),
+        ];
+        foreach ((TraversalNode planted, string field) in plantedNodes)
+        {
+            TraversalResult mixed = tenantATraversal with { Nodes = [planted, .. tenantATraversal.Nodes.Skip(1)] };
+            Should.Throw<ShouldAssertException>(
+                () => AssertTraversalIsFixtureLocal(mixed, nodeMarkerA, edgeMarkerA, nodeMarkerB))
+                .Message.ShouldContain(field);
+        }
+
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get, $"/api/v1/tenants/{tenantB}/traverse?startNodeId={CollisionSourceNodeId}&depth=1");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", AspireIngestionPipelineFixture.MintServerBearer(tenantA));
+        using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(HttpOperationTimeout);
+        using HttpResponseMessage denial = await _fixture.MemoriesClient.SendAsync(request, timeout.Token);
+        denial.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        await using Stream denialBody = await denial.Content.ReadAsStreamAsync(timeout.Token);
+        using JsonDocument denialDocument = await JsonDocument.ParseAsync(denialBody, cancellationToken: timeout.Token);
+        JsonProperty[] errorProperties = [.. denialDocument.RootElement.EnumerateObject()];
+        errorProperties.Select(property => property.Name).Order(StringComparer.Ordinal)
+            .ShouldBe(["code", "message", "suggestion"]);
+        denialDocument.RootElement.GetProperty("code").GetString().ShouldBe("TENANT_FORBIDDEN");
+        foreach (JsonProperty property in errorProperties)
+        {
+            string value = property.Value.GetString().ShouldNotBeNull();
+            value.ShouldNotContain(nodeMarkerB);
+            value.ShouldNotContain(edgeMarkerB);
+        }
     }
 
     [Fact]
@@ -128,35 +168,61 @@ public sealed class TenantIsolationIntegrationTests
             EdgeType.CausedBy,
             EdgeTypeDefaults.CausedBy,
             edgeMarkerB);
-        ResultSet plantedMarker = await ExecuteGraphQueryAsync(falkor.SelectGraph(tenantA), query, parameters);
-        plantedMarker.ShouldNotBeEmpty("the foreign marker mutation must reach tenant A's collision edge.");
+        NFalkorDB.Graph tenantAGraph = falkor.SelectGraph(tenantA);
+        try
+        {
+            ResultSet plantedMarker = await ExecuteGraphMutationAsync(tenantAGraph, query, parameters, TestContext.Current.CancellationToken);
+            plantedMarker.ShouldNotBeEmpty("the foreign marker mutation must reach tenant A's collision edge.");
 
-        TraversalResult traversal = await TraverseAuthenticatedAsync(tenantA);
-        TraversalEdgeInfo[] traversedEdges = [.. traversal.Nodes.SelectMany(node => node.Edges)];
-        traversedEdges.ShouldNotBeEmpty();
-        traversedEdges.ShouldAllBe(
-            edge => string.Equals(edge.VerifiedBy, edgeMarkerB, StringComparison.Ordinal),
-            "the authenticated traversal must expose the deliberately planted foreign edge marker.");
+            TraversalResult traversal = await TraverseAuthenticatedAsync(tenantA);
+            TraversalEdgeInfo[] traversedEdges = [.. traversal.Nodes.SelectMany(node => node.Edges)];
+            traversedEdges.ShouldNotBeEmpty();
+            traversedEdges.ShouldAllBe(
+                edge => string.Equals(edge.VerifiedBy, edgeMarkerB, StringComparison.Ordinal),
+                "the authenticated traversal must expose the deliberately planted foreign edge marker.");
 
-        ShouldAssertException assertion = Should.Throw<ShouldAssertException>(() => AssertTraversalIsFixtureLocal(
-            traversal,
-            nodeMarkerA,
-            edgeMarkerA,
-            nodeMarkerB));
-        assertion.Message.ShouldContain("tenant-local edge marker");
+            ShouldAssertException assertion = Should.Throw<ShouldAssertException>(() => AssertTraversalIsFixtureLocal(
+                traversal,
+                nodeMarkerA,
+                edgeMarkerA,
+                nodeMarkerB));
+            assertion.Message.ShouldContain("tenant-local edge marker");
 
-        TraversalResult tenantBTraversal = await TraverseAuthenticatedAsync(tenantB);
-        AssertTraversalIsFixtureLocal(tenantBTraversal, nodeMarkerB, edgeMarkerB, nodeMarkerA);
+            TraversalResult tenantBTraversal = await TraverseAuthenticatedAsync(tenantB);
+            AssertTraversalIsFixtureLocal(tenantBTraversal, nodeMarkerB, edgeMarkerB, nodeMarkerA);
 
-        // The plant must not rewrite tenant B. Seed writes previousConfidence: null;
-        // BuildUpdateEdgeConfidence would set it. HTTP traversal omits null
-        // PreviousConfidence, so read the graph property the same way collision edge IDs are read.
-        TraversalEdgeInfo[] tenantBEdges = [.. tenantBTraversal.Nodes.SelectMany(node => node.Edges)];
-        tenantBEdges.ShouldAllBe(edge => edge.PreviousConfidence == null);
-        object?[] tenantBPreviousConfidence = await ReadCollisionEdgePreviousConfidenceAsync(tenantB);
-        tenantBPreviousConfidence.ShouldAllBe(
-            value => value == null,
-            "planting tenant B's edge marker into tenant A must leave tenant B's previousConfidence unset.");
+            // The plant must not rewrite tenant B. Seed writes previousConfidence: null;
+            // BuildUpdateEdgeConfidence would set it. HTTP traversal omits null
+            // PreviousConfidence, so read the graph property the same way collision edge IDs are read.
+            TraversalEdgeInfo[] tenantBEdges = [.. tenantBTraversal.Nodes.SelectMany(node => node.Edges)];
+            tenantBEdges.ShouldAllBe(edge => edge.PreviousConfidence == null);
+            object?[] tenantBPreviousConfidence = await ReadCollisionEdgePreviousConfidenceAsync(tenantB);
+            tenantBPreviousConfidence.ShouldAllBe(
+                value => value == null,
+                "planting tenant B's edge marker into tenant A must leave tenant B's previousConfidence unset.");
+        }
+        finally
+        {
+            const string restoreQuery = """
+                MATCH (:MemoryUnit {id: $sourceId})-[edge:CAUSED_BY]->(:MemoryUnit {id: $targetId})
+                SET edge.verifiedBy = $verifiedBy
+                REMOVE edge.previousConfidence
+                RETURN edge.verifiedBy AS verifiedBy, edge.previousConfidence AS previousConfidence
+                """;
+            Dictionary<string, object> restoreParameters = new()
+            {
+                ["sourceId"] = CollisionSourceNodeId,
+                ["targetId"] = CollisionTargetNodeId,
+                ["verifiedBy"] = edgeMarkerA,
+            };
+            ResultSet restored = await ExecuteGraphMutationAsync(
+                tenantAGraph, restoreQuery, restoreParameters, CancellationToken.None);
+            var restoredEdge = restored.ShouldHaveSingleItem("The mutated fixture edge must be restored.");
+            restoredEdge.GetValue<string>("verifiedBy").ShouldBe(edgeMarkerA);
+            restoredEdge.GetValue<object>("previousConfidence").ShouldBeNull();
+        }
+
+        AssertTraversalIsFixtureLocal(await TraverseAuthenticatedAsync(tenantA), nodeMarkerA, edgeMarkerA, nodeMarkerB);
     }
 
     [Fact]
@@ -244,6 +310,17 @@ public sealed class TenantIsolationIntegrationTests
         string foreignKey = await SeedActiveSemanticHashAsync(tenantA, "semantic-foreign-marker", storedTenantId: tenantB);
         string missingKey = await SeedActiveSemanticHashAsync(tenantA, "semantic-missing-marker", storedTenantId: null);
 
+        string emptyDescriptionKey = IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenantA, "empty-description");
+        string naturalLanguagePrefix = IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix(tenantA);
+        byte[] binaryKey = [.. Encoding.UTF8.GetBytes(naturalLanguagePrefix), 0xFF];
+        IDatabase redis = _fixture.RedisConnection.GetDatabase();
+        await redis.HashSetAsync(emptyDescriptionKey,
+            [new HashEntry("memoryUnitId", "empty-description"), new HashEntry("tenantId", tenantB),
+                new HashEntry("naturalLanguageDescription", string.Empty)]);
+        await redis.HashSetAsync((RedisKey)binaryKey,
+            [new HashEntry("memoryUnitId", (RedisValue)new byte[] { 0xFE }), new HashEntry("tenantId", tenantA),
+                new HashEntry("naturalLanguageDescription", "binary fixture")]);
+
         using HttpResponseMessage response = await _fixture.MemoriesClient.PostAsync(
             $"/api/v1/tenants/{tenantA}/verify", null);
 
@@ -260,6 +337,11 @@ public sealed class TenantIsolationIntegrationTests
             $"key '{foreignKey}' under tenant '{tenantA}' has a foreign tenantId marker '{tenantB}': confirmed marker mismatch (possible contamination)");
         semanticCheck.Details.ShouldContain(
             $"key '{missingKey}' under tenant '{tenantA}' is missing its tenantId marker: incomplete evidence, not confirmed cross-tenant leakage");
+        semanticCheck.Details.ShouldContain(
+            $"natural-language semantic key '{emptyDescriptionKey}' under tenant '{tenantA}' has a foreign tenantId marker '{tenantB}'");
+        string binaryDigest = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(binaryKey));
+        semanticCheck.Details.ShouldContain($"[SHA256:{binaryDigest}]");
+        semanticCheck.Details.ShouldContain("evidence-classification gap (non-UTF-8 key or memoryUnitId)");
         semanticCheck.Remediation.ShouldNotBeNull();
         semanticCheck.Remediation.ShouldContain($"'{foreignKey}'");
         semanticCheck.Remediation.ShouldContain($"'{missingKey}'");
@@ -316,7 +398,7 @@ public sealed class TenantIsolationIntegrationTests
                 "graph-isolation@integration.test",
                 fixtureTimestamp,
                 "{}");
-            _ = await ExecuteGraphQueryAsync(tenantGraph, query, parameters);
+            _ = await ExecuteGraphMutationAsync(tenantGraph, query, parameters, TestContext.Current.CancellationToken);
         }
 
         (string edgeQuery, IDictionary<string, object> edgeParameters) = _graphQueryBuilder.BuildRestoreEdge(
@@ -328,7 +410,7 @@ public sealed class TenantIsolationIntegrationTests
             fixtureTimestamp,
             edgeMarker,
             previousConfidence: null);
-        _ = await ExecuteGraphQueryAsync(tenantGraph, edgeQuery, edgeParameters);
+        _ = await ExecuteGraphMutationAsync(tenantGraph, edgeQuery, edgeParameters, TestContext.Current.CancellationToken);
     }
 
     private async Task<long> ReadCollisionEdgeIdAsync(string tenantId)
@@ -414,6 +496,19 @@ public sealed class TenantIsolationIntegrationTests
             .QueryAsync(query, parameters, CommandFlags.None, GraphQueryTimeoutMilliseconds)
             .WaitAsync(GraphQueryTimeout, TestContext.Current.CancellationToken);
 
+    private static async Task<ResultSet> ExecuteGraphMutationAsync(
+        NFalkorDB.Graph graph,
+        string query,
+        IDictionary<string, object> parameters,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        // Observe the bounded command before cancellation can let cleanup race the mutation.
+        ResultSet result = await graph.QueryAsync(query, parameters, CommandFlags.None, GraphMutationTimeoutMilliseconds);
+        cancellationToken.ThrowIfCancellationRequested();
+        return result;
+    }
+
     private static void AssertTraversalIsFixtureLocal(
         TraversalResult traversal,
         string ownNodeMarker,
@@ -446,10 +541,18 @@ public sealed class TenantIsolationIntegrationTests
         // NullReferenceException instead of naming the field that lost its tenant marker.
         traversal.Nodes.ShouldAllBe(node => node.ContentSnippet != null);
         traversal.Nodes.ShouldAllBe(node => node.SourceUri != null);
-        traversal.Nodes.ShouldAllBe(node => node.ContentSnippet.StartsWith(ownNodeMarker, StringComparison.Ordinal));
-        traversal.Nodes.ShouldAllBe(node => !node.ContentSnippet.Contains(foreignNodeMarker, StringComparison.Ordinal));
-        traversal.Nodes.ShouldAllBe(node => node.SourceUri.Contains(ownNodeMarker, StringComparison.Ordinal));
-        traversal.Nodes.ShouldAllBe(node => !node.SourceUri.Contains(foreignNodeMarker, StringComparison.Ordinal));
+        traversal.Nodes.ShouldAllBe(
+            node => node.ContentSnippet.StartsWith(ownNodeMarker, StringComparison.Ordinal),
+            "Every traversal node must expose the tenant-local ContentSnippet marker.");
+        traversal.Nodes.ShouldAllBe(
+            node => !node.ContentSnippet.Contains(foreignNodeMarker, StringComparison.Ordinal),
+            "Traversal ContentSnippet values must exclude the foreign marker.");
+        traversal.Nodes.ShouldAllBe(
+            node => node.SourceUri.Contains(ownNodeMarker, StringComparison.Ordinal),
+            "Every traversal node must expose the tenant-local SourceUri marker.");
+        traversal.Nodes.ShouldAllBe(
+            node => !node.SourceUri.Contains(foreignNodeMarker, StringComparison.Ordinal),
+            "Traversal SourceUri values must exclude the foreign marker.");
 
         TraversalEdgeInfo[] edges = [.. traversal.Nodes.SelectMany(node => node.Edges)];
         edges.Length.ShouldBe(2, "Both endpoint nodes must expose exactly one incident view of the seeded relationship.");

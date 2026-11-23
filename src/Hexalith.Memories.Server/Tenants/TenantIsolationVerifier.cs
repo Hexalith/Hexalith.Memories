@@ -7,6 +7,9 @@ namespace Hexalith.Memories.Server.Tenants;
 
 using System.Diagnostics;
 using System.Net;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Unicode;
 
 using Dapr.Actors;
 
@@ -22,22 +25,22 @@ using StackExchange.Redis;
 /// Confirms that architectural isolation guarantees hold — does not enforce isolation at runtime.</summary>
 public sealed partial class TenantIsolationVerifier
 {
-    // Index positions into both _semanticDiscriminatorFields and the HashGetAsync result it drives; keep the
-    // field order and these constants in lock-step.
+    // Positions in the semantic discriminator reply.
     private const int MemoryUnitIdFieldIndex = 0;
     private const int TenantIdFieldIndex = 1;
     private const int ChunkSequenceFieldIndex = 2;
     private const int ChunkStartOffsetFieldIndex = 3;
     private const int ChunkEndOffsetFieldIndex = 4;
+    private const int NaturalLanguageDescriptionFieldIndex = 5;
+    private const int EvidenceValueByteLimit = 256;
 
-    private static readonly RedisValue[] _semanticDiscriminatorFields =
-    [
-        "memoryUnitId",
-        "tenantId",
-        "chunkSequence",
-        "chunkStartOffset",
-        "chunkEndOffset",
-    ];
+    // Keep the field order and the discriminator indexes in lock-step. Return presence only for
+    // the description so diagnostic reads never transfer stored natural-language text.
+    private const string ReadSemanticDiscriminators = """
+        local fields = redis.call('HMGET', KEYS[1], 'memoryUnitId', 'tenantId', 'chunkSequence', 'chunkStartOffset', 'chunkEndOffset')
+        fields[6] = redis.call('HEXISTS', KEYS[1], 'naturalLanguageDescription')
+        return fields
+        """;
 
     private static readonly TimeSpan _embeddingConfigurationLookupTimeout = TimeSpan.FromSeconds(5);
 
@@ -540,7 +543,7 @@ public sealed partial class TenantIsolationVerifier
         }
 
         IDatabase db = _redis.GetDatabase();
-        HashSet<string> scannedKeys = new(StringComparer.Ordinal);
+        HashSet<RedisKey> scannedKeys = [];
         int scannedCount = 0;
         foreach (IServer server in servers)
         {
@@ -548,8 +551,7 @@ public sealed partial class TenantIsolationVerifier
             await foreach (RedisKey key in server.KeysAsync(pattern: keyPrefix + "*", pageSize: 250).WithCancellation(ct))
             {
                 ct.ThrowIfCancellationRequested();
-                string? keyText = key.ToString();
-                if (string.IsNullOrWhiteSpace(keyText) || !scannedKeys.Add(keyText))
+                if (!scannedKeys.Add(key))
                 {
                     continue;
                 }
@@ -562,23 +564,20 @@ public sealed partial class TenantIsolationVerifier
                 }
                 catch (RedisServerException ex) when (IsWrongType(ex))
                 {
-                    evidence.AddWrongType(
-                        $"syntactic key '{key}' under tenant '{tenantId}' has the wrong Redis value type (expected a hash)");
+                    evidence.AddWrongType(key, tenantId);
                     continue;
                 }
 
                 string actualTenantId = storedTenantId.ToString();
                 if (string.IsNullOrWhiteSpace(actualTenantId))
                 {
-                    evidence.AddMarkerMismatch(new MarkerMismatchEvidence(
-                        MarkerDefectKind.Missing, keyText, $"syntactic key '{key}' under tenant '{tenantId}' is missing tenantId field"));
+                    evidence.AddMarkerMismatch(MarkerDefectKind.Missing, key, tenantId, storedTenantId);
                     continue;
                 }
 
                 if (!string.Equals(actualTenantId, tenantId, StringComparison.Ordinal))
                 {
-                    evidence.AddMarkerMismatch(new MarkerMismatchEvidence(
-                        MarkerDefectKind.Foreign, keyText, $"syntactic key '{key}' under tenant '{tenantId}' has tenantId field '{actualTenantId}'"));
+                    evidence.AddMarkerMismatch(MarkerDefectKind.Foreign, key, tenantId, storedTenantId);
                 }
             }
         }
@@ -601,7 +600,7 @@ public sealed partial class TenantIsolationVerifier
         }
 
         IDatabase db = _redis.GetDatabase();
-        HashSet<string> scannedKeys = new(StringComparer.Ordinal);
+        HashSet<RedisKey> scannedKeys = [];
         int activeCount = 0;
         int excludedCount = 0;
         foreach (IServer server in servers)
@@ -610,46 +609,44 @@ public sealed partial class TenantIsolationVerifier
             await foreach (RedisKey key in server.KeysAsync(pattern: keyPrefix + "*", pageSize: 250).WithCancellation(ct))
             {
                 ct.ThrowIfCancellationRequested();
-                string? keyText = key.ToString();
-                if (string.IsNullOrWhiteSpace(keyText) || !scannedKeys.Add(keyText))
+                if (!scannedKeys.Add(key))
                 {
                     continue;
                 }
 
-                RedisValue[] discriminatorValues;
-                bool hasNaturalLanguageDescription;
+                RedisResult[] discriminatorValues;
                 try
                 {
-                    discriminatorValues = await db
-                        .HashGetAsync(key, _semanticDiscriminatorFields, CommandFlags.DemandMaster)
+                    discriminatorValues = (RedisResult[])(await db
+                        .ScriptEvaluateAsync(ReadSemanticDiscriminators, [key], [], CommandFlags.DemandMaster)
                         .WaitAsync(ct)
-                        .ConfigureAwait(false);
-                    ct.ThrowIfCancellationRequested();
-                    hasNaturalLanguageDescription = await db
-                        .HashExistsAsync(key, "naturalLanguageDescription", CommandFlags.DemandMaster)
-                        .WaitAsync(ct)
-                        .ConfigureAwait(false);
+                        .ConfigureAwait(false))!;
                 }
                 catch (RedisServerException ex) when (IsWrongType(ex))
                 {
-                    evidence.AddClassificationGap(
-                        $"Semantic key '{key}' under tenant '{tenantId}' has an evidence-classification gap (wrong Redis value type)");
+                    evidence.AddClassificationGap(key, tenantId, "wrong Redis value type");
+                    continue;
+                }
+
+                RedisValue memoryUnitId = (RedisValue)discriminatorValues[MemoryUnitIdFieldIndex];
+                if (!Utf8.IsValid((byte[]?)key) || !Utf8.IsValid((byte[]?)memoryUnitId))
+                {
+                    evidence.AddClassificationGap(key, tenantId, "non-UTF-8 key or memoryUnitId");
                     continue;
                 }
 
                 SemanticKeyFamily family = SemanticKeyFamilyClassifier.Classify(
                     tenantId,
                     key,
-                    discriminatorValues[MemoryUnitIdFieldIndex],
-                    discriminatorValues[ChunkSequenceFieldIndex],
-                    discriminatorValues[ChunkStartOffsetFieldIndex],
-                    discriminatorValues[ChunkEndOffsetFieldIndex],
-                    hasNaturalLanguageDescription);
+                    memoryUnitId,
+                    (RedisValue)discriminatorValues[ChunkSequenceFieldIndex],
+                    (RedisValue)discriminatorValues[ChunkStartOffsetFieldIndex],
+                    (RedisValue)discriminatorValues[ChunkEndOffsetFieldIndex],
+                    (long)discriminatorValues[NaturalLanguageDescriptionFieldIndex] == 1);
 
                 if (family is SemanticKeyFamily.Unknown or SemanticKeyFamily.Ambiguous)
                 {
-                    evidence.AddClassificationGap(
-                        $"Semantic key '{key}' under tenant '{tenantId}' has an evidence-classification gap ({family.ToString().ToLowerInvariant()})");
+                    evidence.AddClassificationGap(key, tenantId, family.ToString().ToLowerInvariant());
                     continue;
                 }
 
@@ -660,7 +657,8 @@ public sealed partial class TenantIsolationVerifier
                 }
 
                 activeCount++;
-                string actualTenantId = discriminatorValues[TenantIdFieldIndex].ToString();
+                RedisValue storedTenantId = (RedisValue)discriminatorValues[TenantIdFieldIndex];
+                string actualTenantId = storedTenantId.ToString();
                 string storageName = family switch
                 {
                     SemanticKeyFamily.ActiveRawBase => "raw semantic base",
@@ -670,24 +668,43 @@ public sealed partial class TenantIsolationVerifier
                 };
                 if (string.IsNullOrWhiteSpace(actualTenantId))
                 {
-                    evidence.AddMarkerMismatch(new MarkerMismatchEvidence(
-                        MarkerDefectKind.Missing,
-                        keyText,
-                        $"{storageName} key '{keyText}' under tenant '{tenantId}' is missing its tenantId marker: incomplete evidence, not confirmed cross-tenant leakage — expected tenant '{tenantId}'"));
+                    evidence.AddMarkerMismatch(MarkerDefectKind.Missing, key, tenantId, storedTenantId, storageName);
                     continue;
                 }
 
                 if (!string.Equals(actualTenantId, tenantId, StringComparison.Ordinal))
                 {
-                    evidence.AddMarkerMismatch(new MarkerMismatchEvidence(
-                        MarkerDefectKind.Foreign,
-                        keyText,
-                        $"{storageName} key '{keyText}' under tenant '{tenantId}' has a foreign tenantId marker '{actualTenantId}': confirmed marker mismatch (possible contamination) — expected tenant '{tenantId}', observed tenant '{actualTenantId}'"));
+                    evidence.AddMarkerMismatch(MarkerDefectKind.Foreign, key, tenantId, storedTenantId, storageName);
                 }
             }
         }
 
         return (activeCount, excludedCount);
+    }
+
+    private static string FormatEvidenceValue(byte[] bytes, string value)
+    {
+        if (bytes.Length <= EvidenceValueByteLimit && Utf8.IsValid(bytes))
+        {
+            return value;
+        }
+
+        string digest = Convert.ToHexString(SHA256.HashData(bytes));
+        string suffix = $"… [SHA256:{digest}]";
+        int remainingBytes = EvidenceValueByteLimit - Encoding.UTF8.GetByteCount(suffix);
+        int prefixLength = 0;
+        foreach (Rune rune in value.EnumerateRunes())
+        {
+            remainingBytes -= rune.Utf8SequenceLength;
+            if (remainingBytes < 0)
+            {
+                break;
+            }
+
+            prefixLength += rune.Utf16SequenceLength;
+        }
+
+        return value[..prefixLength] + suffix;
     }
 
     /// <summary>Distinguishes a missing tenant marker (incomplete evidence) from a foreign tenant marker
@@ -714,7 +731,7 @@ public sealed partial class TenantIsolationVerifier
     private readonly record struct MarkerMismatchEvidence(MarkerDefectKind Kind, string Key, string Detail);
 
     /// <summary>Builds non-destructive, per-defect-kind remediation guidance for a failed <c>SemanticIsolation</c>
-    /// check, naming the exact affected key(s) and never recommending blanket prefix/hash deletion.</summary>
+    /// check with affected key identifiers and tenant-scoped guidance.</summary>
     /// <param name="tenantId">The requested tenant identifier.</param>
     /// <param name="expectedDimensions">The tenant's validated configured embedding dimension count.</param>
     /// <param name="hasNonMarkerProblem">Whether the check also reported a non-marker problem (index prefix/field
@@ -747,6 +764,11 @@ public sealed partial class TenantIsolationVerifier
         if (evidence.HasOmittedFindings)
         {
             sentences.Add("Review all findings in the tenant prefixes, including those omitted from the sample, and verify provenance before repair or reindexing.");
+        }
+
+        if (evidence.HasAbbreviatedKeys)
+        {
+            sentences.Add("Match abbreviated key references by the SHA256 of the original Redis key bytes before applying any repair.");
         }
 
         if (hasForeignMarker)

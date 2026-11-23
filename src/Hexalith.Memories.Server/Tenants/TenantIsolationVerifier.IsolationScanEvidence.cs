@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Tenants;
 
+using StackExchange.Redis;
+
 public sealed partial class TenantIsolationVerifier
 {
     /// <summary>Collects samples and totals for tenant prefix scans.</summary>
@@ -31,14 +33,18 @@ public sealed partial class TenantIsolationVerifier
             || _foreignMarkerCount > SampleLimitPerCategory || _wrongTypeCount > SampleLimitPerCategory;
 
         /// <summary>Counts a non-hash syntactic key and retains a bounded sample.</summary>
-        /// <param name="detail">The diagnostic describing the affected key.</param>
-        public void AddWrongType(string detail)
+        /// <param name="key">The scanned key.</param>
+        /// <param name="tenantId">The tenant under investigation.</param>
+        public void AddWrongType(RedisKey key, string tenantId)
         {
             if (++_wrongTypeCount <= SampleLimitPerCategory)
             {
-                _wrongTypeSamples.Add(detail);
+                _wrongTypeSamples.Add($"syntactic key '{FormatKey(key)}' under tenant '{tenantId}' has the wrong Redis value type (expected a hash)");
             }
         }
+
+        /// <summary>Gets a value indicating whether a key reference was abbreviated.</summary>
+        public bool HasAbbreviatedKeys { get; private set; }
 
         /// <summary>Builds the operator guidance for syntactic key findings collected so far.</summary>
         /// <param name="tenantId">The requested tenant identifier.</param>
@@ -56,6 +62,11 @@ public sealed partial class TenantIsolationVerifier
                     $"Inspect and quarantine the keys named in the tenantId findings. Verify their provenance before applying tenant-scoped marker repair or reindexing for tenant '{tenantId}'.");
             }
 
+            if (HasAbbreviatedKeys)
+            {
+                remediation.Add("Match abbreviated key references by the SHA256 of the original Redis key bytes before applying any repair.");
+            }
+
             if (HasOmittedFindings)
             {
                 remediation.Add("Review the remaining findings in the tenant prefix before making repairs.");
@@ -68,26 +79,52 @@ public sealed partial class TenantIsolationVerifier
         public IReadOnlyList<MarkerMismatchEvidence> MarkerSamples => _markerSamples;
 
         /// <summary>Counts a classification gap and retains its detail within the sample limit.</summary>
-        /// <param name="detail">The diagnostic text for the gap.</param>
-        public void AddClassificationGap(string detail)
+        /// <param name="key">The scanned key.</param>
+        /// <param name="tenantId">The tenant under investigation.</param>
+        /// <param name="reason">The classification result or wrong-type diagnostic.</param>
+        public void AddClassificationGap(RedisKey key, string tenantId, string reason)
         {
             if (++_classificationGapCount <= SampleLimitPerCategory)
             {
-                _classificationGapSamples.Add(detail);
+                _classificationGapSamples.Add(
+                    $"Semantic key '{FormatKey(key)}' under tenant '{tenantId}' has an evidence-classification gap ({reason})");
             }
         }
 
         /// <summary>Counts a marker defect and retains its evidence within the category's sample limit.</summary>
-        /// <param name="mismatch">The observed marker defect.</param>
-        public void AddMarkerMismatch(MarkerMismatchEvidence mismatch)
+        /// <param name="kind">The type of marker defect.</param>
+        /// <param name="key">The scanned key.</param>
+        /// <param name="tenantId">The tenant under investigation.</param>
+        /// <param name="storedMarker">The marker read from the hash.</param>
+        /// <param name="storageName">The semantic key family, or null for a syntactic key.</param>
+        public void AddMarkerMismatch(
+            MarkerDefectKind kind, RedisKey key, string tenantId, RedisValue storedMarker, string? storageName = null)
         {
-            int count = mismatch.Kind == MarkerDefectKind.Missing
-                ? ++_missingMarkerCount
-                : ++_foreignMarkerCount;
-            if (count <= SampleLimitPerCategory)
+            bool missing = kind == MarkerDefectKind.Missing;
+            int count = missing ? ++_missingMarkerCount : ++_foreignMarkerCount;
+            if (count > SampleLimitPerCategory)
             {
-                _markerSamples.Add(mismatch);
+                return;
             }
+
+            string displayKey = FormatKey(key);
+            string marker = missing ? string.Empty : FormatEvidenceValue(((byte[]?)storedMarker)!, storedMarker.ToString());
+            string detail = (storageName, missing) switch
+            {
+                (null, true) => $"syntactic key '{displayKey}' under tenant '{tenantId}' is missing tenantId field",
+                (null, false) => $"syntactic key '{displayKey}' under tenant '{tenantId}' has tenantId field '{marker}'",
+                (_, true) => $"{storageName} key '{displayKey}' under tenant '{tenantId}' is missing its tenantId marker: incomplete evidence, not confirmed cross-tenant leakage — expected tenant '{tenantId}'",
+                _ => $"{storageName} key '{displayKey}' under tenant '{tenantId}' has a foreign tenantId marker '{marker}': confirmed marker mismatch (possible contamination) — expected tenant '{tenantId}', observed tenant '{marker}'",
+            };
+            _markerSamples.Add(new MarkerMismatchEvidence(kind, displayKey, detail));
+        }
+
+        private string FormatKey(RedisKey key)
+        {
+            string fullKey = key.ToString();
+            string displayKey = FormatEvidenceValue(((byte[]?)key)!, fullKey);
+            HasAbbreviatedKeys |= !string.Equals(displayKey, fullKey, StringComparison.Ordinal);
+            return displayKey;
         }
 
         /// <summary>Appends retained samples and omitted counts to the check's problems.</summary>

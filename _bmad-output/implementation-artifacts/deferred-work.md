@@ -4384,7 +4384,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence (2026-08-12)"), 2026-09-01
 location: docs/operations/route-surface.md
 reason: - **Runbook proof text is duplicated across two operator documents.** - ID: 24.6-CR-W1 - Status: carried-forward - Source story: spec-24-6-graph-content-level-tenant-isolation-evidence - Target artifact: docs/operations/route-surface.md - Rationale: Roughly 30 lines of build, port-discovery, and proof-invocation text remain duplicated here and in companion `docs/operations/tenant-onboarding-offboarding.md`. `OperationalRunbookSetTests.GraphIsolationEvidenceBoundary_SeparatesStructuralAndContentProof` asserts that each section contains the required tokens; it does not compare the sections to each other, and the sections are not identical. Extracting shared documentation is outside the bounded proof closure. - Re-open trigger: Either operator document drops a required token, a later change treats the two sections as byte-identical, or the documentation build gains a supported shared-snippet mechanism.
-status: open
+status: done 2026-11-24
+resolution: The route contract links to the tenant runbook for one canonical graph proof procedure. The runbook guard verifies the link, proof identity, and commands. See spec-ten-deferred-tenant-isolation-evidence.md.
 
 ### DW-653: Collision fixtures remain in the shared real-backend topology.
 
@@ -4496,7 +4497,8 @@ resolution: The existing VerifyAsync_AlreadyCancelled_DoesNotDispatchBackendRead
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence (2026-08-13)"), 2026-09-01
 location: tests/Hexalith.Memories.Server.Tests/Authentication/ServerEndpointAuthorizationTests.cs
 reason: - **No `/traverse` denial rows for invalid or out-of-range `depth`.** - ID: 24.6-F5-W6 - Status: carried-forward - Source story: 24-6-graph-content-level-tenant-isolation-evidence - Target artifact: tests/Hexalith.Memories.Server.Tests/Authentication/ServerEndpointAuthorizationTests.cs - Rationale: The Story 20.2 denial-before-dependency rows cover missing and blank `startNodeId` but not a malformed or out-of-range `depth`, where a 400 could pre-empt the 403 and reveal that the handler was reached. Beyond AC1's stated boundary. - Re-open trigger: `depth` validation moves relative to the tenant authorization filter, or a new query parameter is added to the traverse route.
-status: open
+status: done 2026-11-24
+resolution: The endpoint authorization theory covers malformed depth and both bounds. All cases return TENANT_FORBIDDEN before backend reads. See spec-ten-deferred-tenant-isolation-evidence.md.
 
 ### DW-669: Restart regression dereferences an actor config without a null guard.
 
@@ -4535,7 +4537,8 @@ resolution: HTTP verifier tests use a named uniqueness assertion for core checks
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence — sixth pass (2026-08-13)"), 2026-09-01
 location: tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs
 reason: - **Node-marker assertions lack a mutation-sensitivity control.** - ID: 24.6-F6-W4 - Status: carried-forward - Source story: 24-6-graph-content-level-tenant-isolation-evidence - Target artifact: tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs - Rationale: The positive real-backend fixture proves tenant-local node and edge markers, while the planted-marker mutation control exercises only the edge-marker assertion. The Administrator ratified C1's completed boundary as edge-only for mutation sensitivity; a node-marker control remains useful hardening but is outside that boundary. - Re-open trigger: A node-marker assertion is weakened or removed, a foreign-node regression appears, or Story 24.6's ratified C1 mutation-sensitivity boundary is reopened.
-status: open
+status: done 2026-11-24
+resolution: The live collision proof swaps each node marker field independently with the corresponding foreign node value and verifies that its locality assertion rejects the swap. See spec-ten-deferred-tenant-isolation-evidence.md.
 
 ### DW-674: Graph-isolation verification does not convert a FalkorDB `RedisTimeoutException` into a failed backend check.
 
@@ -4614,14 +4617,16 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence — eighth pass (2026-08-14)"), 2026-09-01
 location: tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs
 reason: - **The planted-marker negative control leaves its mutation in a provisioned tenant graph and is now a required CI surface.** - ID: 24.6-F8-W3 - Status: carried-forward - Source story: 24-6-graph-content-level-tenant-isolation-evidence - Target artifact: tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs - Rationale: `VerifyTenant_PlantedForeignGraphEdgeMarker_CollisionAssertionsDetectLeakage` writes a foreign edge marker into tenant A's real graph with no teardown, and this range pinned it as a required `integration-fast` method surface. Each run provisions fresh GUID-suffixed tenants, so the corruption does not cross runs; the residual concern is that pinning a deliberately data-corrupting method into the required lane widens exactly the fixture-cleanup risk `24.6-CR-W2` already describes, without either entry recording the change. - Re-open trigger: A test outside this method observes a foreign marker on a shared fixture tenant, or the fixture moves to reused rather than per-run tenant identifiers.
-status: open
+status: done 2026-11-24
+resolution: The planted-edge control restores the fixture marker and previous-confidence state in finally and verifies the restored traversal and persisted state. See spec-ten-deferred-tenant-isolation-evidence.md.
 
 ### DW-686: The new assertions lack defensive guards that would name the failing field instead of throwing.
 
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence — eighth pass (2026-08-14)"), 2026-09-01
 location: tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs
 reason: - **The new assertions lack defensive guards that would name the failing field instead of throwing.** - ID: 24.6-F8-W4 - Status: carried-forward - Source story: 24-6-graph-content-level-tenant-isolation-evidence - Target artifact: tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs - Rationale: Six hardening gaps were identified across the new assertions: no null guards on `traversal.Nodes`, `traversal.GapMarkers`, or per-node `Edges`; no already-cancelled `CancellationToken` case for `VerifyAsync`; no empty or null `GRAPH.LIST` case pinning `ParseGraphList`; `Single()` rather than `ShouldHaveSingleItem` for the graph-check lookup; no linked cancellation token on the seed query, so a command abandoned by `WaitAsync` is not actually cancelled; and no null guard on the OpenBao recovery tenant's embedding configuration. Each degrades diagnosis quality on failure rather than weakening the proof — the assertions themselves fail closed — so they are hardening, not correctness defects. `24.6-F6-W3` already covers the `Single()` case alone. - Re-open trigger: Any of these sites fails with a bare `NullReferenceException` or `InvalidOperationException` in CI, or the seed query is observed duplicating relationships.
-status: open
+status: done 2026-11-24
+resolution: The earlier null, lookup, and cancellation guards remain covered. New empty/null GRAPH.LIST cases fail closed, and collision seeding awaits each bounded graph mutation before honoring cancellation. See spec-ten-deferred-tenant-isolation-evidence.md.
 
 ### DW-687: Older Story 27.2 and `spec-gh-30838751196` still describe a standalone Access Telemetry AppHost for the routed Dapr proof.
 
@@ -4732,7 +4737,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence — eighth pass (2026-08-14)"), 2026-09-01
 location: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs
 reason: - **Optimize ScanSemanticHashPrefixForTenantEvidenceAsync to single Redis command round-trip per key.** - ID: 24.6-F8-W7 - Status: carried-forward - Source story: 24-6-graph-content-level-tenant-isolation-evidence - Target artifact: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs - Re-open trigger: Story 24.8 optimizes semantic hash prefix scanning performance. - Rationale: For every scanned key, `ScanSemanticHashPrefixForTenantEvidenceAsync` executes separate `HashGetAsync` and `HashExistsAsync` calls; retrieving `naturalLanguageDescription` in the discriminator batch avoids redundant round-trips. Pre-existing behavior owned by Story 24.8.
-status: open
+status: done 2026-11-24
+resolution: One read-only Redis script on the primary reads the discriminator fields and reports description presence without returning its text. Tests cover exact calls, empty descriptions, cancellation, wrong value types, and duplicate discovery. See spec-ten-deferred-tenant-isolation-evidence.md.
 
 ### DW-703: Broaden IsEmbeddingConfigurationUnavailable exception filters in TenantIsolationVerifier.
 
@@ -4781,7 +4787,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-8-semantic-isolation-key-family-classification (2026-08-31)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-24-8-semantic-isolation-key-family-classification.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-24-8-semantic-isolation-key-family-classification.md` summary: The two-round-trip discriminator read was not folded into one batched call. evidence: `ScanSemanticHashPrefixForTenantEvidenceAsync` still issues a separate `HashGetAsync` (5 fields) and `HashExistsAsync` (`naturalLanguageDescription`) per scanned key. This is the same unresolved gap as carried-forward ledger item `24.6-F8-W7`, which already named Story 24.8 as its natural closure point; this diff did not close it.
-status: open
+status: done 2026-11-24
+resolution: Same underlying read as DW-702. HMGET and HEXISTS run inside one Redis script with no separate client request. See spec-ten-deferred-tenant-isolation-evidence.md.
 
 ### DW-711: `references/Hexalith.Tenants/src/Hexalith.Tenants.AppHost/Program.cs` still calls `AddHexalithMemoriesSearchIndexServer` with the retired `string secretStoreComponentPath` positional argument and will fail to build once it references an updated `Hexalith.Memories.Aspire` package.
 
@@ -5242,9 +5249,14 @@ decision: 2026-11-01 keep-open — parked. Reopens only on the trigger: any Prod
   summary: Verify that the routine integration lane supplies the test JWT settings needed for Aspire fixture startup.
   evidence: Blind review B1 (medium if reproduced, pre-existing). `.github/workflows/ci.yml` invokes `tools/test.sh` without the test JWT environment used by the focused Story 5.4 runs; the earlier local env-free attempt failed EventStore gateway startup before any test body. A CI-equivalent run with those variables unset, or a workflow inspection showing another source of equivalent settings, would settle whether the routine lane is affected. Owner: CI/AppHost integration maintainers. Reopen when qualifying the routine integration lane.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-5-4-live-tenant-isolation-evidence.md`
-  summary: Add live authenticated HTTP proof that tenant A's bearer cannot traverse tenant B's graph route.
-  evidence: Blind review B2 (medium, pre-existing). The executed two-tenant graph method mints a bearer matching each route, while the focused in-memory endpoint theory proves A-to-B denial before graph dependencies but does not exercise the live Aspire transport. Owner: tenant authorization integration tests. Reopen with an A-bearer-to-B-route request that returns 403 `TENANT_FORBIDDEN` and no foreign response data.
+### DW-736: Add live authenticated HTTP proof that tenant A's bearer cannot traverse tenant B's graph route.
+
+origin: migrated from legacy ledger on 2026-11-24
+location: tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs
+source_spec: _bmad-output/implementation-artifacts/spec-5-4-live-tenant-isolation-evidence.md
+reason: Blind review B2 (medium, pre-existing). The executed two-tenant graph method mints a bearer matching each route, while the focused in-memory endpoint theory proves A-to-B denial before graph dependencies but does not exercise the live Aspire transport. Owner: tenant authorization integration tests. Reopen with an A-bearer-to-B-route request that returns 403 `TENANT_FORBIDDEN` and no foreign response data.
+status: done 2026-11-24
+resolution: The live two-tenant collision proof obtains both graphs with their own tokens, then sends tenant A’s bearer to the tenant B route and asserts 403 TENANT_FORBIDDEN without either foreign graph marker. See spec-ten-deferred-tenant-isolation-evidence.md.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-five-deferred-story-scope.md`
   summary: Support Setext parent and sibling scope boundaries with correct Markdown block context if that authoring syntax is adopted.
@@ -5808,14 +5820,24 @@ dotnet tests/Hexalith.Memories.IntegrationTests/bin/Debug/net11.0/Hexalith.Memor
   summary: Report incomplete Redis key coverage when a known cluster shard has no reachable primary.
   evidence: The scanner proceeds with any connected primary and does not account for expected slot ownership. A cluster-topology check needs to distinguish missing shard coverage from a disconnected seed or a completed failover.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-five-deferred-tenant-isolation-diagnostics.md`
-  summary: Set a byte budget for individual stored values displayed in tenant isolation evidence.
-  evidence: Sampling bounds the number of findings. A single unusually large key or stored tenant marker can still dominate the response. Define a display form that preserves evidence and lets operators identify affected keys.
+### DW-737: Set a byte budget for individual stored values displayed in tenant isolation evidence.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-five-deferred-tenant-isolation-diagnostics.md`
-  summary: Inspect surviving syntactic keys when the tenant index is missing and Redis is reachable.
-  evidence: The missing-index branch returns provisioning guidance before the prefix scan. Existing hashes can still need provenance review before the index is recreated.
-  resolution: 2026-11-23 — VerifyAsync_MissingSyntacticIndex_RetainsSurvivingKeyFindings proves the tenant prefix is scanned after the index disappears and that partial evidence survives a backend timeout.
+origin: migrated from legacy ledger on 2026-11-24
+location: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs
+source_spec: _bmad-output/implementation-artifacts/spec-five-deferred-tenant-isolation-diagnostics.md
+reason: Sampling bounds the number of findings. A single unusually large key or stored tenant marker can still dominate the response. Define a display form that preserves evidence and lets operators identify affected keys.
+status: done 2026-11-24
+resolution: Oversized and non-UTF-8 key or stored tenant-marker references use a Unicode-safe prefix and SHA256 of the original Redis bytes. Focused tests verify the 256-byte budget, both scan axes, and remediation. See spec-ten-deferred-tenant-isolation-evidence.md.
+
+### DW-738: Inspect surviving syntactic keys when the tenant index is missing and Redis is reachable.
+
+origin: migrated from legacy ledger on 2026-11-24
+location: tests/Hexalith.Memories.Server.Tests/Tenants/TenantIsolationVerifierTests.cs
+source_spec: _bmad-output/implementation-artifacts/spec-five-deferred-tenant-isolation-diagnostics.md
+reason: The missing-index branch returns provisioning guidance before the prefix scan. Existing hashes can still need provenance review before the index is recreated.
+prior-evidence: 2026-11-23 — VerifyAsync_MissingSyntacticIndex_RetainsSurvivingKeyFindings proves the tenant prefix is scanned after the index disappears and that partial evidence survives a backend timeout.
+status: done 2026-11-24
+resolution: VerifyAsync_MissingSyntacticIndex_RetainsSurvivingKeyFindings passed for complete and interrupted scans. The previously implemented scan and its partial evidence were verified on this source. See spec-ten-deferred-tenant-isolation-evidence.md.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-five-deferred-integration-tooling.md`
   summary: Refuse Bash test results paths that resolve to the repository root.

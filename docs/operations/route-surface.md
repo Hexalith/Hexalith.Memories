@@ -97,32 +97,11 @@ The `GraphIsolation` result returned by `POST /api/v1/tenants/{tenantId}/verify`
 structural database-existence evidence only. It uses `GRAPH.LIST` to confirm that the tenant-named
 database exists and performs no runtime content query. Independent execution of the real-backend method
 `TenantIsolationIntegrationTests.VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes` is required
-for content-isolation evidence. From the repository root, build the integration assembly first:
-
-```bash
-dotnet build tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj --configuration Debug --disable-build-servers -m:1 /nr:false
-```
-
-The cited proof provisions a full real Aspire/FalkorDB topology, typically takes several
-minutes, requires a container runtime, and seeds leftover fixture data in the tenant graphs.
-If Dapr placement and scheduler are not exposed at the CLI defaults (`localhost:50005` and
-`localhost:50006`), discover the active local service endpoints (for example from the local Dapr or
-container runtime configuration) and export them before running the proof:
-
-```bash
-export MEMORIES_DAPR_PLACEMENT_HOST_ADDRESS=<active-placement-host:port>
-export MEMORIES_DAPR_SCHEDULER_HOST_ADDRESS=<active-scheduler-host:port>
-```
-
-Then run the exact proof invocation:
-
-```bash
-DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.IntegrationTests/bin/Debug/net11.0/Hexalith.Memories.IntegrationTests.dll -method Hexalith.Memories.IntegrationTests.Tenants.TenantIsolationIntegrationTests.VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes
-```
+for content-isolation evidence. Use the repository build, Dapr endpoint discovery, and exact test
+invocation in the [tenant runbook's graph isolation evidence boundary](./tenant-onboarding-offboarding.md#graph-isolation-evidence-boundary).
 
 The authenticated canary traversal through `GET /api/v1/tenants/{tenantId}/traverse` is a separate
-operator check. Do not treat either that single-tenant canary or `GRAPH.LIST` as a replacement for the
-two-tenant collision proof.
+operator check.
 
 ## Pub/sub event-intake operation surface
 

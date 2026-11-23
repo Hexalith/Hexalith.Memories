@@ -82,6 +82,9 @@ public sealed class ServerEndpointAuthorizationTests : IDisposable
     // startNodeId would leak that the request reached the handler for a tenant the caller cannot access.
     [InlineData("/api/v1/tenants/tenant-b/traverse")]
     [InlineData("/api/v1/tenants/tenant-b/traverse?startNodeId=")]
+    [InlineData("/api/v1/tenants/tenant-b/traverse?startNodeId=memory-1&depth=bogus")]
+    [InlineData("/api/v1/tenants/tenant-b/traverse?startNodeId=memory-1&depth=-1")]
+    [InlineData("/api/v1/tenants/tenant-b/traverse?startNodeId=memory-1&depth=11")]
     public async Task TenantPathEndpoint_WithMismatchedTenant_ReturnsTenantForbiddenBeforeTenantState(string path)
     {
         using HttpClient client = CreateClient();

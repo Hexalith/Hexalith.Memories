@@ -694,6 +694,63 @@ public class TenantIsolationVerifierTests
     }
 
     [Fact]
+    public async Task VerifyAsync_OversizedStoredEvidence_AbbreviatesKeysAndMarkersByUtf8Bytes()
+    {
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer redisServer) = CreateVerifier(
+            [new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow)]);
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        SetupGraphList(falkorDb, "tenant-a");
+        string longId = string.Concat(Enumerable.Repeat("🌍", 100));
+        string longMarker = longId + "-foreign";
+        string syntacticKey = IndexSchemaDefinitions.BuildSyntacticKey("tenant-a", longId);
+        string semanticKey = IndexSchemaDefinitions.BuildSemanticKey("tenant-a", longId);
+        SetupRedisKeyScan(redisServer, IndexSchemaDefinitions.GetSyntacticKeyPrefix("tenant-a"), syntacticKey);
+        SetupRedisKeyScan(redisServer, IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a"), semanticKey);
+        SetupTenantIdField(redisDb, syntacticKey, longMarker);
+        SetupSemanticRecord(redisDb, semanticKey, longId, longMarker);
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
+
+        foreach ((string checkName, string key) in new[] { ("SyntacticIsolation", syntacticKey), ("SemanticIsolation", semanticKey) })
+        {
+            TenantIsolationCheckResult check = result.Checks.Single(check => check.CheckName == checkName);
+            check.Passed.ShouldBeFalse();
+            check.Details.ShouldNotBeNull();
+            check.Remediation.ShouldNotBeNull().ShouldContain("Match abbreviated key references by the SHA256");
+            foreach (string value in new[] { key, longMarker })
+            {
+                byte[] fullValue = System.Text.Encoding.UTF8.GetBytes(value);
+                string digest = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(fullValue));
+                string display = check.Details.Split('\'').First(part => part.EndsWith($"[SHA256:{digest}]", StringComparison.Ordinal));
+                display.ShouldNotContain("�");
+                System.Text.Encoding.UTF8.GetByteCount(display).ShouldBeLessThanOrEqualTo(256);
+                check.Details.ShouldNotContain(value);
+                check.Remediation.ShouldNotContain(value);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task VerifyAsync_EmptyGraphListing_DoesNotReportTenantGraphExists(bool nullArray)
+    {
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, _) = CreateVerifier(
+            [new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow)]);
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        RedisResult graphList = nullArray
+            ? RedisResult.Create((RedisResult[])null!)
+            : RedisResult.Create(Array.Empty<RedisResult>());
+        falkorDb.ExecuteAsync("GRAPH.LIST").Returns(graphList);
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
+
+        result.Checks.Single(check => check.CheckName == "GraphIsolation").Passed.ShouldBeFalse();
+        result.Checks.Single(check => check.CheckName == "IndexExistence").Passed.ShouldBeFalse();
+        AssertNoMutationDependencyCalls(redisDb, falkorDb);
+    }
+
+    [Fact]
     public async Task VerifyAsync_MissingSyntacticAndSemanticIndexes_ReportsEmptyScanBeforeProvisioning()
     {
         (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, _) = CreateVerifier(
@@ -1317,14 +1374,16 @@ public class TenantIsolationVerifierTests
             ]);
 
         SetupSuccessfulIndexInfo(redisDb, "tenant-a");
-        string plantedKey = IndexSchemaDefinitions.BuildSemanticKey("tenant-a", "payload-safety");
+        string prefix = IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix("tenant-a");
+        string plantedKey = prefix + "payload-safety";
         const string SensitivePayloadContent = "SENSITIVE-DOCUMENT-BODY-must-not-leak-into-diagnostics";
-        SetupRedisKeyScan(redisServer, IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a"), plantedKey);
+        SetupRedisKeyScan(redisServer, prefix, plantedKey);
         SetupSemanticRecord(
             redisDb,
             plantedKey,
             "payload-safety",
             "tenant-b",
+            hasNaturalLanguageDescription: true,
             sensitivePayloadContent: SensitivePayloadContent);
         SetupGraphList(falkorDb, "tenant-a", "tenant-b");
 
@@ -1501,11 +1560,8 @@ public class TenantIsolationVerifierTests
         AssertNoMutationDependencyCalls(redisDb, falkorDb);
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task VerifyAsync_WrongTypeSemanticDiscriminatorRead_ReportsClassificationGapAndContinues(
-        bool wrongTypeOnHashExists)
+    [Fact]
+    public async Task VerifyAsync_WrongTypeSemanticDiscriminatorRead_ReportsClassificationGapAndContinues()
     {
         (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer redisServer) = CreateVerifier(
             tenants:
@@ -1521,23 +1577,8 @@ public class TenantIsolationVerifierTests
             IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a"),
             wrongTypeKey,
             healthyKey);
-        if (wrongTypeOnHashExists)
-        {
-            SetupSemanticRecord(redisDb, wrongTypeKey, "wrong-type", "tenant-a");
-            redisDb.HashExistsAsync(
-                    Arg.Is<RedisKey>(key => string.Equals(key.ToString(), wrongTypeKey, StringComparison.Ordinal)),
-                    Arg.Is<RedisValue>(field => string.Equals(field.ToString(), "naturalLanguageDescription", StringComparison.Ordinal)),
-                    Arg.Any<CommandFlags>())
-                .Throws(Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("WRONGTYPE Operation against a key holding the wrong kind of value"));
-        }
-        else
-        {
-            redisDb.HashGetAsync(
-                    Arg.Is<RedisKey>(key => string.Equals(key.ToString(), wrongTypeKey, StringComparison.Ordinal)),
-                    Arg.Is<RedisValue[]>(fields => SemanticDiscriminatorFieldsMatch(fields)),
-                    Arg.Any<CommandFlags>())
-                .Throws(Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("WRONGTYPE Operation against a key holding the wrong kind of value"));
-        }
+        ExpectSemanticRead(redisDb, wrongTypeKey)
+            .Throws(RedisExceptionFactory.CreateServerException("WRONGTYPE Operation against a key holding the wrong kind of value"));
 
         SetupSemanticRecord(redisDb, healthyKey, "healthy", "tenant-a");
         SetupGraphList(falkorDb, "tenant-a");
@@ -1550,25 +1591,7 @@ public class TenantIsolationVerifierTests
         semanticCheck.Details.ShouldContain($"Semantic key '{wrongTypeKey}' under tenant 'tenant-a' has an evidence-classification gap (wrong Redis value type)");
         semanticCheck.Details.ShouldNotContain("Backend unavailable");
         semanticCheck.Details.ShouldNotContain("is missing its tenantId marker");
-        await redisDb.Received(1).HashExistsAsync(
-            Arg.Is<RedisKey>(key => string.Equals(key.ToString(), healthyKey, StringComparison.Ordinal)),
-            Arg.Is<RedisValue>(field => string.Equals(field.ToString(), "naturalLanguageDescription", StringComparison.Ordinal)),
-            Arg.Any<CommandFlags>());
-        if (wrongTypeOnHashExists)
-        {
-            await redisDb.Received(1).HashExistsAsync(
-                Arg.Is<RedisKey>(key => string.Equals(key.ToString(), wrongTypeKey, StringComparison.Ordinal)),
-                Arg.Is<RedisValue>(field => string.Equals(field.ToString(), "naturalLanguageDescription", StringComparison.Ordinal)),
-                Arg.Any<CommandFlags>());
-        }
-        else
-        {
-            await redisDb.DidNotReceive().HashExistsAsync(
-                Arg.Is<RedisKey>(key => string.Equals(key.ToString(), wrongTypeKey, StringComparison.Ordinal)),
-                Arg.Any<RedisValue>(),
-                Arg.Any<CommandFlags>());
-        }
-
+        await ExpectSemanticRead(redisDb.Received(1), healthyKey);
         AssertNoMutationDependencyCalls(redisDb, falkorDb);
     }
 
@@ -1593,8 +1616,8 @@ public class TenantIsolationVerifierTests
         SetupSemanticRecord(redisDb, foreignMarkerKey, "foreign-marker", "tenant-b");
         SetupSemanticRecord(redisDb, unknownShapeKey, "different-unit", "tenant-a");
         SetupSemanticRecord(redisDb, naturalLanguageMarkerKey, "nl-foreign", "tenant-b", hasNaturalLanguageDescription: true);
-        redisDb.HashGetAsync((RedisKey)failingKey, Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>())
-            .Returns(Task.FromException<RedisValue[]>(new RedisTimeoutException(CommandFlags.None, "internal-key-context", CommandStatus.Unknown)));
+        ExpectSemanticRead(redisDb, failingKey)
+            .Returns(Task.FromException<RedisResult>(new RedisTimeoutException(CommandFlags.None, "internal-key-context", CommandStatus.Unknown)));
 
         TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
 
@@ -1654,7 +1677,7 @@ public class TenantIsolationVerifierTests
         {
             string failingKey = naturalLanguagePrefix + "failing";
             SetupRedisKeyScan(redisServer, naturalLanguagePrefix, finalKey, failingKey);
-            redisDb.HashGetAsync((RedisKey)failingKey, Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>())
+            ExpectSemanticRead(redisDb, failingKey)
                 .Throws(new RedisTimeoutException(CommandFlags.None, "internal-key-context", CommandStatus.Unknown));
         }
         else
@@ -1689,7 +1712,7 @@ public class TenantIsolationVerifierTests
         }
 
         semantic.Details.Contains("Natural-language semantic key scan incomplete", StringComparison.Ordinal).ShouldBe(interrupted);
-        _ = await redisDb.Received(1).HashGetAsync((RedisKey)finalKey, Arg.Any<RedisValue[]>(), CommandFlags.DemandMaster);
+        _ = await ExpectSemanticRead(redisDb.Received(1), finalKey);
         AssertNoMutationDependencyCalls(redisDb, falkorDb);
     }
 
@@ -1719,10 +1742,8 @@ public class TenantIsolationVerifierTests
         OperationCanceledException exception = await Should.ThrowAsync<OperationCanceledException>(() => verification);
 
         exception.CancellationToken.ShouldBe(cts.Token);
-        await redisDb.DidNotReceive().HashGetAsync(
-            Arg.Any<RedisKey>(),
-            Arg.Any<RedisValue[]>(),
-            Arg.Any<CommandFlags>());
+        await redisDb.DidNotReceive().ScriptEvaluateAsync(
+            Arg.Any<string>(), Arg.Any<RedisKey[]>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>());
         await redisDb.DidNotReceive().HashExistsAsync(
             Arg.Any<RedisKey>(),
             Arg.Any<RedisValue>(),
@@ -1745,66 +1766,11 @@ public class TenantIsolationVerifierTests
     }
 
     [Fact]
-    public async Task VerifyAsync_SemanticHashExistsCancelled_PropagatesAndStopsLaterReads()
-    {
-        using CancellationTokenSource cts = new();
-        TaskCompletionSource hashExistsEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        TaskCompletionSource<bool> pendingHashExists = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer redisServer) = CreateVerifier(
-            tenants:
-            [
-                new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
-            ]);
-
-        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
-        string activeRaw = IndexSchemaDefinitions.BuildSemanticKey("tenant-a", "hash-exists-pending");
-        SetupRedisKeyScan(redisServer, IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a"), activeRaw);
-        SetupSemanticRecord(redisDb, activeRaw, "hash-exists-pending", "tenant-a");
-        redisDb.HashExistsAsync(
-                Arg.Is<RedisKey>(key => string.Equals(key.ToString(), activeRaw, StringComparison.Ordinal)),
-                Arg.Is<RedisValue>(field => string.Equals(field.ToString(), "naturalLanguageDescription", StringComparison.Ordinal)),
-                Arg.Any<CommandFlags>())
-            .Returns(_ =>
-            {
-                hashExistsEntered.TrySetResult();
-                return pendingHashExists.Task;
-            });
-
-        Task<TenantIsolationVerificationResult> verification = verifier.VerifyAsync("tenant-a", cts.Token);
-        await hashExistsEntered.Task.WaitAsync(TestContext.Current.CancellationToken);
-        cts.Cancel();
-
-        OperationCanceledException exception = await Should.ThrowAsync<OperationCanceledException>(() => verification);
-
-        exception.CancellationToken.ShouldBe(cts.Token);
-        pendingHashExists.Task.IsCompleted.ShouldBeFalse();
-        await redisDb.Received(1).HashGetAsync(
-            Arg.Is<RedisKey>(key => string.Equals(key.ToString(), activeRaw, StringComparison.Ordinal)),
-            Arg.Is<RedisValue[]>(fields => SemanticDiscriminatorFieldsMatch(fields)),
-            Arg.Any<CommandFlags>());
-        _ = redisServer.DidNotReceive().KeysAsync(
-            Arg.Any<int>(),
-            Arg.Is<RedisValue>(pattern => string.Equals(
-                pattern.ToString(),
-                IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix("tenant-a") + "*",
-                StringComparison.Ordinal)),
-            Arg.Any<int>(),
-            Arg.Any<long>(),
-            Arg.Any<int>(),
-            Arg.Any<CommandFlags>());
-        await falkorDb.Received(1).ExecuteAsync(
-            Arg.Is("GRAPH.LIST"),
-            Arg.Is<object[]>(arguments => arguments.Length == 0));
-        pendingHashExists.TrySetCanceled(cts.Token).ShouldBeTrue();
-        AssertNoMutationDependencyCalls(redisDb, falkorDb);
-    }
-
-    [Fact]
     public async Task VerifyAsync_SemanticDiscriminatorReadCancelled_PropagatesAndStopsLaterReads()
     {
         using CancellationTokenSource cts = new();
         TaskCompletionSource discriminatorReadEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        TaskCompletionSource<RedisValue[]> pendingDiscriminatorRead = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<RedisResult> pendingDiscriminatorRead = new(TaskCreationOptions.RunContinuationsAsynchronously);
         (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer redisServer) = CreateVerifier(
             tenants:
             [
@@ -1814,10 +1780,7 @@ public class TenantIsolationVerifierTests
         SetupSuccessfulIndexInfo(redisDb, "tenant-a");
         string activeRaw = IndexSchemaDefinitions.BuildSemanticKey("tenant-a", "mu-1");
         SetupRedisKeyScan(redisServer, IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a"), activeRaw);
-        redisDb.HashGetAsync(
-                (RedisKey)activeRaw,
-                Arg.Any<RedisValue[]>(),
-                Arg.Any<CommandFlags>())
+        ExpectSemanticRead(redisDb, activeRaw)
             .Returns(_ =>
             {
                 discriminatorReadEntered.TrySetResult();
@@ -1863,14 +1826,9 @@ public class TenantIsolationVerifierTests
         TenantIsolationCheckResult semanticCheck = result.Checks.First(c => c.CheckName == "SemanticIsolation");
         semanticCheck.Details.ShouldNotBeNull();
         semanticCheck.Details.ShouldContain("1 raw base/chunk");
-        await redisDb.Received(1).HashGetAsync(
-            (RedisKey)activeRaw,
-            Arg.Any<RedisValue[]>(),
-            Arg.Any<CommandFlags>());
-        await redisDb.Received(1).HashExistsAsync(
-            (RedisKey)activeRaw,
-            (RedisValue)"naturalLanguageDescription",
-            Arg.Any<CommandFlags>());
+        await ExpectSemanticRead(redisDb.Received(1), activeRaw);
+        await redisDb.DidNotReceive().HashExistsAsync(
+            Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<CommandFlags>());
     }
 
     [Fact]
@@ -2713,25 +2671,19 @@ public class TenantIsolationVerifierTests
                     break;
                 case nameof(IDatabase.HashGetAsync):
                     arguments.Length.ShouldBe(3);
-                    string? hashGetKey = arguments[0]?.ToString();
-                    hashGetKey.ShouldNotBeNullOrWhiteSpace();
-                    if (arguments[1] is RedisValue field)
-                    {
-                        field.ToString().ShouldBe("tenantId");
-                        hashGetKey.ShouldStartWith(IndexSchemaDefinitions.GetSyntacticKeyPrefix("tenant-a"));
-                    }
-                    else
-                    {
-                        SemanticDiscriminatorFieldsMatch(arguments[1] as RedisValue[]).ShouldBeTrue();
-                    }
-                    ((CommandFlags)arguments[2]!).ShouldBe(CommandFlags.DemandMaster);
+                    arguments[0]?.ToString().ShouldStartWith(IndexSchemaDefinitions.GetSyntacticKeyPrefix("tenant-a"));
+                    arguments[1].ShouldBe((RedisValue)"tenantId");
+                    arguments[2].ShouldBe(CommandFlags.DemandMaster);
                     break;
-                case nameof(IDatabase.HashExistsAsync):
-                    arguments.Length.ShouldBe(3);
-                    string? hashExistsKey = arguments[0]?.ToString();
-                    hashExistsKey.ShouldNotBeNullOrWhiteSpace();
-                    arguments[1]?.ToString().ShouldBe("naturalLanguageDescription");
-                    ((CommandFlags)arguments[2]!).ShouldBe(CommandFlags.DemandMaster);
+                case nameof(IDatabase.ScriptEvaluateAsync):
+                    arguments.Length.ShouldBe(4);
+                    arguments[0].ShouldBe(SemanticReadScript);
+                    RedisKey[]? keys = arguments[1] as RedisKey[];
+                    string key = keys.ShouldNotBeNull().ShouldHaveSingleItem().ToString();
+                    (key.StartsWith(IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a"), StringComparison.Ordinal)
+                        || key.StartsWith(IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix("tenant-a"), StringComparison.Ordinal)).ShouldBeTrue();
+                    (arguments[2] as RedisValue[]).ShouldNotBeNull().ShouldBeEmpty();
+                    arguments[3].ShouldBe(CommandFlags.DemandMaster);
                     break;
                 default:
                     throw new ShouldAssertException(
@@ -2906,39 +2858,20 @@ public class TenantIsolationVerifierTests
         int? chunkEndOffset = null,
         string? sensitivePayloadContent = null)
     {
-        db.HashGetAsync(
-                Arg.Is<RedisKey>(redisKey => string.Equals(redisKey.ToString(), key, StringComparison.Ordinal)),
-                Arg.Is<RedisValue[]>(fields => SemanticDiscriminatorFieldsMatch(fields)),
-                Arg.Any<CommandFlags>())
-            .Returns(
-            [
-                new RedisValue(memoryUnitId),
-                tenantId is null ? RedisValue.Null : new RedisValue(tenantId),
-                chunkSequence is null
-                    ? RedisValue.Null
-                    : new RedisValue(chunkSequence.Value.ToString(CultureInfo.InvariantCulture)),
-                chunkStartOffset is null
-                    ? RedisValue.Null
-                    : new RedisValue(chunkStartOffset.Value.ToString(CultureInfo.InvariantCulture)),
-                chunkEndOffset is null
-                    ? RedisValue.Null
-                    : new RedisValue(chunkEndOffset.Value.ToString(CultureInfo.InvariantCulture)),
-            ]);
-        db.HashExistsAsync(
-                Arg.Is<RedisKey>(redisKey => string.Equals(redisKey.ToString(), key, StringComparison.Ordinal)),
-                Arg.Is<RedisValue>(field => string.Equals(
-                    field.ToString(),
-                    "naturalLanguageDescription",
-                    StringComparison.Ordinal)),
-                Arg.Any<CommandFlags>())
-            .Returns(hasNaturalLanguageDescription);
+        RedisResult[] fields =
+        [
+            RedisResult.Create((RedisValue)memoryUnitId),
+            RedisResult.Create((RedisValue)tenantId),
+            RedisResult.Create(chunkSequence is int sequence ? (RedisValue)sequence : RedisValue.Null),
+            RedisResult.Create(chunkStartOffset is int start ? (RedisValue)start : RedisValue.Null),
+            RedisResult.Create(chunkEndOffset is int end ? (RedisValue)end : RedisValue.Null),
+            RedisResult.Create(hasNaturalLanguageDescription ? 1L : 0L),
+        ];
+        ExpectSemanticRead(db, key).Returns(RedisResult.Create(fields));
 
         if (sensitivePayloadContent is not null)
         {
-            // The verifier only ever reads the named discriminator fields and the naturalLanguageDescription
-            // existence flag above; it never reads the full hash. This simulates a realistic stored record that
-            // also carries payload/content-like fields beyond those discriminators, so a payload-safety test can
-            // prove such content never surfaces in Details/Remediation even if a broader read were attempted.
+            // A full read would include payload fields that the verifier never requests.
             HashEntry[] fullRecord =
             [
                 new HashEntry("memoryUnitId", memoryUnitId),
@@ -2953,10 +2886,18 @@ public class TenantIsolationVerifierTests
         }
     }
 
-    private static bool SemanticDiscriminatorFieldsMatch(RedisValue[]? fields)
-        => fields is not null
-            && fields.Select(static field => field.ToString()).SequenceEqual(
-                ["memoryUnitId", "tenantId", "chunkSequence", "chunkStartOffset", "chunkEndOffset"]);
+    private const string SemanticReadScript = """
+        local fields = redis.call('HMGET', KEYS[1], 'memoryUnitId', 'tenantId', 'chunkSequence', 'chunkStartOffset', 'chunkEndOffset')
+        fields[6] = redis.call('HEXISTS', KEYS[1], 'naturalLanguageDescription')
+        return fields
+        """;
+
+    private static Task<RedisResult> ExpectSemanticRead(IDatabase db, string key)
+        => db.ScriptEvaluateAsync(
+            SemanticReadScript,
+            Arg.Is<RedisKey[]>(keys => keys.Length == 1 && keys[0] == (RedisKey)key),
+            Arg.Is<RedisValue[]>(values => values.Length == 0),
+            CommandFlags.DemandMaster);
 
     private static async IAsyncEnumerable<RedisKey> ToAsyncKeys(params string[] keys)
     {

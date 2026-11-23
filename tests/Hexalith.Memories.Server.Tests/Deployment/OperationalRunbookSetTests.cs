@@ -389,22 +389,27 @@ public sealed class OperationalRunbookSetTests
             section.ShouldContain("structural database-existence evidence only", Case.Sensitive);
             section.ShouldContain("GRAPH.LIST", Case.Sensitive);
             section.ShouldContain($"`{proofMethod}`", Case.Sensitive);
-            string[] lines = section.Split('\n', StringSplitOptions.TrimEntries);
-            lines.ShouldContain(buildCommand);
-            lines.ShouldContain(proofCommand);
-            Array.IndexOf(lines, buildCommand).ShouldBeLessThan(Array.IndexOf(lines, proofCommand));
-            section.ShouldContain("MEMORIES_DAPR_PLACEMENT_HOST_ADDRESS", Case.Sensitive);
-            section.ShouldContain("MEMORIES_DAPR_SCHEDULER_HOST_ADDRESS", Case.Sensitive);
-            section.ShouldContain("active local service", Case.Sensitive);
             section.ShouldContain("authenticated canary traversal", Case.Sensitive);
-            section.ShouldContain("Aspire", Case.Sensitive);
-            section.ShouldContain("FalkorDB", Case.Sensitive);
-            section.ShouldContain("minutes", Case.Sensitive);
-            section.ShouldContain("container runtime", Case.Sensitive);
-            section.ShouldContain("leftover fixture data", Case.Sensitive);
-            section.ShouldNotContain("localhost:6050", Case.Sensitive);
-            section.ShouldNotContain("localhost:6060", Case.Sensitive);
         }
+
+        routeSection.ShouldContain("(./tenant-onboarding-offboarding.md#graph-isolation-evidence-boundary)", Case.Sensitive);
+        routeSection.ShouldNotContain(buildCommand, Case.Sensitive);
+        routeSection.ShouldNotContain(proofCommand, Case.Sensitive);
+
+        string[] lines = tenantSection.Split('\n', StringSplitOptions.TrimEntries);
+        lines.ShouldContain(buildCommand);
+        lines.ShouldContain(proofCommand);
+        Array.IndexOf(lines, buildCommand).ShouldBeLessThan(Array.IndexOf(lines, proofCommand));
+        tenantSection.ShouldContain("MEMORIES_DAPR_PLACEMENT_HOST_ADDRESS", Case.Sensitive);
+        tenantSection.ShouldContain("MEMORIES_DAPR_SCHEDULER_HOST_ADDRESS", Case.Sensitive);
+        tenantSection.ShouldContain("active local service", Case.Sensitive);
+        tenantSection.ShouldContain("Aspire", Case.Sensitive);
+        tenantSection.ShouldContain("FalkorDB", Case.Sensitive);
+        tenantSection.ShouldContain("minutes", Case.Sensitive);
+        tenantSection.ShouldContain("container runtime", Case.Sensitive);
+        tenantSection.ShouldContain("leftover fixture data", Case.Sensitive);
+        tenantSection.ShouldNotContain("localhost:6050", Case.Sensitive);
+        tenantSection.ShouldNotContain("localhost:6060", Case.Sensitive);
 
         ContractDocumentGuard.FindLeakedToolCallMarkup(tenantMarkdown).ShouldBeEmpty();
         ContractDocumentGuard.FindLeakedToolCallMarkup(routeMarkdown).ShouldBeEmpty();
