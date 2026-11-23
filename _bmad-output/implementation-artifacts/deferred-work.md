@@ -4380,7 +4380,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence (2026-08-12)"), 2026-09-01
 location: tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs
 reason: - **The collision proof assumes newly provisioned graphs contain no relationships.** - ID: 24.6-CR-W3 - Status: carried-forward - Source story: spec-24-6-graph-content-level-tenant-isolation-evidence - Target artifact: tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs - Rationale: A pre-existing relationship would report a failed collision precondition rather than a dedicated fixture-precondition assertion; unique tenant provisioning makes that condition unlikely and diagnostic refinement is outside the closure. - Re-open trigger: The collision precondition fails on a non-empty newly provisioned graph or fixture provisioning begins seeding relationships.
-status: open
+status: done 2026-11-23
+resolution: The collision and planted-marker integration fixtures now assert zero existing relationships before seeding each tenant graph. See spec-ten-deferred-isolation-verification.md.
 
 ### DW-655: Graph proof coverage is one bounded edge/origin/source/depth shape.
 
@@ -4426,7 +4427,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence (2026-08-12)"), 2026-09-01
 location: tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs
 reason: - **Some traversal response assertions do not prove JSON wire presence.** - ID: 24.6-CR-W10 - Status: carried-forward - Source story: spec-24-6-graph-content-level-tenant-isolation-evidence - Target artifact: tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs - Rationale: `Degraded`, `OmittedCount`, `UnavailableAxes`, and `PrimaryPathIntact` are asserted after deserialization, so omitted default-valued members could pass; the required node, edge, marker, completeness, and topology assertions still fail closed for the accepted content-isolation fixture. - Re-open trigger: The API serializer or response contract changes default-member emission, or these fields become part of the content-isolation acceptance claim.
-status: open
+status: done 2026-11-23
+resolution: The live collision test checks traversal arrays directly on the JSON wire and verifies omission of the four healthy default members. See spec-ten-deferred-isolation-verification.md.
 
 ### DW-662: Verifier unit mocks no longer rely on unconfigured graph-query defaults.
 
@@ -4439,7 +4441,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence (2026-08-13)"), 2026-09-01
 location: tests/Hexalith.Memories.Server.Tests/Deployment/OperationalRunbookSetTests.cs
 reason: - **Verifier source guard still lives in a runbook test class.** - ID: 24.6-F5-W1 - Status: carried-forward - Source story: 24-6-graph-content-level-tenant-isolation-evidence - Target artifact: tests/Hexalith.Memories.Server.Tests/Deployment/OperationalRunbookSetTests.cs - Rationale: The first-pass patch read "strengthen **and relocate** the source-text guard". N5 strengthened it on 2026-08-13, but the assertion about `TenantIsolationVerifier.cs` source still sits in the runbook/deployment doc-contract class, so a verifier regression is reported by a test named for runbooks. Relocation is cosmetic to behaviour and was not attempted while the guard is green. - Re-open trigger: The guard fails and the failure is misattributed to runbook content, or another verifier source assertion is added to the same class.
-status: open
+status: done 2026-11-23
+resolution: The partial-class graph command source guard now runs in TenantIsolationVerifierTests. The runbook test retains the documentation checks. See spec-ten-deferred-isolation-verification.md.
 
 ### DW-664: `ReconnectPrimaryDaprClients` disposes before installing replacements.
 
@@ -4459,14 +4462,16 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence (2026-08-13)"), 2026-09-01
 location: tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs
 reason: - **Traversal assertions dereference without null guards.** - ID: 24.6-F5-W4 - Status: carried-forward - Source story: 24-6-graph-content-level-tenant-isolation-evidence - Target artifact: tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs - Rationale: `AssertTraversalIsFixtureLocal` dereferences `Nodes`, per-node `Edges`, and `GapMarkers` without null checks, so a response that omits or nulls one of them raises a `NullReferenceException` instead of an assertion naming the field that lost its marker. Diagnostic quality only; the assertions still fail closed. - Re-open trigger: A traversal failure is reported as a `NullReferenceException`, or the traversal contract makes any of those members nullable.
-status: open
+status: done 2026-11-23
+resolution: Traversal assertions identify missing or null Nodes, per-node Edges and GapMarkers by field. See spec-ten-deferred-isolation-verification.md.
 
 ### DW-667: No cancellation coverage on `VerifyAsync`.
 
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence (2026-08-13)"), 2026-09-01
 location: tests/Hexalith.Memories.Server.Tests/Tenants/TenantIsolationVerifierTests.cs
 reason: - **No cancellation coverage on `VerifyAsync`.** - ID: 24.6-F5-W5 - Status: carried-forward - Source story: 24-6-graph-content-level-tenant-isolation-evidence - Target artifact: tests/Hexalith.Memories.Server.Tests/Tenants/TenantIsolationVerifierTests.cs - Rationale: No test invokes `VerifyAsync` with an already-cancelled token, so the graph check's cancellation behaviour is unpinned and a regression would pass unnoticed. Outside AC3's structural-only scope. - Re-open trigger: Cancellation handling in `TenantIsolationVerifier` is changed, or a cancellation defect is observed in the verify endpoint.
-status: open
+status: done 2026-11-23
+resolution: The existing VerifyAsync_AlreadyCancelled_DoesNotDispatchBackendReads regression passed in the focused verifier run. See spec-ten-deferred-isolation-verification.md.
 
 ### DW-668: No `/traverse` denial rows for invalid or out-of-range `depth`.
 
@@ -4480,28 +4485,32 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence (2026-08-13)"), 2026-09-01
 location: tests/Hexalith.Memories.IntegrationTests/Fixtures/OpenBaoTopologyIntegrationTests.cs
 reason: - **Restart regression dereferences an actor config without a null guard.** - ID: 24.6-F5-W7 - Status: carried-forward - Source story: 24-6-graph-content-level-tenant-isolation-evidence - Target artifact: tests/Hexalith.Memories.IntegrationTests/Fixtures/OpenBaoTopologyIntegrationTests.cs - Rationale: The post-rotation actor call dereferences its result without a null guard and silently depends on the `OpenBaoRecoveryTenantId` tenant carrying a seeded embedding configuration, so a fixture-data gap surfaces as a `NullReferenceException` rather than a named assertion. - Re-open trigger: The regression fails with a `NullReferenceException`, or `OpenBaoRecoveryTenantId` seeding changes.
-status: open
+status: done 2026-11-23
+resolution: The live OpenBao restart test checks the recovered actor configuration before accessing Dimensions and names the recovery tenant on failure. See spec-ten-deferred-isolation-verification.md.
 
 ### DW-670: The HTTP-visible AC3 citation is hard-coded where the unit guards are manifest-bound.
 
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence — sixth pass (2026-08-13)"), 2026-09-01
 location: tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs
 reason: - **The HTTP-visible AC3 citation is hard-coded where the unit guards are manifest-bound.** - ID: 24.6-F6-W1 - Status: carried-forward - Source story: 24-6-graph-content-level-tenant-isolation-evidence - Target artifact: tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs - Rationale: F5-P8 bound the operator proof citation to `tools/integration-fast-required-surfaces.txt` through `OperationalRunbookSetTests.GraphContentProofCitation`, and both Server.Tests guards now derive it. The real-backend assertion cannot reach that `internal` member from a different assembly, so it keeps the literal `TenantIsolationIntegrationTests.VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes`. The binding is fail-closed — a manifest-driven rename reds the unit lane — so this is maintenance duplication in three places, not an escape hatch, and the fix would mean duplicating the manifest reader into the integration assembly. - Re-open trigger: The graph-content proof method is renamed or re-keyed in the manifest, or a shared test-support assembly becomes available to both test projects.
-status: open
+status: done 2026-11-23
+resolution: The runbook, verifier and HTTP tests derive one exact proof identity from the graph-content-isolation inventory row. The HTTP test checks the compiled identity. See spec-ten-deferred-isolation-verification.md.
 
 ### DW-671: The restored verifier class-level summary has no test pinning either wording.
 
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence — sixth pass (2026-08-13)"), 2026-09-01
 location: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs
 reason: - **The restored verifier class-level summary has no test pinning either wording.** - ID: 24.6-F6-W2 - Status: carried-forward - Source story: 24-6-graph-content-level-tenant-isolation-evidence - Target artifact: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs - Rationale: `24.6-CR-W5` was closed on the strength of fifth-pass Decision F5-D2 restoring the broad architectural-isolation XML summary and keeping the structural-only hedge local to `CheckGraphIsolationAsync`. The original finding's second half — "no test pins either wording" — was not addressed, so the entry's own re-open trigger ("a future change again applies the graph-specific structural-only limitation to the verifier's class-wide responsibilities") has no detector and would have to be caught by review. The reverted wording is net-zero against baseline `0ecdffed`, so nothing regressed; only the guard is missing. - Re-open trigger: The class-level summary is edited again in either direction, or a Story 24.7-24.9 slice re-scopes the verifier's Redis marker responsibilities.
-status: open
+status: done 2026-11-23
+resolution: The executed verifier source guard pins the class-wide architectural summary and the graph method's narrower structural scope. See spec-ten-deferred-isolation-verification.md.
 
 ### DW-672: The graph-check lookup throws an undiagnosable exception when the check is absent.
 
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence — sixth pass (2026-08-13)"), 2026-09-01
 location: tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs
 reason: - **The graph-check lookup throws an undiagnosable exception when the check is absent.** - ID: 24.6-F6-W3 - Status: carried-forward - Source story: 24-6-graph-content-level-tenant-isolation-evidence - Target artifact: tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs - Rationale: The new HTTP-observable AC3 block resolves the check with `result.Checks.Single(check => check.CheckName == "GraphIsolation")`. If the verifier stops emitting `GraphIsolation`, or emits it twice, the test fails with a bare `InvalidOperationException` naming neither the check nor the contract, instead of a Shouldly assertion. The surrounding `AssertCoreIsolationChecksPassed(result)` already fails closed on a missing check, so the diagnosis cost is the only impact. - Re-open trigger: The test fails with `InvalidOperationException`, or the verifier begins emitting per-backend `GraphIsolation` results.
-status: open
+status: done 2026-11-23
+resolution: HTTP verifier tests use a named uniqueness assertion for core checks and the checks in the planted-data controls. See spec-ten-deferred-isolation-verification.md.
 
 ### DW-673: Node-marker assertions lack a mutation-sensitivity control.
 
@@ -4515,7 +4524,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence — sixth pass (2026-08-13)"), 2026-09-01
 location: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs
 reason: - **Graph-isolation verification does not convert a FalkorDB `RedisTimeoutException` into a failed backend check.** - ID: 24.6-F6-W5 - Status: carried-forward - Source story: 24-6-graph-content-level-tenant-isolation-evidence - Target artifact: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs - Rationale: `CheckGraphIsolationAsync` catches `RedisConnectionException` and `RedisServerException` but not `RedisTimeoutException`, so a timeout can escape the verifier instead of preserving the existing graceful backend-unavailable result shape. - Re-open trigger: A FalkorDB timeout escapes `VerifyAsync` as an unhandled exception, or a later story converts `RedisTimeoutException` into a failed `GraphIsolation` check.
-status: open
+status: done 2026-11-23
+resolution: The existing VerifyAsync_CommandTimeouts_ReportEveryAffectedCheckWithoutDriverDetails theory passed, including the FalkorDB timeout row. See spec-ten-deferred-isolation-verification.md.
 
 ### DW-675: Hexalith.Builds still has an uncommitted Props/Directory.Packages.props change after the 2026-08-09 envelope closed.
 

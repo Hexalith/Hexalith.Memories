@@ -139,6 +139,8 @@ public sealed partial class OpenBaoTopologyIntegrationTests
             .CreateTenantConfigurationActorProxy(AspireIngestionPipelineFixture.OpenBaoRecoveryTenantId)
             .GetEmbeddingConfigAsync()
             .ConfigureAwait(true);
+        actorConfig.ShouldNotBeNull(
+            $"Recovery tenant '{AspireIngestionPipelineFixture.OpenBaoRecoveryTenantId}' must have an embedding configuration after restart.");
         actorConfig.Dimensions.ShouldBeGreaterThan(0);
         output.WriteLine(
             "In-place OpenBao restart installed a rotated generation and recovered all dependent sidecars and actor clients.");

@@ -21,26 +21,6 @@ using MemoriesRoutes = Hexalith.Memories.Contracts.V1.MemoriesRoutes;
 /// <summary>Story 26.5 — source-tied contract for the operational runbook set.</summary>
 public sealed class OperationalRunbookSetTests
 {
-    /// <summary>Gets the operator-facing graph-content proof citation identifying the retained tenant-isolation product scenario.</summary>
-    internal static string GraphContentProofCitation
-    {
-        get
-        {
-            (string className, string methodName) = ReadGraphContentProofIdentity();
-            return $"{className[(className.LastIndexOf('.') + 1)..]}.{methodName}";
-        }
-    }
-
-    /// <summary>Gets the fully qualified graph-content proof test name identifying the retained tenant-isolation product scenario.</summary>
-    internal static string GraphContentProofTestName
-    {
-        get
-        {
-            (string className, string methodName) = ReadGraphContentProofIdentity();
-            return $"{className}.{methodName}";
-        }
-    }
-
     private static readonly string[] RequiredRunbookFileNames =
     [
         "capacity-planning.md",
@@ -145,7 +125,7 @@ public sealed class OperationalRunbookSetTests
     [Fact]
     public void ChangedRunbookRelativeLinks_StayInsideRepositoryAndResolve()
     {
-        string repoRoot = ResolveRepoRoot();
+        string repoRoot = TestRepository.Root;
 
         foreach (string runbookPath in ChangedRunbookPaths)
         {
@@ -391,11 +371,11 @@ public sealed class OperationalRunbookSetTests
     [Fact]
     public void GraphIsolationEvidenceBoundary_SeparatesStructuralAndContentProof()
     {
-        string proofMethod = GraphContentProofCitation;
+        string proofMethod = GraphContentProof.Citation;
         const string buildCommand =
             "dotnet build tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj --configuration Debug --disable-build-servers -m:1 /nr:false";
         string proofCommand =
-            $"DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.IntegrationTests/bin/Debug/net11.0/Hexalith.Memories.IntegrationTests.dll -method {GraphContentProofTestName}";
+            $"DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.IntegrationTests/bin/Debug/net11.0/Hexalith.Memories.IntegrationTests.dll -method {GraphContentProof.TestName}";
 
         string tenantMarkdown = ReadRepoFile("docs/operations/tenant-onboarding-offboarding.md");
         string routeMarkdown = ReadRepoFile("docs/operations/route-surface.md");
@@ -408,11 +388,11 @@ public sealed class OperationalRunbookSetTests
         {
             section.ShouldContain("structural database-existence evidence only", Case.Sensitive);
             section.ShouldContain("GRAPH.LIST", Case.Sensitive);
-            section.ShouldContain(proofMethod, Case.Sensitive);
-            section.ShouldContain(buildCommand, Case.Sensitive);
-            section.ShouldContain(proofCommand, Case.Sensitive);
-            section.IndexOf(buildCommand, StringComparison.Ordinal)
-                .ShouldBeLessThan(section.IndexOf(proofCommand, StringComparison.Ordinal));
+            section.ShouldContain($"`{proofMethod}`", Case.Sensitive);
+            string[] lines = section.Split('\n', StringSplitOptions.TrimEntries);
+            lines.ShouldContain(buildCommand);
+            lines.ShouldContain(proofCommand);
+            Array.IndexOf(lines, buildCommand).ShouldBeLessThan(Array.IndexOf(lines, proofCommand));
             section.ShouldContain("MEMORIES_DAPR_PLACEMENT_HOST_ADDRESS", Case.Sensitive);
             section.ShouldContain("MEMORIES_DAPR_SCHEDULER_HOST_ADDRESS", Case.Sensitive);
             section.ShouldContain("active local service", Case.Sensitive);
@@ -426,54 +406,6 @@ public sealed class OperationalRunbookSetTests
             section.ShouldNotContain("localhost:6060", Case.Sensitive);
         }
 
-        string serverProjectDirectory = ResolveRepoPath("src", "Hexalith.Memories.Server");
-        string[] verifierFiles = [.. Directory.GetFiles(
-                serverProjectDirectory,
-                "*.cs",
-                SearchOption.AllDirectories)
-            .Where(file =>
-            {
-                string relativePath = Path.GetRelativePath(serverProjectDirectory, file);
-                string[] segments = relativePath.Split(
-                    Path.DirectorySeparatorChar,
-                    Path.AltDirectorySeparatorChar);
-                return !segments.Any(segment =>
-                    string.Equals(segment, "bin", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(segment, "obj", StringComparison.OrdinalIgnoreCase));
-            })
-            .Where(file => Regex.IsMatch(
-                File.ReadAllText(file),
-                @"\b(?:sealed\s+partial|partial\s+sealed)\s+class\s+TenantIsolationVerifier\b",
-                RegexOptions.CultureInvariant))];
-        verifierFiles.ShouldNotBeEmpty();
-        string verifierSource = string.Join(Environment.NewLine, verifierFiles.Select(File.ReadAllText));
-        string[] graphTokens = [.. Regex.Matches(
-                verifierSource,
-                @"\bGRAPH\.[A-Z][A-Z0-9_.]*\b",
-                RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)
-            .Cast<Match>()
-            .Select(match => match.Value)
-            .Distinct(StringComparer.OrdinalIgnoreCase)];
-        string[] graphCallSiteCommands = [.. Regex.Matches(
-                verifierSource,
-                @"\bExecute(?:Async)?\s*\(\s*""(?<command>GRAPH\.[A-Z][A-Z0-9_.]*)""",
-                RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)
-            .Cast<Match>()
-            .Select(match => match.Groups["command"].Value)
-            .Distinct(StringComparer.OrdinalIgnoreCase)];
-
-        // Discover every partial declaration across the Server project. The call-site set makes the
-        // guard non-vacuous even when comments or result prose still mention GRAPH.LIST; the broader
-        // token set rejects alternate graph commands. Dynamic construction is covered by received calls.
-        graphCallSiteCommands.ShouldNotBeEmpty();
-        graphCallSiteCommands.ShouldAllBe(command => string.Equals(
-            command,
-            "GRAPH.LIST",
-            StringComparison.OrdinalIgnoreCase));
-        graphTokens.ShouldAllBe(command => string.Equals(
-            command,
-            "GRAPH.LIST",
-            StringComparison.OrdinalIgnoreCase));
         ContractDocumentGuard.FindLeakedToolCallMarkup(tenantMarkdown).ShouldBeEmpty();
         ContractDocumentGuard.FindLeakedToolCallMarkup(routeMarkdown).ShouldBeEmpty();
     }
@@ -785,31 +717,11 @@ public sealed class OperationalRunbookSetTests
         return File.ReadAllText(path);
     }
 
-    private static (string ClassName, string MethodName) ReadGraphContentProofIdentity()
-        => ("Hexalith.Memories.IntegrationTests.Tenants.TenantIsolationIntegrationTests",
-            "VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes");
-
     private static string ResolveRepoPath(params string[] segments)
     {
         string[] parts = new string[segments.Length + 1];
-        parts[0] = ResolveRepoRoot();
+        parts[0] = TestRepository.Root;
         Array.Copy(segments, 0, parts, 1, segments.Length);
         return Path.Combine(parts);
-    }
-
-    private static string ResolveRepoRoot()
-    {
-        string candidate = AppContext.BaseDirectory;
-        for (int i = 0; i < 8; i++)
-        {
-            if (File.Exists(Path.Combine(candidate, "Hexalith.Memories.slnx")))
-            {
-                return candidate;
-            }
-
-            candidate = Path.GetFullPath(Path.Combine(candidate, ".."));
-        }
-
-        return AppContext.BaseDirectory;
     }
 }

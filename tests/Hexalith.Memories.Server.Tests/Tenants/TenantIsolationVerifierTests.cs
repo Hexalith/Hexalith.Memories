@@ -10,6 +10,7 @@ namespace Hexalith.Memories.Server.Tests.Tenants;
 using System.Globalization;
 using System.Net;
 using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 
 using Dapr.Actors;
 using Dapr.Client;
@@ -17,8 +18,8 @@ using Dapr.Client;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.Infrastructure;
-using Hexalith.Memories.Server.Tests.Deployment;
 using Hexalith.Memories.Server.Tenants;
+using Hexalith.Memories.TestHelpers.Documentation;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
@@ -2287,6 +2288,76 @@ public class TenantIsolationVerifierTests
     }
 
     [Fact]
+    public void GraphIsolationSource_DocumentsNarrowScopeAndOnlyListsDatabases()
+    {
+        string serverProjectDirectory = Path.Combine(TestRepository.Root, "src", "Hexalith.Memories.Server");
+        string[] verifierFiles = [.. Directory.GetFiles(
+                serverProjectDirectory,
+                "*.cs",
+                SearchOption.AllDirectories)
+            .Where(file =>
+            {
+                string relativePath = Path.GetRelativePath(serverProjectDirectory, file);
+                string[] segments = relativePath.Split(
+                    Path.DirectorySeparatorChar,
+                    Path.AltDirectorySeparatorChar);
+                return !segments.Any(segment =>
+                    string.Equals(segment, "bin", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(segment, "obj", StringComparison.OrdinalIgnoreCase));
+            })
+            .Where(file => Regex.IsMatch(
+                File.ReadAllText(file),
+                @"\bpartial(?:\s+sealed)?\s+class\s+TenantIsolationVerifier\b",
+                RegexOptions.CultureInvariant))];
+        verifierFiles.ShouldNotBeEmpty();
+        string verifierSource = string.Join(Environment.NewLine, verifierFiles.Select(File.ReadAllText));
+        string verifierDefinition = File.ReadAllText(Path.Combine(serverProjectDirectory, "Tenants", "TenantIsolationVerifier.cs"));
+        Match classSummary = Regex.Match(
+            verifierDefinition,
+            @"(?m)^/// <summary>(?<summary>[^<]+)</summary>\s*public sealed partial class TenantIsolationVerifier\b",
+            RegexOptions.CultureInvariant);
+        classSummary.Success.ShouldBeTrue("TenantIsolationVerifier must have a class summary.");
+        classSummary.Groups["summary"].Value.ShouldContain("verifies tenant data isolation across all storage backends");
+        classSummary.Groups["summary"].Value.ShouldContain("architectural isolation guarantees hold");
+        classSummary.Groups["summary"].Value.ShouldNotContain("structural", Shouldly.Case.Insensitive);
+
+        Match graphMethod = Regex.Match(
+            verifierDefinition,
+            @"private async Task<TenantIsolationCheckResult> CheckGraphIsolationAsync\([^)]*\)\s*\{(?<opening>[^{}]*)",
+            RegexOptions.CultureInvariant);
+        graphMethod.Success.ShouldBeTrue("The graph-specific scope must be documented inside CheckGraphIsolationAsync.");
+        graphMethod.Groups["opening"].Value.ShouldContain("deliberately structural-only");
+
+        string[] graphTokens = [.. Regex.Matches(
+                verifierSource,
+                @"\bGRAPH\.[A-Z][A-Z0-9_.]*\b",
+                RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)
+            .Cast<Match>()
+            .Select(match => match.Value)
+            .Distinct(StringComparer.OrdinalIgnoreCase)];
+        string[] graphCallSiteCommands = [.. Regex.Matches(
+                verifierSource,
+                @"\bExecute(?:Async)?\s*\(\s*""(?<command>GRAPH\.[A-Z][A-Z0-9_.]*)""",
+                RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)
+            .Cast<Match>()
+            .Select(match => match.Groups["command"].Value)
+            .Distinct(StringComparer.OrdinalIgnoreCase)];
+
+        // Discover every partial declaration across the Server project. The call-site set makes the
+        // guard non-vacuous even when comments or result prose still mention GRAPH.LIST; the broader
+        // token set rejects alternate graph commands. Dynamic construction is covered by received calls.
+        graphCallSiteCommands.ShouldNotBeEmpty();
+        graphCallSiteCommands.ShouldAllBe(command => string.Equals(
+            command,
+            "GRAPH.LIST",
+            StringComparison.OrdinalIgnoreCase));
+        graphTokens.ShouldAllBe(command => string.Equals(
+            command,
+            "GRAPH.LIST",
+            StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task VerifyAsync_GraphIsolation_IsStructuralOnlyAndCitesContentProof()
     {
         (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, _) = CreateVerifier(
@@ -2311,7 +2382,7 @@ public class TenantIsolationVerifierTests
         TenantIsolationCheckResult orphanedCheck = result.Checks.Single(c => c.CheckName == "OrphanedDatabases");
         orphanedCheck.Passed.ShouldBeTrue();
         orphanedCheck.Details.ShouldBe("All FalkorDB databases correspond to registered tenants");
-        graphCheck.Details.ShouldContain(OperationalRunbookSetTests.GraphContentProofCitation);
+        graphCheck.Details.ShouldMatch(GraphContentProof.CitationPattern);
         graphCheck.Details.ShouldContain("independent execution");
 
         // Assert every command-like first argument after stringifying it, without filtering by

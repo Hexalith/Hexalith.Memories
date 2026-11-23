@@ -8,11 +8,13 @@ namespace Hexalith.Memories.IntegrationTests.Tenants;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
+using System.Text.Json;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.IntegrationTests.Fixtures;
 using Hexalith.Memories.Server.Graph;
 using Hexalith.Memories.Server.Infrastructure;
+using Hexalith.Memories.TestHelpers.Documentation;
 
 using NFalkorDB;
 
@@ -61,14 +63,14 @@ public sealed class TenantIsolationIntegrationTests
             .ReadFromJsonAsync<TenantIsolationVerificationResult>(MemoriesJsonContext.Options);
 
         result.ShouldNotBeNull();
-        result.Checks.ShouldNotBeEmpty();
         AssertCoreIsolationChecksPassed(result);
-        TenantIsolationCheckResult graphCheck = result.Checks.Single(check => check.CheckName == "GraphIsolation");
+        TenantIsolationCheckResult graphCheck = GetIsolationCheck(result, "GraphIsolation");
         graphCheck.Details.ShouldNotBeNull();
         graphCheck.Details.ShouldContain("Structural database-existence evidence only");
         graphCheck.Details.ShouldContain("GRAPH.LIST");
-        graphCheck.Details.ShouldContain(
-            "TenantIsolationIntegrationTests.VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes");
+        GraphContentProof.TestName.ShouldBe(
+            $"{typeof(TenantIsolationIntegrationTests).FullName}.{nameof(VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes)}");
+        graphCheck.Details.ShouldMatch(GraphContentProof.CitationPattern);
         graphCheck.Details.ShouldContain("independent execution");
     }
 
@@ -224,7 +226,7 @@ public sealed class TenantIsolationIntegrationTests
 
         result.ShouldNotBeNull();
         result.AllPassed.ShouldBeFalse();
-        TenantIsolationCheckResult syntacticCheck = result.Checks.First(c => c.CheckName == "SyntacticIsolation");
+        TenantIsolationCheckResult syntacticCheck = GetIsolationCheck(result, "SyntacticIsolation");
         syntacticCheck.Passed.ShouldBeFalse();
         syntacticCheck.Details.ShouldNotBeNull();
         syntacticCheck.Details.ShouldContain(tenantB);
@@ -251,7 +253,7 @@ public sealed class TenantIsolationIntegrationTests
 
         result.ShouldNotBeNull();
         result.AllPassed.ShouldBeFalse();
-        TenantIsolationCheckResult semanticCheck = result.Checks.First(c => c.CheckName == "SemanticIsolation");
+        TenantIsolationCheckResult semanticCheck = GetIsolationCheck(result, "SemanticIsolation");
         semanticCheck.Passed.ShouldBeFalse();
         semanticCheck.Details.ShouldNotBeNull();
         semanticCheck.Details.ShouldContain(
@@ -292,6 +294,13 @@ public sealed class TenantIsolationIntegrationTests
     {
         FalkorDB falkor = new(_fixture.FalkorDbConnection.GetDatabase());
         NFalkorDB.Graph tenantGraph = falkor.SelectGraph(tenantId);
+        ResultSet relationshipCount = await ExecuteGraphQueryAsync(
+            tenantGraph,
+            "MATCH ()-[relationship]->() RETURN count(relationship) AS relationshipCount",
+            new Dictionary<string, object>());
+        relationshipCount.ShouldHaveSingleItem($"Tenant graph '{tenantId}' must report a relationship count.")
+            .GetValue<long>("relationshipCount")
+            .ShouldBe(0L, $"Tenant graph '{tenantId}' must have zero relationships before collision seeding.");
 
         foreach (string memoryUnitId in new[] { CollisionSourceNodeId, CollisionTargetNodeId })
         {
@@ -364,10 +373,37 @@ public sealed class TenantIsolationIntegrationTests
         using CancellationTokenSource readTimeout = CancellationTokenSource.CreateLinkedTokenSource(
             TestContext.Current.CancellationToken);
         readTimeout.CancelAfter(HttpOperationTimeout);
-        TraversalResult? result = await response.Content
-            .ReadFromJsonAsync<TraversalResult>(MemoriesJsonContext.Options, readTimeout.Token);
+        await using Stream body = await response.Content.ReadAsStreamAsync(readTimeout.Token);
+        using JsonDocument document = await JsonDocument.ParseAsync(body, cancellationToken: readTimeout.Token);
+        JsonElement root = document.RootElement;
+        root.ValueKind.ShouldBe(JsonValueKind.Object, "The traversal response must be a JSON object.");
+        AssertJsonArray(root, "gapMarkers");
+        foreach (JsonElement node in AssertJsonArray(root, "nodes").EnumerateArray())
+        {
+            node.ValueKind.ShouldBe(JsonValueKind.Object, "Each traversal node must be a JSON object.");
+            AssertJsonArray(node, "edges");
+        }
+
+        // The healthy response omits these default values by contract.
+        foreach (string optionalProperty in new[] { "degraded", "omittedCount", "unavailableAxes", "primaryPathIntact" })
+        {
+            root.TryGetProperty(optionalProperty, out _)
+                .ShouldBeFalse($"A healthy traversal must omit the default wire member '{optionalProperty}'.");
+        }
+
+        TraversalResult? result = root.Deserialize<TraversalResult>(MemoriesJsonContext.Options);
         result.ShouldNotBeNull();
         return result;
+    }
+
+    private static JsonElement AssertJsonArray(JsonElement container, string member)
+    {
+        JsonElement array = container.EnumerateObject()
+            .Where(property => property.NameEquals(member))
+            .ShouldHaveSingleItem($"The traversal response must include exactly one wire member '{member}'.")
+            .Value;
+        array.ValueKind.ShouldBe(JsonValueKind.Array, $"Traversal wire member '{member}' must be an array.");
+        return array;
     }
 
     private static async Task<ResultSet> ExecuteGraphQueryAsync(
@@ -392,7 +428,15 @@ public sealed class TenantIsolationIntegrationTests
         traversal.Degraded.ShouldBeFalse();
         (traversal.UnavailableAxes ?? []).ShouldBeEmpty();
         traversal.PrimaryPathIntact.ShouldBeTrue();
+        traversal.GapMarkers.ShouldNotBeNull("TraversalResult.GapMarkers must be present.");
         traversal.GapMarkers.ShouldBeEmpty();
+        traversal.Nodes.ShouldNotBeNull("TraversalResult.Nodes must be present.");
+        traversal.Nodes.ShouldAllBe(node => node != null, "TraversalResult.Nodes must contain objects.");
+        foreach (TraversalNode node in traversal.Nodes)
+        {
+            node.Edges.ShouldNotBeNull($"TraversalNode.Edges must be present for node '{node.MemoryUnitId}'.");
+        }
+
         traversal.Nodes.Select(node => node.MemoryUnitId).OrderBy(id => id, StringComparer.Ordinal)
             .ShouldBe(expectedNodeIds.OrderBy(id => id, StringComparer.Ordinal));
         traversal.Nodes.ShouldAllBe(node => expectedNodeIds.Contains(node.MemoryUnitId, StringComparer.Ordinal));
@@ -478,10 +522,17 @@ public sealed class TenantIsolationIntegrationTests
             "GraphIsolation",
         })
         {
-            TenantIsolationCheckResult check = result.Checks.First(c => c.CheckName == checkName);
+            TenantIsolationCheckResult check = GetIsolationCheck(result, checkName);
             check.Passed.ShouldBe(
                 true,
                 $"{check.CheckName} failed: {check.Details ?? "(no details)"}. Summary: {result.Summary}");
         }
+    }
+
+    private static TenantIsolationCheckResult GetIsolationCheck(TenantIsolationVerificationResult result, string checkName)
+    {
+        result.Checks.ShouldNotBeNull($"The verification response must contain checks, including '{checkName}'.");
+        return result.Checks.Where(check => check.CheckName == checkName)
+            .ShouldHaveSingleItem($"The verification response must contain exactly one '{checkName}' check.");
     }
 }
