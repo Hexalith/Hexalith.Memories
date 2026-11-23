@@ -376,3 +376,40 @@ run-with-temp python3 -B tests/tooling/runtime_secret_store/fail_closed.py deplo
 ```
 
 The tenant isolation evidence checker printed `No tenant-isolation surface changed; evidence check is a no-op.`
+
+### Disposable C2 policy check
+
+A temporary copy of `deploy/kubernetes` set `storeName: kubernetes` with `defaultAccess: deny` in the four Dapr Configurations. `kubectl kustomize` rendered the production and qualification overlays. A parsed resource comparison found exactly those four added scopes in each overlay and preserved every existing resource setting, including the Vault component and its bootstrap references.
+
+Standalone daprd 1.19.1 used the tracked runtime Vault component with a loopback TLS endpoint, a synthetic CA and a local-file bootstrap store named `kubernetes`. With the deny scope applied, the application-facing bootstrap read returned HTTP 403 and the bulk response contained no secrets. The allowed `redis-secret` read returned HTTP 200 with the expected synthetic field. The TLS endpoint required the synthetic bootstrap token, which verified that the component could still resolve its bootstrap. The fixture emitted statuses and assertions only.
+
+The deployment uses daprd 1.18.1. Its operator resolves Kubernetes component references separately from the sidecar's application secret policy. A Kubernetes rollout and replay are required to confirm the deployed result. PG-ONPREM-2 pins the lifecycle and clock Configuration files, so adopting this candidate requires a profile decision. C2 remains pending, and the residue Secrets and grants still require owner disposition. [Dapr 1.18 secret scopes](https://v1-18.docs.dapr.io/operations/configuration/secret-scope/) and [Dapr 1.18.1 operator component resolution](https://github.com/dapr/dapr/blob/v1.18.1/pkg/operator/api/components.go#L113-L147).
+
+### Dapr 1.19.2 verification
+
+The C2 candidate targets Dapr 1.19.2, the latest stable 1.19 patch in Dapr's release feed. `docker buildx imagetools inspect ghcr.io/dapr/daprd:1.19.2` resolved the image index to `sha256:7839fbb66d4be24ec52e347bec2dca66a91bef3079d8c8d57676f6d3ef92654f`. [Dapr 1.19.2 release](https://github.com/dapr/dapr/releases/tag/v1.19.2)
+
+The fail-closed harness ran with `DAPRD` set to the `/daprd` binary extracted from `daprio/dapr:1.19.2`. The binary reported `1.19.2`. Missing bootstrap failed component initialization. An unreachable Vault endpoint with synthetic bootstrap returned HTTP 500. Neither case returned a successful read or loaded a fallback.
+
+A disposable kind cluster ran `dapr init -k --runtime-version 1.19.2 --set global.scheduler.placement.enabled=true --wait --timeout 170`. It used the two tracked Vault components, a TLS fixture at the configured service name, synthetic Kubernetes bootstrap Secrets, and four injected Deployments with the tracked app IDs and Configurations. The only Configuration changes were the four deny scopes. Each sidecar reported runtime version `1.19.2`. Kubernetes RBAC granted the pod ServiceAccount access to a synthetic Secret. Application requests through the registered built-in `kubernetes` store still returned HTTP 403 in all four sidecars.
+
+| App ID | Scoped Vault result |
+| --- | --- |
+| `memories` | Runtime `redis-secret` and telemetry `access-telemetry-marker-key` returned HTTP 200 with the expected synthetic field. An out-of-list name returned HTTP 403. |
+| `memories-mcp` | Neither Vault component was registered. |
+| `memories-access-telemetry` | Telemetry `access-telemetry-marker-key` returned HTTP 200 with the expected synthetic field. |
+| `memories-access-telemetry-clock` | Telemetry `access-telemetry-clock-key` returned HTTP 200 with the expected synthetic field. |
+
+The TLS fixture required the corresponding bootstrap token for each prefix. Successful Vault reads therefore exercised the Kubernetes operator's bootstrap resolution with the deny scopes in place. The probes emitted only app IDs, status codes, and counts. This run used the base component scopes and synthetic infrastructure. C2 still requires approval of the deployment profile, an authorized rollout and replay, and disposition of the four residue Secrets and grants.
+
+### Dapr 1.19.2 rollout preflight
+
+The owner approved preparing the Dapr 1.19.2 deployment and explicitly authorized the shared `jpiquot@local` control-plane scope, including coordination of the `ext-secrets-1-isolated` sidecars. The read-only preflight found the shared control plane healthy on Dapr 1.18.1. Both namespaces had ready Dapr workloads. The Kubernetes server reported v1.34.9 and the local kubectl reported v1.36.1, two minors ahead. The cluster exposed no `snapshot.storage.k8s.io` API resources. The four residual Kubernetes Secrets were still present.
+
+`kubectl kustomize deploy/kubernetes/overlays/production-dapr-1.19` renders the candidate. A parsed comparison against `production` found exactly four Configuration deny scopes, four digest-pinned Dapr sidecar images, and two Role changes that remove the residual grants. The existing production and qualification sources used by PG-ONPREM-2 are preserved. The candidate inherits the production settings, including the parked lifecycle workload, and has a different rendered profile from the live cluster. Its rollout requires a reviewed live diff and the release image inputs.
+
+The Debug source-reference build and all 164 focused deployment cases passed. `kubectl` v1.34.9 matched the server version and passed ten targeted `--dry-run=server` patches against the four live Configurations, four Deployments, and two Roles. Those patches retained the live lifecycle bootstrap grant where it still serves `memories`.
+
+`validate_current_profile_inputs()` independently refused the existing PG-ONPREM-2 checkout with `approved PG-ONPREM-2 input drifted: deploy/kubernetes/overlays/production/access-telemetry-disabled-patch.yaml`. A direct check compared all sixteen hashed inputs byte-for-byte with HEAD. The production disabled patch and production kustomization already differed from their historical approved hashes at HEAD. The new overlay preserves those inputs and has its own render.
+
+The approved recovery-point and restore-rehearsal evidence and the deployment's intake-quiescence and workflow-drain record were unavailable in this preflight. The cluster rollout remains pending under the [upgrade and migration runbook](../../../docs/operations/upgrade-migration.md#3-backup-rehearse-and-quiesce). The live Dapr control plane, workloads, Configurations, Roles, and Secrets were inspected read-only.

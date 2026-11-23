@@ -23,6 +23,7 @@ public sealed partial class RuntimeSecretStoreMigrationTests
     private const string Evidence = Artifacts + "tests/31-2-runtime-secret-store-evidence.md";
     private const string Inventory = "Runtime Kubernetes Secret inventory";
     private const string Component = "deploy/kubernetes/base/dapr/secretstore.yaml";
+    private const string Dapr119ProductionOverlay = "production-dapr-1.19";
     private static readonly string[] Prerequisites = ["C1", "C2", "C3", "C4a", "C5a", "C6"];
 
     [Fact]
@@ -117,7 +118,7 @@ public sealed partial class RuntimeSecretStoreMigrationTests
     public void KubernetesRuntimeStore_UsesVaultBootstrapTlsAndBothScopes()
     {
         string root = GetRepoRoot();
-        // Epic 29 owns deploy/dapr. Check even unreferenced Kubernetes manifests, then both effective overlays.
+        // Epic 29 owns deploy/dapr. Check every Kubernetes source manifest and every rendered overlay.
         var files = Directory.EnumerateFiles(Path.Combine(root, "deploy/kubernetes"), "*", SearchOption.AllDirectories)
             .Where(file => Path.GetExtension(file) is ".yaml" or ".yml" or ".json");
         foreach (string file in files)
@@ -133,6 +134,7 @@ public sealed partial class RuntimeSecretStoreMigrationTests
             .Select(static directory => Path.GetFileName(directory)).Order(StringComparer.Ordinal).ToArray();
         overlays.ShouldContain("production");
         overlays.ShouldContain("qualification");
+        overlays.ShouldContain(Dapr119ProductionOverlay);
         foreach (string overlay in overlays)
         {
             var resources = Resources(Run(root, "kubectl", "kustomize", "deploy/kubernetes/overlays/" + overlay)).ToList();
@@ -149,7 +151,7 @@ public sealed partial class RuntimeSecretStoreMigrationTests
             appIds.ShouldContain("memories-mcp");
             appIds.ShouldNotContain("eventstore", "Recheck the reserved scope against live workloads and require a scoped read on deployment.");
             var telemetry = resources.Single(item => IsResource(item, "Component", "access-telemetry-secrets"));
-            string[] telemetryScopes = overlay == "production"
+            string[] telemetryScopes = overlay is "production" or Dapr119ProductionOverlay
                 ? ["memories-access-telemetry", "memories-access-telemetry-clock"]
                 : ["memories", "memories-access-telemetry", "memories-access-telemetry-clock"];
             VerifyVaultStore(telemetry, "access-telemetry", telemetryScopes);
@@ -158,6 +160,11 @@ public sealed partial class RuntimeSecretStoreMigrationTests
                 var consumer = resources.Single(item => IsResource(item, "Component", name));
                 consumer["auth"]["secretStore"].ToString().ShouldBe(name.StartsWith("access-telemetry-", StringComparison.Ordinal)
                     ? "access-telemetry-secrets" : "secretstore");
+            }
+
+            if (overlay == Dapr119ProductionOverlay)
+            {
+                VerifyDapr119ProductionBoundary(resources);
             }
 
             // Every other component reference must resolve through an OpenBao store, never the Kubernetes default.
@@ -171,6 +178,38 @@ public sealed partial class RuntimeSecretStoreMigrationTests
                 }
             }
         }
+    }
+
+    private static void VerifyDapr119ProductionBoundary(IReadOnlyList<YamlMappingNode> resources)
+    {
+        const string sidecar = "ghcr.io/dapr/daprd:1.19.2@sha256:7839fbb66d4be24ec52e347bec2dca66a91bef3079d8c8d57676f6d3ef92654f";
+        string[] workloadNames = ["memories", "memories-mcp", "memories-access-telemetry", "memories-access-telemetry-clock"];
+        foreach (string workloadName in workloadNames)
+        {
+            var deployment = resources.Single(resource => IsResource(resource, "Deployment", workloadName));
+            var annotations = deployment["spec"]["template"]["metadata"]["annotations"];
+            annotations["dapr.io/sidecar-image"].ToString().ShouldBe(sidecar);
+            string configurationName = annotations["dapr.io/config"].ToString();
+            var configuration = resources.Single(resource => IsResource(resource, "Configuration", configurationName));
+            var scopes = (YamlSequenceNode)configuration["spec"]["secrets"]["scopes"];
+            var kubernetes = (YamlMappingNode)scopes.Children.Single(scope => scope["storeName"].ToString() == "kubernetes");
+            kubernetes["defaultAccess"].ToString().ShouldBe("deny");
+            kubernetes.Children.Keys.Select(key => key.ToString()).ShouldBe(["storeName", "defaultAccess"], ignoreOrder: true);
+        }
+
+        VerifyNamedSecretGrants(resources, "memories-dapr-secret-reader",
+            ["app-api-token", "dapr-api-token", "redis-secret", "openbao-runtime-bootstrap"]);
+        VerifyNamedSecretGrants(resources, "memories-access-telemetry-secret-reader",
+            ["redis-secret", "app-api-token", "dapr-api-token", "openbao-access-telemetry-bootstrap"]);
+    }
+
+    private static void VerifyNamedSecretGrants(IReadOnlyList<YamlMappingNode> resources, string roleName, string[] expectedNames)
+    {
+        var role = resources.Single(resource => IsResource(resource, "Role", roleName));
+        var rule = ((YamlSequenceNode)role["rules"]).Children.Single();
+        var names = (YamlSequenceNode)rule["resourceNames"];
+        names.Children.Select(name => name.ToString()).ShouldBe(expectedNames, ignoreOrder: true);
+        ((YamlSequenceNode)rule["verbs"]).Children.Select(verb => verb.ToString()).ShouldBe(["get"]);
     }
 
     private static bool IsKind(YamlMappingNode resource, string kind)

@@ -7,6 +7,8 @@ creation_sprint_status_sha256: 6eb0077b6ee0306f1cc5f396d982849ab614aaee6138b882f
 
 Status: in-progress
 
+The owner approved the Dapr 1.19.2 candidate and its shared-cluster upgrade scope. The versioned production overlay implements the deny policy and narrows the named grants. C2 remains pending verified recovery and intake-drain prerequisites, rollout, and live Secret disposition. See the [Dapr 1.19.2 rollout preflight](tests/31-2-runtime-secret-store-evidence.md#dapr-1192-rollout-preflight).
+
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
 ## Blocking Activation Gate
@@ -591,6 +593,7 @@ Creation: Claude Opus 5 (`claude-opus-5`). November implementation: Codex. Resum
 
 Additional implementation paths against the November spec baseline:
 
+- `deploy/kubernetes/overlays/production-dapr-1.19/kustomization.yaml`
 - `_bmad-output/implementation-artifacts/deferred-work.md`
 - `_bmad-output/implementation-artifacts/spec-31-2-runtime-dapr-secret-store-migration.md`
 - `_bmad-output/implementation-artifacts/tests/31-2-runtime-secret-store-evidence.md`
@@ -622,6 +625,7 @@ Added on 2026-11-22 for the story-file-scope commit gate. It mirrors the File Li
 
 Allowed files for this story:
 
+- `deploy/kubernetes/overlays/production-dapr-1.19/kustomization.yaml` — ADD. Owner-approved Dapr 1.19.2 candidate overlay.
 - `_bmad-output/implementation-artifacts/31-2-runtime-dapr-secret-store-migration.md` — UPDATE. This story file.
 - `_bmad-output/implementation-artifacts/sprint-status.yaml` — UPDATE only the `31-2-runtime-dapr-secret-store-migration` row and `last_updated`.
 - `_bmad-output/implementation-artifacts/spec-31-2-runtime-dapr-secret-store-migration.md` — UPDATE. The November build spec.
