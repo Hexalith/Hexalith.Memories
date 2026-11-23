@@ -8,6 +8,7 @@ namespace Hexalith.Memories.Server.Handlers;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 
 using Hexalith.Memories.EventStore;
@@ -33,22 +34,23 @@ internal static class ProjectionBindingMatcher
         foreach (KeyValuePair<string, string> route in routedEntries.OrderBy(static e => e.Key, StringComparer.OrdinalIgnoreCase))
         {
             string sourceKey = NormalizeSource(route.Key);
-            string aggregateKey = NormalizeToken(ExtractAggregateFromSourcePrefix(route.Key));
+            string aggregateKey = GetRouteAggregateKey(route.Key);
             List<string> eventKeys = observedTypes
-                .Where(o => string.Equals(NormalizeToken(o.AggregateType), aggregateKey, StringComparison.Ordinal))
-                .Select(o => NormalizeEventPattern(o.EventType))
-                .DefaultIfEmpty("*")
+                .Where(o => string.Equals(NormalizeAggregateKey(o.AggregateType), aggregateKey, StringComparison.Ordinal))
+                .Select(o => NormalizeEventName(o.EventType))
+                .Where(static key => key.Length != 0)
                 .Distinct(StringComparer.Ordinal)
                 .OrderBy(static s => s, StringComparer.Ordinal)
                 .ToList();
 
-            foreach (string eventKey in eventKeys)
+            foreach (string eventKey in eventKeys.DefaultIfEmpty("*"))
             {
                 expectations.Add(new ProjectionBindingExpectation(
                     route.Key,
                     sourceKey,
                     aggregateKey,
                     eventKey,
+                    IsUnobserved: eventKeys.Count == 0,
                     BuildComparisonKey(tenantId, sourceKey, eventKey)));
             }
         }
@@ -99,27 +101,43 @@ internal static class ProjectionBindingMatcher
             ? ["*"]
             : binding.SupportedEventTypePatterns;
 
-        return patterns.Any(pattern => EventPatternCovers(pattern, expectation.EventKey));
+        return patterns.Any(pattern => EventPatternCovers(pattern, expectation));
     }
 
-    private static bool EventPatternCovers(string pattern, string eventKey)
+    private static bool EventPatternCovers(string? pattern, ProjectionBindingExpectation expectation)
     {
-        string normalized = NormalizeEventPattern(pattern);
-        if (normalized == "*" || eventKey == "*")
+        if (pattern is null)
+        {
+            return false;
+        }
+
+        string trimmed = pattern.Trim();
+        if (pattern.Length == 0 || trimmed == "*")
         {
             return true;
         }
 
-        if (normalized.EndsWith('*'))
+        bool wildcard = trimmed.EndsWith('*');
+        string normalized = NormalizeEventName(wildcard ? trimmed[..^1] : trimmed);
+        if (normalized.Length == 0)
         {
-            return eventKey.StartsWith(normalized[..^1], StringComparison.Ordinal);
+            return false;
         }
 
-        return string.Equals(normalized, eventKey, StringComparison.Ordinal);
+        return expectation.IsUnobserved || (wildcard
+            ? expectation.EventKey.StartsWith(normalized, StringComparison.Ordinal)
+            : string.Equals(normalized, expectation.EventKey, StringComparison.Ordinal));
     }
 
     private static string BuildComparisonKey(string tenantId, string sourceKey, string eventKey)
-        => string.Concat(NormalizeToken(tenantId), "/", sourceKey, "/", eventKey);
+        => string.Concat(tenantId.Trim().ToLowerInvariant(), "/", sourceKey, "/", eventKey);
+
+    /// <summary>Normalizes an aggregate name for route and observation comparisons.</summary>
+    internal static string NormalizeAggregateKey(string? value) => NormalizeToken(value.AsSpan());
+
+    /// <summary>Extracts the normalized terminal aggregate name from a route prefix.</summary>
+    internal static string GetRouteAggregateKey(string sourcePrefix)
+        => NormalizeToken(GetTerminalSegment(sourcePrefix));
 
     private static string NormalizeSource(string? value)
     {
@@ -138,70 +156,33 @@ internal static class ProjectionBindingMatcher
             normalized = normalized.Replace("//", "/", StringComparison.Ordinal);
         }
 
-        return normalized.ToLowerInvariant();
+        return NormalizeToken(normalized);
     }
 
-    private static string NormalizeEventPattern(string value)
+    private static string NormalizeEventName(string? value)
     {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return "*";
-        }
-
-        string trimmed = value.Trim();
-        if (trimmed == "*")
-        {
-            return "*";
-        }
-
-        bool wildcard = trimmed.EndsWith('*');
-        if (wildcard)
-        {
-            trimmed = trimmed[..^1];
-        }
-
-        ReadOnlySpan<char> span = trimmed.AsSpan();
-        int lastDot = span.LastIndexOf('.');
-        if (lastDot >= 0 && lastDot < span.Length - 1)
-        {
-            span = span[(lastDot + 1)..];
-        }
-
-        string terminal = VersionSuffixRegex.Replace(span.ToString(), string.Empty);
-        string normalized = NormalizeToken(terminal);
-        return wildcard ? string.Concat(normalized, "*") : normalized;
+        string terminal = NormalizeToken(GetTerminalSegment(value));
+        Match suffix = VersionSuffixRegex.Match(terminal);
+        return suffix.Success && suffix.Index > 0 ? terminal[..suffix.Index] : terminal;
     }
 
-    private static string NormalizeToken(string? value)
-        => string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim().ToLowerInvariant();
-
-    private static string ExtractAggregateFromSourcePrefix(string sourcePrefix)
+    private static string NormalizeToken(ReadOnlySpan<char> value)
     {
-        if (string.IsNullOrEmpty(sourcePrefix))
+        string token = value.Trim().ToString();
+        try
         {
-            return string.Empty;
+            return token.Normalize(NormalizationForm.FormC).ToLowerInvariant();
         }
-
-        ReadOnlySpan<char> span = sourcePrefix.AsSpan().Trim('/');
-        int lastSlash = span.LastIndexOf('/');
-        if (lastSlash >= 0 && lastSlash < span.Length - 1)
+        catch (ArgumentException)
         {
-            span = span[(lastSlash + 1)..];
+            // A programmatic provider can supply invalid UTF-16. Match it literally.
+            return token.ToLowerInvariant();
         }
+    }
 
-        int lastDot = span.LastIndexOf('.');
-        if (lastDot >= 0 && lastDot < span.Length - 1)
-        {
-            span = span[(lastDot + 1)..];
-        }
-
-        return span.ToString();
+    private static ReadOnlySpan<char> GetTerminalSegment(string? value)
+    {
+        ReadOnlySpan<char> span = value.AsSpan().Trim().TrimEnd("./\\");
+        return span[(span.LastIndexOfAny('.', '/', '\\') + 1)..];
     }
 }
-
-internal sealed record ProjectionBindingExpectation(
-    string SourcePrefix,
-    string SourceKey,
-    string AggregateKey,
-    string EventKey,
-    string ComparisonKey);

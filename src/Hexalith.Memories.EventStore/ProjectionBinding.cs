@@ -11,7 +11,8 @@ namespace Hexalith.Memories.EventStore;
 /// <param name="AggregateType">Optional aggregate token covered by the projection.</param>
 /// <param name="ProjectionName">Sanitized operator-facing projection name or identifier.</param>
 /// <param name="ProjectionType">Sanitized projection type name, without DI internals or endpoint details.</param>
-/// <param name="SupportedEventTypePatterns">Supported event-name patterns. Empty or <c>*</c> means all events for the aggregate/source.</param>
+/// <param name="SupportedEventTypePatterns">Supported event-name patterns. An empty collection, an empty string,
+/// or <c>*</c> covers all events for the aggregate or source. Whitespace-only entries grant no coverage.</param>
 public sealed record ProjectionBinding(
     string TenantId,
     string? SourcePrefix,

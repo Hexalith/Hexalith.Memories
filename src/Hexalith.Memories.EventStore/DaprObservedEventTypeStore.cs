@@ -20,10 +20,9 @@ using Microsoft.Extensions.Options;
 
 /// <summary>Story 9.3 — Dapr-state-store implementation of <see cref="IObservedEventTypeStore"/>
 /// (spec-infrastructure-dependency-abstraction — F6, Decision D30, ADR-IDA-001; review D1 redesign).
-/// Per-aggregate observation dictionaries plus FirstWrite membership markers remove cross-type contention
-/// on discovery-index rewrites; an uncapped written-aggregates index preserves deletion coverage for
-/// cap-rejected types. Window filtering is in-memory; write posture stays <b>fail-open</b> except for
-/// written-index CAS exhaustion (D3 purge enumerability — fail-loud after observation compensate).</summary>
+/// Per-aggregate observation dictionaries have membership markers for discovery recovery.
+/// An uncapped written-aggregates index preserves deletion coverage for cap-rejected types.
+/// Window filtering is in-memory; written-index CAS exhaustion fails loudly to protect purge enumerability.</summary>
 internal sealed class DaprObservedEventTypeStore : IObservedEventTypeStore
 {
     /// <summary>TTL applied on every write — 2x the widest supported observation window (48h = 2×24h).</summary>
@@ -34,6 +33,8 @@ internal sealed class DaprObservedEventTypeStore : IObservedEventTypeStore
 
     /// <summary>Bounded retry budget for ETag optimistic-concurrency conflicts.</summary>
     private const int MaxConcurrencyRetries = 8;
+
+    private const int MembershipReadBatchSize = 128;
 
     private const string MembershipValue = "1";
 
@@ -95,7 +96,6 @@ internal sealed class DaprObservedEventTypeStore : IObservedEventTypeStore
 
             // Uncapped written index always records the aggregate so tenant deletion can find
             // cap-rejected observation keys the discovery index does not list (review D3).
-            // Fail-loud on CAS exhaustion after compensating the observation key (review patch #4).
             await EnsureWrittenIndexedAsync(tenantId, aggregateType, cancellationToken).ConfigureAwait(false);
 
             (bool rejectedAtCap, long preCardinality, bool discoveryRecorded) =
@@ -327,7 +327,10 @@ internal sealed class DaprObservedEventTypeStore : IObservedEventTypeStore
         return false;
     }
 
-    private async Task EnsureWrittenIndexedAsync(string tenantId, string aggregateType, CancellationToken cancellationToken)
+    private async Task EnsureWrittenIndexedAsync(
+        string tenantId,
+        string aggregateType,
+        CancellationToken cancellationToken)
     {
         string indexKey = GetWrittenIndexKey(tenantId);
         for (int attempt = 0; attempt < MaxConcurrencyRetries; attempt++)
@@ -338,20 +341,12 @@ internal sealed class DaprObservedEventTypeStore : IObservedEventTypeStore
                 .ConfigureAwait(false);
             index ??= [];
 
-            if (index.Contains(aggregateType, StringComparer.Ordinal))
+            if (!index.Contains(aggregateType, StringComparer.Ordinal))
             {
-                // Refresh TTL so the written index cannot expire while observation keys remain (patch #3).
-                _ = await _daprClient
-                    .TrySaveStateAsync(_stateStoreName, indexKey, index, etag, metadata: TtlMetadata(), cancellationToken: cancellationToken)
-                    .ConfigureAwait(false);
-                return;
+                index.Add(aggregateType);
             }
 
-            index.Add(aggregateType);
-            StateOptions? concurrency = string.IsNullOrEmpty(etag) ? FirstWriteOptions : null;
-            if (await _daprClient
-                .TrySaveStateAsync(_stateStoreName, indexKey, index, etag, concurrency, TtlMetadata(), cancellationToken)
-                .ConfigureAwait(false))
+            if (await TrySaveWithTtlAsync(indexKey, index, etag, cancellationToken).ConfigureAwait(false))
             {
                 return;
             }
@@ -359,17 +354,23 @@ internal sealed class DaprObservedEventTypeStore : IObservedEventTypeStore
             await DelayBackoffAsync(attempt, cancellationToken).ConfigureAwait(false);
         }
 
-        // Compensate observation (+ membership) so D3 purge cannot miss an unindexed key, then fail loud.
         EventStoreIntegrationLog.ObservedEventTypeStoreWriteFailed(_logger, tenantId, "WrittenIndexCasExhausted");
-        await _daprClient
-            .DeleteStateAsync(_stateStoreName, GetObservationsKey(tenantId, aggregateType), cancellationToken: cancellationToken)
+        List<string>? currentIndex = await _daprClient
+            .GetStateAsync<List<string>?>(_stateStoreName, indexKey, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
-        await _daprClient
-            .DeleteStateAsync(_stateStoreName, GetMembershipKey(tenantId, aggregateType), cancellationToken: cancellationToken)
-            .ConfigureAwait(false);
+        if (currentIndex?.Contains(aggregateType, StringComparer.Ordinal) != true)
+        {
+            // Compensate writes that have no purge index entry. Keep already indexed observations.
+            await _daprClient
+                .DeleteStateAsync(_stateStoreName, GetObservationsKey(tenantId, aggregateType), cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+            await _daprClient
+                .DeleteStateAsync(_stateStoreName, GetMembershipKey(tenantId, aggregateType), cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+        }
 
         var ex = new InvalidOperationException(
-            $"Failed to record written-aggregates index for tenant '{tenantId}' aggregate '{aggregateType}' after {MaxConcurrencyRetries} concurrency retries.");
+            $"Failed to refresh the written-aggregates index for tenant '{tenantId}' aggregate '{aggregateType}' after {MaxConcurrencyRetries} concurrency retries.");
         ex.Data["WrittenIndexCasExhausted"] = true;
         throw ex;
     }
@@ -379,27 +380,6 @@ internal sealed class DaprObservedEventTypeStore : IObservedEventTypeStore
         string aggregateType,
         CancellationToken cancellationToken)
     {
-        string membershipKey = GetMembershipKey(tenantId, aggregateType);
-        (string? existingMember, string memberEtag) = await _daprClient
-            .GetStateAndETagAsync<string?>(_stateStoreName, membershipKey, cancellationToken: cancellationToken)
-            .ConfigureAwait(false);
-
-        if (!string.IsNullOrEmpty(existingMember))
-        {
-            // Already discovered — refresh membership + index TTLs so they cannot expire while
-            // observation keys remain (review patch #3).
-            _ = await _daprClient.TrySaveStateAsync(
-                _stateStoreName,
-                membershipKey,
-                MembershipValue,
-                memberEtag,
-                metadata: TtlMetadata(),
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-            await RefreshIndexTtlAsync(GetDiscoveryIndexKey(tenantId), cancellationToken).ConfigureAwait(false);
-            await RefreshIndexTtlAsync(GetWrittenIndexKey(tenantId), cancellationToken).ConfigureAwait(false);
-            return (false, AggregatesIndexCardinalityCap, true);
-        }
-
         string indexKey = GetDiscoveryIndexKey(tenantId);
         for (int attempt = 0; attempt < MaxConcurrencyRetries; attempt++)
         {
@@ -407,62 +387,131 @@ internal sealed class DaprObservedEventTypeStore : IObservedEventTypeStore
             (List<string>? index, string etag) = await _daprClient
                 .GetStateAndETagAsync<List<string>?>(_stateStoreName, indexKey, cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
-            index ??= [];
+            bool rebuilding = index is null;
+            index ??= await RecoverDiscoveryIndexAsync(tenantId, cancellationToken)
+                .ConfigureAwait(false);
 
             long preCardinality = index.Count;
             bool alreadyRegistered = index.Contains(aggregateType, StringComparer.Ordinal);
-
-            if (!alreadyRegistered && preCardinality >= AggregatesIndexCardinalityCap)
+            bool rejectedAtCap = !alreadyRegistered && preCardinality >= AggregatesIndexCardinalityCap;
+            if (rejectedAtCap && !rebuilding)
             {
-                // Cap-rejected: observation + written index remain; discovery intentionally omits.
+                // The written index still allows purge to find this observation.
                 return (true, preCardinality, true);
             }
 
-            if (!alreadyRegistered)
+            if (!alreadyRegistered && !rejectedAtCap)
             {
                 index.Add(aggregateType);
             }
 
-            StateOptions? concurrency = string.IsNullOrEmpty(etag) ? FirstWriteOptions : null;
-            if (!await _daprClient
-                .TrySaveStateAsync(_stateStoreName, indexKey, index, etag, concurrency, TtlMetadata(), cancellationToken)
-                .ConfigureAwait(false))
+            if (!await TrySaveWithTtlAsync(indexKey, index, etag, cancellationToken).ConfigureAwait(false))
             {
                 await DelayBackoffAsync(attempt, cancellationToken).ConfigureAwait(false);
                 continue;
             }
 
-            // FirstWrite membership marker so concurrent discoverers of unrelated types do not contend
-            // on re-checking this aggregate.
-            _ = await _daprClient.TrySaveStateAsync(
-                _stateStoreName,
-                membershipKey,
-                MembershipValue,
-                memberEtag,
-                FirstWriteOptions,
-                TtlMetadata(),
-                cancellationToken).ConfigureAwait(false);
+            if (!rejectedAtCap && !await RefreshMembershipAsync(tenantId, aggregateType, cancellationToken).ConfigureAwait(false))
+            {
+                return (false, preCardinality, false);
+            }
 
-            return (false, preCardinality, true);
+            return (rejectedAtCap, preCardinality, true);
         }
 
         EventStoreIntegrationLog.ObservedEventTypeStoreWriteFailed(_logger, tenantId, "DiscoveryIndexCasExhausted");
         return (false, AggregatesIndexCardinalityCap, false);
     }
 
-    private async Task RefreshIndexTtlAsync(string indexKey, CancellationToken cancellationToken)
+    private async Task<List<string>> RecoverDiscoveryIndexAsync(
+        string tenantId,
+        CancellationToken cancellationToken)
     {
-        (List<string>? index, string etag) = await _daprClient
-            .GetStateAndETagAsync<List<string>?>(_stateStoreName, indexKey, cancellationToken: cancellationToken)
+        // Read the current written index after observing the discovery miss.
+        List<string>? writtenAggregates = await _daprClient
+            .GetStateAsync<List<string>?>(_stateStoreName, GetWrittenIndexKey(tenantId), cancellationToken: cancellationToken)
             .ConfigureAwait(false);
-        if (index is null)
+        List<string> index = [];
+        if (writtenAggregates is null)
         {
-            return;
+            return index;
         }
 
-        _ = await _daprClient
-            .TrySaveStateAsync(_stateStoreName, indexKey, index, etag, metadata: TtlMetadata(), cancellationToken: cancellationToken)
-            .ConfigureAwait(false);
+        foreach (string[] batch in writtenAggregates.Chunk(MembershipReadBatchSize))
+        {
+            string[] keys = [.. batch.Select(aggregateType => GetMembershipKey(tenantId, aggregateType))];
+            IReadOnlyList<BulkStateItem<string>> members = await _daprClient
+                .GetBulkStateAsync<string>(_stateStoreName, keys, parallelism: 16, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+            HashSet<string> activeKeys = new(members.Where(static member => member.Value == MembershipValue)
+                .Select(static member => member.Key), StringComparer.Ordinal);
+            for (int i = 0; i < keys.Length; i++)
+            {
+                if (activeKeys.Contains(keys[i]))
+                {
+                    index.Add(batch[i]);
+                    if (index.Count == AggregatesIndexCardinalityCap)
+                    {
+                        return index;
+                    }
+                }
+            }
+        }
+
+        return index;
+    }
+
+    private async Task<bool> RefreshMembershipAsync(
+        string tenantId,
+        string aggregateType,
+        CancellationToken cancellationToken)
+    {
+        string membershipKey = GetMembershipKey(tenantId, aggregateType);
+        for (int attempt = 0; attempt < MaxConcurrencyRetries; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            (_, string etag) = await _daprClient
+                .GetStateAndETagAsync<string?>(_stateStoreName, membershipKey, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+            if (await TrySaveWithTtlAsync(membershipKey, MembershipValue, etag, cancellationToken).ConfigureAwait(false))
+            {
+                return true;
+            }
+
+            await DelayBackoffAsync(attempt, cancellationToken).ConfigureAwait(false);
+        }
+
+        EventStoreIntegrationLog.ObservedEventTypeStoreWriteFailed(_logger, tenantId, "MembershipCasExhausted");
+        return false;
+    }
+
+    private async Task<bool> TrySaveWithTtlAsync<T>(
+        string key,
+        T value,
+        string etag,
+        CancellationToken cancellationToken)
+        where T : class
+    {
+        StateOptions? concurrency = string.IsNullOrEmpty(etag) ? FirstWriteOptions : null;
+        try
+        {
+            return await _daprClient
+                .TrySaveStateAsync(_stateStoreName, key, value, etag, concurrency, TtlMetadata(), cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (DaprException) when (concurrency is not null)
+        {
+            // The Redis state component can report a concurrent FirstWrite as an exception.
+            T? current = await _daprClient
+                .GetStateAsync<T?>(_stateStoreName, key, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+            if (current is null)
+            {
+                throw;
+            }
+
+            return false;
+        }
     }
 
     /// <summary>Serialized per-event-type observation counter (occurrence count + last-seen timestamp).</summary>

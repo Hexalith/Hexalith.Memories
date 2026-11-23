@@ -102,12 +102,12 @@ public sealed class HandlerMismatchDetector
 
         // UnhandledEventType — observed aggregates that don't map to any routed source-prefix's naming.
         HashSet<string> routedPrefixTokens = new(
-            routedEntries.Select(e => ExtractAggregateFromSourcePrefix(e.Key)),
-            StringComparer.OrdinalIgnoreCase);
+            routedEntries.Select(e => ProjectionBindingMatcher.GetRouteAggregateKey(e.Key)),
+            StringComparer.Ordinal);
 
         foreach (ObservedEventType o in observedTypes)
         {
-            if (!routedPrefixTokens.Contains(o.AggregateType))
+            if (!routedPrefixTokens.Contains(ProjectionBindingMatcher.NormalizeAggregateKey(o.AggregateType)))
             {
                 mismatches.Add(BuildUnhandledMismatch(o, tenantId, windowHours, options.Topic));
             }
@@ -378,31 +378,6 @@ public sealed class HandlerMismatchDetector
                 CultureInfo.InvariantCulture,
                 $"Register an authoritative projection binding for source '{expectation.SourcePrefix}' and event key '{expectation.EventKey}', or update EventStoreIntegration:Routing:SourceToTenantMap so it matches a runtime-bound projection. This check proves declared binding coverage only, not projection liveness or lag. See: https://docs.hexalith.dev/memories/runbooks/handler-projection-binding-missing."),
         };
-
-    private static string ExtractAggregateFromSourcePrefix(string sourcePrefix)
-    {
-        // Conservative heuristic: take the last '.'-separated token of the prefix, OR the last '/'-separated
-        // token if no dot. Documented in docs/dev/eventstore-integration.md §11.2.
-        if (string.IsNullOrEmpty(sourcePrefix))
-        {
-            return string.Empty;
-        }
-
-        ReadOnlySpan<char> span = sourcePrefix.AsSpan();
-        int lastSlash = span.LastIndexOf('/');
-        if (lastSlash >= 0 && lastSlash < span.Length - 1)
-        {
-            span = span[(lastSlash + 1)..];
-        }
-
-        int lastDot = span.LastIndexOf('.');
-        if (lastDot >= 0 && lastDot < span.Length - 1)
-        {
-            span = span[(lastDot + 1)..];
-        }
-
-        return span.ToString();
-    }
 
     private static string Truncate(string value, int max)
         => value.Length <= max ? value : value[..max];

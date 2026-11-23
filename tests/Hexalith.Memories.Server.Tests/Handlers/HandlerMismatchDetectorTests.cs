@@ -7,6 +7,8 @@ namespace Hexalith.Memories.Server.Tests.Handlers;
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.Metrics;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -14,6 +16,7 @@ using System.Threading.Tasks;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.EventStore;
 using Hexalith.Memories.Server.Handlers;
+using Hexalith.Memories.Telemetry;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -700,7 +703,7 @@ public sealed class HandlerMismatchDetectorTests
             AggregateType: "claims",
             ProjectionName: "ClaimsReadModel",
             ProjectionType: "Acme.ClaimsProjection",
-            SupportedEventTypePatterns: ["claimsubmitted"]);
+            SupportedEventTypePatterns: ["claimsub*"]);
 
         HandlerMismatchDetector detector = BuildDetector(
             routing,
@@ -713,6 +716,144 @@ public sealed class HandlerMismatchDetectorTests
         HandlerMismatchReport report = await detector.DetectAsync("acme", TimeSpan.FromHours(24), CancellationToken.None);
 
         report.Mismatches.Where(m => m.Category == HandlerMismatchCategory.ProjectionBindingMissing).ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData("claimsub*", true)]
+    [InlineData("claimapproved*", false)]
+    [InlineData(" ", false)]
+    [InlineData("/*", false)]
+    [InlineData("", true)]
+    [InlineData("*", true)]
+    public void ProjectionBindingEventPatterns_RespectPrefixAndExplicitWildcards(string pattern, bool covered)
+    {
+        ProjectionBindingExpectation expectation = ProjectionBindingMatcher.BuildExpectations(
+            "acme",
+            [new("enterprise/claims", "acme")],
+            [new("Claims", "ClaimSubmittedV2", 1, DateTimeOffset.UtcNow)]).Single();
+        ProjectionBinding binding = new("acme", null, "claims", null, null, [pattern]);
+
+        ProjectionBindingMatcher.IsCovered("acme", expectation, [binding]).ShouldBe(covered);
+    }
+
+    [Fact]
+    public void ProjectionBindingMatcher_NormalizesTerminalSegmentsAndCanonicalUnicodeUnderTurkishCulture()
+    {
+        CultureInfo originalCulture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("tr-TR");
+            IReadOnlyList<ProjectionBindingExpectation> expectations = ProjectionBindingMatcher.BuildExpectations(
+                "TENANT-I",
+                [new(" /OFFICE//Café./ ", "TENANT-I"), new("office\\cafe\u0301", "TENANT-I")],
+                [new("CAFE\u0301", "Acme/Café\\InitiéV2./", 1, DateTimeOffset.UtcNow)]);
+            ProjectionBindingExpectation expectation = expectations.Single();
+            expectation.ComparisonKey.ShouldBe("tenant-i/office/café/initié");
+            ProjectionBinding binding = new("tenant-i", "office/cafe\u0301", null, null, null, ["initiE\u0301"]);
+
+            ProjectionBindingMatcher.IsCovered("TENANT-I", expectation, [binding]).ShouldBeTrue();
+            ProjectionBindingMatcher.IsCovered("TENANT-I", expectation, [binding with { TenantId = "tenant-\u0131" }]).ShouldBeFalse();
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+        }
+    }
+
+    [Fact]
+    public void ProjectionBindingMatcher_RetainsEventNamesThatContainOnlyAVersion()
+    {
+        ProjectionBindingExpectation expectation = ProjectionBindingMatcher.BuildExpectations(
+            "acme",
+            [new("enterprise/claims", "acme")],
+            [new("Claims", "Namespace.V2", 1, DateTimeOffset.UtcNow)]).Single();
+
+        expectation.ComparisonKey.ShouldBe("acme/enterprise/claims/v2");
+        ProjectionBinding binding = new("acme", null, "claims", null, null, ["V2"]);
+        ProjectionBindingMatcher.IsCovered("acme", expectation, [binding]).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void ProjectionBindingMatcher_InvalidUnicodePatternDoesNotCoverAValidEvent()
+    {
+        ProjectionBindingExpectation expectation = ProjectionBindingMatcher.BuildExpectations(
+            "acme",
+            [new("enterprise/claims", "acme")],
+            [new("Claims", "ClaimSubmitted", 1, DateTimeOffset.UtcNow)]).Single();
+        string malformedPattern = ((char)0xD800).ToString();
+        ProjectionBinding binding = new("acme", null, "claims", null, null, [malformedPattern]);
+
+        ProjectionBindingMatcher.IsCovered("acme", expectation, [binding]).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void ProjectionBindingMatcher_DistinguishesAnObservedAsteriskFromAnUnobservedAggregate()
+    {
+        KeyValuePair<string, string>[] routes = [new("enterprise/claims", "acme")];
+        ProjectionBindingExpectation observed = ProjectionBindingMatcher.BuildExpectations(
+            "acme", routes, [new("Claims", "Acme.Claims/*/", 1, DateTimeOffset.UtcNow)]).Single();
+        ProjectionBindingExpectation unobserved = ProjectionBindingMatcher.BuildExpectations("acme", routes, []).Single();
+        ProjectionBinding binding = new("acme", null, "claims", null, null, ["ClaimSubmitted"]);
+
+        ProjectionBindingMatcher.IsCovered("acme", observed, [binding]).ShouldBeFalse();
+        ProjectionBindingMatcher.IsCovered("acme", unobserved, [binding]).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task ProjectionBindingMissing_LogsAndMeasuresOnlyTheRequestedTenant()
+    {
+        TenantEventRoutingOptions routing = new()
+        {
+            PubSubName = "pubsub",
+            Topic = "events",
+            SourceToTenantMap =
+            {
+                { "enterprise//claims./", "acme" },
+                { "foreign/foreign-aggregate", "foreign-tenant" },
+            },
+        };
+        IObservedEventTypeStore store = BuildObservedStore([new("Claims", "ClaimSubmittedV2", 1, DateTimeOffset.UtcNow)]);
+        ProjectionBinding foreignBinding = new(
+            "foreign-tenant", "enterprise/claims", "claims", "foreign-projection", "foreign-type", ["*"]);
+        CapturingLogger<HandlerMismatchDetector> logger = new();
+        HandlerMismatchDetector detector = BuildDetector(
+            routing, store,
+            new StaticProjectionBindingProvider(new("acme", ProjectionBindingRegistryAuthority.Authoritative, [foreignBinding])),
+            logger);
+
+        using MeterListener listener = new();
+        AsyncLocal<bool> recordMeasurements = new();
+        List<KeyValuePair<string, object?>[]> measurements = [];
+        listener.InstrumentPublished = (instrument, meterListener) =>
+        {
+            if (ReferenceEquals(instrument, MemoriesMeter.HandlerMismatches))
+            {
+                meterListener.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((_, _, tags, _) =>
+        {
+            if (recordMeasurements.Value)
+            {
+                measurements.Add(tags.ToArray());
+            }
+        });
+        listener.Start();
+        recordMeasurements.Value = true;
+
+        HandlerMismatchReport report = await detector.DetectAsync("acme", TimeSpan.FromHours(24), CancellationToken.None);
+
+        report.Mismatches.Single().Category.ShouldBe(HandlerMismatchCategory.ProjectionBindingMissing);
+        LogEntry entry = logger.Entries.Single(e => e.EventId == 9132);
+        entry.Fields.Where(field => field.Key != "{OriginalFormat}").ShouldBe(
+        [
+            new("TenantId", "acme"),
+            new("Category", "ProjectionBindingMissing"),
+            new("Severity", "Warning"),
+            new("Subject", "acme/enterprise/claims/claimsubmitted"),
+        ]);
+        entry.Message.ShouldNotContain("foreign");
+        measurements.Single().ShouldBe([new("tenant_id", "acme"), new("severity", "warning")]);
     }
 
     private static HandlerMismatchDetector BuildDetector(
@@ -764,7 +905,11 @@ public sealed class HandlerMismatchDetectorTests
         }
     }
 
-    private sealed record LogEntry(LogLevel Level, string Message);
+    private sealed record LogEntry(
+        LogLevel Level,
+        string Message,
+        int EventId,
+        IReadOnlyList<KeyValuePair<string, object?>> Fields);
 
     private sealed class CapturingLogger<T> : ILogger<T>
     {
@@ -777,7 +922,11 @@ public sealed class HandlerMismatchDetectorTests
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
             ArgumentNullException.ThrowIfNull(formatter);
-            Entries.Add(new LogEntry(logLevel, formatter(state, exception)));
+            Entries.Add(new LogEntry(
+                logLevel,
+                formatter(state, exception),
+                eventId.Id,
+                state is IEnumerable<KeyValuePair<string, object?>> fields ? fields.ToArray() : []));
         }
     }
 }

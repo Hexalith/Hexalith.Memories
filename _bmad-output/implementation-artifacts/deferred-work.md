@@ -2965,56 +2965,64 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of 16-1-projection-registry-cross-check-design (2026-05-20)"), 2026-09-01
 location: src/Hexalith.Memories.Server/Handlers/ProjectionBindingMatcher.cs:137-140
 reason: - **16.1-CR1. Whitespace-only entry in `SupportedEventTypePatterns` silently promoted to wildcard `*`** (`src/Hexalith.Memories.Server/Handlers/ProjectionBindingMatcher.cs:137-140`). Rationale: operator-error edge; promote to wildcard is consistent with empty-string semantics documented in `ProjectionBinding.SupportedEventTypePatterns` XML doc. Sweep later if any host reports surprise.
-status: open
+status: done 2026-11-24
+resolution: Whitespace-only pattern entries grant no coverage. See _bmad-output/implementation-artifacts/spec-ten-deferred-projection-registry.md.
 
 ### DW-451: 16.1-CR2. Trailing `.` or `/` in event names/source prefixes not trimmed before terminal-segment split
 
 origin: migrated from legacy ledger ("Deferred from: code review of 16-1-projection-registry-cross-check-design (2026-05-20)"), 2026-09-01
 location: n/a
 reason: - **16.1-CR2. Trailing `.` or `/` in event names/source prefixes not trimmed before terminal-segment split** (`ProjectionBindingMatcher.cs:155-159, 183-187`). Rationale: not produced by current callers; defensive normalization deferred to a normalization sweep.
-status: open
+status: done 2026-11-24
+resolution: Trim trailing separators before extracting route and event terminal segments. See _bmad-output/implementation-artifacts/spec-ten-deferred-projection-registry.md.
 
 ### DW-452: 16.1-CR3. Embedded `\` in event names not normalized to `.` or `/`
 
 origin: migrated from legacy ledger ("Deferred from: code review of 16-1-projection-registry-cross-check-design (2026-05-20)"), 2026-09-01
 location: n/a
 reason: - **16.1-CR3. Embedded `\` in event names not normalized to `.` or `/`** (`ProjectionBindingMatcher.cs:135`). Rationale: serializers in this stack emit `.`-separated event types; backslash variant is theoretical.
-status: open
+status: done 2026-11-24
+resolution: Normalize backslash-separated event names to their terminal segment. See _bmad-output/implementation-artifacts/spec-ten-deferred-projection-registry.md.
 
 ### DW-453: 16.1-CR4. Turkish-I / Unicode invariant casing produces non-byte-equal forms across tenants/routes
 
 origin: migrated from legacy ledger ("Deferred from: code review of 16-1-projection-registry-cross-check-design (2026-05-20)"), 2026-09-01
 location: n/a
 reason: - **16.1-CR4. Turkish-I / Unicode invariant casing produces non-byte-equal forms across tenants/routes** (`ProjectionBindingMatcher.cs:132, 167`). Rationale: current tenants/aggregates are ASCII; revisit when non-ASCII tenant ids are introduced.
-status: open
+status: done 2026-11-24
+resolution: Normalize comparison tokens with NFC and invariant casing, with ordinal tenant identity checks. See _bmad-output/implementation-artifacts/spec-ten-deferred-projection-registry.md.
 
 ### DW-454: 16.1-CR5. Bare `V2` input yields empty event key → `tenant/source//` double-slash comparison key
 
 origin: migrated from legacy ledger ("Deferred from: code review of 16-1-projection-registry-cross-check-design (2026-05-20)"), 2026-09-01
 location: tenant/source//
 reason: - **16.1-CR5. Bare `V2` input yields empty event key → `tenant/source//` double-slash comparison key** (`ProjectionBindingMatcher.cs:161`). Rationale: cosmetic — comparison key is internal, only surfaces in Subject if a bare `V2` event reaches the detector; unlikely.
-status: open
+status: done 2026-11-24
+resolution: Keep a nonempty key for event names that consist only of a version token. See _bmad-output/implementation-artifacts/spec-ten-deferred-projection-registry.md.
 
 ### DW-455: 16.1-CR6. Tenant-leakage assertion absent on structured log/telemetry payload
 
 origin: migrated from legacy ledger ("Deferred from: code review of 16-1-projection-registry-cross-check-design (2026-05-20)"), 2026-09-01
 location: tests/Hexalith.Memories.Server.Tests/Handlers/HandlerMismatchDetectorTests.cs
 reason: - **16.1-CR6. Tenant-leakage assertion absent on structured log/telemetry payload** (`tests/Hexalith.Memories.Server.Tests/Handlers/HandlerMismatchDetectorTests.cs`). Rationale: currently no foreign-tenant fields are emitted on the warning; defensive assertion to add when telemetry shape expands.
-status: open
+status: done 2026-11-24
+resolution: Assert requested tenant and route on structured mismatch logs and meter tags. See _bmad-output/implementation-artifacts/spec-ten-deferred-projection-registry.md.
 
 ### DW-456: 16.1-CR7. Multi-slash collapse (`while (... "//")`) has no direct test
 
 origin: migrated from legacy ledger ("Deferred from: code review of 16-1-projection-registry-cross-check-design (2026-05-20)"), 2026-09-01
 location: n/a
 reason: - **16.1-CR7. Multi-slash collapse (`while (... "//")`) has no direct test** (`ProjectionBindingMatcher.cs:127-130`). Rationale: covered transitively by slash-normalization tests; explicit regression test is low priority.
-status: open
+status: done 2026-11-24
+resolution: Verify repeated source slashes collapse and duplicate route expectations coalesce. See _bmad-output/implementation-artifacts/spec-ten-deferred-projection-registry.md.
 
 ### DW-457: 16.1-CR8. Wildcard suffix matching test depth — current tests pass via exact-match coincidence, not via `*` honoring
 
 origin: migrated from legacy ledger ("Deferred from: code review of 16-1-projection-registry-cross-check-design (2026-05-20)"), 2026-09-01
 location: n/a
 reason: - **16.1-CR8. Wildcard suffix matching test depth — current tests pass via exact-match coincidence, not via `*` honoring** (`ProjectionBindingMatcher.cs:108-111`). Rationale: add a targeted test when wildcard semantics is widened.
-status: open
+status: done 2026-11-24
+resolution: Verify a nonexact suffix-wildcard prefix matches and an unrelated prefix fails. See _bmad-output/implementation-artifacts/spec-ten-deferred-projection-registry.md.
 
 ### DW-458: 17.1-CR1. `EvidenceDisplay.Label` is locale-insensitive humanization that bypasses FrontComposer's `IStringLocalizer<FcShellResources>` pattern
 
@@ -4656,14 +4664,16 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence — eighth pass (2026-08-14)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-publish-approved-module-baselines-2026-08-01.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-publish-approved-module-baselines-2026-08-01.md` summary: Rebuild missing observed-event discovery indexes when membership markers survive index expiry. evidence: `UpdateDiscoveryIndexAsync` treats an existing membership marker as sufficient and `RefreshIndexTtlAsync` returns on a missing index, allowing stored observations to disappear from discovery indefinitely.
-status: open
+status: done 2026-11-24
+resolution: Rebuild missing discovery from surviving membership markers with batched reads. See _bmad-output/implementation-artifacts/spec-ten-deferred-projection-registry.md.
 
 ### DW-693: Handle failed TTL refresh writes for observed-event indexes.
 
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence — eighth pass (2026-08-14)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-publish-approved-module-baselines-2026-08-01.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-publish-approved-module-baselines-2026-08-01.md` summary: Handle failed TTL refresh writes for observed-event indexes. evidence: Written and discovery index refresh paths discard false `TrySaveStateAsync` results while returning success, so indexes can expire before the observation keys they enumerate.
-status: open
+status: done 2026-11-24
+resolution: Retry and report rejected TTL writes for indexes and membership markers. See _bmad-output/implementation-artifacts/spec-ten-deferred-projection-registry.md.
 
 ### DW-694: Coordinate observed-event writers with tenant deletion.
 
@@ -5826,3 +5836,9 @@ dotnet tests/Hexalith.Memories.IntegrationTests/bin/Debug/net11.0/Hexalith.Memor
 - source_spec: `_bmad-output/implementation-artifacts/spec-ten-deferred-story-scope-hooks.md`
   summary: Preserve literal Git filenames in the hosted story-scope job.
   evidence: The hosted job still sends Git's C-quoted, newline-delimited path list. A disposable reproduction showed the legacy parser reports a different path for a filename containing a newline. Hexalith.CiCd owns the workflow.
+
+## Deferred from review of spec-ten-deferred-projection-registry.md (2026-11-24)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-ten-deferred-projection-registry.md`
+  summary: Preserve concurrent observation writes when written-index compensation runs.
+  evidence: After CAS exhaustion the observation store checks the written index and then deletes state for an absent aggregate. A writer can publish its observation and index entry between those calls. Coordinate compensation with the competing write and assert the resulting persisted observation and membership.

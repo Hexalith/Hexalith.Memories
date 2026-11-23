@@ -93,6 +93,48 @@ public sealed class DaprStateStoreLiveSidecarTests
     }
 
     [Fact]
+    public async Task ObservedEventType_RecoversMissingDiscoveryAndRenewsIndexesAgainstLiveStatestore()
+    {
+        FakeTimeProvider clock = new(DateTimeOffset.UtcNow);
+        DaprObservedEventTypeStore store = CreateObservedStore(clock);
+        string tenantId = $"ida-recover-{Guid.NewGuid():N}"[..28];
+        string discoveryKey = $"{tenantId}:eventstore:observed-aggregates";
+        string writtenKey = $"{tenantId}:eventstore:observed-written-aggregates";
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        TimeSpan window = TimeSpan.FromHours(1);
+        await store.RecordObservationAsync(tenantId, "Claims", "ClaimSubmitted", clock.GetUtcNow(), cancellationToken);
+        await store.RecordObservationAsync(tenantId, "Orders", "OrderSubmitted", clock.GetUtcNow(), cancellationToken);
+        await _fixture.DaprClient.DeleteStateAsync(_fixture.StateStoreName, discoveryKey, cancellationToken: cancellationToken);
+        (await store.GetAllObservedTypesAsync(tenantId, window, cancellationToken)).ShouldBeEmpty();
+
+        await store.RecordObservationAsync(tenantId, "Claims", "ClaimSubmitted", clock.GetUtcNow(), cancellationToken);
+
+        IReadOnlyList<ObservedEventType> recovered = await store.GetAllObservedTypesAsync(tenantId, window, cancellationToken);
+        recovered.Select(observation => observation.AggregateType).ShouldBe(["Claims", "Orders"], ignoreOrder: true);
+        recovered.Single(observation => observation.AggregateType == "Orders").Count.ShouldBe(1);
+
+        Dictionary<string, string> shortTtl = new() { ["ttlInSeconds"] = "3" };
+        foreach (string key in new[] { discoveryKey, writtenKey })
+        {
+            (List<string> index, string etag) = await _fixture.DaprClient.GetStateAndETagAsync<List<string>>(
+                _fixture.StateStoreName, key, cancellationToken: cancellationToken);
+            index.ShouldBe(["Claims", "Orders"], ignoreOrder: true);
+            (await _fixture.DaprClient.TrySaveStateAsync(
+                _fixture.StateStoreName, key, index, etag, metadata: shortTtl, cancellationToken: cancellationToken))
+                .ShouldBeTrue();
+        }
+
+        await store.RecordObservationAsync(tenantId, "Claims", "ClaimSubmitted", clock.GetUtcNow(), cancellationToken);
+        await Task.Delay(TimeSpan.FromSeconds(4), cancellationToken);
+
+        IReadOnlyList<ObservedEventType> refreshed = await store.GetAllObservedTypesAsync(tenantId, window, cancellationToken);
+        refreshed.Select(observation => observation.AggregateType).ShouldBe(["Claims", "Orders"], ignoreOrder: true);
+        refreshed.Single(observation => observation.AggregateType == "Claims").Count.ShouldBe(3);
+        (await _fixture.DaprClient.GetStateAsync<List<string>>(_fixture.StateStoreName, writtenKey, cancellationToken: cancellationToken))
+            .ShouldBe(["Claims", "Orders"], ignoreOrder: true);
+    }
+
+    [Fact]
     public async Task ObservedEventType_TtlMetadata_ExpiresKeyAgainstLiveRedisStatestore()
     {
         // Directly prove the Redis state component honors ttlInSeconds (the store's write path uses it).

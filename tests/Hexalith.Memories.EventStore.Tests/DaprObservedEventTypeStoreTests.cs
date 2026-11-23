@@ -7,6 +7,7 @@ namespace Hexalith.Memories.EventStore.Tests;
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -363,6 +364,121 @@ public sealed class DaprObservedEventTypeStoreTests
         IReadOnlyList<ObservedEventType> observed =
             await store.GetObservedTypesAsync("acme", "Claims", TimeSpan.FromHours(24), CancellationToken.None);
         observed[0].Count.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task RecordObservationAsync_WhenDiscoveryIndexIsMissing_RecoversPreviouslyAdmittedAggregates()
+    {
+        const string discoveryKey = "acme:eventstore:observed-aggregates";
+        FakeDaprStateStore fake = new();
+        DaprClient client = fake.CreateClient();
+        DaprObservedEventTypeStore store = CreateStore(client);
+        await store.RecordObservationAsync("acme", "Claims", "ClaimSubmitted", Now, CancellationToken.None);
+        await store.RecordObservationAsync("acme", "Orders", "OrderSubmitted", Now, CancellationToken.None);
+        List<string> writtenAggregates =
+        [
+            "Claims",
+            "Overflow",
+            .. Enumerable.Range(0, 128).Select(i => $"Unmarked{i}"),
+            "Orders",
+        ];
+        fake.Seed("acme:eventstore:observed-written-aggregates", writtenAggregates);
+        fake.Seed("acme:eventstore:observed:Overflow",
+            new Dictionary<string, DaprObservedEventTypeStore.ObservationCounter>
+            {
+                ["OverflowSubmitted"] = new(1, Now.ToUnixTimeMilliseconds()),
+            });
+        await client.DeleteStateAsync(Store, discoveryKey, cancellationToken: CancellationToken.None);
+
+        await store.RecordObservationAsync("acme", "Claims", "ClaimSubmitted", Now, CancellationToken.None);
+
+        fake.TryGet<List<string>>(discoveryKey, out List<string>? index).ShouldBeTrue();
+        index.ShouldBe(["Claims", "Orders"]);
+        IReadOnlyList<ObservedEventType> discovered =
+            await store.GetAllObservedTypesAsync("acme", TimeSpan.FromHours(24), CancellationToken.None);
+        discovered.Select(observation => observation.EventType).ShouldBe(["ClaimSubmitted", "OrderSubmitted"], ignoreOrder: true);
+        discovered.Single(observation => observation.AggregateType == "Claims").Count.ShouldBe(2);
+        fake.ContainsKey("acme:eventstore:observed:Overflow").ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task RecordObservationAsync_WhenDiscoveryDisappearsDuringAdmission_UsesTheCurrentWrittenIndex()
+    {
+        const string discoveryKey = "acme:eventstore:observed-aggregates";
+        const string writtenKey = "acme:eventstore:observed-written-aggregates";
+        FakeDaprStateStore fake = new();
+        DaprClient client = fake.CreateClient();
+        DaprObservedEventTypeStore store = CreateStore(client);
+        await store.RecordObservationAsync("acme", "Claims", "ClaimSubmitted", Now, CancellationToken.None);
+        await store.RecordObservationAsync("acme", "Orders", "OrderSubmitted", Now, CancellationToken.None);
+        fake.Seed(writtenKey, new List<string> { "Claims" });
+        await client.DeleteStateAsync(Store, discoveryKey, cancellationToken: CancellationToken.None);
+        client.When(c => c.GetStateAndETagAsync<List<string>?>(
+                Store, discoveryKey, Arg.Any<ConsistencyMode?>(),
+                Arg.Any<IReadOnlyDictionary<string, string>?>(), Arg.Any<CancellationToken>()))
+            .Do(_ => fake.Seed(writtenKey, new List<string> { "Claims", "Orders" }));
+
+        await store.RecordObservationAsync("acme", "Claims", "ClaimSubmitted", Now, CancellationToken.None);
+
+        IReadOnlyList<ObservedEventType> discovered =
+            await store.GetAllObservedTypesAsync("acme", TimeSpan.FromHours(24), CancellationToken.None);
+        discovered.Select(observation => observation.AggregateType).ShouldBe(["Claims", "Orders"], ignoreOrder: true);
+    }
+
+    [Fact]
+    public async Task RecordObservationAsync_WhenIndexTtlRefreshConflicts_RetriesBothIndexes()
+    {
+        const string discoveryKey = "acme:eventstore:observed-aggregates";
+        const string writtenKey = "acme:eventstore:observed-written-aggregates";
+        const string membershipKey = "acme:eventstore:observed-agg-member:Claims";
+        FakeDaprStateStore fake = new();
+        DaprClient client = fake.CreateClient();
+        DaprObservedEventTypeStore store = CreateStore(client);
+        await store.RecordObservationAsync("acme", "Claims", "ClaimSubmitted", Now, CancellationToken.None);
+        client.ClearReceivedCalls();
+        fake.FailNextSaves(discoveryKey, count: 1);
+        fake.FailNextSaves(writtenKey, count: 1);
+        fake.FailNextSaves(membershipKey, count: 1);
+
+        await store.RecordObservationAsync("acme", "Claims", "ClaimSubmitted", Now, CancellationToken.None);
+
+        foreach (string key in new[] { writtenKey, discoveryKey })
+        {
+            _ = client.Received(2).TrySaveStateAsync(
+                Store, key, Arg.Any<List<string>>(), Arg.Any<string>(), Arg.Any<StateOptions?>(),
+                Arg.Is<IReadOnlyDictionary<string, string>?>(metadata => metadata != null && metadata["ttlInSeconds"] == "172800"),
+                Arg.Any<CancellationToken>());
+        }
+
+        _ = client.Received(2).TrySaveStateAsync(
+            Store, membershipKey, "1", Arg.Any<string>(), Arg.Any<StateOptions?>(),
+            Arg.Is<IReadOnlyDictionary<string, string>?>(metadata => metadata != null && metadata["ttlInSeconds"] == "172800"),
+            Arg.Any<CancellationToken>());
+
+        IReadOnlyList<ObservedEventType> discovered =
+            await store.GetAllObservedTypesAsync("acme", TimeSpan.FromHours(24), CancellationToken.None);
+        discovered.Single().Count.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task RecordObservationAsync_WhenWrittenIndexRefreshExhaustsRetries_PreservesIndexedObservations()
+    {
+        FakeDaprStateStore fake = new();
+        List<(LogLevel Level, int EventId)> captures = [];
+        DaprObservedEventTypeStore store = CreateStore(fake, new CapturingTestLogger(captures));
+        await store.RecordObservationAsync("acme", "Claims", "ClaimSubmitted", Now, CancellationToken.None);
+        captures.Clear();
+        fake.FailNextSaves("acme:eventstore:observed-written-aggregates", count: 16);
+
+        InvalidOperationException exception = await Should.ThrowAsync<InvalidOperationException>(() =>
+            store.RecordObservationAsync("acme", "Claims", "ClaimSubmitted", Now, CancellationToken.None));
+
+        exception.Data["WrittenIndexCasExhausted"].ShouldBe(true);
+        IReadOnlyList<ObservedEventType> discovered =
+            await store.GetAllObservedTypesAsync("acme", TimeSpan.FromHours(24), CancellationToken.None);
+        discovered.Single().Count.ShouldBe(2);
+        captures.ShouldContain(entry => entry.EventId == 9140);
+        captures.ShouldNotContain(entry => entry.EventId == 9130);
     }
 
     private static DaprObservedEventTypeStore CreateStore(FakeDaprStateStore fake, ILogger<DaprObservedEventTypeStore>? logger = null)

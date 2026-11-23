@@ -6,6 +6,7 @@
 namespace Hexalith.Memories.EventStore.Tests;
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -39,6 +40,14 @@ internal sealed class FakeDaprStateStore
         SetupType<Dictionary<string, DaprObservedEventTypeStore.ObservationCounter>>(client);
         SetupType<List<string>>(client);
         SetupType<string>(client);
+
+        _ = client.GetBulkStateAsync<string>(
+                StoreName, Arg.Any<IReadOnlyList<string>>(), Arg.Any<int?>(),
+                Arg.Any<IReadOnlyDictionary<string, string>?>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ci.ArgAt<IReadOnlyList<string>>(1)
+                .Where(key => _entries.TryGetValue(key, out var entry) && entry.Value is string)
+                .Select(key => new BulkStateItem<string>(key, (string)_entries[key].Value!, _entries[key].Etag))
+                .ToArray());
 
         _ = client.DeleteStateAsync(
                 StoreName, Arg.Any<string>(), Arg.Any<StateOptions?>(), Arg.Any<IReadOnlyDictionary<string, string>?>(), Arg.Any<CancellationToken>())

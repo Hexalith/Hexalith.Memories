@@ -766,28 +766,22 @@ skipped with log event 9141 (Risk #5 ReDoS defense).
 
 ### §11.3 Observation window + staleness semantics
 
-The observation store is a Redis-backed 24h rolling window per
-`(tenantId, aggregateType, eventType)`. Keys are `{tenantId}:eventstore:observed-aggregates` (set),
-`{tenantId}:eventstore:observed:{aggregateType}` (sorted set scored by unix-ms), and
-`{tenantId}:eventstore:observed-count:{aggregateType}` (hash). TTL on every write is 48h (2× the
-24h window) — if a tenant stops emitting entirely, its keys self-expire with no external cleanup.
+The observation store uses the Dapr state store to keep an event-count and last-seen dictionary
+per tenant and aggregate. A capped discovery index drives diagnostics. An uncapped written index
+lets tenant deletion enumerate every aggregate, including observations excluded by the discovery
+cap. On the next observation after discovery is lost, the store rebuilds that index from the
+surviving membership markers for written aggregates.
 
-Two **independent** mechanisms keep the store bounded:
-
-- **TTL (48h)** — self-cleanup of the Redis keys when no further writes refresh them.
-- **Window (24h)** — cutoff applied at read time via `ZRANGEBYSCORE (now - 24h) → +∞`. Older
-  observations still exist in Redis until TTL expires them; they're simply excluded from detector
-  output.
+Writes and index refreshes use a 48h TTL. Index updates retry rejected ETag writes within a bounded
+budget. Diagnostics apply a separate 24h last-seen cutoff at read time, so observations can leave
+the report before their state expires.
 
 **Why `StaleHandler` is Info, not Warning:** an event stream that sees one event per week is NOT
 stale, but a 24h window calls it stale every Monday. Info severity prevents paging rules firing on
 low-volume legitimate silence. Future work may add `--since 7d` to widen the window per-invocation
 (tracked as deferred-work `Story-9.3-SinceFlagForLowVolume`).
 
-**Boundary semantics (R3-10):** the 24h window is **inclusive-start, exclusive-end relative to
-"now."** An observation at T is included in a read at (now) when `T >= now - 24h`. Two successive
-snapshots at T+24h and T+24h+2ms can legitimately disagree about a single observation on the edge —
-this is correct, not a bug.
+The 24h cutoff is inclusive. An observation at `T` remains visible through `T + 24h`.
 
 ### §11.4 Troubleshooting flows
 
@@ -858,18 +852,23 @@ authoritative implementation. Adopter-facing shape:
 Canonical comparison key: tenant id + normalized route source prefix + normalized event pattern.
 Normalization is deterministic:
 
-- tenant ids, source prefixes, aggregate tokens, and event terminal segments compare
-  case-insensitively by lower-casing with invariant culture;
+- tenant identity uses ordinal case-insensitive binding comparisons. Source prefixes, aggregate
+  tokens, and event names use Unicode NFC and invariant lower casing;
 - source prefixes trim whitespace, convert `\` and `.` to `/`, collapse repeated `/`, and trim
   leading or trailing `/`. As a result, dot-style routes (`acme.events`) and slash-style bindings
   (`acme/events`) canonicalize to the same source key;
-- aggregate tokens are derived from the final `/` segment and then final `.` segment of the route;
-- event names compare on the terminal `.` segment and strip a trailing `V<digits>` version suffix.
+- the matcher derives the route's aggregate token from its final segment after `.`, `/`, or
+  `\`, ignoring trailing separators. It compares declared and stored aggregate tokens as supplied
+  after casing and Unicode normalization;
+- within that aggregate, event names use the final segment after those same separators;
+- event names strip a trailing `V<digits>` version suffix when a name precedes it. A version-only
+  terminal segment such as `V2` retains its full name.
   The strip is applied on both the binding pattern and the observed event side, so
   `["ClaimSubmittedV2"]` covers V2, V3, V99, etc. Version drift is reported separately by the
   `VersionMismatch` diagnostic when concurrent versions are observed; operators who need version-pinned
   binding semantics should request that follow-up via deferred work;
-- `*` covers all events for the matched route/aggregate, and suffix `*` acts as a prefix pattern.
+- An empty pattern list, an empty string, or `*` covers all events for the matched route or
+  aggregate. A whitespace-only entry grants no coverage. A suffix `*` acts as a prefix pattern.
   Leading or embedded wildcards (`*Submitted`, `Claim*Submitted`) are not supported and will be
   treated as literal characters that never match — declare the wildcard at the end of the pattern;
 - when no events have yet been observed for a route's aggregate, the expectation event key collapses

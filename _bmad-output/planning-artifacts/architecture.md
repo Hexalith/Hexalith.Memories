@@ -699,8 +699,9 @@ atomicity is not load-bearing.
   `DaprObservedEventTypeStore`. **Review D1 redesign:** each aggregate type is its own state key written
   with `ConcurrencyMode.FirstWrite` (true HSET-NX analog); a per-tenant index enumerates mapped /
   discovered types for count/delete/purge. Observation writes keep per-aggregate dictionaries with
-  FirstWrite on create; discovery-index rewrites happen only when admitting a new aggregate (membership
-  marker). An uncapped written-aggregates index preserves deletion coverage for cardinality-cap rejects.
+  FirstWrite on create. The write path renews index TTLs with bounded ETag retries. If discovery is
+  missing, it reads surviving membership markers in batches and rebuilds the capped index.
+  An uncapped written-aggregates index preserves deletion coverage for cardinality-cap rejects.
 - **Kept on direct Redis:** `RedisPreflightDedupStore` — its `SET NX` atomic reserve + TTL + fail-OPEN is a
   load-bearing check-and-set the Dapr state API cannot express portably.
 
