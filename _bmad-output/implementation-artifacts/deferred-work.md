@@ -2513,6 +2513,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-12.4 (
 location: n/a
 reason: - **12.4-RV20. AC #1 strict literal per-SHA replay drill.** Story 12.4 satisfied AC #1 via HEAD-replay coverage (HEAD strictly includes Epic 8.x SHA `d7495a3`, Epic 9.x SHA `bc4d5cc`, and Epic 10.x SHA `8207b54` in its ancestry, and the surviving test inventory at HEAD is a superset of those completion states — see Story 12.4 Decision Resolutions D3). A literal interpretation of AC #1 would also exercise each anchor SHA via `git checkout`, restore, build, and run both authoritative lanes against that exact tree. Re-open trigger: a release post-mortem that traces a regression to a test that existed at one of the named SHAs and was silently fixed before HEAD; or a future quality-discipline story that prefers strict literal AC #1 evidence over inheritance argumentation.
 status: open
+note: 2026-11-24 — Skipped. This asks for an evidence-only replay of the Epic 8–10 anchor SHAs and changes no product code. Neither recorded trigger has occurred: no release post-mortem traces a regression to a test from those SHAs, and no quality story requires literal per-SHA evidence.
 
 ### DW-360: 12.4-RV1: closed. `.github/workflows/ci.yml` no longer wraps `git fetch ... origin main` with
 
@@ -2644,6 +2645,7 @@ origin: migrated from legacy ledger ("Closed by: Story 14.1 CI Story-Scope Enfor
 location: n/a
 reason: - **12.4-RV20** — out of 14.1 scope (Story 12.4 strict-literal AC #1 evidence drill).
 status: open
+note: 2026-11-24 — Skipped. Duplicates DW-359 (12.4-RV20).
 
 ### DW-381: W1: closed. `.github/workflows/release.yml` pins `actions/checkout`, `actions/setup-dotnet`,
 
@@ -2699,6 +2701,7 @@ origin: migrated from legacy ledger ("Closed by: Story 14.2 Release Pipeline Aud
 location: n/a
 reason: - **W3..W11, W13, W14, W17, W18, W20..W24** — out of 14.2 scope (CI workflow, test infra, and contracts/CLI hardening unrelated to the release-lane audit). 14.2 limits its file scope to release-pipeline artifacts.
 status: open
+note: 2026-11-24 — Skipped. This is an umbrella pointer for the 11-1/11-2 review items W3–W24, which have their own entries DW-311 to DW-330. Those entries are done or carry their own skip reasons.
 
 ### DW-390: W16: partially closed. Cleaned up in `tools/validate-release-packages.ps1`. The mirror in
 
@@ -2713,7 +2716,8 @@ resolution: The publish-nuget.ps1 half of W16 now matches validation by exact .n
 origin: migrated from legacy ledger ("Closed by: Story 14.2 Release Pipeline Audit Hardening (2026-05-04)"), 2026-09-01
 location: n/a
 reason: - **S11-FB** — out of 14.2 scope (compile-time symbol verification for integration-fast surfaces).
-status: open
+status: done 2026-11-24
+resolution: Already resolved. S11-FB is the item completed as DW-331 in 7bbfe9d075c47d3563ed3613cc45a39e0808c2ff: the fast integration build generates compile-time references for every registered surface. Closed as a duplicate during the spec-seven-ordered-deferred-items.md triage.
 
 ### DW-392: S11-FC: carried forward with fresh defer-by 2026-08-04. Stale-tag preflight still requires
 
@@ -2726,14 +2730,16 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of 13-7-integration-tests-aspire-fixtures-and-operator-deployment-guide (2026-05-03)"), 2026-09-01
 location: tests/Hexalith.Memories.IntegrationTests/Ingestion/OllamaEmbeddingEndToEndTests.cs:192
 reason: - **13.7-RV1. End-to-end uses Redis `KEYS` in 3-minute polling loop.** `tests/Hexalith.Memories.IntegrationTests/Ingestion/OllamaEmbeddingEndToEndTests.cs:192` — `KEYS` is O(n) and prod-banned but acceptable in tests with bounded data and a non-parallel collection; the 3-min budget masks slow CI. Re-open trigger: any flake report attributing to this wait, or a need to scale the integration suite.
-status: open
+status: done 2026-11-24
+resolution: Already resolved. Since d251022615d6fd331ec90fae4baa726750d88f4f (Story 14.4) the Ollama end-to-end wait reads the targeted semantic and chunk hashes built by IndexSchemaDefinitions and never enumerates the keyspace with KEYS. The three-minute ceiling remains only as the wait budget. Verified during the spec-seven-ordered-deferred-items.md triage.
 
 ### DW-394: 13.7-RV2. URL-escape `tenantId`/`canary` in search query interpolation.
 
 origin: migrated from legacy ledger ("Deferred from: code review of 13-7-integration-tests-aspire-fixtures-and-operator-deployment-guide (2026-05-03)"), 2026-09-01
 location: tests/Hexalith.Memories.IntegrationTests/Ingestion/OllamaEmbeddingEndToEndTests.cs:107
 reason: - **13.7-RV2. URL-escape `tenantId`/`canary` in search query interpolation.** `tests/Hexalith.Memories.IntegrationTests/Ingestion/OllamaEmbeddingEndToEndTests.cs:107` — defensive only; both values are `Guid.NewGuid().ToString("N")` hex without URL-reserved characters. Re-open trigger: generator change that introduces non-hex chars.
-status: open
+status: done 2026-11-24
+resolution: Already resolved. Since d251022615d6fd331ec90fae4baa726750d88f4f (Story 14.4) the search request escapes tenantId and canary with Uri.EscapeDataString. Verified during the spec-seven-ordered-deferred-items.md triage.
 
 ### DW-395: 13.7-RV3. Clean up parent temp directory in `DeleteTempDaprConfig`.
 
@@ -2779,6 +2785,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 15-3-live-mi
 location: src/Hexalith.Memories.Server/Migration/EmbeddingMigrationMarkerReader.cs:49
 reason: - **15.3-RV8. `WaitAsync(ct)` cancels the await but not the underlying Redis command.** `src/Hexalith.Memories.Server/Migration/EmbeddingMigrationMarkerReader.cs:49`, `RedisEmbeddingMigrationStore.cs:181,198-199,222-223` — repo-wide pattern; cancelling the await leaks pending Redis work but does not stop the call. Re-open trigger: a Redis connection-exhaustion or pile-up incident traced to migration marker read/write paths.
 status: open
+note: 2026-11-24 — Skipped. StackExchange.Redis commands take no cancellation token, so WaitAsync is the only available bound. No connection-exhaustion incident on the migration-marker paths is recorded.
 
 ### DW-402: 15.3-RV10. `CompleteMigrationMarkerAsync` leaves stale `targetProvider/Model/Dimensions` on the active-marker key after `status=completed`.
 
@@ -2786,6 +2793,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 15-3-live-mi
 location: targetProvider/Model/Dimensions
 reason: - **15.3-RV10. `CompleteMigrationMarkerAsync` leaves stale `targetProvider/Model/Dimensions` on the active-marker key after `status=completed`.** `src/Hexalith.Memories.Server/Migration/RedisEmbeddingMigrationStore.cs:217-223` — reader short-circuits on `status == completed` so no functional issue today; debugging hygiene only. Re-open trigger: a future code path reading the active-marker hash without checking `status` first, or an operator complaint that completed markers show contradictory target metadata.
 status: open
+note: 2026-11-24 — Skipped. Removing the target fields from a completed active marker would break resume: a resume writes only owner, version, status and timestamp fields to the active marker, and the fail-closed reader rejects a non-completed marker without target fields. The only active-marker reader already ignores completed markers.
 
 ### DW-403: 15.3-RV13. `OrdinalIgnoreCase` provider/model comparison vs case-sensitive downstream Redis hash keys.
 
@@ -2811,6 +2819,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 15-3-live-mi
 location: src/Hexalith.Memories.Server/Migration/RedisEmbeddingMigrationStore.cs:198-199
 reason: - **15.3-RV18. Active-marker hash has no TTL; orphaned markers block tenant ingestion until manual cleanup.** `src/Hexalith.Memories.Server/Migration/RedisEmbeddingMigrationStore.cs:198-199` — spec explicitly says marker is retained until clean completion. Operator alerting / manual-clearance command is a follow-up. Re-open trigger: an operator escalation where a crashed migration left a tenant blocked with no automated alert.
 status: open
+note: 2026-11-24 — Skipped. The migration contract keeps the marker until clean completion, so a TTL would release a tenant mid-migration. Alerting and a clearance command need an operator design, and new operator commands require an approved Hexalith.McpCli capability.
 
 ### DW-407: 15.3-RV22. `13.6-RV2` swept in based on "Story 15.3 touched the file substantively, gained copyright header" rationale.
 
@@ -2818,6 +2827,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 15-3-live-mi
 location: _bmad-output/implementation-artifacts/deferred-work.md:210-219
 reason: - **15.3-RV22. `13.6-RV2` swept in based on "Story 15.3 touched the file substantively, gained copyright header" rationale.** `_bmad-output/implementation-artifacts/deferred-work.md:210-219` — borderline-compliant with the spec's "records why they became in scope" clause; rationale could be sharper about *why* file-touch resolves the deferred risk. Re-open trigger: another `13.6-RV*` ID is closed with the same weak rationale and triggers a governance question.
 status: open
+note: 2026-11-24 — Skipped. This is a governance note about a historical ledger rationale. The cited line range predates the ledger migration, and no later 13.6-RV closure has raised the recorded governance question.
 
 ### DW-408: 15.3-RV24. Story status moved `ready-for-dev` → `review` without an `in-progress` step.
 
@@ -2825,6 +2835,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 15-3-live-mi
 location: n/a
 reason: - **15.3-RV24. Story status moved `ready-for-dev` → `review` without an `in-progress` step.** `sprint-status.yaml` — process flag only, not code; create-story → dev-story workflow could record an explicit `in-progress` transition. Re-open trigger: any tooling that breaks on missing `in-progress` history.
 status: open
+note: 2026-11-24 — Skipped. This is a process-only observation with no code change, and no tooling depends on an in-progress history entry.
 
 ### DW-409: 15.3-RV25. Operator-docs downtime statement could be sharper about per-tenant retry disruption.
 
@@ -2850,6 +2861,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 1-1-project-
 location: src/Hexalith.Memories.AppHost/Program.cs
 reason: - **1.1-RR1. Process-wide environment mutation when wiring DAPR API tokens.** `ApplyProcessEnvironmentTokens` sets `APP_API_TOKEN`/`DAPR_API_TOKEN` on the AppHost process so spawned daprd sidecars inherit them, but the variables persist for every child process the AppHost spawns afterwards. - ID: 1.1-RR1 - Status: accepted - Source story: 1-1-project-scaffolding-and-single-command-boot - Target artifact: src/Hexalith.Memories.AppHost/Program.cs - Re-open trigger: A child-process leak surfaces in audit (token visible in unrelated process env), or CommunityToolkit.Aspire.Hosting.Dapr exposes a per-sidecar env API that replaces the global mutation. - Rationale: CommunityToolkit.Aspire.Hosting.Dapr 9.7 has no sidecar-specific env-builder API; the documented workaround is process env inheritance, and the AppHost only runs in development/CI/staging where the surface area is tightly scoped.
 status: open
+note: 2026-11-24 — Skipped. Duplicates DW-249 (process-environment token propagation), which records why removing the process assignments alone does not close the exposure.
 
 ### DW-413: 1.1-RR2. `DAPR_API_TOKEN_MODE` default silently disables token authentication.
 
@@ -2872,7 +2884,8 @@ resolution: The pinned CommunityToolkit.Aspire.Hosting.Dapr lifecycle hook reads
 origin: migrated from legacy ledger ("Deferred from: code review of 1-1-project-scaffolding-and-single-command-boot (2026-05-16)"), 2026-09-01
 location: src/Hexalith.Memories.AppHost/Program.cs
 reason: - **1.1-RR4. `RepositoryRootLocator.Resolve()` failure is unhandled in AppHost helpers.** `EnsureTestDataRoot`, `EnsureSecretsFile`, `ResolveDaprConfigPath`, and `ResolveRedisConfigPath` propagate raw `InvalidOperationException` if the AppHost runs from outside a recognizable repo layout. - ID: 1.1-RR4 - Status: accepted - Source story: 1-1-project-scaffolding-and-single-command-boot - Target artifact: src/Hexalith.Memories.AppHost/Program.cs - Re-open trigger: A user runs the AppHost from a packaged distribution or detached workspace and files an issue about the cryptic "repository root not found" error. - Rationale: AppHost is dev/CI-side only and always launched from within the repo today; the locator's own exception message names the lookup keys and is debuggable.
-status: open
+status: done 2026-11-24
+resolution: Already resolved. Since acfdf2114d5f649397f9dfbe58a5253ccba86484 RepositoryRootLocator reports the marker file, both searched directories and the remedy instead of a bare not-found error, and RepositoryRootLocator_MissingMarker_Throws covers the message. Verified during the spec-seven-ordered-deferred-items.md triage.
 
 ### DW-416: 1.1-RR5. `test-data/README.md` write race between parallel AppHosts.
 
@@ -2888,6 +2901,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 1-1-project-
 location: src/Hexalith.Memories.ServiceDefaults/Extensions.cs
 reason: - **1.1-RR6. `AddJsonConsole` plus OTEL logger create dual log sinks.** ServiceDefaults registers OpenTelemetry logging (with scopes + formatted message) and `AddJsonConsole` simultaneously, producing two log records per emission when the OTLP exporter is also active. - ID: 1.1-RR6 - Status: accepted - Source story: 1-1-project-scaffolding-and-single-command-boot - Target artifact: src/Hexalith.Memories.ServiceDefaults/Extensions.cs - Re-open trigger: A log-volume budget overrun in production is traced to dual-sink output, or downstream log shipping fails because of duplicated records. - Rationale: AC #3 explicitly calls for structured JSON logging via ServiceDefaults; the JSON console is the local-dev/Aspire dashboard surface, the OTEL exporter is the production sink. Both running side-by-side is the intended design for visibility parity.
 status: open
+note: 2026-11-24 — Skipped. The JSON console and OTLP sinks are the intended design for local visibility and production export. No log-volume or shipping incident is recorded; DW-578 tracks the related privacy reconciliation.
 
 ### DW-418: 1.1-RR7. `ResolveAllocatedEndpoint` `Single()` failure lacks context.
 
@@ -2911,6 +2925,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 15-6-scaffol
 location: Directory.Build.props
 reason: - **15.6-CR2. Submodule guard `.git`-existence check does not detect partially-cloned submodules.** `Exists('{path}/.git')` passes as long as a `.git` file or directory is present at that path; it does not verify `HEAD` validity or that `git submodule update --init` actually populated content. - ID: 15.6-CR2 - Status: accepted - Source story: 15-6-scaffolding-hardening-sweep - Target artifact: Directory.Build.props - Re-open trigger: A developer reports a fresh clone that "passes the submodule guard" but actually has missing content, traced to a network failure mid `git submodule update`. - Rationale: Story 15.6 only expanded the *count* of checked submodules (Story 1.1's pre-existing guard pattern); tightening the predicate to verify `HEAD` validity is a separate, broader scope and would require shelling out to git.
 status: open
+note: 2026-11-24 — Skipped. A partially populated submodule still fails the build loudly at its first missing file. A stricter guard needs a per-submodule sentinel or a git call in the shared build configuration across the standalone, sibling, superproject and resolved-root layouts, and no such partial checkout has been reported.
 
 ### DW-421: 15.6-CR3. `File.WriteAllText` on DAPR component files is not atomic.
 
