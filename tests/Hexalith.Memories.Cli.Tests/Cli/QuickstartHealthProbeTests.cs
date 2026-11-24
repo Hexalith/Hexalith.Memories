@@ -69,6 +69,27 @@ public sealed class QuickstartHealthProbeTests
     }
 
     [Fact]
+    public async Task WaitForReady_ProbeException_DoesNotExposeConnectionDetails()
+    {
+        var clock = new FakeTimeProvider();
+        var client = new StubHealthClient(alwaysHealthy: false)
+        {
+            OnProbe = () =>
+            {
+                clock.Advance(TimeSpan.FromSeconds(5));
+                throw new InvalidOperationException("https://user:secret@proxy.example/internal");
+            },
+        };
+        var probe = new HealthProbe(client, clock);
+
+        HealthProbeResult result = await probe.WaitForReadyAsync(
+            TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(1), TestContext.Current.CancellationToken);
+
+        result.Ready.ShouldBeFalse();
+        result.LastError.ShouldBe("The health probe could not complete its request.");
+    }
+
+    [Fact]
     public async Task WaitForReady_Cancellation_BreaksOut()
     {
         var client = new StubHealthClient(alwaysHealthy: false);
@@ -87,6 +108,8 @@ public sealed class QuickstartHealthProbeTests
         private readonly int _callsBeforeHealthy;
 
         public int CallCount { get; private set; }
+
+        public Action? OnProbe { get; init; }
 
         public StubHealthClient(bool alwaysHealthy)
             : base(
@@ -111,6 +134,7 @@ public sealed class QuickstartHealthProbeTests
         public override Task<bool> ProbeHealthAsync(CancellationToken ct)
         {
             CallCount++;
+            OnProbe?.Invoke();
             if (_alwaysHealthy)
             {
                 return Task.FromResult(true);

@@ -1811,7 +1811,8 @@ resolution: Quickstart verifies at startup that the negative canary is absent fr
 origin: migrated from legacy ledger ("Deferred from: code review of 7-4-quickstart-and-documentation (2026-04-17)"), 2026-09-01
 location: src/Hexalith.Memories.Cli/Commands/QuickstartCommand.cs:349-354
 reason: - **`HealthStep` failure suggestion interpolates `result.LastError` raw** — may surface exception messages with proxy URLs or paths in CI logs. Low sensitivity for a dev wizard; sanitize when the wizard grows a non-local-dev use case. [src/Hexalith.Memories.Cli/Commands/QuickstartCommand.cs:349-354]
-status: open
+status: done 2026-11-24
+resolution: The health probe returns a fixed diagnostic after an exception. The regression test injects a credential-bearing proxy URL and pins the safe diagnostic.
 
 ### DW-261: `DurationMs` uses `checked((int)Math.Round(...))` — overflows at ~24.85 days and would throw mid-serialization
 

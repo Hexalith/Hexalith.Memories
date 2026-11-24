@@ -70,9 +70,9 @@ public sealed class HealthProbe
             {
                 throw;
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                lastError = ex.Message;
+                lastError = "The health probe could not complete its request.";
                 healthy = false;
             }
 
@@ -109,5 +109,5 @@ public sealed class HealthProbe
 /// <summary>Outcome of a <see cref="HealthProbe.WaitForReadyAsync(TimeSpan, TimeSpan, CancellationToken)"/> call.</summary>
 /// <param name="Ready">True when the server returned 2xx before the timeout.</param>
 /// <param name="Elapsed">Wall-clock time spent probing.</param>
-/// <param name="LastError">Last probe exception message (null on immediate success; "Cancelled." on cancellation).</param>
+/// <param name="LastError">A safe diagnostic when the deadline expires, or null on success.</param>
 public sealed record HealthProbeResult(bool Ready, TimeSpan Elapsed, string? LastError);
