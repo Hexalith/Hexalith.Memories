@@ -9,14 +9,14 @@ namespace Hexalith.Memories.IntegrationTests.Ingestion;
 
 using System.Net;
 using System.Net.Http.Json;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.IntegrationTests.Fixtures;
-using Hexalith.Memories.Server.Infrastructure;
+using Hexalith.Memories.Server.Activities.Ingestion;
 using Hexalith.Memories.Server.Actors;
+using Hexalith.Memories.Server.Infrastructure;
 
 using NFalkorDB;
 
@@ -395,7 +395,7 @@ public sealed class PipelinePersistenceIntegrationTests
 
         (string syntacticKey, string semanticKey) = await WaitForBackendWritesAsync(tenantId, caseId, sourceUri).ConfigureAwait(false);
         string memoryUnitId = syntacticKey.Split(':').Last();
-        string dedupKey = BuildDedupKey(tenantId, caseId, sourceUri);
+        string dedupKey = DedupKeyBuilder.BuildKey(tenantId, caseId, sourceUri);
         _ = await WaitForSingleDedupValueAsync(tenantId, caseId, memoryUnitId, DefaultTimeout).ConfigureAwait(false);
 
         _ = await _fixture.RestartTopologyAsync().ConfigureAwait(false);
@@ -1014,12 +1014,6 @@ public sealed class PipelinePersistenceIntegrationTests
         IEnumerator<Record> enumerator = result.GetEnumerator();
         enumerator.MoveNext().ShouldBeTrue();
         return enumerator.Current.GetValue<long>("cnt");
-    }
-
-    private static string BuildDedupKey(string tenantId, string caseId, string sourceUri)
-    {
-        byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(sourceUri));
-        return $"dedup:{tenantId}:{caseId}:{Convert.ToHexString(hash).ToLowerInvariant()}";
     }
 }
 

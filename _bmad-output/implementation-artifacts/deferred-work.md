@@ -1719,7 +1719,8 @@ resolution: The affected DataContract and actor JSON members explicitly use thei
 origin: migrated from legacy ledger ("Deferred from: code review of 6-4-pipeline-state-persistence-and-zero-data-loss (2026-04-16)"), 2026-09-01
 location: tests/Hexalith.Memories.IntegrationTests/Ingestion/PipelinePersistenceIntegrationTests.cs:770-774
 reason: - **`BuildDedupKey` duplicates server-side hash logic in the test** — `PipelinePersistenceIntegrationTests.BuildDedupKey` recomputes `SHA256(sourceUri)` exactly the way the server does today. Any future change to URI normalization on the server will be invisible to the test. Replace with a server-side dedup-inspection query or an exposed helper. [tests/Hexalith.Memories.IntegrationTests/Ingestion/PipelinePersistenceIntegrationTests.cs:770-774]
-status: open
+status: done 2026-11-24
+resolution: The restart durability test uses DedupKeyBuilder.BuildKey and continues to verify the persisted dedup entry, syntactic and semantic keys, and indexed unit.
 
 ### DW-249: AppHost token propagation uses process-env side effects
 
