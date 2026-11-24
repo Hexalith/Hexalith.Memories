@@ -106,14 +106,12 @@ public sealed class EventStoreAppHostResourceGraphTests
         sidecarComponentNames.ShouldContain(StateStoreComponentName);
         sidecarComponentNames.ShouldContain(PubSubComponentName);
 
-        // Project-level component references (the CS0618-suppressed
-        // `eventStoreGateway.WithReference(stateStore).WithReference(pubSub)` pattern mirrored
-        // from the `memories` resource in Program.cs).
-        string[] projectComponentNames = [.. eventStoreResource.Annotations
+        // The pinned CommunityToolkit Dapr lifecycle hook reads component references only from the
+        // sidecar resource, so the project resource carries none of the obsolete project-level
+        // duplicates.
+        eventStoreResource.Annotations
             .OfType<DaprComponentReferenceAnnotation>()
-            .Select(a => a.Component.Name)];
-        projectComponentNames.ShouldContain(StateStoreComponentName);
-        projectComponentNames.ShouldContain(PubSubComponentName);
+            .ShouldBeEmpty();
     }
 
     /// <summary>

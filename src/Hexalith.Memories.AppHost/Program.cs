@@ -274,9 +274,10 @@ EndpointReference falkordbEndpoint = falkordb.GetEndpoint("falkordb");
 // Story 28.1: EventStore command-gateway resource. AddHexalithEventStoreGatewayProject() adds only
 // the project resource -- never AddHexalithEventStore(...), which would hardcode its own
 // "statestore"/"pubsub" Dapr components and collide with the Story-9.1-owned stateStore/pubSub
-// components above. The gateway sidecar and project-level references instead point at those same
-// stateStore/pubSub builders, mirroring the "memories" resource's own wiring below, so each
-// Redis-backed component keeps exactly one owner.
+// components above. The gateway sidecar references instead point at those same stateStore/pubSub
+// builders, mirroring the "memories" resource's own wiring below, so each Redis-backed component keeps
+// exactly one owner. CommunityToolkit.Aspire.Hosting.Dapr reads component references only from the
+// sidecar resource, so the project resources carry none.
 IResourceBuilder<ProjectResource> eventStoreGateway = builder
     .AddHexalithEventStoreGatewayProject()
     .WithDaprSidecar(sidecar =>
@@ -293,18 +294,14 @@ IResourceBuilder<ProjectResource> eventStoreGateway = builder
     })
     .WaitFor(redis);
 
-#pragma warning disable CS0618 // CommunityToolkit.Aspire.Hosting.Dapr 9.7 reads project-level component references.
-eventStoreGateway = eventStoreGateway
-    .WithReference(stateStore)
-    .WithReference(pubSub);
-#pragma warning restore CS0618
-
 // Memories Server with DAPR sidecar
 // DAPR sidecar manages connections to Redis/FalkorDB via component config
 // AppPort is intentionally omitted so Aspire Testing can auto-detect the
 // randomized project port instead of pinning the sidecar to localhost:5000.
+#pragma warning disable CS0618 // Aspire 17 deprecates AddProject; keep the staged project model until a Project v2 migration.
 IResourceBuilder<ProjectResource> server = builder
     .AddProject<Projects.Hexalith_Memories_Server>("memories", launchProfileName: "http")
+#pragma warning restore CS0618
     .WithDaprSidecar(sidecar =>
     {
         _ = sidecar.WithOptions(CreateDaprSidecarOptions(
@@ -333,16 +330,6 @@ IResourceBuilder<ProjectResource> server = builder
     .WaitFor(secretStore)
     .WaitFor(conversationLlm);
 server = RandomizeProjectHttpEndpointIfRequested(server);
-
-#pragma warning disable CS0618 // CommunityToolkit.Aspire.Hosting.Dapr 9.7 reads project-level component references.
-server = server
-    .WithReference(stateStore)
-    .WithReference(pubSub)
-    .WithReference(secretStore)
-    .WithReference(conversationLlm)
-    .WithReference(accessTelemetrySecrets)
-    .WithReference(accessTelemetryConfig);
-#pragma warning restore CS0618
 
 // Story 6.1: dev-only default allow-list for POST /api/v1/ingest/directory so developers can batch-ingest
 // the repo-local test-data/ folder without touching config. Production deployments must NOT rely on this
@@ -391,10 +378,12 @@ server = server
     .WithEnvironment("AccessTelemetryLifecycle__PhysicalReclamationEvidenceId", "development-reclamation-hook")
     .WithEnvironment("AccessTelemetryLifecycle__PhysicalReclamationReporterImageDigest", new string('d', 64));
 
+#pragma warning disable CS0618 // Aspire 17 deprecates AddProject; keep the staged project model until a Project v2 migration.
 IResourceBuilder<ProjectResource> accessTelemetryClock = builder
     .AddProject<Projects.Hexalith_Memories_AccessTelemetry_Clock>(
         "memories-access-telemetry-clock",
         launchProfileName: "http")
+#pragma warning restore CS0618
     .WithDaprSidecar(sidecar =>
     {
         _ = sidecar.WithOptions(CreateDaprSidecarOptions(
@@ -419,10 +408,12 @@ IResourceBuilder<ProjectResource> accessTelemetryClock = builder
     .WaitFor(accessTelemetrySecrets);
 accessTelemetryClock = RandomizeProjectHttpEndpointIfRequested(accessTelemetryClock);
 
+#pragma warning disable CS0618 // Aspire 17 deprecates AddProject; keep the staged project model until a Project v2 migration.
 IResourceBuilder<ProjectResource> accessTelemetry = builder
     .AddProject<Projects.Hexalith_Memories_AccessTelemetry>(
         "memories-access-telemetry",
         launchProfileName: "http")
+#pragma warning restore CS0618
     .WithDaprSidecar(sidecar =>
     {
         _ = sidecar.WithOptions(CreateDaprSidecarOptions(
@@ -459,14 +450,6 @@ IResourceBuilder<ProjectResource> accessTelemetry = builder
     .WaitFor(accessTelemetryConfig);
 accessTelemetry = RandomizeProjectHttpEndpointIfRequested(accessTelemetry);
 
-#pragma warning disable CS0618 // CommunityToolkit.Aspire.Hosting.Dapr reads project-level component references.
-accessTelemetry = accessTelemetry
-    .WithReference(accessTelemetryStore)
-    .WithReference(accessTelemetrySecrets)
-    .WithReference(accessTelemetryConfig);
-accessTelemetryClock = accessTelemetryClock.WithReference(accessTelemetrySecrets);
-#pragma warning restore CS0618
-
 server = server.WaitFor(accessTelemetry).WaitFor(accessTelemetryClock);
 
 _ = server;
@@ -482,8 +465,10 @@ _ = server;
 //
 // `WaitFor(server)` blocks the MCP startup probe until the Memories Server health check passes,
 // avoiding a flapping `/ready` row in the Aspire Dashboard during cold starts.
+#pragma warning disable CS0618 // Aspire 17 deprecates AddProject; keep the staged project model until a Project v2 migration.
 IResourceBuilder<ProjectResource> mcp = builder
     .AddProject<Projects.Hexalith_Memories_Mcp>("memories-mcp", launchProfileName: "http")
+#pragma warning restore CS0618
     .WithDaprSidecar(sidecar =>
     {
         _ = sidecar.WithOptions(CreateDaprSidecarOptions(
