@@ -1803,7 +1803,8 @@ resolution: The server sorts cases by newest creation time and ordinal ID before
 origin: migrated from legacy ledger ("Deferred from: code review of 7-4-quickstart-and-documentation (2026-04-17)"), 2026-09-01
 location: src/Hexalith.Memories.Cli/Quickstart/QuickstartSampleFlow.cs:31
 reason: - **`NegativeCanaryQuery` is a literal constant — any future fixture copying the token into a sample body silently breaks the canary invariant** — add a startup self-check (assert `SampleDocumentText` does not contain the canary token) when touched next. [src/Hexalith.Memories.Cli/Quickstart/QuickstartSampleFlow.cs:31]
-status: open
+status: done 2026-11-24
+resolution: Quickstart verifies at startup that the negative canary is absent from the embedded document. Tests verify both submitted sample bodies exclude the token.
 
 ### DW-260: `HealthStep` failure suggestion interpolates `result.LastError` raw
 

@@ -111,6 +111,10 @@ public sealed class QuickstartSampleFlowTests
         first.RunToken.ShouldNotBe(second.RunToken);
         client.IngestedContents[0].ShouldContain(first.RunToken);
         client.IngestedContents[1].ShouldContain(second.RunToken);
+        foreach (string document in client.IngestedContents)
+        {
+            document.ShouldNotContain(QuickstartSampleFlow.NegativeCanaryQuery, Shouldly.Case.Insensitive);
+        }
     }
 
     [Fact]

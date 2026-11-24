@@ -84,6 +84,11 @@ public sealed class QuickstartSampleFlow
     {
         ArgumentNullException.ThrowIfNull(client);
         ArgumentNullException.ThrowIfNull(timeProvider);
+        if (SampleDocumentText.Contains(NegativeCanaryQuery, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("The quickstart sample contains its negative search canary.");
+        }
+
         _client = client;
         _timeProvider = timeProvider;
     }
