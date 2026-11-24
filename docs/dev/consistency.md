@@ -218,6 +218,11 @@ to an individual run requires correlation from the log sink.
 
 ## Replay-safety startup warning
 
+The replay-safety gate limits the entire startup check to five minutes, including
+registry reads, fallback pages, individual workflow queries and delays between
+polls. Event 9172 reports an exhausted startup budget and includes the last
+completed active count when one is available.
+
 Critical event 9173 comes from `WorkflowReplaySafetyHostedService` during
 ingestion startup. On a query failure the gate fails open and the host proceeds
 with startup. Keep intake quiesced and pause the rollout until direct Dapr

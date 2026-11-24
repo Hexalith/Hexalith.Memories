@@ -260,6 +260,74 @@ public class WorkflowReplaySafetyHostedServiceTests
         }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StartingAsync_TotalBudgetEndsQueriesWithinTrackedListOrFallbackPage(bool useEnumeration)
+    {
+        const int completedQueries = 33;
+        string[] ids = Enumerable.Range(0, completedQueries + 3).Select(index => $"instance-{index}").ToArray();
+        IDaprWorkflowClient workflowClient = Substitute.For<IDaprWorkflowClient>();
+        IIngestionWorkflowInFlightRegistry registry = Substitute.For<IIngestionWorkflowInFlightRegistry>();
+        FakeTimeProvider timeProvider = new();
+        if (useEnumeration)
+        {
+            registry.ListAsync(Arg.Any<CancellationToken>()).Returns([]);
+            registry.IsInitializedAsync(Arg.Any<CancellationToken>()).Returns(false);
+            workflowClient.ListInstanceIdsAsync(null, 100, Arg.Any<CancellationToken>())
+                .Returns(new WorkflowInstancePage(ids, "next-page"));
+        }
+        else
+        {
+            registry.ListAsync(Arg.Any<CancellationToken>())
+                .Returns(ids.Select(id => new IngestionWorkflowInFlightEntry("tenant-a", id, DateTimeOffset.UnixEpoch)).ToArray());
+        }
+
+        var pending = new TaskCompletionSource<WorkflowState>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var queryStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        int queryCount = 0;
+        CancellationToken pendingQueryToken = default;
+        workflowClient.GetWorkflowStateAsync(Arg.Any<string>(), false, Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                if (++queryCount <= completedQueries)
+                {
+                    timeProvider.Advance(TimeSpan.FromSeconds(9));
+                    return Task.FromResult(CreateState(call.Arg<string>(), WorkflowRuntimeStatus.Running));
+                }
+
+                pendingQueryToken = call.Arg<CancellationToken>();
+                queryStarted.SetResult();
+                return pending.Task;
+            });
+        using CapturingAuditLoggerProvider logs = new();
+        using ILoggerFactory factory = LoggerFactory.Create(builder => builder.AddProvider(logs));
+        WorkflowReplaySafetyHostedService service = new(
+            workflowClient, registry, factory.CreateLogger<WorkflowReplaySafetyHostedService>(), timeProvider);
+
+        Task starting = service.StartingAsync(CancellationToken.None);
+        try
+        {
+            await queryStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            starting.IsCompleted.ShouldBeFalse();
+            timeProvider.Advance(TimeSpan.FromSeconds(3));
+            await starting.WaitAsync(TimeSpan.FromSeconds(5));
+
+            queryCount.ShouldBe(completedQueries + 1);
+            pendingQueryToken.IsCancellationRequested.ShouldBeTrue();
+            await workflowClient.DidNotReceive().ListInstanceIdsAsync("next-page", Arg.Any<int>(), Arg.Any<CancellationToken>());
+            await registry.DidNotReceiveWithAnyArgs().MarkInitializedAsync(default);
+            AuditLogCapture entry = logs.Captures.ShouldHaveSingleItem();
+            entry.EventId.ShouldBe(9172);
+            entry.Level.ShouldBe(LogLevel.Critical);
+            entry.Fields.ToDictionary()["RemainingCount"].ShouldBeNull();
+        }
+        finally
+        {
+            pending.TrySetResult(CreateState(ids[completedQueries], WorkflowRuntimeStatus.Running));
+        }
+    }
+
     private static WorkflowReplaySafetyHostedService CreateService(
         IDaprWorkflowClient workflowClient,
         IIngestionWorkflowInFlightRegistry registry)

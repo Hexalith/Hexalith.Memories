@@ -56,51 +56,47 @@ internal sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecyc
     /// <inheritdoc/>
     public async Task StartingAsync(CancellationToken cancellationToken)
     {
-        DateTimeOffset deadline = _timeProvider.GetUtcNow() + TotalTimeout;
-
-        while (!cancellationToken.IsCancellationRequested)
+        using var deadline = new CancellationTokenSource(TotalTimeout, _timeProvider);
+        using var startup = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token, cancellationToken);
+        int? lastCount = null;
+        try
         {
-            (int? inFlight, string? failureReason, Exception? failure) result;
-            try
+            while (!startup.IsCancellationRequested)
             {
-                result = await TryCountInFlightAsync(cancellationToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
+                (int? inFlight, string? failureReason, Exception? failure) =
+                    await TryCountInFlightAsync(startup.Token).ConfigureAwait(false);
+                if (deadline.IsCancellationRequested)
+                {
+                    break;
+                }
 
-            (int? inFlight, string? failureReason, Exception? failure) = result;
-            if (inFlight is null)
-            {
-                // Improvement Z: sidecar unreachable — fail open. A stuck pod is worse than a missing
-                // gate. The runbook quiesce still applies as operator-side discipline.
-                LogGateFailedOpen(_logger, failureReason ?? "count-unavailable", failure);
-                return;
-            }
+                if (inFlight is null)
+                {
+                    // Fail open when the sidecar or registry is unavailable. Operators still quiesce intake.
+                    LogGateFailedOpen(_logger, failureReason ?? "count-unavailable", failure);
+                    return;
+                }
 
-            if (inFlight.Value == 0)
-            {
-                LogDrained(_logger);
-                return;
-            }
+                startup.Token.ThrowIfCancellationRequested();
+                if (inFlight.Value == 0)
+                {
+                    LogDrained(_logger);
+                    return;
+                }
 
-            if (_timeProvider.GetUtcNow() >= deadline)
-            {
-                // Improvement X split: Critical single-shot at timeout — proceed rather than infinite-block.
-                LogDrainTimeout(_logger, inFlight.Value);
-                return;
+                lastCount = inFlight.Value;
+                LogDraining(_logger, inFlight.Value);
+                await Task.Delay(PollInterval, _timeProvider, startup.Token).ConfigureAwait(false);
             }
+        }
+        catch (OperationCanceledException) when (startup.IsCancellationRequested)
+        {
+            // Classify the end of startup using the original cancellation sources.
+        }
 
-            LogDraining(_logger, inFlight.Value);
-            try
-            {
-                await Task.Delay(PollInterval, _timeProvider, cancellationToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
+        if (deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            LogDrainTimeout(_logger, lastCount);
         }
     }
 
@@ -124,18 +120,24 @@ internal sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecyc
     {
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             int count = 0;
             IReadOnlyList<IngestionWorkflowInFlightEntry> entries = await _inFlightRegistry
                 .ListAsync(cancellationToken)
+                .WaitAsync(cancellationToken)
                 .ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
 
             if (entries.Count == 0
-                && !await _inFlightRegistry.IsInitializedAsync(cancellationToken).ConfigureAwait(false))
+                && !await _inFlightRegistry.IsInitializedAsync(cancellationToken)
+                    .WaitAsync(cancellationToken).ConfigureAwait(false))
             {
                 int fallbackCount = await CountInFlightByEnumerationFallbackAsync(cancellationToken).ConfigureAwait(false);
                 if (fallbackCount == 0)
                 {
-                    await _inFlightRegistry.MarkInitializedAsync(cancellationToken).ConfigureAwait(false);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    await _inFlightRegistry.MarkInitializedAsync(cancellationToken)
+                        .WaitAsync(cancellationToken).ConfigureAwait(false);
                 }
 
                 return (fallbackCount, null, null);
@@ -149,7 +151,9 @@ internal sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecyc
 
                 if (state is null || !state.Exists || !IsActive(state.RuntimeStatus))
                 {
-                    await _inFlightRegistry.RemoveAsync(entry.InstanceId, cancellationToken).ConfigureAwait(false);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    await _inFlightRegistry.RemoveAsync(entry.InstanceId, cancellationToken)
+                        .WaitAsync(cancellationToken).ConfigureAwait(false);
                     continue;
                 }
 
@@ -226,11 +230,12 @@ internal sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecyc
 
     private async Task<T> QuerySidecarAsync<T>(Func<CancellationToken, Task<T>> query, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         using var queryTimeout = new CancellationTokenSource(PerQueryTimeout, _timeProvider);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(queryTimeout.Token, cancellationToken);
         try
         {
-            return await query(linked.Token).ConfigureAwait(false);
+            return await query(linked.Token).WaitAsync(linked.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException exception) when (queryTimeout.IsCancellationRequested)
         {
@@ -244,8 +249,8 @@ internal sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecyc
     [LoggerMessage(Level = LogLevel.Information, Message = "Replay-safety gate: no in-flight IngestionWorkflow instances — proceeding.")]
     private static partial void LogDrained(ILogger logger);
 
-    [LoggerMessage(EventId = 9172, Level = LogLevel.Critical, Message = "Replay-safety gate: timed out with {RemainingCount} instance(s) still active — proceeding anyway (event 9172).")]
-    private static partial void LogDrainTimeout(ILogger logger, int remainingCount);
+    [LoggerMessage(EventId = 9172, Level = LogLevel.Critical, Message = "Replay-safety gate: timed out — proceeding anyway (event 9172). Last completed active count: {RemainingCount}.")]
+    private static partial void LogDrainTimeout(ILogger logger, int? remainingCount);
 
     [LoggerMessage(EventId = 9173, Level = LogLevel.Critical, Message = "Replay-safety gate failing open (event 9173): reason={Reason}. Operator action: verify Redis registry connectivity, DAPR sidecar health, and Dapr workflow state reads.")]
     private static partial void LogGateFailedOpen(ILogger logger, string reason, Exception? exception);

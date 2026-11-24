@@ -2125,7 +2125,8 @@ resolution: Legacy free-text findings now carry InformationalNote while typed an
 origin: migrated from legacy ledger ("Deferred from: code review of 9-2-dual-embedding-and-causal-chain-indexing Session 6 (2026-04-25)"), 2026-09-01
 location: n/a
 reason: - **S6-F8. Add inner-loop deadline check to `WorkflowReplaySafetyHostedService.TryCountInFlightAsync`.** With 100-instance pages and 10s per-query timeout, hundreds of active instances can outlive the documented 5-min `TotalTimeout`. Follow-up: thread the outer deadline through the inner enumeration.
-status: open
+status: done 2026-11-24
+resolution: One startup deadline now bounds registry operations, tracked state reads, fallback pages and polling delays. Fake-clock coverage runs a slow batch on each path, observes 9172 within the budget, and proves there are no later calls.
 
 ### DW-302: S6-F9. Add `BatchSize=1` accumulator test for the notes/discrepancies routing across batch boundaries.
 
