@@ -2770,7 +2770,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of 15-3-live-migration-coordination-policy (2026-05-14)"), 2026-09-01
 location: src/Hexalith.Memories.Server/Activities/Ingestion/GenerateEmbeddingActivity.cs:81-91
 reason: - **15.3-RV6. `GenerateEmbeddingActivity._redis is not null` silent no-op when keyed Redis service is missing.** `src/Hexalith.Memories.Server/Activities/Ingestion/GenerateEmbeddingActivity.cs:81-91` — File Scope L88 wording "if the runtime marker reader can be injected cleanly" treats this guard as intentionally optional; the mandatory correctness gate is at both indexing activities. Follow-up: either make `IConnectionMultiplexer` required at this site or emit a startup warning when the keyed registration is absent. Re-open trigger: any production deployment where DI omits the `"redis"` keyed `IConnectionMultiplexer` registration but the indexing activities also become optional, or a missed-write incident attributed to this site.
-status: open
+status: done 2026-11-24
+resolution: GenerateEmbeddingActivity and GenerateChunkEmbeddingsActivity now require the keyed "redis" connection and always read the active migration marker before calling the provider. A host without that registration cannot create either activity. Focused tests cover null construction, ActivatorUtilities creation with and without the keyed registration, and a chunked write blocked by a marker for another target. See spec-seven-ordered-deferred-items.md.
 
 ### DW-401: 15.3-RV8. `WaitAsync(ct)` cancels the await but not the underlying Redis command.
 

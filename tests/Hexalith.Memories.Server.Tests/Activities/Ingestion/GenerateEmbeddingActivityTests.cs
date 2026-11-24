@@ -17,7 +17,9 @@ using Hexalith.Memories.Server.Actors;
 using Hexalith.Memories.Server.Ingestion;
 
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
@@ -139,6 +141,38 @@ public class GenerateEmbeddingActivityTests
             Arg.Any<string>(),
             Arg.Any<TenantEmbeddingConfig>(),
             Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public void Constructor_WithoutMigrationMarkerRedis_Throws()
+    {
+        ArgumentNullException exception = Should.Throw<ArgumentNullException>(() => new GenerateEmbeddingActivity(
+            CreateMockEmbeddingClient([]),
+            CreateMockActorProxyFactory(allowed: true, out _),
+            new FixedJitterSource(0),
+            NullLogger<GenerateEmbeddingActivity>.Instance,
+            redis: null!));
+
+        exception.ParamName.ShouldBe("redis");
+    }
+
+    [Fact]
+    public void ActivatorUtilities_WithoutKeyedRedisRegistration_RefusesToCreateUnguardedActivity()
+    {
+        ServiceCollection services = new();
+        services.AddSingleton(CreateMockEmbeddingClient([]));
+        services.AddSingleton(CreateMockActorProxyFactory(allowed: true, out _));
+        services.AddSingleton<IJitterSource>(new FixedJitterSource(0));
+        services.AddSingleton(typeof(ILogger<>), typeof(NullLogger<>));
+        using (ServiceProvider withoutRedis = services.BuildServiceProvider())
+        {
+            Should.Throw<InvalidOperationException>(
+                () => ActivatorUtilities.CreateInstance<GenerateEmbeddingActivity>(withoutRedis));
+        }
+
+        services.AddKeyedSingleton("redis", CreateRedisWithoutMarker());
+        using ServiceProvider withRedis = services.BuildServiceProvider();
+        ActivatorUtilities.CreateInstance<GenerateEmbeddingActivity>(withRedis).ShouldNotBeNull();
     }
 
     [Fact]

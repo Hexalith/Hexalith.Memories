@@ -30,7 +30,7 @@ public sealed class GenerateChunkEmbeddingsActivity : WorkflowTraceLinkedActivit
     private readonly ILogger<GenerateChunkEmbeddingsActivity> _logger;
     private readonly ContentChunkingOptions _options;
     private readonly IWorkflowPayloadStore? _payloadStore;
-    private readonly IConnectionMultiplexer? _redis;
+    private readonly IConnectionMultiplexer _redis;
     private readonly ITenantEmbeddingConfigProvider _tenantEmbeddingConfigProvider;
 
     /// <summary>Initializes a new instance of the <see cref="GenerateChunkEmbeddingsActivity"/> class.</summary>
@@ -39,7 +39,7 @@ public sealed class GenerateChunkEmbeddingsActivity : WorkflowTraceLinkedActivit
         IActorProxyFactory actorProxyFactory,
         IOptions<ContentChunkingOptions> options,
         ILogger<GenerateChunkEmbeddingsActivity> logger,
-        [FromKeyedServices("redis")] IConnectionMultiplexer? redis = null,
+        [FromKeyedServices("redis")] IConnectionMultiplexer redis,
         IWorkflowPayloadStore? payloadStore = null,
         ITenantEmbeddingConfigProvider? tenantEmbeddingConfigProvider = null)
     {
@@ -47,6 +47,7 @@ public sealed class GenerateChunkEmbeddingsActivity : WorkflowTraceLinkedActivit
         ArgumentNullException.ThrowIfNull(actorProxyFactory);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(redis);
         _embeddingClient = embeddingClient;
         _actorProxyFactory = actorProxyFactory;
         _options = options.Value;
@@ -95,17 +96,14 @@ public sealed class GenerateChunkEmbeddingsActivity : WorkflowTraceLinkedActivit
             .GetAsync(input.TenantId, CancellationToken.None)
             .ConfigureAwait(false);
 
-        if (_redis is not null)
-        {
-            EmbeddingMigrationMarker? marker = await EmbeddingMigrationMarkerReader
-                .ReadActiveMarkerAsync(_redis, input.TenantId, CancellationToken.None)
-                .ConfigureAwait(false);
-            EmbeddingMigrationMarkerReader.EnsureWriteMatchesMarker(
-                marker,
-                config.Provider,
-                config.Model,
-                config.Dimensions);
-        }
+        EmbeddingMigrationMarker? marker = await EmbeddingMigrationMarkerReader
+            .ReadActiveMarkerAsync(_redis, input.TenantId, CancellationToken.None)
+            .ConfigureAwait(false);
+        EmbeddingMigrationMarkerReader.EnsureWriteMatchesMarker(
+            marker,
+            config.Provider,
+            config.Model,
+            config.Dimensions);
 
         await _embeddingClient
             .PrimeApiKeyAsync(input.TenantId, config, CancellationToken.None)

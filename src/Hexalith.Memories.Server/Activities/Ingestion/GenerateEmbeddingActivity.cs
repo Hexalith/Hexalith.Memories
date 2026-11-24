@@ -36,7 +36,7 @@ public sealed class GenerateEmbeddingActivity : WorkflowTraceLinkedActivity<Embe
     private readonly EmbeddingClient _embeddingClient;
     private readonly IJitterSource _jitterSource;
     private readonly ILogger<GenerateEmbeddingActivity> _logger;
-    private readonly IConnectionMultiplexer? _redis;
+    private readonly IConnectionMultiplexer _redis;
     private readonly ITenantEmbeddingConfigProvider _tenantEmbeddingConfigProvider;
 
     /// <summary>Initializes a new instance of the <see cref="GenerateEmbeddingActivity"/> class.</summary>
@@ -44,20 +44,21 @@ public sealed class GenerateEmbeddingActivity : WorkflowTraceLinkedActivity<Embe
     /// <param name="actorProxyFactory">The factory for creating DAPR actor proxies.</param>
     /// <param name="jitterSource">Jitter source providing the pre-call retry delay (Story 6.2).</param>
     /// <param name="logger">Logger for structured rate-limit events (6201-6203).</param>
-    /// <param name="redis">The tenant-scoped migration marker store.</param>
+    /// <param name="redis">The keyed Redis connection that stores the tenant-scoped migration marker. It is required so the migration write guard always runs.</param>
     /// <param name="tenantEmbeddingConfigProvider">The cached tenant embedding configuration provider.</param>
     public GenerateEmbeddingActivity(
         EmbeddingClient embeddingClient,
         IActorProxyFactory actorProxyFactory,
         IJitterSource jitterSource,
         ILogger<GenerateEmbeddingActivity> logger,
-        [FromKeyedServices("redis")] IConnectionMultiplexer? redis = null,
+        [FromKeyedServices("redis")] IConnectionMultiplexer redis,
         ITenantEmbeddingConfigProvider? tenantEmbeddingConfigProvider = null)
     {
         ArgumentNullException.ThrowIfNull(embeddingClient);
         ArgumentNullException.ThrowIfNull(actorProxyFactory);
         ArgumentNullException.ThrowIfNull(jitterSource);
         ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(redis);
         _embeddingClient = embeddingClient;
         _actorProxyFactory = actorProxyFactory;
         _jitterSource = jitterSource;
@@ -83,17 +84,14 @@ public sealed class GenerateEmbeddingActivity : WorkflowTraceLinkedActivity<Embe
             .GetAsync(input.TenantId, CancellationToken.None)
             .ConfigureAwait(false);
 
-        if (_redis is not null)
-        {
-            EmbeddingMigrationMarker? marker = await EmbeddingMigrationMarkerReader
-                .ReadActiveMarkerAsync(_redis, input.TenantId, CancellationToken.None)
-                .ConfigureAwait(false);
-            EmbeddingMigrationMarkerReader.EnsureWriteMatchesMarker(
-                marker,
-                config.Provider,
-                config.Model,
-                config.Dimensions);
-        }
+        EmbeddingMigrationMarker? marker = await EmbeddingMigrationMarkerReader
+            .ReadActiveMarkerAsync(_redis, input.TenantId, CancellationToken.None)
+            .ConfigureAwait(false);
+        EmbeddingMigrationMarkerReader.EnsureWriteMatchesMarker(
+            marker,
+            config.Provider,
+            config.Model,
+            config.Dimensions);
 
         await _embeddingClient
             .PrimeApiKeyAsync(input.TenantId, config, CancellationToken.None)

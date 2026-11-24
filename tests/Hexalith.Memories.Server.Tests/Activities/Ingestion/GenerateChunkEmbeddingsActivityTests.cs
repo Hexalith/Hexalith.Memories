@@ -13,9 +13,12 @@ using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Ingestion;
 using Hexalith.Memories.Server.Actors;
 using Hexalith.Memories.Server.Ingestion;
+using Hexalith.Memories.Server.Migration;
 
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -343,6 +346,67 @@ public class GenerateChunkEmbeddingsActivityTests
             Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task RunAsync_ActiveMigrationMarkerForAnotherTarget_BlocksBeforeProviderCall()
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { Dimensions = 3 };
+        EmbeddingClient embeddingClient = CreateMockEmbeddingClient(config);
+        GenerateChunkEmbeddingsActivity activity = new(
+            embeddingClient,
+            CreateActorProxyFactory(config),
+            Options.Create(new ContentChunkingOptions()),
+            NullLogger<GenerateChunkEmbeddingsActivity>.Instance,
+            CreateRedisWithActiveMarker("tenant-a"));
+
+        await Should.ThrowAsync<EmbeddingMigrationWriteBlockedException>(
+            () => activity.RunAsync(Substitute.For<WorkflowActivityContext>(), new EmbeddingInput("tenant-a", "abcdefgh")));
+
+        await embeddingClient.DidNotReceive().PrimeApiKeyAsync(
+            Arg.Any<string>(),
+            Arg.Any<TenantEmbeddingConfig>(),
+            Arg.Any<CancellationToken>());
+        await embeddingClient.DidNotReceive().GenerateBatchAsync(
+            Arg.Any<IReadOnlyList<string>>(),
+            Arg.Any<string>(),
+            Arg.Any<TenantEmbeddingConfig>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public void Constructor_WithoutMigrationMarkerRedis_Throws()
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { Dimensions = 3 };
+
+        ArgumentNullException exception = Should.Throw<ArgumentNullException>(() => new GenerateChunkEmbeddingsActivity(
+            CreateMockEmbeddingClient(config),
+            CreateActorProxyFactory(config),
+            Options.Create(new ContentChunkingOptions()),
+            NullLogger<GenerateChunkEmbeddingsActivity>.Instance,
+            redis: null!));
+
+        exception.ParamName.ShouldBe("redis");
+    }
+
+    [Fact]
+    public void ActivatorUtilities_WithoutKeyedRedisRegistration_RefusesToCreateUnguardedActivity()
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { Dimensions = 3 };
+        ServiceCollection services = new();
+        services.AddSingleton(CreateMockEmbeddingClient(config));
+        services.AddSingleton(CreateActorProxyFactory(config));
+        services.AddSingleton(Options.Create(new ContentChunkingOptions()));
+        services.AddSingleton(typeof(ILogger<>), typeof(NullLogger<>));
+        using (ServiceProvider withoutRedis = services.BuildServiceProvider())
+        {
+            Should.Throw<InvalidOperationException>(
+                () => ActivatorUtilities.CreateInstance<GenerateChunkEmbeddingsActivity>(withoutRedis));
+        }
+
+        services.AddKeyedSingleton("redis", CreateRedisWithoutMarker());
+        using ServiceProvider withRedis = services.BuildServiceProvider();
+        ActivatorUtilities.CreateInstance<GenerateChunkEmbeddingsActivity>(withRedis).ShouldNotBeNull();
+    }
+
     private static EmbeddingClient CreateMockEmbeddingClient(TenantEmbeddingConfig config)
     {
         EmbeddingClient client = Substitute.For<EmbeddingClient>(
@@ -412,6 +476,24 @@ public class GenerateChunkEmbeddingsActivityTests
         IDatabase db = Substitute.For<IDatabase>();
         db.HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
             .Returns(Task.FromResult(Array.Empty<HashEntry>()));
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase().Returns(db);
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+        return redis;
+    }
+
+    private static IConnectionMultiplexer CreateRedisWithActiveMarker(string tenantId)
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        db.HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+            .Returns(Task.FromResult(new[]
+            {
+                new HashEntry("tenantId", tenantId),
+                new HashEntry("targetProvider", EmbeddingProviderDefaults.OllamaProviderName),
+                new HashEntry("targetModel", EmbeddingProviderDefaults.OllamaModelName),
+                new HashEntry("targetDimensions", EmbeddingProviderDefaults.Ollama().Dimensions),
+                new HashEntry("status", "started"),
+            }));
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
         redis.GetDatabase().Returns(db);
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);

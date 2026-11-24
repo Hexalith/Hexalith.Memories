@@ -27,6 +27,8 @@ using NSubstitute;
 
 using Shouldly;
 
+using StackExchange.Redis;
+
 /// <summary>Story 9.2 Task 3.4 / Risk #17 — wire-compat + telemetry coverage for the new
 /// <c>EmbeddingInput.ContentKind</c> positional parameter. The positional-record shape is load-bearing
 /// for durable workflow replay: paused workflows whose history carries the 9.1 JSON shape
@@ -170,7 +172,19 @@ public sealed class EmbeddingInputContentKindTests
             embeddingClient,
             factory,
             new FixedJitterSource(0),
-            NullLogger<GenerateEmbeddingActivity>.Instance);
+            NullLogger<GenerateEmbeddingActivity>.Instance,
+            CreateRedisWithoutMarker());
+
+    private static IConnectionMultiplexer CreateRedisWithoutMarker()
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        db.HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+            .Returns(Task.FromResult(Array.Empty<HashEntry>()));
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase().Returns(db);
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+        return redis;
+    }
 
     private static EmbeddingClient CreateMockEmbeddingClient(float[] vectorToReturn)
     {
