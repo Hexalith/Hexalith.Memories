@@ -5,93 +5,118 @@
 
 namespace Hexalith.Memories.Server.Tests.NaturalLanguage;
 
-using System.IO;
+using System.Diagnostics;
+
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 
 using Shouldly;
 
-/// <summary>Story 9.2 Task 1.9 / Risk #1 — suppression-scoping guards. The <c>DAPR_CONVERSATION</c>
-/// experimental diagnostic from <c>Dapr.AI</c> 1.17.6 must be suppressed ONLY in
-/// <c>Hexalith.Memories.Server.csproj</c>. Leaking it into <c>Directory.Build.props</c> would sprawl the
-/// suppression to every project, defeating the fail-fast posture that catches accidental Conversation API
-/// adoption outside the server.</summary>
-/// <remarks>The stronger dynamic-compilation guard (build a throwaway project that imports Server source
-/// and asserts <c>csc</c> emits zero DAPR_CONVERSATION diagnostics) is documented in Task 1.9 as
-/// Improvement AD; this file content check is the cheaper and still reliable form — a leak would update
-/// <c>Directory.Build.props</c> and flip the first assertion immediately.</remarks>
+/// <summary>Checks that the experimental Dapr conversation API can compile only with the Server project's suppression.</summary>
 public sealed class ProjectCompilationTests
 {
     [Fact]
-    public void DirectoryBuildProps_DoesNotSuppressDaprConversationWarning()
+    public async Task DaprConversationCall_CompilesWithServerSettingsAndFailsInOtherProjects()
     {
-        string propsPath = LocateRepoFile("Directory.Build.props");
+        string root = LocateRepoRoot();
+        MetadataReference[] references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
+            .Split(Path.PathSeparator)
+            .Select(path => MetadataReference.CreateFromFile(path))
+            .ToArray();
 
-        string content = File.ReadAllText(propsPath);
-
-        content.ShouldNotContain(
-            "DAPR_CONVERSATION",
-            Case.Sensitive,
-            customMessage: "Directory.Build.props must NOT suppress DAPR_CONVERSATION globally — Risk #1 " +
-                "mitigation scopes the suppression to Hexalith.Memories.Server.csproj only so unintentional " +
-                "spread of Dapr.AI alpha-API adoption still fails the build.");
-    }
-
-    [Fact]
-    public void ServerCsproj_SuppressesDaprConversationWarning()
-    {
-        string csprojPath = LocateRepoFile(Path.Combine(
-            "src",
-            "Hexalith.Memories.Server",
-            "Hexalith.Memories.Server.csproj"));
-
-        string content = File.ReadAllText(csprojPath);
-
-        content.ShouldContain(
-            "DAPR_CONVERSATION",
-            Case.Sensitive,
-            customMessage: "Hexalith.Memories.Server.csproj MUST carry <NoWarn>$(NoWarn);DAPR_CONVERSATION" +
-                "</NoWarn> per Story 9.2 Task 1.3 so Dapr.AI's [Experimental] diagnostic does not break " +
-                "the build under TreatWarningsAsErrors=true.");
-    }
-
-    [Fact]
-    public void OtherServerProjects_DoNotSuppressDaprConversationWarning()
-    {
-        string srcRoot = LocateRepoFile("src");
-
-        foreach (string csproj in Directory.EnumerateFiles(srcRoot, "*.csproj", SearchOption.AllDirectories))
-        {
-            if (Path.GetFileName(csproj).Equals(
-                "Hexalith.Memories.Server.csproj",
-                StringComparison.OrdinalIgnoreCase))
+        SyntaxTree probe = CSharpSyntaxTree.ParseText("""
+            using Dapr.AI.Conversation;
+            public static class ConversationProbe
             {
-                continue;
+                public static object Call(DaprConversationClient client)
+                    => client.ConverseAsync([], null!, default);
             }
+            """);
 
-            string content = File.ReadAllText(csproj);
-            content.ShouldNotContain(
-                "DAPR_CONVERSATION",
-                Case.Sensitive,
-                customMessage: $"{Path.GetFileName(csproj)} must NOT suppress DAPR_CONVERSATION — the " +
-                    "suppression is scoped to Hexalith.Memories.Server.csproj only (Risk #1).");
+        foreach (string project in new[] { "Hexalith.Memories.Server", "Hexalith.Memories.Contracts" })
+        {
+            string noWarn = await ReadNoWarnAsync(root, project);
+            CSharpCompilationOptions options = new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary)
+                .WithGeneralDiagnosticOption(ReportDiagnostic.Error)
+                .WithSpecificDiagnosticOptions(noWarn.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Distinct(StringComparer.Ordinal)
+                    .ToDictionary(id => id, _ => ReportDiagnostic.Suppress, StringComparer.Ordinal));
+            CSharpCompilation compilation = CSharpCompilation.Create("ConversationProbe", [probe], references, options);
+            using var output = new MemoryStream();
+            var result = compilation.Emit(output);
+
+            if (project == "Hexalith.Memories.Server")
+            {
+                result.Success.ShouldBeTrue(string.Join(Environment.NewLine, result.Diagnostics));
+                result.Diagnostics.ShouldNotContain(diagnostic => diagnostic.Id == "DAPR_CONVERSATION");
+            }
+            else
+            {
+                result.Success.ShouldBeFalse();
+                result.Diagnostics.Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+                    .Select(diagnostic => diagnostic.Id)
+                    .ShouldBe(["DAPR_CONVERSATION"]);
+            }
         }
     }
 
-    private static string LocateRepoFile(string relativePath)
+    [Fact]
+    public void OtherSourceProjects_DoNotDeclareTheServerSuppression()
     {
-        DirectoryInfo? current = new(AppContext.BaseDirectory);
-
-        while (current is not null)
+        foreach (string project in Directory.EnumerateFiles(
+            Path.Combine(LocateRepoRoot(), "src"), "*.csproj", SearchOption.AllDirectories))
         {
-            string candidate = Path.Combine(current.FullName, relativePath);
-            if (File.Exists(candidate) || Directory.Exists(candidate))
+            if (Path.GetFileName(project) != "Hexalith.Memories.Server.csproj")
             {
-                return candidate;
+                File.ReadAllText(project).ShouldNotContain("DAPR_CONVERSATION", Case.Sensitive, project);
             }
+        }
+    }
 
-            current = current.Parent;
+    private static async Task<string> ReadNoWarnAsync(string root, string project)
+    {
+        var start = new ProcessStartInfo("dotnet")
+        {
+            WorkingDirectory = root,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        foreach (string argument in new[] { "msbuild", Path.Combine("src", project, project + ".csproj"), "-nologo", "-getProperty:NoWarn" })
+        {
+            start.ArgumentList.Add(argument);
         }
 
-        throw new FileNotFoundException(
-            $"Could not locate '{relativePath}' by walking up from '{AppContext.BaseDirectory}'.");
+        using Process process = Process.Start(start)!;
+        Task<string> output = process.StandardOutput.ReadToEndAsync();
+        Task<string> error = process.StandardError.ReadToEndAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+        try
+        {
+            await process.WaitForExitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            process.Kill(entireProcessTree: true);
+            await process.WaitForExitAsync();
+            throw;
+        }
+
+        string noWarn = await output;
+        process.ExitCode.ShouldBe(0, noWarn + await error);
+        return noWarn.Trim();
+    }
+
+    private static string LocateRepoRoot()
+    {
+        for (DirectoryInfo? current = new(AppContext.BaseDirectory); current is not null; current = current.Parent)
+        {
+            if (File.Exists(Path.Combine(current.FullName, "Hexalith.Memories.slnx")))
+            {
+                return current.FullName;
+            }
+        }
+
+        throw new DirectoryNotFoundException("Could not locate Hexalith.Memories.slnx from the test output directory.");
     }
 }

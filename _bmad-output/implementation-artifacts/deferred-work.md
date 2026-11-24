@@ -2034,6 +2034,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 9-2-dual-emb
 location: n/a
 reason: - **Orphan stub operator surface** — `OrphanStubQuery_ReturnsStubsOlderThanThreshold` test + `memories_graph_orphan_stub_count{tenant}` gauge + `memories graph orphan-stubs --tenant X --age 24h` CLI sub-command (Dev Notes "Orphan stub detection"). Tied to Task 8.8 CLI project deferral.
 status: open
+note: 2026-11-24 — Skipped. The legacy Memories CLI is limited to safety and continuity fixes. New operator commands need an approved Hexalith.McpCli capability and ownership decision.
 
 ### DW-290: Task 7.1 reflection test
 
@@ -2046,7 +2047,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of 9-2-dual-embedding-and-causal-chain-indexing (2026-04-24)"), 2026-09-01
 location: n/a
 reason: - **Task 1.9 Improvement AD dynamic-compilation `ProjectCompilationTests`** — diff ships the weaker file-content-string form (`File.ReadAllText` + regex assertions). The stronger dynamic-compilation variant that builds a throwaway project and asserts zero `DAPR_CONVERSATION` diagnostics is deferred; current form still catches the regression the Improvement AD cared about.
-status: open
+status: done 2026-11-24
+resolution: ProjectCompilationTests compiles the pinned Dapr API with the evaluated Server and Contracts MSBuild suppression settings. Server emits successfully while the control fails with DAPR_CONVERSATION. A source-project check covers direct suppression elsewhere.
 
 ### DW-292: D1: Logprobs-based confidence extraction in `GenerateNaturalLanguageDescriptionActivity`. Dapr.AI 1.17.6 `ConversationResultChoice` exposes only `FinishReason`, `Index`, and `Message` (verified against `C:/Users/.nuget/packages/dapr.ai/1.17.6/lib/net9.0/Dapr.AI.xml`). The SDK does not surface per-token `logprobs` from the underlying provider response, so the spec-documented `exp(avg(logprob))` computation has no upstream to pull from. Task 2.5 permanently documents `ConfidenceSource = Constant` + `EstimatedConfidence = null` as the MVP behavior. Re-open triggers: (a) Dapr.AI exposes logprobs on `ConversationResultChoice` or an extension surface, OR (b) a follow-up story ships a direct-provider client path (bypassing DAPR) that exposes logprobs — only relevant if operator UX research confirms users want measured confidence numbers. Evidence in comments at `src/Hexalith.Memories.Server/Activities/Ingestion/GenerateNaturalLanguageDescriptionActivity.cs:~206`.
 
