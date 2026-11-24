@@ -6,6 +6,8 @@
 namespace Hexalith.Memories.Mcp.Tests;
 
 using Hexalith.Memories.Mcp;
+using Hexalith.Memories.Mcp.Authentication;
+using Hexalith.Memories.Mcp.Tools;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -97,6 +99,23 @@ public sealed class McpCompositionRootTests
         exception.Message.ShouldContain("Production");
         exception.Message.ShouldContain("SigningKey");
         exception.Message.ShouldNotContain("production-static-signing-key-32-bytes");
+    }
+
+    [Fact]
+    public void ConfigureServices_KeepsTenantBoundToolStateOutOfSingletons()
+    {
+        ServiceCollection services = [];
+        McpCompositionRoot.ConfigureServices(services);
+        Type[] toolTypes = [typeof(SearchMemoryTool), typeof(IngestContentTool), typeof(TraverseRelationsTool), typeof(GetCaseInfoTool)];
+
+        // The SDK creates unregistered tool instances per invocation. A registered singleton
+        // could instead retain tenant-specific state between calls.
+        services.Where(descriptor => descriptor.Lifetime == ServiceLifetime.Singleton &&
+            (toolTypes.Contains(descriptor.ServiceType) ||
+             toolTypes.Contains(descriptor.ImplementationType) ||
+             toolTypes.Contains(descriptor.ImplementationInstance?.GetType()))).ShouldBeEmpty();
+        services.Single(descriptor => descriptor.ServiceType == typeof(McpToolExecutor)).Lifetime.ShouldBe(ServiceLifetime.Scoped);
+        services.Single(descriptor => descriptor.ServiceType == typeof(TenantClaimAuthorizationFilter)).Lifetime.ShouldBe(ServiceLifetime.Scoped);
     }
 
     private sealed class EnvScope : IDisposable

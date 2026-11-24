@@ -1012,6 +1012,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-12.5 (
 location: .github/workflows/release.yml:75
 reason: - **12.5-RV1 — Workflow hardcodes summary path.** `.github/workflows/release.yml:75` literal `artifacts/packages/release/publish-summary.json` is a duplicate of the path computed by `tools/publish-nuget.ps1` from its `-PackageDirectory` parameter. Aligned today via `.releaserc.json` invocation; if either ever changes the alert silently no-ops.
 status: open
+note: 2026-11-24 — Skipped. Removing the hardcoded workflow path needs a coordinated release producer and CI/CD workflow change.
 
 ### DW-152: 12.5-RV2: `gh issue list --search` lacks `in:title` qualifier and uses default `--limit 30`. `tools/create-partial-publish-issue.ps1:92`. Local `Where-Object { $_.title -eq $title }` defends against substring collisions today, but a high-volume backlog of partial-publish issues could push the exact match off the result page. Switch to `--search "in:title \"$title\""` and bump limit when revisited.
 
@@ -1025,6 +1026,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-12.5 (
 location: tools/create-partial-publish-issue.ps1:92-119
 reason: - **12.5-RV3 — Race on concurrent partial-publish runs.** Two workflow runs hitting partial-publish for the same version simultaneously can each create a new issue. `tools/create-partial-publish-issue.ps1:92-119`. Workflow `concurrency: release` reduces but does not eliminate the window. Needs server-side dedupe (search-with-create-or-comment idempotency) before becoming critical.
 status: open
+note: 2026-11-24 — Skipped. The issue API has no atomic lookup-and-create operation, so a fix needs a shared release lock or CI workflow change.
 
 ### DW-154: 12.5-RV4: `Format-ListSection` does not skip `$null` items. `tools/create-partial-publish-issue.ps1:52-67`. Current JSON shape never emits nulls; a future contract change could produce blank `- :` bullets.
 
@@ -1072,6 +1074,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-12.3 (
 location: .github/workflows/ci.yml:43-46
 reason: - **12.3-RV2 — CI fork-PR base SHA reachability.** `actions/checkout@v6` with `fetch-depth: 0` on the head ref does not fetch the base repo's history. `git diff "$base_sha" "$head_sha"` may fail on PRs from forks. Deferred until fork PRs are accepted; if needed, add an explicit `git fetch origin "$base_sha"` step. [.github/workflows/ci.yml:43-46]
 status: open
+note: 2026-11-24 — Skipped. Fork-specific checkout changes need a confirmed fork-PR workflow and CI/CD ownership review.
 
 ### DW-161: 12.3-RV3: CI brand-new branch first push enumerates entire head commit. `git diff-tree --no-commit-id --name-only -r "$head_sha"` lists every file at HEAD when `before` is `0000…0`, producing a massive out-of-scope list. Pair with the force-push hardening patch P5; for now, the failure mode is loud and recoverable.
 
@@ -1199,13 +1202,15 @@ origin: migrated from legacy ledger ("Deferred from: Story 10.2 Token-Budget Res
 location: tests/Hexalith.Memories.IntegrationTests/Telemetry/AspireEndToEndTraceTests.cs::TraceHop_McpToServer_PreservesTraceparent
 reason: - **Story-10.x-McpTraceHopAspire (closes AC #12).** `tests/Hexalith.Memories.IntegrationTests/Telemetry/AspireEndToEndTraceTests.cs::TraceHop_McpToServer_PreservesTraceparent` — assert MCP→Memories Server parent/child trace span relationship at Tier-3. Implementation requires a parallel breadcrumb path through the MCP Aspire process (the existing `AspireEndToEndTraceTests` uses an in-process collector for the CLI side and audit-log JSON breadcrumbs for the Server side; the MCP service emits ActivitySource spans into its own process and lacks an in-test exporter). 10.2 ships the prerequisite Tier-3 auth bearer-minting fixture (`AspireIngestionPipelineFixture.MintDevBearer`) so the trace-hop work can attach to it directly. Re-open trigger: nightly Tier-3 lane stabilizes against the new auth-required surface and an in-test exporter for the MCP process becomes affordable; or first observation of MCP→Server trace breakage in production OTel data.
 status: open
+note: 2026-11-24 — Skipped. End-to-end parent-span evidence needs an exporter and correlation harness across Aspire processes.
 
 ### DW-180: Story-10.x-McpAuthTier3ExtendedSuite. Additional Tier-3 cases beyond the four critical scenarios shipped in 10.2 (`PostMcp_NoAuthorizationHeader_ReturnsBearerChallenge`, `GetHealth_AllowsAnonymous`, `CallTool_ValidBearer_MatchingTenantClaim_Succeeds`, `CallTool_ValidBearer_CrossTenantClaim_ReturnsTenantForbidden`): expired-bearer test, clock-skew tolerance test (M3), cross-request alternating-tenants leak test (P2), tool-class lifetime convention test (P1). Tier-2 already covers expiry / clock-skew at unit level (`ConfigureJwtBearerOptionsTests`); cross-request leak is structurally prevented by `TenantClaimAuthorizationFilter`'s `InvalidOperationException` guard (P3). Re-open trigger: first nightly Tier-3 regression against the auth path, or first cross-request leakage report.
 
 origin: migrated from legacy ledger ("Deferred from: Story 10.2 Token-Budget Responses & Authentication (2026-04-25)"), 2026-09-01
 location: n/a
 reason: - **Story-10.x-McpAuthTier3ExtendedSuite.** Additional Tier-3 cases beyond the four critical scenarios shipped in 10.2 (`PostMcp_NoAuthorizationHeader_ReturnsBearerChallenge`, `GetHealth_AllowsAnonymous`, `CallTool_ValidBearer_MatchingTenantClaim_Succeeds`, `CallTool_ValidBearer_CrossTenantClaim_ReturnsTenantForbidden`): expired-bearer test, clock-skew tolerance test (M3), cross-request alternating-tenants leak test (P2), tool-class lifetime convention test (P1). Tier-2 already covers expiry / clock-skew at unit level (`ConfigureJwtBearerOptionsTests`); cross-request leak is structurally prevented by `TenantClaimAuthorizationFilter`'s `InvalidOperationException` guard (P3). Re-open trigger: first nightly Tier-3 regression against the auth path, or first cross-request leakage report.
-status: open
+status: done 2026-11-24
+resolution: Added live JWT expiry/skew, alternating-tenant isolation and crossed-tenant denial tests plus a composition lifetime guard. All 7 live auth tests and 6 composition tests passed.
 
 ### DW-181: Story-10.x-McpStatelessTripwireTest (W3). `McpServerStatelessTransportGuardTests.Stateless_IsTrue_AndChangeRequiresAdrUpdate` — assert `WithHttpTransport(o => o.Stateless).Should().BeTrue()`. Requires an MCP-builder introspection surface that the SDK does not currently expose. Re-open trigger: SDK exposes a public reader for `WithHttpTransport` configuration, or any follow-up story discusses OAuth-PKCE / sampling / elicitation.
 

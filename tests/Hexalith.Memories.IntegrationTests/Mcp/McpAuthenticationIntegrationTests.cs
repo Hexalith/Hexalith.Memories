@@ -7,14 +7,20 @@ namespace Hexalith.Memories.IntegrationTests.Mcp;
 
 using System.Net;
 using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
 
+using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.IntegrationTests.Fixtures;
+using Hexalith.Memories.Server.Infrastructure;
 
 using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 
 using Shouldly;
+
+using StackExchange.Redis;
 
 using Xunit;
 
@@ -56,7 +62,7 @@ public sealed class McpAuthenticationIntegrationTests
         AuthenticationHeaderValue challenge = response.Headers.WwwAuthenticate.First();
         challenge.Scheme.ShouldBe("Bearer");
         challenge.Parameter.ShouldNotBeNullOrWhiteSpace();
-        challenge.Parameter.ShouldContain("realm=\"hexalith-memories-mcp\"", Case.Insensitive);
+        challenge.Parameter.ShouldContain("realm=\"hexalith-memories-mcp\"", Shouldly.Case.Insensitive);
         response.Content.Headers.ContentType?.MediaType.ShouldBe("application/problem+json");
     }
 
@@ -118,6 +124,106 @@ public sealed class McpAuthenticationIntegrationTests
         _output.WriteLine($"Cross-tenant authorization payload: {textBlock.Text}");
     }
 
+    [Fact]
+    public async Task PostMcp_ExpiredBearer_ReturnsUnauthorized()
+    {
+        using HttpRequestMessage request = new(HttpMethod.Post, new Uri(_fixture.McpEndpoint, "/mcp"))
+        {
+            Content = new StringContent("""{"jsonrpc":"2.0","id":"expired","method":"tools/list"}""", Encoding.UTF8, "application/json"),
+        };
+        request.Headers.Accept.ParseAdd("application/json, text/event-stream");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer",
+            AspireIngestionPipelineFixture.MintDevBearer("tenant-expiry-probe", expiresAt: DateTime.UtcNow.AddMinutes(-3)));
+
+        using HttpResponseMessage response = await _fixture.McpClient.SendAsync(request, TestContext.Current.CancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        response.Headers.WwwAuthenticate.ShouldContain(challenge => challenge.Scheme == "Bearer");
+    }
+
+    [Fact]
+    public async Task ListTools_BearerExpiredWithinClockSkew_Succeeds()
+    {
+        string bearer = AspireIngestionPipelineFixture.MintDevBearer(
+            "tenant-skew-probe", expiresAt: DateTime.UtcNow.AddSeconds(-30));
+        await using McpClient client = await CreateMcpClientAsync(bearer);
+
+        IList<McpClientTool> tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        tools.ShouldContain(tool => tool.Name == "search_memory");
+    }
+
+    [Fact]
+    public async Task CallTool_AlternatingTenantBearers_ReturnOnlyTheirOwnResults()
+    {
+        const string query = "mcptenantisolation";
+        string firstTenant = await _fixture.ProvisionActiveTenantAsync(cancellationToken: TestContext.Current.CancellationToken);
+        string secondTenant = await _fixture.ProvisionActiveTenantAsync(cancellationToken: TestContext.Current.CancellationToken);
+        string[] firstIds = await SeedSearchResultsAsync(firstTenant, "first", query);
+        string[] secondIds = await SeedSearchResultsAsync(secondTenant, "second", query);
+
+        await using McpClient firstClient = await CreateMcpClientAsync(AspireIngestionPipelineFixture.MintDevBearer(firstTenant));
+        await using McpClient secondClient = await CreateMcpClientAsync(AspireIngestionPipelineFixture.MintDevBearer(secondTenant));
+
+        await AssertResultsAsync(firstClient, firstTenant, query, firstIds);
+        await AssertResultsAsync(secondClient, secondTenant, query, secondIds);
+        await AssertResultsAsync(firstClient, firstTenant, query, firstIds);
+        await AssertTenantDeniedAsync(firstClient, secondTenant, query);
+        await AssertTenantDeniedAsync(secondClient, firstTenant, query);
+    }
+
+    private async Task<string[]> SeedSearchResultsAsync(string tenantId, string prefix, string query)
+    {
+        IDatabase database = _fixture.RedisConnection.GetDatabase();
+        string[] ids = [$"{prefix}-1", $"{prefix}-2", $"{prefix}-3"];
+        string now = DateTimeOffset.UtcNow.ToString("O");
+        foreach (string id in ids)
+        {
+            await database.HashSetAsync(IndexSchemaDefinitions.BuildSyntacticKey(tenantId, id),
+                [
+                    new HashEntry("id", id),
+                    new HashEntry("tenantId", tenantId),
+                    new HashEntry("caseId", "case-1"),
+                    new HashEntry("content", query),
+                    new HashEntry("sourceUri", $"file:///{id}.txt"),
+                    new HashEntry("sourceType", "File"),
+                    new HashEntry("ingestedAt", now),
+                    new HashEntry("lastUpdated", now),
+                    new HashEntry("status", "Indexed"),
+                    new HashEntry("metadataJson", "{}"),
+                ]);
+        }
+
+        return ids;
+    }
+
+    private static async Task AssertResultsAsync(McpClient client, string tenantId, string query, string[] expectedIds)
+    {
+        CallToolResult result = await SearchMemoryAsync(client, tenantId, query);
+
+        result.IsError.ShouldBe(false, FormatContent(result.Content));
+        result.StructuredContent.ShouldNotBeNull();
+        SearchResult search = result.StructuredContent.GetValueOrDefault().Deserialize<SearchResult>(MemoriesJsonContext.Options)
+            .ShouldNotBeNull();
+        search.Results.Select(hit => hit.MemoryUnitId).Order(StringComparer.Ordinal).ShouldBe(expectedIds);
+    }
+
+    private static async Task AssertTenantDeniedAsync(McpClient client, string tenantId, string query)
+    {
+        CallToolResult result = await SearchMemoryAsync(client, tenantId, query);
+
+        result.IsError.ShouldBe(true);
+        FormatContent(result.Content).ShouldContain("TENANT_FORBIDDEN");
+    }
+
+    private static async Task<CallToolResult> SearchMemoryAsync(McpClient client, string tenantId, string query)
+        => await client.CallToolAsync("search_memory", new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["tenantId"] = tenantId,
+            ["query"] = query,
+            ["axes"] = "syntactic",
+        }, cancellationToken: TestContext.Current.CancellationToken);
+
     private async Task<McpClient> CreateMcpClientAsync(string bearerToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
@@ -130,9 +236,9 @@ public sealed class McpAuthenticationIntegrationTests
             {
                 ["Authorization"] = $"Bearer {bearerToken}",
             },
-        });
+        }, _fixture.McpClient, ownsHttpClient: false);
 
-        McpClient client = await McpClient.CreateAsync(transport);
+        McpClient client = await McpClient.CreateAsync(transport, cancellationToken: TestContext.Current.CancellationToken);
         _output.WriteLine($"Connected to MCP endpoint at {_fixture.McpEndpoint}");
         return client;
     }
