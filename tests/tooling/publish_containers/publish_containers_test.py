@@ -202,7 +202,7 @@ def write_fake_skopeo(directory: Path) -> None:
                 emit(outcome)
                 exit_code = int(outcome.get("exitCode", 0))
                 if exit_code == 0 and not outcome.get("stdout"):
-                    print(json.dumps({{"schemaVersion": 2, "config": {{"digest": digests[image]}}}}))
+                    print(json.dumps({{"schemaVersion": 2, "config": {{"digest": digests[image]}}, "layers": []}}))
                 state_path.write_text(json.dumps(state), encoding="utf-8")
                 sys.exit(exit_code)
             elif args[0] == "inspect" and len(args) == 2 and args[1].startswith("docker-archive:"):
@@ -232,9 +232,10 @@ def write_fake_skopeo(directory: Path) -> None:
                 digest = state["remote"].get(reference)
                 state_path.write_text(json.dumps(state), encoding="utf-8")
                 if digest is None:
-                    print(f"reading manifest {{reference}}: manifest unknown", file=sys.stderr)
+                    repository, tag = reference.rsplit(":", 1)
+                    print(f"reading manifest {{tag}} in {{repository}}: manifest unknown", file=sys.stderr)
                     sys.exit(1)
-                print(json.dumps({{"schemaVersion": 2, "config": {{"digest": digest}}}}))
+                print(json.dumps({{"schemaVersion": 2, "config": {{"digest": digest}}, "layers": []}}))
                 sys.exit(0)
             elif args and args[0] == "copy" and "--authfile" in args:
                 source = next(arg for arg in args if arg.startswith("docker-archive:"))
@@ -301,6 +302,33 @@ def prepare_environment(root: Path, plan: dict[str, object] | None = None) -> tu
     env["EXPECTED_ZOT_REGISTRY"] = "registry.test"
     env["HEXALITH_ZOT_USERNAME"] = "SECRET_ZOT_USERNAME_SHOULD_NOT_LEAK"
     env["HEXALITH_ZOT_API_KEY"] = "SECRET_ZOT_API_KEY_SHOULD_NOT_LEAK"
+    driver = root / "invoke-publisher.ps1"
+    driver.write_text(textwrap.dedent("""
+        $ErrorActionPreference = 'Stop'
+        function Invoke-WebRequest {
+            param([uri]$Uri, $Authentication, $Credential, $MaximumRedirection,
+                  [switch]$SkipHttpErrorCheck, $TimeoutSec, $Headers)
+            if ($Uri.Scheme -ne 'https' -or $Uri.Authority -ne $env:EXPECTED_ZOT_REGISTRY -or
+                $Uri.AbsolutePath -notmatch '^/v2/[^/]+/manifests/[^/]+$' -or
+                $Authentication -ne 'Basic' -or
+                $Credential.UserName -cne $env:HEXALITH_ZOT_USERNAME -or
+                $Credential.GetNetworkCredential().Password -cne $env:HEXALITH_ZOT_API_KEY -or
+                $MaximumRedirection -ne 0 -or -not $SkipHttpErrorCheck -or
+                $TimeoutSec -le 0 -or $Headers.Accept -notlike '*application/vnd.oci.image.manifest.v1+json*') {
+                throw 'Unexpected authenticated manifest lookup.'
+            }
+            $plan = Get-Content -LiteralPath $env:FAKE_SKOPEO_PLAN -Raw | ConvertFrom-Json -AsHashtable
+            $repository = $Uri.Segments[2].TrimEnd('/')
+            $probe = if ($plan.manifestProbe) { $plan.manifestProbe[$repository] }
+            [pscustomobject]@{
+                StatusCode = $probe.status ?? 404
+                Content = $probe.body ?? '{"errors":[{"code":"MANIFEST_UNKNOWN"}]}'
+            }
+        }
+        $parameters = ConvertFrom-Json -InputObject $env:FAKE_PUBLISH_PARAMETERS -AsHashtable
+        & $env:FAKE_PUBLISH_SCRIPT @parameters
+    """).strip() + "\n", encoding="utf-8")
+    env["FAKE_PUBLISH_DRIVER"] = str(driver)
     return fake_bin, env
 
 
@@ -342,30 +370,21 @@ def run_publish(
     # release publication is qualified independently by publication_contract_test.py.
     if repository_root is None:
         repository_root = write_source_tree(output.parent / "historical-source")
-    invocation = [
-        "pwsh",
-        "-NoLogo",
-        "-NoProfile",
-        "-File",
-        str(SCRIPT),
-        "-Version",
-        VERSION,
-        "-OutputDirectory",
-        str(output),
-    ]
+    parameters = {"Version": VERSION, "OutputDirectory": str(output), "RepositoryRoot": str(repository_root)}
     if registry is not None:
-        invocation.extend(["-Registry", registry])
-    if repository_root is not None:
-        invocation.extend(["-RepositoryRoot", str(repository_root)])
+        parameters["Registry"] = registry
     if push:
-        invocation.append("-Push")
-    if extra_arguments:
-        invocation.extend(extra_arguments)
+        parameters["Push"] = True
+    args = iter(extra_arguments or ())
+    for name in args:
+        parameters[name.removeprefix("-")] = True if name == "-PublicationContract" else next(args)
     run_env = env.copy()
+    run_env["FAKE_PUBLISH_PARAMETERS"] = json.dumps(parameters)
+    run_env["FAKE_PUBLISH_SCRIPT"] = str(SCRIPT)
     run_env["FAKE_KUBECTL_EXIT"] = str(kubectl_exit)
     run_env["FAKE_KUBECTL_WARNING"] = kubectl_warning
     return subprocess.run(
-        invocation,
+        ["pwsh", "-NoLogo", "-NoProfile", "-File", env["FAKE_PUBLISH_DRIVER"]],
         cwd=REPO_ROOT,
         env=run_env,
         capture_output=True,
@@ -418,17 +437,27 @@ class PublishContainersTests(unittest.TestCase):
                     project = 'Hexalith.Memories.' + projects[index]
                     repository = '$RepositoryPrefix' if index == 0 else '"$RepositoryPrefix' + repositories[index][8:] + '"'
                     table.append("[ordered]@{ name = '" + names[index] + "'; project = 'src/" + project + '/' + project + ".csproj'; repository = " + repository + '; archive = $(throw "never execute tagged data") }')
-                (source / 'tools/publish-containers.ps1').write_text('$' + variable + ' = @(\n' + ',\n'.join(table) + '\n)\nthrow "never execute tagged publisher"\n')
+                tagged_publisher = source / 'tools/publish-containers.ps1'
+
+                def write_tagged_table(rows):
+                    tagged_publisher.write_text('$' + variable + ' = @(\n' + ',\n'.join(rows) + '\n)\nthrow "never execute tagged publisher"\n')
+
+                write_tagged_table(table)
                 inventory = json.loads((REPO_ROOT / 'tools/release-packages.json').read_text())
                 (source / 'tools/release-packages.json').write_text(json.dumps({'packages': [{'packageId': item['id']} for item in inventory['packages'] if item['id'] != 'Hexalith.Memories.EventStoreExtensions']}))
                 staging = root / 'staged'
                 staging.mkdir()
                 for filename in ('publish-containers.ps1', 'release-packages.json'):
                     shutil.copyfile(REPO_ROOT / 'tools' / filename, staging / filename)
-                result = subprocess.run(['pwsh', '-NoProfile', '-File', str(staging / 'publish-containers.ps1'), '-Version', VERSION, '-Registry', 'registry.test', '-RepositoryRoot', str(source), '-HistoricalInventory'], env=env, capture_output=True, text=True)
+                invocation = ['pwsh', '-NoProfile', '-File', str(staging / 'publish-containers.ps1'), '-Version', VERSION, '-Registry', 'registry.test', '-RepositoryRoot', str(source), '-HistoricalInventory']
+                github_output = root / 'github-output'
+                inventory_env = dict(env, GITHUB_OUTPUT=str(github_output))
+                result = subprocess.run(invocation, env=inventory_env, capture_output=True, text=True)
                 self.assertEqual(0, result.returncode, result.stdout + result.stderr)
                 selected = result.stdout.strip()
                 self.assertEqual(','.join(repositories[:count]), selected)
+                self.assertEqual([f'repositories={selected}'], github_output.read_text().splitlines())
+                github_output.unlink()
                 self.assertEqual([], command_log(root))
                 manifest = source / 'tools/release-packages.json'
                 valid = json.loads(manifest.read_text())
@@ -438,12 +467,23 @@ class PublishContainersTests(unittest.TestCase):
                     ('duplicate', [*valid['packages'][:-1], valid['packages'][0]]),
                 ):
                     manifest.write_text(json.dumps({'packages': entries}))
-                    refused = subprocess.run(['pwsh', '-NoProfile', '-File', str(staging / 'publish-containers.ps1'), '-Version', VERSION, '-Registry', 'registry.test', '-RepositoryRoot', str(source), '-HistoricalInventory'], env=env, capture_output=True, text=True)
+                    refused = subprocess.run(invocation, env=inventory_env, capture_output=True, text=True)
                     with self.subTest(tag=shape, package_set=label):
                         self.assertNotEqual(0, refused.returncode)
                         self.assertIn('Unsupported historical package set', refused.stderr)
+                        self.assertFalse(github_output.exists())
                         self.assertEqual([], command_log(root))
                 manifest.write_text(json.dumps(valid))
+                if count == 4:
+                    for missing, rows in (('Server', [table[1], table[2]]), ('MCP', [table[0], table[2]])):
+                        with self.subTest(tag=shape, missing_image=missing):
+                            write_tagged_table(rows)
+                            refused = subprocess.run(invocation, env=inventory_env, capture_output=True, text=True)
+                            self.assertNotEqual(0, refused.returncode)
+                            self.assertIn('Unsupported historical image set', refused.stderr)
+                            self.assertFalse(github_output.exists())
+                            self.assertEqual([], command_log(root))
+                    write_tagged_table(table)
                 output = root / 'artifacts'
                 result = run_publish(output, env, push=False, repository_root=source, extra_arguments=['-Repositories', selected])
                 self.assertEqual(0, result.returncode, result.stdout + result.stderr)
@@ -810,12 +850,50 @@ class PublishContainersTests(unittest.TestCase):
             self.assertNotIn(env["HEXALITH_ZOT_API_KEY"], serialized)
             self.assertEqual([MCP_IMAGE, ACCESS_TELEMETRY_IMAGE, ACCESS_TELEMETRY_CLOCK_IMAGE, DOMAIN_SERVICE_IMAGE], copy_references(root))
 
-    def test_remote_inspect_error_still_attempts_push(self) -> None:
+    def test_uncertain_remote_inspect_refuses_to_push_that_image(self) -> None:
+        missing = f"reading manifest {VERSION} in registry.test/memories: manifest unknown"
+        diagnostics = [
+            {},
+            {"stderr": "connection reset by registry"},
+            {"stderr": "unauthorized: SECRET_ZOT_API_KEY_SHOULD_NOT_LEAK"},
+            {"stderr": "received unexpected HTTP status: 503 Service Unavailable"},
+            {"stderr": "access denied: manifest unknown"},
+            {"stderr": "reading manifest other-tag in registry.test/memories: manifest unknown"},
+            {"stderr": f"reading manifest {VERSION} in registry.test/memories-mcp: manifest unknown"},
+            {"stderr": missing, "stdout": '{"schemaVersion":2}'},
+        ]
+        for diagnostic in diagnostics:
+            with self.subTest(diagnostic=diagnostic), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                plan = {"remoteInspect": {"server": {"exitCode": 2, **diagnostic}}}
+                _, env = prepare_environment(root, plan)
+                output = root / "artifacts"
+                prepare_archives(output)
+
+                result = run_publish(output, env, push=True)
+
+                self.assertNotEqual(0, result.returncode, result.stdout + result.stderr)
+                summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
+                self.assertEqual("partial-publish", summary["status"])
+                server = next(image for image in summary["images"] if image["name"] == "server")
+                self.assertEqual("remote-inspect-failed", server["disposition"])
+                self.assertEqual(2, server["exitCode"])
+                self.assertIn(SERVER_IMAGE, server["error"])
+                self.assertNotIn(env["HEXALITH_ZOT_API_KEY"], server["error"])
+                self.assertEqual(ALL_IMAGES[1:], copy_references(root))
+
+    def test_remote_manifest_unknown_with_skopeo_fatal_prefix_allows_push(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
+            diagnostic = (
+                'time="2026-11-24T00:00:00Z" level=fatal msg="'
+                f'Error parsing image name \\"docker://{SERVER_IMAGE}\\": '
+                f'reading manifest {VERSION} in registry.test/memories: manifest unknown: '
+                f'manifest \\"{VERSION}\\" not found"'
+            )
             plan = {
                 "remoteInspect": {
-                    "server": {"exitCode": 2, "stderr": "connection reset by registry"},
+                    "server": {"exitCode": 2, "stderr": diagnostic},
                 }
             }
             _, env = prepare_environment(root, plan)
@@ -831,28 +909,65 @@ class PublishContainersTests(unittest.TestCase):
             self.assertEqual("pushed", server["disposition"])
             self.assertEqual(ALL_IMAGES, copy_references(root))
 
-    def test_remote_manifest_without_config_digest_fails_closed(self) -> None:
-        with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
-            plan = {
-                "remoteInspect": {
-                    "server": {
-                        "exitCode": 0,
-                        "stdout": json.dumps({"schemaVersion": 2, "manifests": [{"digest": "sha256:list-entry"}]}),
-                    }
+    def test_skopeo_missing_message_requires_auth_confirmed_404_with_manifest_unknown(self) -> None:
+        diagnostic = f"reading manifest {VERSION} in registry.test/memories: manifest unknown"
+        for status, body in (
+            (401, '{"errors":[{"code":"MANIFEST_UNKNOWN"}]}'),
+            (403, '{"errors":[{"code":"MANIFEST_UNKNOWN"}]}'),
+            (503, '{"errors":[{"code":"MANIFEST_UNKNOWN"}]}'),
+            (200, '{"errors":[{"code":"MANIFEST_UNKNOWN"}]}'),
+            (302, '{"errors":[{"code":"MANIFEST_UNKNOWN"}]}'),
+            (404, '{"errors":[{"code":"DENIED"}]}'),
+            (404, '{"errors":[{"code":["MANIFEST_UNKNOWN"]}]}'),
+            (404, '[{"errors":[{"code":"MANIFEST_UNKNOWN"}]}]'),
+            (404, '{"errors":[[{"code":"MANIFEST_UNKNOWN"}]]}'),
+            (404, '{"errors":[{"code":"MANIFEST_UNKNOWN"},{"code":"DENIED"}]}'),
+            (404, 'not a registry error'),
+        ):
+            with self.subTest(status=status, body=body), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                plan = {
+                    "remoteInspect": {"server": {"exitCode": 2, "stderr": diagnostic}},
+                    "manifestProbe": {"memories": {"status": status, "body": body}},
                 }
-            }
-            _, env = prepare_environment(root, plan)
-            output = root / "artifacts"
-            prepare_archives(output)
+                _, env = prepare_environment(root, plan)
+                output = root / "artifacts"
+                prepare_archives(output)
 
-            result = run_publish(output, env, push=True)
+                result = run_publish(output, env, push=True)
 
-            self.assertNotEqual(0, result.returncode)
-            summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
-            server = next(image for image in summary["images"] if image["name"] == "server")
-            self.assertEqual("remote-inspect-failed", server["disposition"])
-            self.assertEqual([MCP_IMAGE, ACCESS_TELEMETRY_IMAGE, ACCESS_TELEMETRY_CLOCK_IMAGE, DOMAIN_SERVICE_IMAGE], copy_references(root))
+                self.assertNotEqual(0, result.returncode)
+                summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
+                server = next(image for image in summary["images"] if image["name"] == "server")
+                self.assertEqual("remote-inspect-failed", server["disposition"])
+                self.assertIn("authenticated manifest lookup", server["error"])
+                self.assertEqual(ALL_IMAGES[1:], copy_references(root))
+
+    def test_malformed_or_index_remote_manifest_fails_closed(self) -> None:
+        digest = "sha256:server-config"
+        for manifest in (
+            {"schemaVersion": 2, "manifests": [{"digest": "sha256:list-entry"}]},
+            [{"schemaVersion": 2, "config": {"digest": digest}, "layers": []}],
+            {"schemaVersion": 2, "config": [{"digest": digest}], "layers": []},
+            {"schemaVersion": 2, "config": {"digest": [digest]}, "layers": []},
+            {"schemaVersion": 1, "config": {"digest": digest}, "layers": []},
+            {"config": {"digest": digest}, "layers": []},
+            {"schemaVersion": 2, "config": {"digest": digest}},
+        ):
+            with self.subTest(manifest=manifest), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                plan = {"remoteInspect": {"server": {"exitCode": 0, "stdout": json.dumps(manifest)}}}
+                _, env = prepare_environment(root, plan)
+                output = root / "artifacts"
+                prepare_archives(output)
+
+                result = run_publish(output, env, push=True)
+
+                self.assertNotEqual(0, result.returncode)
+                summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
+                server = next(image for image in summary["images"] if image["name"] == "server")
+                self.assertEqual("remote-inspect-failed", server["disposition"])
+                self.assertEqual(ALL_IMAGES[1:], copy_references(root))
 
     def test_partial_publish_writes_redacted_summary_and_returns_nonzero(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

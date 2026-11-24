@@ -437,14 +437,16 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of 15-1-release-edge-case-preflight-hardening (2026-05-13)"), 2026-09-01
 location: docs/dev/release-runbook.md
 reason: - **15.1-RV10 - accepted.** Runbook release-day checklist renumbered to 17 items; other docs may reference old step numbers. - ID: 15.1-RV10 - Status: accepted - Source story: 15-1-release-edge-case-preflight-hardening - Target artifact: docs/dev/release-runbook.md - Re-open trigger: A maintainer follows a stale "see step 7" cross-reference in CONTRIBUTING.md or another doc that no longer matches the renumbered checklist. - Rationale: A repo-wide `rg "step 7|step 8|step 9" docs/` sweep is warranted but out of scope for Story 15.1. Story 19.3 (2026-06-30) buckets this as accept-until-trigger (no current failure or trigger; the fix is a release-owner decision); natural future home: docs/governance hygiene sweep. Owner: release maintainer.
-status: open
+status: done 2026-11-24
+resolution: The release runbook now links a named Release-Day Checklist for guarded dispatch and current assets. Reopen if maintained guidance points to retired step numbers. Evidence: `_bmad-output/implementation-artifacts/spec-ten-deferred-release-safeguards.md`.
 
 ### DW-67: 15.1-RV11: accepted. `S11-FC` re-open trigger names `tools/release-preflight.ps1` by path.
 
 origin: migrated from legacy ledger ("Deferred from: code review of 15-1-release-edge-case-preflight-hardening (2026-05-13)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/deferred-work.md
 reason: - **15.1-RV11 - accepted.** `S11-FC` re-open trigger names `tools/release-preflight.ps1` by path. - ID: 15.1-RV11 - Status: accepted - Source story: 15-1-release-edge-case-preflight-hardening - Target artifact: _bmad-output/implementation-artifacts/deferred-work.md - Re-open trigger: The preflight script is renamed or relocated and the `S11-FC` re-open trigger silently fails to reference the right artifact. - Rationale: Use a more stable artifact phrasing like "the repository-owned release preflight script in `tools/`" if the script ever moves. Story 19.3 (2026-06-30) buckets this as accept-until-trigger (no current failure or trigger; the fix is a release-owner decision); natural future home: docs/governance hygiene sweep. Owner: release maintainer.
-status: open
+status: done 2026-11-24
+resolution: The runbook Stale-Tag Preflight section gives S11-FC a path-independent trigger and names owner-approved collision handling. Reopen if the guarded release can publish after a collision or inconclusive tag read. Evidence: `_bmad-output/implementation-artifacts/spec-ten-deferred-release-safeguards.md`.
 
 ### DW-68: 15.1-RV12: accepted. `12.1-RV3` accepted-until 2026-08-13 has no automated reminder.
 
@@ -964,7 +966,8 @@ reopen_trigger: A release workflow or deferred-register format change escapes or
 origin: migrated from legacy ledger ("Deferred from: code review of story-12.6 (2026-05-02)"), 2026-09-01
 location: tools/test-release.ps1
 reason: - **12.6-RV4 — Discoverability breadcrumb removed from `tools/test-release.ps1`.** Along with the `$projectFilters` block went the only on-script reference to deferred-work bookkeeping. Consider a one-line trailing comment such as `# No per-project baseline waivers; if one becomes necessary, register it in _bmad-output/implementation-artifacts/deferred-work.md and pair it here.` so a future maintainer searching the script for "baseline" finds the policy. (`tools/test-release.ps1:25`)
-status: open
+status: done 2026-11-24
+resolution: The current tools/test.ps1 header points to Release Test Baseline and the deferred-work ledger. Reopen if operators can no longer locate the baseline waiver records from the maintained runner. Evidence: `_bmad-output/implementation-artifacts/spec-ten-deferred-release-safeguards.md`.
 
 ### DW-150: 12.6-RV5 [resolved 2026-05-19] — Underlying S11-FA test still used fixed tenant id `"t"` and a non-thread-safe capture list.
 
@@ -1021,7 +1024,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of story-12.5 (2026-05-02)"), 2026-09-01
 location: tools/create-partial-publish-issue.ps1:92
 reason: - **12.5-RV8 — Closed-then-reopened partial-publish issue creates a duplicate.** `tools/create-partial-publish-issue.ps1:92` filters `--state open` only. After a maintainer manually reconciles and closes the issue, a same-version rerun creates a new issue rather than reopening or commenting. Spec is silent; semantics may need refinement after first real reconciliation cycle.
-status: open
+status: done 2026-11-24
+resolution: The alert helper reopens exact-title closed incidents and appends the current evidence. The fake-GitHub tests cover search lag, an existing open match, lost responses and verified reopen retries. Reopen if a same-version alert opens a duplicate instead of reusing an existing exact match. Evidence: `_bmad-output/implementation-artifacts/spec-ten-deferred-release-safeguards.md`.
 decision: 2026-09-01 Reopen and comment — Search open and closed exact-title matches, reopen the prior incident, append evidence, and test reruns.
 decision: 2026-09-01 Reopen and comment — Search open and closed exact-title matches, reopen the prior incident, append evidence, and test reruns.
 
@@ -2134,7 +2138,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of stories 11-1 + 11-2 (2026-04-26)"), 2026-09-01
 location: tools/validate-release-packages.ps1
 reason: - **W16 [partially resolved in 14.2]. `Where-Object {-notlike *.snupkg}` masks regression risk.** `tools/validate-release-packages.ps1` now uses `Where-Object { $_.Extension -ieq '.nupkg' }` for explicit extension matching. The mirror in `tools/publish-nuget.ps1:40-42` is intentionally not touched in 14.2 because the story's file scope only permits a `publish-nuget.ps1` edit when there is a concrete partial-publish gap; cosmetic alignment alone does not meet that bar. Re-open trigger: a partial-publish recovery story that already touches `publish-nuget.ps1`, or first .snupkg-symbol introduction.
-status: open
+status: done 2026-11-24
+resolution: The package validator and publisher both require regular files with the exact .nupkg extension. The successful publish fixture excludes symbols, directories and links. Reopen if the two selectors accept different staged files. Evidence: `_bmad-output/implementation-artifacts/spec-ten-deferred-release-safeguards.md`.
 
 ### DW-323: W17. `verify-integration-fast-coverage.py` exit codes don't distinguish "missing surface" from "tool error".
 
@@ -2566,7 +2571,8 @@ status: open
 origin: migrated from legacy ledger ("Closed by: Story 14.2 Release Pipeline Audit Hardening (2026-05-04)"), 2026-09-01
 location: tools/validate-release-packages.ps1
 reason: - **W16 — partially closed.** Cleaned up in `tools/validate-release-packages.ps1`. The mirror in `tools/publish-nuget.ps1` is intentionally not touched in 14.2 because the story's file scope only permits a `publish-nuget.ps1` edit when there is a concrete partial-publish gap; cosmetic alignment alone does not meet that bar.
-status: open
+status: done 2026-11-24
+resolution: The publish-nuget.ps1 half of W16 now matches validation by exact .nupkg extension and regular file type. Reopen if the actual upload list includes staged symbols, directories or links. Evidence: `_bmad-output/implementation-artifacts/spec-ten-deferred-release-safeguards.md`.
 
 ### DW-391: S11-FB: out of 14.2 scope (compile-time symbol verification for integration-fast surfaces).
 
@@ -3774,7 +3780,8 @@ status: open
 origin: migrated from legacy ledger ("Story 26.3 Explicit Integration Deferrals (2026-07-13)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-fix-container-publication-and-rollout-verification.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-fix-container-publication-and-rollout-verification.md` summary: Distinguish a confirmed missing remote manifest from registry authentication, availability, and malformed-response failures before authorizing a container push. evidence: The pre-existing publisher treats every nonzero `docker manifest inspect` exit as tag absence and pushes immediately, so an outage or authorization error can enter the blind retry path.
-status: open
+status: done 2026-11-24
+resolution: Historical publication requires authenticated HTTP 404 and the structured MANIFEST_UNKNOWN code before copying the exact manifest tag. Local TLS and publisher fixtures distinguish absence from outage, denial and malformed responses. Reopen if an uncertain read can authorize copying. Evidence: `_bmad-output/implementation-artifacts/spec-ten-deferred-release-safeguards.md`.
 
 ### DW-568: [MEDIUM] Add representative boundary coverage for the documented 512 MiB / approximately 100K-unit restore contract.
 
@@ -3788,14 +3795,16 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of 26-2-backup-and-restore (2026-07-15)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-fix-release-container-push-unauthorized.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-fix-release-container-push-unauthorized.md` summary: Distinguish "manifest unknown" from transient errors in remote registry inspect so a transient failure cannot bypass the digest-conflict fail-closed guard before push. evidence: publish-containers.ps1 treats any nonzero skopeo/docker remote inspect as "tag absent" and proceeds to push; behavior predates this story and was preserved as explicit spec parity, flagged by two independent review layers.
-status: open
+status: done 2026-11-24
+resolution: The historical immutable-tag guard rejects ambiguous reads and malformed digest objects, and retains matching-tag skip and conflicting-tag refusal. PublishContainersTests covers absent, matching, conflicting and uncertain tags. Reopen if a failed inspect can bypass the digest check and authorize a copy. Evidence: `_bmad-output/implementation-artifacts/spec-ten-deferred-release-safeguards.md`.
 
 ### DW-570: Probe skopeo availability in release-preflight so a missing runner binary fails before NuGet publish and tag creation instead of causing a partial release.
 
 origin: migrated from legacy ledger ("Deferred from: code review of 26-2-backup-and-restore (2026-07-15)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-fix-release-container-push-unauthorized.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-fix-release-container-push-unauthorized.md` summary: Probe skopeo availability in release-preflight so a missing runner binary fails before NuGet publish and tag creation instead of causing a partial release. evidence: Container publish now hard-depends on the runner-preinstalled skopeo; the publish-time tooling-missing check fires only after NuGet packages and the release tag exist. The story spec froze "no touching preflight", so this hardening was out of scope.
-status: open
+status: done 2026-11-24
+resolution: The current release step requires Skopeo availability and version output before destination preflight, NuGet OIDC and tag creation. Executing the step with a failing Skopeo stopped at exit 42. Reopen if the first tooling check moves after a publication side effect. Evidence: `_bmad-output/implementation-artifacts/spec-ten-deferred-release-safeguards.md`.
 
 ### DW-571: Make independent-process benchmark reproducibility a permanent fail-closed CI comparison.
 
@@ -4263,7 +4272,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of 27-3-production-adapter-and-deployment-profile (2026-07-31)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-gh-29354084222-fix-ci-cd-issues.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-gh-29354084222-fix-ci-cd-issues.md` summary: Workflow 2-or-4 Server/MCP evidence gates are only source-text pinned in CiTestInventoryTests, not executed as PowerShell. evidence: Verification-gap review showed deleting the hasServer/hasMcp throw while leaving pinned substrings would keep CiTestInventoryTests green.
-status: open
+status: done 2026-11-24
+resolution: The historical inventory fixture executes the staged PowerShell publisher, asserts the GITHUB_OUTPUT selection for two and four images, and rejects two-row sets missing Server or MCP before any command or output. Reopen if the active recovery gate loses executable negative coverage. Evidence: `_bmad-output/implementation-artifacts/spec-ten-deferred-release-safeguards.md`.
 
 ### DW-637: PARTIAL PUBLISH incidents for 2.6.0-2.6.7 were already closed before evidence-backed recovery completed.
 

@@ -284,18 +284,56 @@ function Get-ManifestConfigDigest {
     param([AllowEmptyString()][string]$ManifestJson)
 
     try {
-        $manifest = $ManifestJson | ConvertFrom-Json
+        $manifest = ConvertFrom-Json -InputObject $ManifestJson -NoEnumerate
     }
     catch {
         return $null
     }
 
-    $digest = [string]$manifest.config.digest
-    if ([string]::IsNullOrWhiteSpace($digest)) {
+    if ($manifest -is [array] -or $manifest -isnot [pscustomobject] -or
+        $manifest.schemaVersion -isnot [long] -or $manifest.schemaVersion -ne 2 -or $manifest.layers -isnot [array] -or
+        $manifest.config -is [array] -or $manifest.config -isnot [pscustomobject] -or
+        $manifest.config.digest -isnot [string] -or [string]::IsNullOrWhiteSpace($manifest.config.digest)) {
         return $null
     }
 
-    return $digest
+    return $manifest.config.digest
+}
+
+function Get-ManifestAbsenceFailure {
+    param([string]$Repository)
+
+    if ($Repository -cnotmatch '^[a-z0-9]+(?:[._-][a-z0-9]+)*(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)*$') {
+        return 'The repository name is invalid for an authenticated manifest lookup.'
+    }
+
+    # Skopeo's diagnostic preserves the registry error code but loses the HTTP status.
+    # Confirm both from the same origin before any copy, with redirects disabled.
+    $uri = [Uri]::new($registryUri, "v2/$Repository/manifests/$Version")
+    $secret = ConvertTo-SecureString $env:HEXALITH_ZOT_API_KEY -AsPlainText -Force
+    try {
+        $credentials = [pscredential]::new($env:HEXALITH_ZOT_USERNAME, $secret)
+        $response = Invoke-WebRequest -Uri $uri -Authentication Basic -Credential $credentials -MaximumRedirection 0 -SkipHttpErrorCheck -TimeoutSec 15 -Headers @{
+            Accept = 'application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.docker.distribution.manifest.list.v2+json'
+        }
+        if ([int]$response.StatusCode -ne 404) {
+            return "The authenticated manifest lookup returned HTTP $([int]$response.StatusCode)."
+        }
+
+        $body = ConvertFrom-Json -InputObject $response.Content -NoEnumerate
+        if ($body -is [array] -or $body -isnot [pscustomobject] -or $body.errors -isnot [array] -or $body.errors.Count -ne 1 -or
+            $body.errors[0] -is [array] -or $body.errors[0] -isnot [pscustomobject] -or $body.errors[0].code -isnot [string] -or
+            $body.errors[0].code -cne 'MANIFEST_UNKNOWN') {
+            return 'The authenticated manifest lookup returned HTTP 404 without one MANIFEST_UNKNOWN error.'
+        }
+    }
+    catch {
+        return 'The authenticated manifest lookup failed or returned invalid JSON.'
+    }
+    finally {
+        $secret.Dispose()
+    }
+    return $null
 }
 
 function Get-ContainerStatus {
@@ -455,6 +493,20 @@ function Publish-ContainerArchive {
         }
 
         return New-Outcome -Image $Image -Status 'succeeded' -ExitCode 0 -Error $null -Disposition 'already-present'
+    }
+
+    # Probe HTTP status only when Skopeo reports MANIFEST_UNKNOWN for this exact target.
+    $missingMessage = [regex]::Escape("reading manifest $Version in $Registry/$($Image.repository): manifest unknown") + '(?:: [^\r\n]+)?'
+    $logContext = [regex]::Escape('Error parsing image name \"docker://' + $imageReference + '\": ')
+    $logMessage = 'time="[^"\r\n]+" level=fatal msg="' + $logContext + $missingMessage + '"'
+    $missingDiagnostic = '^(?:' + $missingMessage + '|' + $logMessage + ')\z'
+    if (-not [string]::IsNullOrWhiteSpace($remoteInspect.Stdout) -or $remoteInspect.Stderr.Trim() -cnotmatch $missingDiagnostic) {
+        $detail = Get-FailureText $remoteInspect
+        return New-Outcome -Image $Image -Status 'failed' -ExitCode $remoteInspect.ExitCode -Error "Cannot confirm whether remote tag '$imageReference' exists. $detail" -Disposition 'remote-inspect-failed'
+    }
+    $absenceFailure = Get-ManifestAbsenceFailure -Repository $Image.repository
+    if ($absenceFailure) {
+        return New-Outcome -Image $Image -Status 'failed' -ExitCode $remoteInspect.ExitCode -Error "Cannot confirm whether remote tag '$imageReference' exists. $absenceFailure" -Disposition 'remote-inspect-failed'
     }
 
     $push = Invoke-NativeCommand -Command $SkopeoCommand -Arguments @('copy', '--authfile', $AuthFile, "docker-archive:$($Image.archive)", "docker://$imageReference")

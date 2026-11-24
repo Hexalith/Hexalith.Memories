@@ -167,6 +167,7 @@ protection evidence below stays historical evidence; this story performs no remo
 
 The required-check names mapping to `.github/workflows/ci.yml` job IDs is documented in
 [`branch-protection.md`](./branch-protection.md).
+Use the [release-day checklist](#release-day-checklist) to verify the dispatch and published assets.
 
 ### Five-Image Publication And Retained Evidence
 
@@ -389,9 +390,19 @@ Removal requires a reviewed matrix with zero `regression` rows and passing check
 The removal record in the matrix is authoritative. The ordinary developer test command is
 `./tools/test.ps1`. The 2026-11-16 removal retired `tools/test-release.ps1` after the
 coordinator verified zero matrix regressions, the rollback lanes qualified, and all published
-identities remained byte-identical across the complete rehearsal. The C# inventory now guards
-the old runner's absence. The historical container fixture's complete-module fallback is recorded
+identities remained byte-identical across the complete rehearsal. The story file-scope gate
+forbids reintroducing the old runner by default. The historical container fixture's complete-module fallback is recorded
 in the rehearsal; full-discovery flakes remain retained rather than reported as passing runs.
+
+### Release Test Baseline
+
+Use the exact-source CI results to establish the release test baseline. Run
+[`tools/test.ps1`](../../tools/test.ps1) to reproduce a failing lane locally. Record any
+approved baseline waiver in the [deferred-work ledger](../../_bmad-output/implementation-artifacts/deferred-work.md)
+with the affected test and CI lane, the evidence, the owner, and the condition that reopens it.
+A waiver record does not satisfy the exact-source CI gate.
+
+### Publication Identity After Cutover
 
 Before the next owner-dispatched release, Jérôme Piquot records the intended version and exact
 successful-CI source, then captures every published identity. These reads require `gh` authentication
@@ -831,36 +842,37 @@ Package publishing remains CI-only. Operators must not run `dotnet nuget push`, 
 spot-checks, or signature spoof checks from a workstation against the canonical NuGet source —
 those actions can move the published state away from the CI-recorded audit anchors above.
 
-## Second Release Checklist
+## Release-Day Checklist
 
-1. Merge only through a pull request targeting `main`.
-2. Confirm the PR has at least one approval.
-3. Confirm required checks `build`, `test-unit-contract`, and `integration-fast` passed.
-4. Confirm the merge commit follows conventional-commit semantics.
-5. Confirm `tools/release-packages.json` has not drifted.
-6. Run `./tools/validate-release-packages.ps1` locally before merging if package files changed.
-7. Confirm the final merge or squash commit message does not contain bracketed skip instructions.
-8. Merge to `main`.
-9. Watch the `Release` workflow run.
-10. Confirm `Install release tooling` used `npm ci` from the tracked lockfile.
-11. Confirm `Run release preflight` succeeded before `Run semantic-release`.
-12. Confirm semantic-release's registry write-scope verification opened and cancelled upload
-    sessions for both repositories before prepare/publish work began.
-13. If the release preflight fails on a stale tag, confirm the exact blocked ref and resolve the
-    tag only after release-owner review.
-14. Confirm `Build`, `Test unit and non-Docker suite`, `Validate package inventory before release`,
-   `Run release preflight`, `Run semantic-release`, and `Upload package artifacts` all succeed.
-15. Confirm the new tag exists.
-16. Confirm the GitHub Release contains the ten approved package assets and the versioned
-    `hexalith-memories-production.yaml` deployment asset.
-17. Confirm NuGet flat-container APIs show the new version for all approved packages.
-18. Confirm semantic-release created the new tag and GitHub Release without attempting to push a
-    release commit back to `main`.
+- Confirm the current `main` SHA has successful push CI and satisfies the
+  [current release contract](#current-release-contract). Check the approved package and image
+  inventories. Run `./tools/validate-release-packages.ps1` locally if the package inventory changed.
+- Use [Dispatch and Approval](#dispatch-and-approval) to dispatch the release and pass the
+  production gate. Before a release eligible for publication proceeds, confirm
+  **Require archive transport and isolated health tools** passed, including `skopeo --version`.
+  This step must pass before release preflight, NuGet login, and tag creation.
+- Confirm **Run release preflight** passed before **Run semantic-release**. Use
+  [Stale-Tag Preflight](#stale-tag-preflight) to resolve a tag conflict. Verify the registry
+  write-scope proof covers each of the five approved repositories.
+- If preflight reports no next version, the workflow skips publication and produces no new tag.
+  For a published version, confirm the tag resolves to the selected source SHA. Verify the ten
+  package assets, production deployment, evidence packet and receipt on the GitHub Release.
+  Check the published NuGet versions and retained image digests against the release evidence.
+
+### Stale-Tag Preflight
+
+The guarded release must check the exact proposed tag locally and on `origin` before any
+publication. If the preflight reports a collision, record the exact ref and confirm the origin of
+the tag with the release owner. For an abandoned tag with no published members, remove it only
+through the approved repository process or merge a conventional commit that yields a new version.
+If any member published, follow the incident instructions in [Failure And Recovery Notes](#failure-and-recovery-notes).
+Reopen S11-FC if the guarded path can publish after an exact tag collision or an inconclusive
+tag read.
 
 ## Failure And Recovery Notes
 
-- If restore, build, or test fails, fix through a normal pull request and rerun release by merging
-  a new conventional commit to `main`.
+- If restore, build, or test fails, fix through a normal pull request. Wait for successful push
+  CI on the new tip, then follow the [release-day checklist](#release-day-checklist).
 - If package validation fails, treat `tools/release-packages.json` and
   `tools/validate-release-packages.ps1` as the source of truth. Do not manually publish around the
   validator.
@@ -882,15 +894,11 @@ those actions can move the published state away from the CI-recorded audit ancho
   bypassed, or a docker-daemon push path was reintroduced. An `Authorization` header with HTTP 401
   or 403 instead points to credential or repository-policy rejection. Preserve the skopeo path and
   compare the live `/v2/` response with the verifier evidence before choosing a repair.
-- If `tools/release-preflight.ps1` reports that `refs/tags/v<version>` already exists locally or on
-  `origin`, stop before publish work starts. The message names the exact conflicting ref. Do not
-  delete the remote tag casually; confirm whether it came from an aborted/manual release, record the
-  release-owner decision, then either remove the stale tag through the approved repository process
-  or merge a new conventional commit that produces a different semantic-release version.
+- If the release preflight reports an existing tag, follow [Stale-Tag Preflight](#stale-tag-preflight).
 - If semantic-release reports `GH013` or another protected-branch rejection for `HEAD:main`, keep
   branch protection intact. The release configuration should not use plugins that commit back to
-  `main`; fix the release configuration through a pull request and rerun by merging a conventional
-  commit.
+  `main`. Fix the release configuration through a pull request, then follow the
+  [release-day checklist](#release-day-checklist) from the new tip.
 - If NuGet publishing partially succeeds, do not delete published packages from nuget.org. There
   are two failure shapes to keep separate:
   - **HTTP 409 (already published).** The destination preflight refuses an occupied version before tag creation. `dotnet nuget push --skip-duplicate` remains in the publisher for a race after the probe; it does not authorize rerunning a partially published release. Preserve the package summary and follow the retained-byte Recover Partial Release procedure below. The child publisher still emits legacy manual-reconciliation guidance; the shared-gap parity row re-targets that guidance and duplicate-response handling to `epic-30-retrospective`.
@@ -908,12 +916,14 @@ those actions can move the published state away from the CI-recorded audit ancho
   `PARTIAL PUBLISH - manual reconciliation required`. The failed job also appends a concise
   Markdown summary to the GitHub Actions step summary when that output is available.
 - The release workflow creates a GitHub Issue titled
-  `PARTIAL PUBLISH <version> - manual reconciliation required`. If an open issue already exists
-  for the same version, reruns add a comment to the existing issue instead of creating a duplicate.
+  `PARTIAL PUBLISH <version> - manual reconciliation required`. Reruns append a comment to an
+  exact-title issue for the same version and reopen it if closed. If both open and closed matches
+  exist, the alert uses the open issue.
   The issue/comment includes the run URL, version, pushed/failed/not-attempted package lists, and
   this runbook reference.
-- The alert helper searches quoted title text among up to 100 open issues and verifies the exact
-  title before choosing an incident. Null artifact entries are omitted; empty lists say `None`.
+- The alert helper searches quoted title text among up to 100 open and closed issues and verifies
+  the exact title. On a search miss, it checks the latest direct issue listing before creating
+  an incident. Null artifact entries are omitted and empty lists say `None`.
   GitHub transport timeouts, connection failures and HTTP 5xx responses receive at most three
   attempts with visible one- and two-second backoff. HTTP 429 and rate-limit-specific HTTP 403
   or GraphQL errors wait before any further request, including readback: the helper honors
@@ -1003,6 +1013,9 @@ those actions can move the published state away from the CI-recorded audit ancho
   staged build/push calls are restricted to that derived repository filter. Projects merely present
   in the tree do not enlarge the published set: v2.11.0–v2.15.x retain two images, while v2.16.0
   through v3.0.11 retain four. They rebuild historical archives and require all nine packages already on nuget.org.
+  Copying an absent image requires an authenticated HTTP 404 with the `MANIFEST_UNKNOWN` error
+  code for the exact candidate tag. Authentication, transport and malformed-response failures
+  block the affected member. Recovery completion still requires every member.
   The precontract five-image/ten-package tags (v3.0.12–v3.0.18) are unsupported and refuse before `-Push`.
 - Only after members, assets and packet verification does recovery close the matching incident.
   The always-uploaded `partial-release-completion-v<version>` artifact retains plans, diagnostics,

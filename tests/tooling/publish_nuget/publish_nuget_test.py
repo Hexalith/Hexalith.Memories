@@ -153,7 +153,7 @@ def write_fake_gh(directory: Path) -> None:
                     state = json.load(state_file)
             else:
                 title = os.environ.get("FAKE_GH_EXISTING_TITLE", "")
-                state = {"issues": [{"number": 17, "title": title, "body": "Earlier incident evidence"}] if title else [], "comments": []}
+                state = {"issues": [{"number": 17, "title": title, "body": "Earlier incident evidence", "state": "OPEN"}] if title else [], "comments": []}
             body = None
             if "--body-file" in args:
                 body_file = args[args.index("--body-file") + 1]
@@ -163,19 +163,29 @@ def write_fake_gh(directory: Path) -> None:
                 log.write(json.dumps({"args": args, "body": body}) + "\\n")
 
             exit_code = int(outcome.get("exitCode", 0))
-            if operation in ("create", "comment") and outcome.get("apply", exit_code == 0):
+            if operation in ("create", "comment", "reopen") and outcome.get("apply", exit_code == 0):
                 if operation == "create":
-                    state["issues"].append({"number": 17, "title": args[args.index("--title") + 1], "body": body})
+                    state["issues"].append({"number": 17, "title": args[args.index("--title") + 1], "body": body, "state": "OPEN"})
+                elif operation == "reopen":
+                    next(issue for issue in state["issues"] if issue["number"] == int(args[2]))["state"] = "OPEN"
                 else:
                     state["comments"].append({"body": body})
                 with open(state_path, "w", encoding="utf-8") as state_file:
                     json.dump(state, state_file)
 
             if operation == "list":
-                default_output = json.dumps(state["issues"])
+                state_filter = args[args.index("--state") + 1]
+                default_output = json.dumps([
+                    issue for issue in state["issues"]
+                    if state_filter == "all" or issue["state"].lower() == state_filter
+                ])
             elif operation == "view":
-                default_output = json.dumps({"comments": state["comments"]})
-            elif operation in ("create", "comment"):
+                if args[args.index("--json") + 1] == "state":
+                    issue = next(issue for issue in state["issues"] if issue["number"] == int(args[2]))
+                    default_output = json.dumps({"state": issue["state"]})
+                else:
+                    default_output = json.dumps({"comments": state["comments"]})
+            elif operation in ("create", "comment", "reopen"):
                 default_output = "ok"
             else:
                 print(f"unexpected gh args: {args}", file=sys.stderr)
@@ -380,6 +390,12 @@ class PublishNuGetTests(unittest.TestCase):
             package_directory.mkdir()
             fake_bin.mkdir()
             packages = create_packages(package_directory)
+            (package_directory / "symbols.1.2.3.snupkg").write_text("ignored", encoding="utf-8")
+            (package_directory / "directory.1.2.3.nupkg").mkdir()
+            if os.name == "posix":
+                outside_archive = root / "outside.snupkg"
+                shutil.copyfile(packages[0], outside_archive)
+                (package_directory / "linked.1.2.3.nupkg").symlink_to(outside_archive)
             write_fake_dotnet(fake_bin)
 
             result, log_path, _ = run_publish(package_directory, fake_bin, {})
@@ -549,10 +565,11 @@ class PublishNuGetTests(unittest.TestCase):
                 for line in log_path.read_text(encoding="utf-8").splitlines()
             ]
             self.assertEqual("list", calls[0]["args"][1])
-            create_call = calls[1]["args"]
+            self.assertEqual("list", calls[1]["args"][1])
+            create_call = calls[2]["args"]
             self.assertEqual(["issue", "create"], create_call[:2])
             self.assertIn("PARTIAL PUBLISH 1.2.3 - manual reconciliation required", create_call)
-            body = calls[1]["body"]
+            body = calls[2]["body"]
             self.assertIn("https://github.com/Hexalith/Hexalith.Memories/actions/runs/123456", body)
             self.assertIn("docs/dev/release-runbook.md", body)
             self.assertIn("Dispatch **Recover Partial Release** from live", body)
@@ -668,14 +685,87 @@ class IssueHelperReliabilityTests(unittest.TestCase):
             (self.root / name).unlink(missing_ok=True)
 
     def test_lookup_uses_quoted_title_and_explicit_limit_and_exact_match(self):
-        issues = [{"number": n, "title": f"{self.title} unrelated {n}"} for n in range(1, 41)]
-        issues.append({"number": 88, "title": self.title})
+        issues = [{"number": n, "title": f"{self.title} unrelated {n}", "state": "OPEN"} for n in range(1, 41)]
+        issues.append({"number": 88, "title": self.title, "state": "OPEN"})
         result, calls = self.run_helper(gh_plan={"list": [{"stdout": json.dumps(issues)}]})
         self.assertEqual(0, result.returncode, result.stderr)
         args = calls[0]["args"]
         self.assertEqual(f'in:title "{self.title}"', args[args.index("--search") + 1])
         self.assertGreaterEqual(int(args[args.index("--limit") + 1]), 100)
         self.assertEqual(["issue", "comment", "88"], calls[1]["args"][:3])
+
+    def test_closed_exact_issue_is_reopened_then_receives_current_evidence(self):
+        for reopen_outcomes, expected in (
+            ([], ["list", "reopen", "comment"]),
+            ([{"exitCode": 1, "stderr": "connection reset", "apply": True}], ["list", "reopen", "view", "comment"]),
+            ([{"exitCode": 1, "stderr": "connection reset"}], ["list", "reopen", "view", "reopen", "comment"]),
+        ):
+            with self.subTest(calls=expected):
+                self.reset_fake()
+                state_path = self.root / "gh-state.json"
+                state_path.write_text(json.dumps({
+                    "issues": [
+                        {"number": 16, "title": self.title + " unrelated", "state": "OPEN"},
+                        {"number": 17, "title": self.title, "state": "CLOSED"},
+                    ],
+                    "comments": [],
+                }))
+                result, calls = self.run_helper(gh_plan={"reopen": reopen_outcomes})
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertEqual(expected, [call["args"][1] for call in calls])
+                self.assertTrue(all(call["args"][2] == "17" for call in calls[1:]))
+                self.assertIn("actions/runs/123456", calls[-1]["body"])
+                self.assertEqual("OPEN", json.loads(state_path.read_text())["issues"][1]["state"])
+
+    def test_open_exact_issue_takes_precedence_over_closed_duplicate(self):
+        issues = [
+            {"number": 18, "title": self.title, "state": "CLOSED"},
+            {"number": 17, "title": self.title, "state": "OPEN"},
+        ]
+        result, calls = self.run_helper(gh_plan={"list": [{"stdout": json.dumps(issues)}]})
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(["list", "comment"], [call["args"][1] for call in calls])
+        self.assertEqual("17", calls[-1]["args"][2])
+
+    def test_search_index_miss_reopens_closed_issue_from_direct_listing(self):
+        (self.root / "gh-state.json").write_text(json.dumps({
+            "issues": [{"number": 17, "title": self.title, "state": "CLOSED", "body": "Earlier evidence"}],
+            "comments": [],
+        }))
+        result, calls = self.run_helper(gh_plan={"list": [{"stdout": "[]"}]})
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(["list", "list", "reopen", "comment"], [call["args"][1] for call in calls])
+        self.assertNotIn("--search", calls[1]["args"])
+
+    def test_reopen_comment_readback_requires_the_current_append(self):
+        result, first_calls = self.run_helper(existing_title=self.title)
+        self.assertEqual(0, result.returncode, result.stderr)
+        state_path = self.root / "gh-state.json"
+        state = json.loads(state_path.read_text())
+        state["issues"] = [{"number": 17, "title": self.title, "state": "CLOSED"}]
+        state_path.write_text(json.dumps(state))
+        (self.root / "gh-calls.jsonl").unlink()
+
+        result, calls = self.run_helper(gh_plan={"comment": [{"exitCode": 1, "stderr": "HTTP 503: unavailable"}]})
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(["list", "reopen", "comment", "view", "comment"], [call["args"][1] for call in calls])
+        self.assertNotEqual(first_calls[-1]["body"], calls[-1]["body"])
+        self.assertEqual(calls[2]["body"], calls[-1]["body"])
+        self.assertEqual(2, len(json.loads(state_path.read_text())["comments"]))
+
+    def test_uncertain_reopen_with_invalid_readback_stops_before_comment(self):
+        (self.root / "gh-state.json").write_text(json.dumps({
+            "issues": [{"number": 17, "title": self.title, "state": "CLOSED"}],
+            "comments": [],
+        }))
+        result, calls = self.run_helper(gh_plan={
+            "reopen": [{"exitCode": 1, "stderr": "connection reset"}],
+            "view": [{"stdout": '{"state":"unknown"}'}],
+        })
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("invalid issue state readback", result.stderr)
+        self.assertEqual(["list", "reopen", "view"], [call["args"][1] for call in calls])
 
     def test_null_artifacts_are_omitted_and_all_null_lists_render_none(self):
         summary = json.loads(self.summary_path.read_text(encoding="utf-8"))
@@ -716,7 +806,7 @@ class IssueHelperReliabilityTests(unittest.TestCase):
             {"exitCode": 1, "stderr": "HTTP 429: Too Many Requests"},
         ]})
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertEqual(["list", "list", "list", "create"], [c["args"][1] for c in calls])
+        self.assertEqual(["list", "list", "list", "list", "create"], [c["args"][1] for c in calls])
         self.assertIn("Retrying in 1 second", result.stdout)
         self.assertIn("Retrying in 120 second", result.stdout)
         self.assertEqual([1, 120], [wait["seconds"] for wait in self.sleeps()])
@@ -746,9 +836,9 @@ class IssueHelperReliabilityTests(unittest.TestCase):
             {"exitCode": 1, "stderr": "TLS handshake timeout"}
         ]})
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertEqual(["list", "create", "list", "create"], [c["args"][1] for c in calls])
-        self.assertEqual(calls[1]["body"], calls[3]["body"])
-        for call in (calls[1], calls[3]):
+        self.assertEqual(["list", "list", "create", "list", "create"], [c["args"][1] for c in calls])
+        self.assertEqual(calls[2]["body"], calls[4]["body"])
+        for call in (calls[2], calls[4]):
             args = call["args"]
             self.assertFalse(Path(args[args.index("--body-file") + 1]).exists())
 
@@ -757,7 +847,7 @@ class IssueHelperReliabilityTests(unittest.TestCase):
             {"exitCode": 1, "stderr": "HTTP 502: Bad Gateway", "apply": True}
         ]})
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertEqual(["list", "create", "list"], [c["args"][1] for c in calls])
+        self.assertEqual(["list", "list", "create", "list"], [c["args"][1] for c in calls])
         self.assertNotIn("--search", calls[-1]["args"])
         state = json.loads((self.root / "gh-state.json").read_text(encoding="utf-8"))
         self.assertEqual(1, len(state["issues"]))
@@ -809,7 +899,8 @@ class IssueHelperReliabilityTests(unittest.TestCase):
                     gh_plan={operation: [{"exitCode": 1, "stderr": "HTTP 503: Service Unavailable"} for _ in range(3)]},
                 )
                 self.assertNotEqual(0, result.returncode)
-                self.assertEqual(["list"] + [operation, readback] * 3, [c["args"][1] for c in calls])
+                lookups = ["list", "list"] if operation == "create" else ["list"]
+                self.assertEqual(lookups + [operation, readback] * 3, [c["args"][1] for c in calls])
                 self.assertIn("3 attempts", result.stderr)
                 (self.root / "gh-calls.jsonl").unlink()
 
@@ -818,10 +909,10 @@ class IssueHelperReliabilityTests(unittest.TestCase):
             with self.subTest(output=repr(output)):
                 result, calls = self.run_helper(gh_plan={
                     "create": [{"exitCode": 1, "stderr": "HTTP 502: Bad Gateway", "apply": True}],
-                    "list": [{}, {"stdout": output}],
+                    "list": [{}, {}, {"stdout": output}],
                 })
                 self.assertNotEqual(0, result.returncode)
-                self.assertEqual(["list", "create", "list"], [c["args"][1] for c in calls])
+                self.assertEqual(["list", "list", "create", "list"], [c["args"][1] for c in calls])
                 self.assertIn("blank issue readback", result.stderr)
                 self.reset_fake()
 
@@ -831,7 +922,7 @@ class IssueHelperReliabilityTests(unittest.TestCase):
             {"exitCode": 1, "stderr": "GraphQL: API rate limit exceeded"},
         ]})
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertEqual(["list", "list", "list", "create"], [c["args"][1] for c in calls])
+        self.assertEqual(["list", "list", "list", "list", "create"], [c["args"][1] for c in calls])
         self.assertEqual([{"seconds": 60, "afterCalls": 1}, {"seconds": 120, "afterCalls": 2}], self.sleeps())
 
     def test_rate_limited_write_waits_before_readback(self):
@@ -887,11 +978,11 @@ class IssueHelperReliabilityTests(unittest.TestCase):
 
     def test_create_recovery_adds_current_evidence_to_a_preexisting_incident(self):
         result, calls = self.run_helper(existing_title=self.title, gh_plan={
-            "list": [{"stdout": "[]"}],
+            "list": [{"stdout": "[]"}, {"stdout": "[]"}],
             "create": [{"exitCode": 1, "stderr": "HTTP 503: Service Unavailable"}],
         })
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertEqual(["list", "create", "list", "comment"], [c["args"][1] for c in calls])
+        self.assertEqual(["list", "list", "create", "list", "comment"], [c["args"][1] for c in calls])
         self.assertIn("https://github.com/Hexalith/Hexalith.Memories/actions/runs/123456", calls[-1]["body"])
         self.assertIn("Hexalith.Memories.Cli.1.2.3.nupkg", calls[-1]["body"])
         state = json.loads((self.root / "gh-state.json").read_text(encoding="utf-8"))

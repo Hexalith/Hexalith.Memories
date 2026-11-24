@@ -37,8 +37,8 @@ function Get-PackageFiles {
         return @()
     }
 
-    return @(Get-ChildItem -LiteralPath $packagePath -Filter "*.nupkg" |
-        Where-Object { $_.Name -notlike "*.snupkg" } |
+    return @(Get-ChildItem -LiteralPath $packagePath -File -Filter "*.nupkg" |
+        Where-Object { $_.Extension -ieq '.nupkg' -and -not ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) } |
         Sort-Object Name)
 }
 

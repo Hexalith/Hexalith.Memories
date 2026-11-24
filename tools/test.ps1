@@ -1,6 +1,8 @@
 #Requires -Version 7.0
 
 # Root test runner for local development and CI.
+# Release test baseline waivers belong in the deferred-work ledger. See
+# docs/dev/release-runbook.md#release-test-baseline for the evidence to record.
 # Examples:
 #   ./tools/test.ps1
 #   ./tools/test.ps1 -Filter 'Category!=Integration'

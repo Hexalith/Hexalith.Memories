@@ -383,10 +383,9 @@ if (-not [string]::IsNullOrWhiteSpace($PackageDirectory)) {
         throw "Package directory not found: $resolvedPackageDirectory"
     }
 
-    # W16 (validate-release-packages.ps1 half): use Extension equality so the filter is explicit
-    # about what it accepts. Equivalent set vs. the prior `-notlike "*.snupkg"` defensive guard.
-    $packages = @(Get-ChildItem -LiteralPath $resolvedPackageDirectory -Filter "*.nupkg" |
-        Where-Object { $_.Extension -ieq '.nupkg' })
+    # W16: match the publisher's exact package extension and require regular staged files.
+    $packages = @(Get-ChildItem -LiteralPath $resolvedPackageDirectory -File -Filter "*.nupkg" |
+        Where-Object { $_.Extension -ieq '.nupkg' -and -not ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) })
 
     if ($packages.Count -eq 0) {
         throw "No .nupkg files found in $resolvedPackageDirectory"

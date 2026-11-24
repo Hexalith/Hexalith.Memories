@@ -159,8 +159,8 @@ function Find-PartialPublishIssue {
     param([switch]$Readback)
 
     $arguments = @(
-        'issue', 'list', '--repo', $Repository, '--state', 'open',
-        '--limit', '100', '--json', $(if ($Readback) { 'number,title,body' } else { 'number,title' })
+        'issue', 'list', '--repo', $Repository, '--state', 'all',
+        '--limit', '100', '--json', $(if ($Readback) { 'number,title,state,body' } else { 'number,title,state' })
     )
     if (-not $Readback) {
         $arguments += @('--search', "in:title `"$title`"")
@@ -180,8 +180,9 @@ function Find-PartialPublishIssue {
             foreach ($issue in $issues) {
                 if ($null -eq $issue -or $issue.title -isnot [string] -or
                     $issue.number -isnot [long] -or $issue.number -le 0 -or
+                    $issue.state -cnotin @('OPEN', 'CLOSED') -or
                     ($Readback -and $issue.body -isnot [string])) {
-                    throw "Expected issue number and title."
+                    throw "Expected issue number, title and state."
                 }
             }
         }
@@ -189,7 +190,12 @@ function Find-PartialPublishIssue {
             throw "GitHub returned invalid issue lookup JSON; no alert write will be attempted. Preserve the publish summary '$SummaryPath'."
         }
     }
-    return $issues | Where-Object { $_.title -ceq $title } | Select-Object -First 1
+    $matching = @($issues | Where-Object { $_.title -ceq $title })
+    $openIssue = $matching | Where-Object state -CEQ 'OPEN' | Select-Object -First 1
+    if ($null -ne $openIssue) {
+        return $openIssue
+    }
+    return $matching | Select-Object -First 1
 }
 
 function Add-PartialPublishComment {
@@ -227,6 +233,33 @@ function Add-PartialPublishComment {
         Remove-Item -LiteralPath $bodyFile -Force
     }
     Write-Host "Commented on existing partial-publish issue #$IssueNumber."
+}
+
+function Update-PartialPublishIssue {
+    param($Issue, [string]$CommentBody)
+
+    $issueNumber = [string]$Issue.number
+    if ($Issue.state -ceq 'CLOSED') {
+        Invoke-GitHubWithRetry -Operation "reopen partial-publish issue #$issueNumber" -Arguments @(
+            'issue', 'reopen', $issueNumber, '--repo', $Repository
+        ) -Reconcile {
+            $issueJson = Invoke-GitHubWithRetry -Operation 'read back partial-publish issue state' -Arguments @(
+                'issue', 'view', $issueNumber, '--repo', $Repository, '--json', 'state'
+            )
+            try {
+                $current = ConvertFrom-Json -InputObject $issueJson -NoEnumerate
+                if ($current -is [array] -or $current -isnot [pscustomobject] -or $current.state -cnotin @('OPEN', 'CLOSED')) {
+                    throw "Expected a recognized issue state."
+                }
+            }
+            catch {
+                throw "GitHub returned invalid issue state readback; refusing to repeat the reopen. Preserve the publish summary '$SummaryPath'."
+            }
+            return $current.state -ceq 'OPEN'
+        } | Out-Null
+        Write-Host "Reopened partial-publish issue #$issueNumber."
+    }
+    Add-PartialPublishComment -IssueNumber $Issue.number -CommentBody $CommentBody
 }
 
 function Format-ListSection {
@@ -282,11 +315,16 @@ $bodyParts = @(
     "See `docs/dev/release-runbook.md`. Do not delete or republish NuGet packages. Dispatch **Recover Partial Release** from live `main` with version $($summary.version) and release-run-id $env:GITHUB_RUN_ID. Current sets require the failed run's retained recovery bundle and production approval; missing or expired evidence refuses. Historical nine-package tags retain their tagged-set completion path."
 )
 $body = $bodyParts -join [Environment]::NewLine
-$comment = "Rerun detected for the same partial publish version." + [Environment]::NewLine + [Environment]::NewLine + $body
+$comment = "Rerun detected for the same partial publish version." + [Environment]::NewLine + [Environment]::NewLine + $body +
+    [Environment]::NewLine + "<!-- partial-publish-alert:$([Guid]::NewGuid()) -->"
 
 $existing = Find-PartialPublishIssue
+if ($null -eq $existing) {
+    # The title search index can lag behind a recent create or close.
+    $existing = Find-PartialPublishIssue -Readback
+}
 if ($null -ne $existing) {
-    Add-PartialPublishComment -IssueNumber $existing.number -CommentBody $comment
+    Update-PartialPublishIssue -Issue $existing -CommentBody $comment
 }
 else {
     $bodyFile = [System.IO.Path]::GetTempFileName()
@@ -299,8 +337,9 @@ else {
             if ($null -eq $recovered) {
                 return $false
             }
-            if ($recovered.body.Replace("`r`n", "`n").TrimEnd() -cne $body.Replace("`r`n", "`n").TrimEnd()) {
-                Add-PartialPublishComment -IssueNumber $recovered.number -CommentBody $comment
+            if ($recovered.state -ceq 'CLOSED' -or
+                $recovered.body.Replace("`r`n", "`n").TrimEnd() -cne $body.Replace("`r`n", "`n").TrimEnd()) {
+                Update-PartialPublishIssue -Issue $recovered -CommentBody $comment
             }
             return $true
         } | Out-Null
