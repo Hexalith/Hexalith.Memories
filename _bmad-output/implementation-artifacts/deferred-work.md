@@ -1217,7 +1217,8 @@ resolution: Added live JWT expiry/skew, alternating-tenant isolation and crossed
 origin: migrated from legacy ledger ("Deferred from: Story 10.2 Token-Budget Responses & Authentication (2026-04-25)"), 2026-09-01
 location: n/a
 reason: - **Story-10.x-McpStatelessTripwireTest (W3).** `McpServerStatelessTransportGuardTests.Stateless_IsTrue_AndChangeRequiresAdrUpdate` — assert `WithHttpTransport(o => o.Stateless).Should().BeTrue()`. Requires an MCP-builder introspection surface that the SDK does not currently expose. Re-open trigger: SDK exposes a public reader for `WithHttpTransport` configuration, or any follow-up story discusses OAuth-PKCE / sampling / elicitation.
-status: open
+status: done 2026-11-24
+resolution: The composition test seeds a stateful value and asserts the registered MCP HTTP options override it to stateless, guarding against SDK default masking. All 7 composition tests passed.
 
 ### DW-182: Story-10.x-McpAuthAnonymousDevBindAddress (A2). Bind-address invariant for the anonymous-dev gate — refuse to run when `Authentication:JwtBearer:Authority` AND `SigningKey` are both unset and the process binds a non-loopback address. The 10.2 wiring requires `Authority` OR `SigningKey` at startup (validator hard-fails otherwise), so the anonymous-dev path no longer exists; this defense-in-depth check is N/A unless the anonymous-dev path is reintroduced. Re-open trigger: any future story re-introducing an anonymous mode for development.
 

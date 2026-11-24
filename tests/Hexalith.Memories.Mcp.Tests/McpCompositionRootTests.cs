@@ -14,6 +14,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 
+using ModelContextProtocol.AspNetCore;
+
 using Shouldly;
 
 /// <summary>Disables xUnit cross-collection parallelism for env-var-mutating tests.</summary>
@@ -116,6 +118,20 @@ public sealed class McpCompositionRootTests
              toolTypes.Contains(descriptor.ImplementationInstance?.GetType()))).ShouldBeEmpty();
         services.Single(descriptor => descriptor.ServiceType == typeof(McpToolExecutor)).Lifetime.ShouldBe(ServiceLifetime.Scoped);
         services.Single(descriptor => descriptor.ServiceType == typeof(TenantClaimAuthorizationFilter)).Lifetime.ShouldBe(ServiceLifetime.Scoped);
+    }
+
+    [Fact]
+    public void ConfigureServices_McpHttpTransportRemainsStateless()
+    {
+        ServiceCollection services = [];
+        // Seed a stateful value so the SDK's stateless default cannot satisfy the assertion by itself.
+        services.Configure<HttpServerTransportOptions>(options => options.Stateless = false);
+        McpCompositionRoot.ConfigureServices(services);
+        using ServiceProvider provider = services.BuildServiceProvider();
+
+        // A switch to stateful transport requires revisiting the per-request bearer model in ADR-10.2-001.
+        HttpServerTransportOptions transport = provider.GetRequiredService<IOptions<HttpServerTransportOptions>>().Value;
+        transport.Stateless.ShouldBeTrue();
     }
 
     private sealed class EnvScope : IDisposable
