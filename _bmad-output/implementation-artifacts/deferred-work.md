@@ -1833,7 +1833,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of 7-4-quickstart-and-documentation (2026-04-17)"), 2026-09-01
 location: src/Hexalith.Memories.Cli/Quickstart/PrerequisiteCheckResult.cs:18
 reason: - **`PrerequisiteCheckResult.IsSkipped` is a 7.4 refinement beyond the spec-pinned 3-field signature** — provides clearer "advisory pass" UX (SKIP vs. OK-with-advisory). Spec Task 2.1 should be amended to acknowledge the 4-field record and the "SKIP for soft-fail" rendering convention. [src/Hexalith.Memories.Cli/Quickstart/PrerequisiteCheckResult.cs:18]
-status: open
+status: done 2026-11-24
+resolution: Story 7.4 documents IsSkipped and the optional Dapr sub-check rendering. Quickstart tests cover both a missing and an installed Dapr CLI.
 
 ### DW-264: `CreateTenantAsync` returns `Task<string>` and `IngestAsync` returns `Task<string>`, diverging from spec TL;DR items 4 and 5
 

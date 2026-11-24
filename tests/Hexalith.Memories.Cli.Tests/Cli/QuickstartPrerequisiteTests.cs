@@ -252,6 +252,7 @@ public sealed class QuickstartPrerequisiteTests
         PrerequisiteCheckResult result = await checks.CheckDaprCliAsync(CancellationToken.None);
 
         result.Passed.ShouldBeTrue();
+        result.IsSkipped.ShouldBeTrue();
         result.Diagnostic.ShouldContain("not installed");
     }
 
@@ -265,6 +266,7 @@ public sealed class QuickstartPrerequisiteTests
         PrerequisiteCheckResult result = await checks.CheckDaprCliAsync(CancellationToken.None);
 
         result.Passed.ShouldBeTrue();
+        result.IsSkipped.ShouldBeFalse();
         result.Diagnostic.ShouldContain("DAPR CLI");
     }
 
