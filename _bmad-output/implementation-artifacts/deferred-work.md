@@ -1,5 +1,7 @@
 # Deferred Work
 
+The `location:` field identifies the affected repository path or component. In migrated entries it corresponds to the former `Target artifact:` field. When writing a new path list, put each repository-relative path on the same line with a semicolon and a space between paths, for example `src/Example.cs; tests/ExampleTests.cs`. Search those paths individually and preserve existing historical annotations. Use `n/a` for an entry with no recorded location.
+
 ### DW-1: `ID:` — unique entry id, exactly as referenced elsewhere (e.g. `12.4-RV6`,
 
 origin: migrated from legacy ledger ("Schema for Active Entries"), 2026-09-01
@@ -234,6 +236,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 15-5-deferre
 location: n/a
 reason: - **15.5-RV2 — `sprint-status.yaml:last_updated` not advanced when post-implementation commit `c2e575c` landed.** Cosmetic drift; the dev-story timestamp `2026-05-15T12:45:15+02:00` predates the 15:55 follow-on commit. Re-open trigger: a tool starts treating `last_updated` as a freshness proxy across all commits on a story.
 status: open
+note: 2026-11-24 — Skipped. The sprint timestamp is current. The missing timestamp on the 2026-05-15 commit is historical, and backdating the current registry would be inaccurate.
 
 ### DW-34: 15.5-RV3: Task 3 prose "`13.1-RV6` and related provider work" is looser than the rollup's explicit 4-ID enumeration. `15-5-deferred-register-triage-sweep.md:79` lists one ID; `deferred-work.md:119` enumerates `13.1-RV6`, `13.1-RV10`, `13.1-RV11`, `13.3-RV8`. Rollup is accurate; task description was provisional. Re-open trigger: a future story re-reads Task 3 prose as a complete ownership list and misses one of the four IDs.
 
@@ -248,7 +251,8 @@ resolution: Story 15.5 Task 3 names all four provider findings assigned to Story
 origin: migrated from legacy ledger ("Deferred from: code review of 15-5-deferred-register-triage-sweep (2026-05-15)"), 2026-09-01
 location: n/a
 reason: - **15.5-RV4 — `Target artifact:` field uses `;`-joined multi-paths in `12.4-RV20` and `Story-9.3-ProjectionRegistryCrossCheck` blocks.** `deferred-work.md:68,92` — the Story 14.5 schema describes `Target artifact:` as singular, but Story 15.4's `13.2-RV4` (line 178) and Story 15.2's HybridSearch entry (line 293) already use multi-path joined formats and the `CiTestInventoryTests` parser tolerates them (48/48 PASS). Pre-existing pattern; a Story-14.5-owned schema-cleanliness pass should either tighten the parser to require single-path values or formalize a multi-path separator. Re-open trigger: a parser regression where the joined string is treated as one literal path and a target-artifact filter misses a real consumer.
-status: open
+status: done 2026-11-24
+resolution: Documented the semicolon-and-space separator for multiple paths and how it relates to legacy Target artifact values.
 
 ### DW-36: 15.4-RV1: Sanitization-message assertions are tautological. `OidcTokenProviderTests.cs:656-669` and `EmbeddingProviderDefaultsTests.cs:876-889` — the positive `ShouldContain("HTTPS")`/`("loopback")`/`("localhost")`/`("127.0.0.1")`/`("[::1]")` assertions in `AssertSanitizedTransportPolicyMessage` re-state the constant the implementation throws and provide zero discrimination beyond confirming the exception is reached. The actual non-leak safety is enforced by `ShouldNotContain(endpoint)` and the dedicated `Bearer`/`abc.def.ghi`/`client-secret-value` checks. Re-open trigger: any test-hardening sweep that strengthens negative-content assertions across the server test suite, or a regression where the implementation changes the user-facing exception text and the test misses the divergence.
 
