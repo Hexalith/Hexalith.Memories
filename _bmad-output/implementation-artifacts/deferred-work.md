@@ -284,6 +284,7 @@ origin: migrated from legacy ledger ("Closed/Accepted by: Story 15.3 Live Migrat
 location: src/Hexalith.Memories.Server/Migration/EmbeddingVectorMigrationService.cs
 reason: - **13.6-RV3 - accepted.** The migration command keeps its local nullable string/tuple helper shape for `ValidateOptions(...)` and `TryBuildTargetConfig(...)`, with `EmbeddingMigrationResult` plus stable exit codes as the project-approved equivalent for this command surface. - ID: 13.6-RV3 - Status: accepted - Source story: 15-3-live-migration-coordination-policy - Target artifact: src/Hexalith.Memories.Server/Migration/EmbeddingVectorMigrationService.cs - Re-open trigger: Migration errors need `ApplicationError` metadata beyond a flat operator message, or `Hexalith.Memories.Server` adopts `Hexalith.Commons.ValueOrError<T>` as an approved dependency across this boundary. - Rationale: The helper results are private to `EmbeddingVectorMigrationService`, immediately converted into `EmbeddingMigrationResult`, and already produce automation-readable `Plumbing`, `DomainError`, and `Cancelled` exit codes with sanitized messages. Introducing `Hexalith.Commons.ValueOrError<T>` here would add cross-project reference churn without improving the public migration command contract.
 status: open
+note: 2026-11-24 — Skipped. The migration already exposes stable structured results and richer Commons metadata is outside this private helper scope.
 
 ### DW-41: 13.1-RV6: resolved. Provider validation now has a shared maximum
 
@@ -311,6 +312,7 @@ origin: migrated from legacy ledger ("Closed/Accepted by: Story 15.2 Provider Mo
 location: src/Hexalith.Memories.Server/Ingestion/EmbeddingClient.cs
 reason: - **13.3-RV8 - accepted.** The persisted provider/model parser continues to lowercase the provider and preserve the model string after the first colon. - ID: 13.3-RV8 - Status: accepted - Source story: 15-2-provider-model-dimension-registry - Target artifact: src/Hexalith.Memories.Server/Ingestion/EmbeddingClient.cs - Re-open trigger: A persisted provider/model identifier with mixed casing fails a real runtime path, migration path, or equality comparison because provider and model casing are handled asymmetrically. - Rationale: Provider names are registry keys and safe to normalize for dispatch, while model tags can contain embedded colons and may be case-sensitive in provider-specific APIs. Story 15.2 pins the behavior with `EmbeddingClientTests.ParseEmbeddingProvider_NormalizesProviderAndPreservesModelAfterFirstColon` and leaves runtime parsing unchanged.
 status: open
+note: 2026-11-24 — Skipped. Existing parser and indexing tests protect legacy mixed-case identifiers, and no runtime divergence is linked.
 
 ### DW-45: 15.2-RV1: accepted. AC5 contract-tier serialization test not updated.
 
@@ -326,6 +328,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 15-2-provide
 location: tests/Hexalith.Memories.Server.Tests/Actors/TenantConfigurationActorTests.cs
 reason: - **15.2-RV2 - accepted.** Actor reindex tests lost same-Provider/different-Model isolation. - ID: 15.2-RV2 - Status: accepted - Source story: 15-2-provider-model-dimension-registry - Target artifact: tests/Hexalith.Memories.Server.Tests/Actors/TenantConfigurationActorTests.cs - Re-open trigger: Registry adds a second model under Google or Ollama, OR `GetBreakingChangeFields` regresses to flag only provider changes. - Rationale: Tests now switch Provider AND Model (Google→Ollama) instead of Model-only; same-provider/model-change reindex-trigger coverage cannot be restored inside this story because the closed registry currently lists exactly one model per provider. Story 19.4 (2026-06-30) confirmed the closed registry still lists exactly one model per provider (Google + Ollama only), so same-provider/different-model reindex coverage stays trigger-bound and accepted until a supported provider gains a second model or `GetBreakingChangeFields(...)` regresses. Natural future home: provider-registry model-expansion tests when a second model lands under one provider. Owner: Server test maintainer.
 status: open
+note: 2026-11-24 — Skipped. Each provider still has only one registered model, so a valid model-only actor transition cannot be constructed.
 
 ### DW-47: 15.2-RV3: accepted. Other test files still use unregistered model literals.
 
@@ -344,7 +347,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of 15-2-provider-model-dimension-registry (2026-05-14)"), 2026-09-01
 location: src/Hexalith.Memories.Server/Activities/Ingestion/GenerateEmbeddingActivity.cs
 reason: - **15.2-RV5 - accepted.** `GenerateEmbeddingActivity` may emit mixed-case provider in persisted identifier. - ID: 15.2-RV5 - Status: accepted - Source story: 15-2-provider-model-dimension-registry - Target artifact: src/Hexalith.Memories.Server/Activities/Ingestion/GenerateEmbeddingActivity.cs - Re-open trigger: A tenant persists `Provider = "Google"` (mixed case, now accepted by Validate) and an equality comparison or migration state diverges from the lowercased parsed form. - Rationale: Tenant-persisted casing is preserved, but `ParseEmbeddingProviderIdentifier` lowercases the provider on read — write and read forms can diverge. Related to 15.2-RV4. Out of File Scope. Story 19.4 (2026-06-30) confirmed `GenerateEmbeddingActivity` writes the raw `$"{config.Provider}:{config.Model}"` form while the parser lowercases the provider, and the migration marker guard compares with `OrdinalIgnoreCase`, so this is accepted compatibility today, not a current defect. Accepted until a casing-sensitive equality or migration-state divergence is observed. Natural future home: a provider identifier canonicalization story covering write/read/migration equality (bundled with `15.2-RV4`/`15.2-RV6`). Owner: Server / ingestion maintainer.
-status: open
+status: done 2026-11-24
+resolution: Single and chunked embedding activities lowercase the provider component of new identifiers and preserve the model spelling. All 104 focused activity and client tests passed.
 
 ### DW-50: 15.2-RV6: accepted. Migration tool uses binary Google/Ollama coin-flip, not registry.
 

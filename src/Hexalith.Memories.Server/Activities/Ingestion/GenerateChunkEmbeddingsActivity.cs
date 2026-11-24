@@ -211,7 +211,7 @@ public sealed class GenerateChunkEmbeddingsActivity : WorkflowTraceLinkedActivit
             return new ChunkEmbeddingBatchResult
             {
                 Chunks = results,
-                Provider = $"{config.Provider}:{config.Model}",
+                Provider = EmbeddingProviderIdentifier.Format(config.Provider, config.Model),
                 Model = config.Model,
                 Dimensions = config.Dimensions,
             };

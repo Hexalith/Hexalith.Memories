@@ -141,7 +141,7 @@ public sealed class GenerateEmbeddingActivity : WorkflowTraceLinkedActivity<Embe
 
             ClearRetryTracking(context);
 
-            return new EmbeddingResult(vector, $"{config.Provider}:{config.Model}", config.Dimensions)
+            return new EmbeddingResult(vector, EmbeddingProviderIdentifier.Format(config.Provider, config.Model), config.Dimensions)
             {
                 Model = config.Model,
             };

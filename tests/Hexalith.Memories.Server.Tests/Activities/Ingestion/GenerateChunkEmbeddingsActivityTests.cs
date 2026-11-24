@@ -31,7 +31,12 @@ public class GenerateChunkEmbeddingsActivityTests
     [Fact]
     public async Task RunAsync_CallsBatchApiOnceAndMapsVectorsByChunkOrder()
     {
-        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { Dimensions = 3 };
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with
+        {
+            Provider = "Google",
+            Model = "Gemini-Embedding-001",
+            Dimensions = 3,
+        };
         EmbeddingClient embeddingClient = CreateMockEmbeddingClient(config);
         IActorProxyFactory actorProxyFactory = CreateActorProxyFactory(config);
         GenerateChunkEmbeddingsActivity activity = new(
@@ -50,6 +55,8 @@ public class GenerateChunkEmbeddingsActivityTests
             Substitute.For<WorkflowActivityContext>(),
             new EmbeddingInput("tenant-a", "abcdefghijklmnop"));
 
+        result.Provider.ShouldBe("google:Gemini-Embedding-001");
+        result.Model.ShouldBe("Gemini-Embedding-001");
         result.Chunks.Count.ShouldBe(2);
         result.Chunks[0].Sequence.ShouldBe(0);
         result.Chunks[0].Text.ShouldBe("abcdefgh");

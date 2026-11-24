@@ -90,11 +90,16 @@ public class GenerateEmbeddingActivityConfigTests
         await rateLimiter.DidNotReceive().TryConsumeAsync();
     }
 
-    [Fact]
-    public async Task RunAsync_ShouldReturnDynamicProviderAndDimensions()
+    [Theory]
+    [InlineData("google", "gemini-embedding-001", "google:gemini-embedding-001")]
+    [InlineData("OLlama", "Qwen3-Embedding:4b", "ollama:Qwen3-Embedding:4b")]
+    public async Task RunAsync_FormatsProviderAndPreservesModel(string provider, string model, string identifier)
     {
         // Arrange
-        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google();
+        TenantEmbeddingConfig defaults = string.Equals(provider, "ollama", StringComparison.OrdinalIgnoreCase)
+            ? EmbeddingProviderDefaults.Ollama()
+            : EmbeddingProviderDefaults.Google();
+        TenantEmbeddingConfig config = defaults with { Provider = provider, Model = model };
         ITenantConfigurationActor tenantConfigActor = Substitute.For<ITenantConfigurationActor>();
         tenantConfigActor.GetEmbeddingConfigAsync().Returns(config);
 
@@ -105,9 +110,9 @@ public class GenerateEmbeddingActivityConfigTests
         // Act
         EmbeddingResult result = await activity.RunAsync(context, input);
 
-        // Assert — result uses config values, not "google:text-embedding-004"/768 constants
-        result.Provider.ShouldBe("google:gemini-embedding-001");
-        result.Dimensions.ShouldBe(768);
+        result.Provider.ShouldBe(identifier);
+        result.Model.ShouldBe(model);
+        result.Dimensions.ShouldBe(config.Dimensions);
     }
 
     private static (GenerateEmbeddingActivity Activity, EmbeddingClient Client, IEmbeddingRateLimiterActor RateLimiter) CreateActivity(
@@ -121,7 +126,7 @@ public class GenerateEmbeddingActivityConfigTests
         embeddingClient.PrimeApiKeyAsync(Arg.Any<string>(), Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
         embeddingClient.GenerateAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>())
-            .Returns(new float[768]);
+            .Returns(call => new float[call.Arg<TenantEmbeddingConfig>().Dimensions]);
 
         IEmbeddingRateLimiterActor rateLimiter = Substitute.For<IEmbeddingRateLimiterActor>();
         rateLimiter.TryConsumeWithCeilingAsync(Arg.Any<int>()).Returns(true);
