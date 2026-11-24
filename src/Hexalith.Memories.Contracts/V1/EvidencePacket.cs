@@ -40,7 +40,7 @@ public sealed record EvidencePacketScope(
     string PermissionsContext);
 
 /// <summary>Query-result summary for an evidence packet.</summary>
-/// <param name="Query">Original query string, or an empty string when no query applies.</param>
+/// <param name="Query">Bounded display text for the query, or an empty string when absent or suppressed.</param>
 /// <param name="TotalCount">Total matching item count reported by the lower-level response.</param>
 /// <param name="ReturnedCount">Number of ranked sources included in this packet.</param>
 /// <param name="HasIndexedMemoryUnits">Whether the tenant had indexed memory units, when known.</param>

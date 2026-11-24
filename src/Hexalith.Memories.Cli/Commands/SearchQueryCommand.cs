@@ -47,6 +47,9 @@ public static class SearchQueryCommand
         + "or run 'memories ingest <file>' to add data. "
         + "Run 'memories quickstart' for a guided setup.";
 
+    private const string EmptyPageNudge =
+        "The search reported matches, but this page returned no sources. Refine the query to retrieve a different result set.";
+
     private const string CommandDescription = """
 Search memories using hybrid fusion (default) or a single axis.
 
@@ -205,6 +208,7 @@ Examples:
                     query,
                     normalizedAxis,
                     hasResults: result.Results.Count > 0,
+                    isPartial: result.EvidencePacket?.State == EvidencePacketState.Partial,
                     hasExplanation: result.Explanation is not null);
                 return CliExitCodes.Success;
             }
@@ -230,6 +234,7 @@ Examples:
                 query,
                 normalizedAxis,
                 hasResults: single.Results.Count > 0,
+                isPartial: single.EvidencePacket?.State == EvidencePacketState.Partial,
                 hasExplanation: single.Explanation is not null);
             return CliExitCodes.Success;
         },
@@ -258,6 +263,7 @@ Examples:
         string? query,
         string axis,
         bool hasResults,
+        bool isPartial,
         bool hasExplanation)
         where T : class
     {
@@ -269,15 +275,15 @@ Examples:
         if (formatterMustRunFirst)
         {
             router.Write(console.Format, payload, console.Out);
-            WriteEmptyStateNudgeIfNeeded(console, query, axis, hasResults);
+            WriteEmptyStateNudgeIfNeeded(console, query, axis, hasResults, isPartial);
             return;
         }
 
-        WriteEmptyStateNudgeIfNeeded(console, query, axis, hasResults);
+        WriteEmptyStateNudgeIfNeeded(console, query, axis, hasResults, isPartial);
         router.Write(console.Format, payload, console.Out);
     }
 
-    private static void WriteEmptyStateNudgeIfNeeded(CliConsole console, string? query, string axis, bool hasResults)
+    private static void WriteEmptyStateNudgeIfNeeded(CliConsole console, string? query, string axis, bool hasResults, bool isPartial)
     {
         if (hasResults)
         {
@@ -294,7 +300,7 @@ Examples:
         // Empty-tenant branch (AC #2 PRD-verbatim): no --query AND graph-axis only — the only scenario
         // where the CLI can safely assert "tenant has no memory units yet."
         bool isEmptyTenantProbe = string.IsNullOrWhiteSpace(query) && axis == "graph";
-        string nudge = isEmptyTenantProbe ? EmptyTenantNudge : EmptyQueryNudge;
+        string nudge = isPartial ? EmptyPageNudge : isEmptyTenantProbe ? EmptyTenantNudge : EmptyQueryNudge;
 
         switch (console.Format)
         {

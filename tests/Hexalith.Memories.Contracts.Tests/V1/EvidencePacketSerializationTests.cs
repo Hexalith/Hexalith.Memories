@@ -105,7 +105,7 @@ public sealed class EvidencePacketSerializationTests
         deserialized.OmittedDetails.ExpansionHandles.ShouldHaveSingleItem();
         deserialized.OmittedDetails.ExpansionHandles[0].TenantId.ShouldBe("tenant-a");
         deserialized.OmittedDetails.ExpansionHandles[0].CaseId.ShouldBe("case-a");
-        deserialized.OmittedDetails.ExpansionHandles[0].Handle.ShouldNotContain("claim denied");
+        deserialized.OmittedDetails.ExpansionHandles[0].Handle.ShouldBe(original.OmittedDetails.ExpansionHandles[0].Handle);
         json.ShouldContain("\"reason\":\"tokenBudget\"");
     }
 }

@@ -117,7 +117,7 @@ internal static class EvidencePacketFixtures
                 ["rankedResults"],
                 [
                     new EvidencePacketExpansionHandle(
-                        "ep:v1:8F9E2A1D:rankedResults",
+                        "ep:v1:192faf8bbe94aaa9:rankedResults",
                         EvidencePacketRecoveryKind.IncreaseTokenBudget,
                         "rankedResults",
                         "tenant-a",

@@ -142,7 +142,7 @@ internal sealed partial class McpErrorMapper
 
         ErrorResponse forbidden = new(
             TenantForbiddenCode,
-            $"The bearer token is not authorized for tenant '{requestedTenantId}'.",
+            "The bearer token is not authorized for the requested tenant.",
             "Use a bearer token with a matching tenant claim, or request a tenant that is present in the token.");
         EvidencePacketScope scope = new(requestedTenantId, null, EvidencePacketIsolationStatus.Authorized, "mcp-auth");
         return BuildErrorResult(

@@ -170,7 +170,10 @@ public sealed class McpErrorMapperTests
 
         result.IsError.ShouldBe(true);
         result.StructuredContent!.Value.GetProperty("code").GetString().ShouldBe(McpErrorMapper.TenantForbiddenCode);
-        ((TextContentBlock)result.Content[0]).Text.ShouldContain("tenant-a");
+        ((TextContentBlock)result.Content[0]).Text.ShouldNotContain("tenant-a");
+        result.StructuredContent.Value.GetProperty("message").GetString()!.ShouldNotContain("tenant-a");
+        result.StructuredContent.Value.GetProperty("evidencePacket").GetProperty("scope")
+            .GetProperty("tenantId").GetString().ShouldBe("tenant-a");
     }
 
     [Fact]

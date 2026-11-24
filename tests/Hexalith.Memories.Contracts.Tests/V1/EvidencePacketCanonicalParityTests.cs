@@ -80,7 +80,7 @@ public sealed class EvidencePacketCanonicalParityTests
         EvidencePacketExpansionHandle handle = packet.OmittedDetails.ExpansionHandles.ShouldHaveSingleItem();
         handle.TenantId.ShouldBe("tenant-a");
         handle.CaseId.ShouldBe("case-a");
-        handle.Handle.ShouldStartWith("ep:v1:");
+        handle.Handle.ShouldStartWith("ep:v2:");
     }
 
     private static EvidencePacket Resolve(string fixtureName) => fixtureName switch

@@ -2827,14 +2827,16 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of story-2.7-evidence-packet-contract-mapping (2026-05-20)"), 2026-09-01
 location: n/a
 reason: - **2.7-CR7. `MapOmittedReason` falls to default `None` for future enum values** (Density, Redaction, Policy, Authorization, TrueAbsence). Rationale: lower-level `OmittedReason` enum doesn't expose those today; reopens when the server starts emitting them.
-status: open
+status: done 2026-11-24
+resolution: The mapper explicitly handles all current omission reasons and refuses unknown values with a fixed diagnostic. SearchPackets_RejectUnrecognizedOmissionReasons covers single-axis and degraded hybrid input. See spec-ten-deferred-evidence-packet-mapping.md.
 
 ### DW-430: 2.7-CR8. SHA-256 expansion handle truncated to 16 hex (64 bits) + `|`-delimited material allows injection collisions.
 
 origin: migrated from legacy ledger ("Deferred from: code review of story-2.7-evidence-packet-contract-mapping (2026-05-20)"), 2026-09-01
 location: n/a
 reason: - **2.7-CR8. SHA-256 expansion handle truncated to 16 hex (64 bits) + `|`-delimited material allows injection collisions.** `EvidencePacketMapper.cs:508-513`. Rationale: needs handle-format decision (length, delimiter, length-prefix vs delimiter).
-status: open
+status: done 2026-11-24
+resolution: The mapper emits v2 handles with four length-prefixed fields and 128 bits of SHA-256. The golden vector and v1 JSON round trip are covered in the mapper and serialization suites. See spec-ten-deferred-evidence-packet-mapping.md.
 decision: 2026-09-01 Versioned length-prefixed handle — Emit a v2 length-prefixed handle with at least 128 hash bits and accept v1 during migration.
 decision: 2026-09-01 Versioned length-prefixed handle — Emit a v2 length-prefixed handle with at least 128 hash bits and accept v1 during migration.
 
@@ -2843,7 +2845,8 @@ decision: 2026-09-01 Versioned length-prefixed handle — Emit a v2 length-prefi
 origin: migrated from legacy ledger ("Deferred from: code review of story-2.7-evidence-packet-contract-mapping (2026-05-20)"), 2026-09-01
 location: n/a
 reason: - **2.7-CR9. `source.CaseId` copied verbatim from upstream with no scope-consistency check** (decision-needed). Rationale: needs design call between trust-upstream / overwrite / skip / throw.
-status: open
+status: done 2026-11-24
+resolution: Single-axis and hybrid mapping reject a source that explicitly names a different case. Contracts, CLI and MCP tests confirm the refusal and verify that the failed surface response carries no source results. See spec-ten-deferred-evidence-packet-mapping.md.
 decision: 2026-09-06 Reject mismatch — Validate CaseId consistency and return a stable fail-closed error.
 decision: 2026-09-06 Reject mismatch — Validate CaseId consistency and return a stable fail-closed error.
 
@@ -2890,7 +2893,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of story-2.7-evidence-packet-contract-mapping (2026-05-20)"), 2026-09-01
 location: n/a
 reason: - **2.7-CR16. `Combined` omission reason on degraded result strips token-budget hint from recovery.** Rationale: paired with 2.7-CR11/CR12 precedence redesign.
-status: open
+status: done 2026-11-24
+resolution: Combined backend and budget omissions keep retry and backend health guidance first, followed by IncreaseTokenBudget. The mapper and CLI JSON tests pin the order. See spec-ten-deferred-evidence-packet-mapping.md.
 decision: 2026-09-01 Emit additive recoveries — Keep backend recovery primary and add deterministic IncreaseTokenBudget when Combined includes budget omission.
 decision: 2026-09-01 Emit additive recoveries — Keep backend recovery primary and add deterministic IncreaseTokenBudget when Combined includes budget omission.
 
@@ -2918,14 +2922,16 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of story-2.7-evidence-packet-contract-mapping (2026-05-20)"), 2026-09-01
 location: n/a
 reason: - **2.7-CR20. `EvidencePacketResultSummary.Query` echoes raw caller query verbatim** (defense-in-depth length cap / sanitize). Rationale: caller-supplied, not a leak.
-status: open
+status: done 2026-11-24
+resolution: Search and diagnostic packets suppress queries matching the shared sensitive-text filter and limit query display to 1,024 UTF-16 code units. The mapper test covers a surrogate boundary, a sensitive suffix, and distinct handles for identical display text. See spec-ten-deferred-evidence-packet-mapping.md.
 
 ### DW-443: 2.7-CR21. Whitespace-only `caseId` inconsistency
 
 origin: migrated from legacy ledger ("Deferred from: code review of story-2.7-evidence-packet-contract-mapping (2026-05-20)"), 2026-09-01
 location: n/a
 reason: - **2.7-CR21. Whitespace-only `caseId` inconsistency** (`permissionsContext: "tenant"` while `scope.caseId: " "`). Rationale: input-validation polish.
-status: open
+status: done 2026-11-24
+resolution: Search and diagnostic mapping normalize blank case IDs to tenant scope. SearchAndErrorPackets_NormalizeWhitespaceOnlyCaseScope also checks the expansion handle scope. See spec-ten-deferred-evidence-packet-mapping.md.
 
 ### DW-444: 2.7-CR22. `ExpansionHandle.CaseId` JSON-ignored when null, `TenantId` always present (asymmetry).
 
@@ -2938,21 +2944,24 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of story-2.7-evidence-packet-contract-mapping (2026-05-20)"), 2026-09-01
 location: n/a
 reason: - **2.7-CR23. `HybridSearchResult.Results` not null-guarded in mapper.** Rationale: contract guarantees non-null via `required`; defensive-only.
-status: open
+status: done 2026-11-24
+resolution: Both mappers reject a null results collection with a fixed diagnostic. SearchPackets_RejectMissingResultsCollections covers single-axis and hybrid results. See spec-ten-deferred-evidence-packet-mapping.md.
 
 ### DW-446: 2.7-CR24. `FromSearchResult` passes `null` for `AllEnabledAxesUnavailable` vs hybrid passing actual value.
 
 origin: migrated from legacy ledger ("Deferred from: code review of story-2.7-evidence-packet-contract-mapping (2026-05-20)"), 2026-09-01
 location: n/a
 reason: - **2.7-CR24. `FromSearchResult` passes `null` for `AllEnabledAxesUnavailable` vs hybrid passing actual value.** Rationale: cosmetic; semantically correct since single-axis has no multi-axis concept.
-status: open
+status: done 2026-11-24
+resolution: The all-axes availability signal is intentionally hybrid-only. The mapping guide and single-axis null regression pin this contract alongside the existing hybrid-degradation test. See spec-ten-deferred-evidence-packet-mapping.md.
 
 ### DW-447: 2.7-CR25. `McpErrorMapper.MapAuthorization` forbidden message echoes `requestedTenantId`.
 
 origin: migrated from legacy ledger ("Deferred from: code review of story-2.7-evidence-packet-contract-mapping (2026-05-20)"), 2026-09-01
 location: n/a
 reason: - **2.7-CR25. `McpErrorMapper.MapAuthorization` forbidden message echoes `requestedTenantId`.** Rationale: caller-supplied input echoed back, not a confirmation of alternate tenant existence.
-status: open
+status: done 2026-11-24
+resolution: Forbidden MCP prose and its message use fixed wording. MapAuthorization_Mismatch_ReturnsTenantForbidden checks both messages and the validated requested scope. See spec-ten-deferred-evidence-packet-mapping.md.
 
 ### DW-448: 2.7-CR26. CLI test substring match for `"evidencePacket"` and serialization-test camelCase spot-check are brittle.
 
@@ -3377,7 +3386,8 @@ decision: 2026-09-06 Build ingest-first proof — Create an unindexed tenant thr
 origin: migrated from legacy ledger ("Deferred from: code review of story-2.7-evidence-packet-contract-mapping (2026-06-30)"), 2026-09-01
 location: src/Hexalith.Memories.Contracts/V1/EvidencePacketMapper.cs:224
 reason: - **`state: empty` emitted when `returnedCount==0` but `totalCount>0` and nothing omitted** [src/Hexalith.Memories.Contracts/V1/EvidencePacketMapper.cs:224] — the `returnedCount==0` short-circuit ignores `totalCount`, producing a self-contradictory empty packet. Low likelihood (requires upstream to report a contradictory result).
-status: open
+status: done 2026-11-24
+resolution: A healthy zero-row page with a positive total now maps to partial with preserved counts and retry guidance. SearchPackets_ReportEmptyPageWithMatchesAsPartial covers both mappers. See spec-ten-deferred-evidence-packet-mapping.md.
 
 ### DW-510: Graph summary hardcoded `Available=false`/empty even when a `graph` axisEvidence entry has a real `GraphScore`
 

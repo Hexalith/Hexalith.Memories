@@ -165,6 +165,32 @@ public sealed class SearchMemoryToolTests
         stub.SearchRequests[0].TokenBudget.ShouldBe(50_000);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task HybridResult_MalformedResult_ReturnsErrorWithoutResults(bool missingResults)
+    {
+        HybridSearchResult response = EvidencePacketCanonicalFixtures.HybridComplete();
+        if (missingResults)
+        {
+            response = response with { Results = null! };
+        }
+
+        var stub = new StubMemoriesClient
+        {
+            OnHybridSearch = (_, _) => Task.FromResult(response),
+        };
+        SearchMemoryTool tool = CreateTool(stub);
+
+        CallToolResult result = await tool.SearchAsync(
+            "acme", "needle", @case: "case-zero", cancellationToken: TestContext.Current.CancellationToken);
+
+        AssertIsErrorWithCode(result, McpErrorMapper.InternalErrorCode);
+        ExtractText(result).ShouldNotContain("case-a");
+        result.StructuredContent!.Value.GetRawText().ShouldNotContain("mu-001");
+        result.StructuredContent.Value.GetRawText().ShouldNotContain("case-a");
+    }
+
     [Fact]
     public async Task HybridResult_StructuredContent_IncludesEvidencePacket()
     {

@@ -74,11 +74,8 @@ public sealed class EvidencePacketIsolationTests
     }
 
     [Fact]
-    public void FromSearchResult_RequestScopeWinsOverSourceCase()
+    public void FromSearchResult_SourceInDifferentCase_RejectsResponse()
     {
-        // Simulated upstream regression: the request is case-b but a returned source carries case-a.
-        // Per CR9 (trust upstream) the mapper does NOT reconcile — but packet.Scope must remain the
-        // REQUEST scope (case-b), proving scope is never derived from source attribution.
         var result = new SearchResult
         {
             Results =
@@ -101,15 +98,9 @@ public sealed class EvidencePacketIsolationTests
             AxesUsed = ["semantic"],
         };
 
-        EvidencePacket packet = EvidencePacketMapper.FromSearchResult(
-            result,
-            new EvidencePacketScope("tenant-a", "case-b", EvidencePacketIsolationStatus.Authorized, "tenant-case"));
-
-        // Scope is request-derived (case-b), never copied from the source row.
-        packet.Scope.CaseId.ShouldBe("case-b");
-
-        // Source attribution is preserved verbatim (CR9 trust-upstream boundary).
-        packet.Sources[0].CaseId.ShouldBe("case-a");
+        var scope = new EvidencePacketScope("tenant-a", "case-b", EvidencePacketIsolationStatus.Authorized, "tenant-case");
+        Should.Throw<InvalidOperationException>(() => EvidencePacketMapper.FromSearchResult(result, scope))
+            .Message.ShouldBe("The search response contains evidence outside the requested case scope.");
     }
 
     [Fact]

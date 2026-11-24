@@ -8,6 +8,7 @@ namespace Hexalith.Memories.Contracts.Tests.V1;
 using System.Text.Json;
 
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.TestHelpers.EvidencePackets;
 
 using Shouldly;
 
@@ -104,6 +105,7 @@ public sealed class EvidencePacketMapperTests
         packet.Sources[0].Score.ShouldBe(0.91);
         packet.Evidence.Caveat.ShouldBe("Scores measure relevance, not factual accuracy.");
         packet.Evidence.AxesUsed.ShouldBe(["semantic"]);
+        packet.Evidence.AllEnabledAxesUnavailable.ShouldBeNull();
         packet.Evidence.AxisEvidence[0].Axis.ShouldBe("semantic");
         packet.State.ShouldBe(EvidencePacketState.PendingExpansion);
         packet.OmittedDetails.ExpansionHandles.ShouldHaveSingleItem();
@@ -222,12 +224,15 @@ public sealed class EvidencePacketMapperTests
         packet.OmittedDetails.DetailGroups.ShouldContain("rankedResults");
         packet.OmittedDetails.DetailGroups.ShouldContain("backendDiagnostics");
         EvidencePacketExpansionHandle handle = packet.OmittedDetails.ExpansionHandles.ShouldHaveSingleItem();
-        handle.Handle.ShouldStartWith("ep:v1:");
+        handle.Handle.ShouldBe("ep:v2:4fcaf9692075521c474e8ef2a804010e:rankedResults");
         handle.TargetDetailGroup.ShouldBe("rankedResults");
         handle.TenantId.ShouldBe("tenant-a");
         handle.CaseId.ShouldBe("case-a");
-        packet.Recovery.ShouldContain(action => action.Kind == EvidencePacketRecoveryKind.Retry);
-        packet.Recovery.ShouldContain(action => action.Kind == EvidencePacketRecoveryKind.InspectBackendHealth);
+        packet.Recovery.Select(action => action.Kind).ShouldBe([
+            EvidencePacketRecoveryKind.Retry,
+            EvidencePacketRecoveryKind.InspectBackendHealth,
+            EvidencePacketRecoveryKind.IncreaseTokenBudget,
+        ]);
     }
 
     [Fact]
@@ -723,6 +728,155 @@ public sealed class EvidencePacketMapperTests
             new EvidencePacketScope("tenant-a", "case-a", EvidencePacketIsolationStatus.Authorized, "tenant-case"));
 
         packet.Evidence.AxesUsed.ShouldBe(["semantic", "syntactic"]);
+    }
+
+    [Fact]
+    public void SearchPackets_RejectUnrecognizedOmissionReasons()
+    {
+        EvidencePacketScope scope = EvidencePacketCanonicalFixtures.AuthorizedScope;
+        SearchResult single = EvidencePacketCanonicalFixtures.SingleComplete() with { OmittedReason = (OmittedReason)42 };
+        HybridSearchResult hybrid = EvidencePacketCanonicalFixtures.HybridDegraded() with { OmittedReason = (OmittedReason)42 };
+
+        Should.Throw<InvalidOperationException>(() => EvidencePacketMapper.FromSearchResult(single, scope))
+            .Message.ShouldBe("The search response reported an unrecognized omission reason.");
+        Should.Throw<InvalidOperationException>(() => EvidencePacketMapper.FromHybridSearchResult(hybrid, scope))
+            .Message.ShouldBe("The search response reported an unrecognized omission reason.");
+    }
+
+    [Fact]
+    public void SearchPackets_RejectMissingResultsCollections()
+    {
+        EvidencePacketScope scope = EvidencePacketCanonicalFixtures.AuthorizedScope;
+        SearchResult single = EvidencePacketCanonicalFixtures.SingleComplete() with { Results = null! };
+        HybridSearchResult hybrid = EvidencePacketCanonicalFixtures.HybridComplete() with { Results = null! };
+
+        Should.Throw<InvalidOperationException>(() => EvidencePacketMapper.FromSearchResult(single, scope))
+            .Message.ShouldBe("The search response did not include a results collection.");
+        Should.Throw<InvalidOperationException>(() => EvidencePacketMapper.FromHybridSearchResult(hybrid, scope))
+            .Message.ShouldBe("The search response did not include a results collection.");
+    }
+
+    [Fact]
+    public void FromHybridSearchResult_RejectsAnExplicitlyDifferentSourceCase()
+    {
+        EvidencePacketScope scope = EvidencePacketCanonicalFixtures.AuthorizedScope with { CaseId = "case-zero" };
+        HybridSearchResult hybrid = EvidencePacketCanonicalFixtures.HybridComplete();
+
+        Should.Throw<InvalidOperationException>(() => EvidencePacketMapper.FromHybridSearchResult(hybrid, scope))
+            .Message.ShouldBe("The search response contains evidence outside the requested case scope.");
+    }
+
+    [Fact]
+    public void SearchAndErrorPackets_NormalizeWhitespaceOnlyCaseScope()
+    {
+        EvidencePacketScope scope = EvidencePacketCanonicalFixtures.AuthorizedScope with { CaseId = " \t" };
+        EvidencePacket single = EvidencePacketMapper.FromSearchResult(EvidencePacketCanonicalFixtures.SingleTokenBudget(), scope);
+        EvidencePacket hybrid = EvidencePacketMapper.FromHybridSearchResult(EvidencePacketCanonicalFixtures.HybridComplete(), scope);
+        EvidencePacket error = EvidencePacketMapper.FromError(new ErrorResponse("UNAVAILABLE", "Try again", string.Empty), scope);
+
+        single.Scope.ShouldBe(EvidencePacketCanonicalFixtures.TenantWideScope);
+        hybrid.Scope.ShouldBe(EvidencePacketCanonicalFixtures.TenantWideScope);
+        error.Scope.ShouldBe(EvidencePacketCanonicalFixtures.TenantWideScope);
+        single.OmittedDetails.ExpansionHandles.ShouldHaveSingleItem().CaseId.ShouldBeNull();
+    }
+
+    [Fact]
+    public void SearchPackets_ReportEmptyPageWithMatchesAsPartial()
+    {
+        EvidencePacketScope scope = EvidencePacketCanonicalFixtures.AuthorizedScope;
+        SearchResult single = EvidencePacketCanonicalFixtures.SingleComplete() with { Results = [], TotalCount = 6 };
+        HybridSearchResult hybrid = EvidencePacketCanonicalFixtures.HybridComplete() with { Results = [], TotalCount = 6 };
+
+        EvidencePacket[] packets =
+        [
+            EvidencePacketMapper.FromSearchResult(single, scope),
+            EvidencePacketMapper.FromHybridSearchResult(hybrid, scope),
+        ];
+        foreach (EvidencePacket packet in packets)
+        {
+            packet.State.ShouldBe(EvidencePacketState.Partial);
+            packet.Result.TotalCount.ShouldBe(6);
+            packet.Result.ReturnedCount.ShouldBe(0);
+            packet.Sources.ShouldBeEmpty();
+            packet.Recovery.ShouldHaveSingleItem().Kind.ShouldBe(EvidencePacketRecoveryKind.Retry);
+        }
+    }
+
+    [Fact]
+    public void SearchPackets_CombinedOmissionRetainsBackendRecoveryWithoutSeparateFlag()
+    {
+        EvidencePacketScope scope = EvidencePacketCanonicalFixtures.AuthorizedScope;
+        SearchResult single = EvidencePacketCanonicalFixtures.SingleTokenBudget() with { OmittedReason = OmittedReason.Combined };
+        HybridSearchResult hybrid = EvidencePacketCanonicalFixtures.HybridComplete() with
+        {
+            OmittedCount = 3,
+            OmittedReason = OmittedReason.Combined,
+            TotalCount = 4,
+        };
+
+        foreach (EvidencePacket packet in new[]
+        {
+            EvidencePacketMapper.FromSearchResult(single, scope),
+            EvidencePacketMapper.FromHybridSearchResult(hybrid, scope),
+        })
+        {
+            packet.State.ShouldBe(EvidencePacketState.Degraded);
+            packet.Evidence.Degraded.ShouldBeTrue();
+            packet.Recovery.Select(action => action.Kind).ShouldBe([
+                EvidencePacketRecoveryKind.Retry,
+                EvidencePacketRecoveryKind.InspectBackendHealth,
+                EvidencePacketRecoveryKind.IncreaseTokenBudget,
+            ]);
+        }
+    }
+
+    [Fact]
+    public void SearchPackets_RejectNegativeMatchCounts()
+    {
+        EvidencePacketScope scope = EvidencePacketCanonicalFixtures.AuthorizedScope;
+        SearchResult single = EvidencePacketCanonicalFixtures.SingleEmpty() with { TotalCount = -1 };
+        HybridSearchResult hybrid = EvidencePacketCanonicalFixtures.HybridComplete() with { Results = [], TotalCount = -1 };
+
+        Should.Throw<InvalidOperationException>(() => EvidencePacketMapper.FromSearchResult(single, scope))
+            .Message.ShouldBe("The search response reported a negative match count.");
+        Should.Throw<InvalidOperationException>(() => EvidencePacketMapper.FromHybridSearchResult(hybrid, scope))
+            .Message.ShouldBe("The search response reported a negative match count.");
+    }
+
+    [Theory]
+    [InlineData("api_key=example-value")]
+    [InlineData("password = example-value")]
+    [InlineData("Authorization: example-value")]
+    public void PacketQuery_SuppressesCredentialAssignments(string query)
+    {
+        SearchResult result = EvidencePacketCanonicalFixtures.SingleComplete() with { Query = query };
+        EvidencePacket packet = EvidencePacketMapper.FromSearchResult(result, EvidencePacketCanonicalFixtures.AuthorizedScope);
+
+        packet.Result.Query.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void PacketQuery_IsBoundedAndSensitiveTextIsSuppressed()
+    {
+        EvidencePacketScope scope = EvidencePacketCanonicalFixtures.AuthorizedScope;
+        string prefix = new('q', 1023);
+        string longQuery = prefix + "😀 complete the phrase";
+        string sensitiveQuery = prefix + " Bearer example-token";
+        SearchResult single = EvidencePacketCanonicalFixtures.SingleTokenBudget() with { Query = longQuery };
+        HybridSearchResult hybrid = EvidencePacketCanonicalFixtures.HybridComplete() with { Query = sensitiveQuery };
+
+        EvidencePacket bounded = EvidencePacketMapper.FromSearchResult(single, scope);
+        bounded.Result.Query.ShouldBe(prefix);
+        EvidencePacketMapper.FromHybridSearchResult(hybrid, scope).Result.Query.ShouldBeEmpty();
+        EvidencePacketMapper.FromSearchResult(single with { Query = sensitiveQuery }, EvidencePacketCanonicalFixtures.UnauthorizedScope)
+            .Result.Query.ShouldBeEmpty();
+        EvidencePacketMapper.FromError(new ErrorResponse("UNAVAILABLE", "Try again", string.Empty), scope, sensitiveQuery)
+            .Result.Query.ShouldBeEmpty();
+
+        EvidencePacket different = EvidencePacketMapper.FromSearchResult(single with { Query = longQuery + " two" }, scope);
+        different.Result.Query.ShouldBe(bounded.Result.Query);
+        different.OmittedDetails.ExpansionHandles.ShouldHaveSingleItem().Handle
+            .ShouldNotBe(bounded.OmittedDetails.ExpansionHandles.ShouldHaveSingleItem().Handle);
     }
 
     private static SearchExplanation BuildExplanation() => new()

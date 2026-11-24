@@ -53,6 +53,55 @@ public sealed class EvidencePacketCliOutputTests
         packet.GetProperty("sources")[0].GetProperty("memoryUnitId").GetString().ShouldBe("mu-001");
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SearchQuery_HybridJson_MalformedResult_EmitsErrorWithoutResults(bool missingResults)
+    {
+        HybridSearchResult response = EvidencePacketCanonicalFixtures.HybridComplete();
+        if (missingResults)
+        {
+            response = response with { Results = null! };
+        }
+
+        (IServiceProvider services, StringWriter stdout, StringWriter stderr) = BuildServices(
+            onHybridSearch: (_, _) => Task.FromResult(response));
+        Command command = SearchQueryCommand.Build(services);
+
+        int exit = await command
+            .Parse(new[] { "query", "--tenant", "tenant-a", "--case", "case-zero", "--query", "claim denied" })
+            .InvokeAsync();
+
+        exit.ShouldBe(CliExitCodes.Plumbing);
+        using JsonDocument doc = JsonDocument.Parse(stdout.ToString());
+        doc.RootElement.GetProperty("error").GetProperty("code").GetString().ShouldBe("UNEXPECTED_ERROR");
+        doc.RootElement.TryGetProperty("data", out _).ShouldBeFalse();
+        stdout.ToString().ShouldNotContain("mu-001");
+        stdout.ToString().ShouldNotContain("case-a");
+        stderr.ToString().ShouldNotContain("mu-001");
+        stderr.ToString().ShouldNotContain("case-a");
+    }
+
+    [Theory]
+    [InlineData(OutputFormat.Human)]
+    [InlineData(OutputFormat.Table)]
+    public async Task SearchQuery_EmptyPageWithMatches_ExplainsPartialResults(OutputFormat format)
+    {
+        (IServiceProvider services, StringWriter stdout, StringWriter stderr) = BuildServices(
+            onHybridSearch: (_, _) => Task.FromResult(EvidencePacketCanonicalFixtures.HybridComplete() with { Results = [] }),
+            format: format);
+        Command command = SearchQueryCommand.Build(services);
+
+        int exit = await command
+            .Parse(new[] { "query", "--tenant", "tenant-a", "--case", "case-a", "--query", "claim denied" })
+            .InvokeAsync();
+
+        exit.ShouldBe(CliExitCodes.Success);
+        string nudge = format == OutputFormat.Table ? stderr.ToString() : stdout.ToString();
+        nudge.ShouldContain("The search reported matches, but this page returned no sources.");
+        nudge.ShouldNotContain(SearchQueryCommand.EmptyQueryNudge);
+    }
+
     [Fact]
     public async Task SearchQuery_HybridJson_EmptyResult_EmitsEmptyEvidencePacket()
     {
@@ -133,12 +182,11 @@ public sealed class EvidencePacketCliOutputTests
         ReadStringArray(omitted.GetProperty("detailGroups")).ShouldContain("rankedResults");
         ReadStringArray(omitted.GetProperty("detailGroups")).ShouldContain("backendDiagnostics");
         JsonElement handle = omitted.GetProperty("expansionHandles")[0];
-        handle.GetProperty("handle").GetString()!.ShouldStartWith("ep:v1:");
+        handle.GetProperty("handle").GetString()!.ShouldStartWith("ep:v2:");
         handle.GetProperty("targetDetailGroup").GetString().ShouldBe("rankedResults");
         handle.GetProperty("tenantId").GetString().ShouldBe("tenant-a");
         handle.GetProperty("caseId").GetString().ShouldBe("case-a");
-        ReadRecoveryKinds(packet).ShouldContain("retry");
-        ReadRecoveryKinds(packet).ShouldContain("inspectBackendHealth");
+        ReadRecoveryKinds(packet).ShouldBe(["retry", "inspectBackendHealth", "increaseTokenBudget"]);
     }
 
     [Fact]
@@ -228,7 +276,7 @@ public sealed class EvidencePacketCliOutputTests
         omitted.GetProperty("estimatedTokensTotal").GetInt64().ShouldBe(4_096);
         omitted.GetProperty("reason").GetString().ShouldBe("tokenBudget");
         JsonElement handle = omitted.GetProperty("expansionHandles")[0];
-        handle.GetProperty("handle").GetString()!.ShouldStartWith("ep:v1:");
+        handle.GetProperty("handle").GetString()!.ShouldStartWith("ep:v2:");
         handle.GetProperty("kind").GetString().ShouldBe("increaseTokenBudget");
         handle.GetProperty("targetDetailGroup").GetString().ShouldBe("rankedResults");
         packet.GetProperty("recovery")[0].GetProperty("kind").GetString().ShouldBe("increaseTokenBudget");
@@ -344,12 +392,13 @@ public sealed class EvidencePacketCliOutputTests
 
     private static (IServiceProvider Services, StringWriter Stdout, StringWriter Stderr) BuildServices(
         Func<SearchRequest, CancellationToken, Task<SearchResult>>? onSearch = null,
-        Func<HybridSearchRequest, CancellationToken, Task<HybridSearchResult>>? onHybridSearch = null)
+        Func<HybridSearchRequest, CancellationToken, Task<HybridSearchResult>>? onHybridSearch = null,
+        OutputFormat format = OutputFormat.Json)
     {
         var stdout = new StringWriter();
         var stderr = new StringWriter();
         IServiceCollection collection = CliServices.BuildCollection();
-        collection.AddSingleton(new CliConsole { Out = stdout, Error = stderr, Format = OutputFormat.Json });
+        collection.AddSingleton(new CliConsole { Out = stdout, Error = stderr, Format = format });
         collection.Replace(ServiceDescriptor.Transient<MemoriesClient>(_ => new StubMemoriesClient(onSearch, onHybridSearch)));
 
         ServiceProvider provider = collection.BuildServiceProvider();
