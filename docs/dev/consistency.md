@@ -202,13 +202,16 @@ When a full count exceeds its retained count, recover individual findings
 from the workflow logs. Use Warning event 8201 (`DiscrepancyDetected`) for repair
 findings and Information event 8212 (`ConsistencyNoteObserved`) for notes.
 Match `TenantId` and `WorkflowInstanceId` to the scheduling receipt. Each event
-includes the memory-unit ID and its `EntryKind`.
+includes the memory-unit ID and its `EntryKind`. For free-text notes, the log
+recovers the unit ID and observation kind. The free-text detail is available
+only for notes retained in the result payload.
 The `Recommendation` field carries the repair action, the note kind, or
 `InformationalNote` for a free-text-only observation. The CLI table shows
 retained counts in its `discrepancies` and `notes` columns.
 
-When reviewing logs across an upgrade, include older 8201 events with
-`EntryKind=Note`. For events that lack `EntryKind`, a repair action in
+When reviewing logs across an upgrade, include older Information-level 8201
+events for both `EntryKind=Discrepancy` and `EntryKind=Note`. For events that
+lack `EntryKind`, a repair action in
 `Recommendation` identifies a discrepancy, and a note kind or
 `InformationalNote` identifies a note. The oldest events also lack
 `WorkflowInstanceId`. If runs overlap for a tenant, attributing those events
