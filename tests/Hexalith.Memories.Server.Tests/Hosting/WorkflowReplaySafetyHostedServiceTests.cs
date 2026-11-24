@@ -13,8 +13,10 @@ using Dapr.Workflow.Client;
 
 using Hexalith.Memories.Server.Hosting;
 using Hexalith.Memories.Server.Ingestion;
+using Hexalith.Memories.Server.Tests.Telemetry.Infrastructure;
 using Hexalith.Memories.Server.Workflows;
 
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using NSubstitute;
@@ -114,7 +116,7 @@ public class WorkflowReplaySafetyHostedServiceTests
             .Returns(Task.FromResult(CreateState("completed-instance", WorkflowRuntimeStatus.Completed)));
         WorkflowReplaySafetyHostedService service = CreateService(workflowClient, registry);
 
-        int? count = await service.TryCountInFlightAsync(CancellationToken.None);
+        (int? count, _, _) = await service.TryCountInFlightAsync(CancellationToken.None);
 
         count.ShouldBe(1);
         await registry.Received(1).RemoveAsync("completed-instance", Arg.Any<CancellationToken>());
@@ -132,7 +134,7 @@ public class WorkflowReplaySafetyHostedServiceTests
             .Returns(Task.FromResult<WorkflowState>(null!));
         WorkflowReplaySafetyHostedService service = CreateService(workflowClient, registry);
 
-        int? count = await service.TryCountInFlightAsync(CancellationToken.None);
+        (int? count, _, _) = await service.TryCountInFlightAsync(CancellationToken.None);
 
         count.ShouldBe(0);
         await registry.Received(1).RemoveAsync("missing-instance", Arg.Any<CancellationToken>());
@@ -155,7 +157,7 @@ public class WorkflowReplaySafetyHostedServiceTests
             .Returns(Task.FromResult(CreateState("completed-instance", WorkflowRuntimeStatus.Completed)));
         WorkflowReplaySafetyHostedService service = CreateService(workflowClient, registry);
 
-        int? count = await service.TryCountInFlightAsync(CancellationToken.None);
+        (int? count, _, _) = await service.TryCountInFlightAsync(CancellationToken.None);
 
         count.ShouldBe(1);
         await registry.DidNotReceiveWithAnyArgs().MarkInitializedAsync(default);
@@ -172,10 +174,32 @@ public class WorkflowReplaySafetyHostedServiceTests
             .Returns(Task.FromResult(new WorkflowInstancePage([], null)));
         WorkflowReplaySafetyHostedService service = CreateService(workflowClient, registry);
 
-        int? count = await service.TryCountInFlightAsync(CancellationToken.None);
+        (int? count, _, _) = await service.TryCountInFlightAsync(CancellationToken.None);
 
         count.ShouldBe(0);
         await registry.Received(1).MarkInitializedAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task StartingAsync_RegistryFailure_LogsCriticalStartupBypassWithCause()
+    {
+        IDaprWorkflowClient workflowClient = Substitute.For<IDaprWorkflowClient>();
+        IIngestionWorkflowInFlightRegistry registry = Substitute.For<IIngestionWorkflowInFlightRegistry>();
+        InvalidOperationException failure = new("Registry unavailable");
+        registry.ListAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<IReadOnlyList<IngestionWorkflowInFlightEntry>>(failure));
+        using CapturingAuditLoggerProvider logs = new();
+        using ILoggerFactory loggerFactory = LoggerFactory.Create(builder => builder.AddProvider(logs));
+        WorkflowReplaySafetyHostedService service = new(workflowClient, registry, loggerFactory.CreateLogger<WorkflowReplaySafetyHostedService>());
+
+        await service.StartingAsync(CancellationToken.None);
+
+        AuditLogCapture entry = logs.Captures.ShouldHaveSingleItem();
+        entry.EventId.ShouldBe(9173);
+        entry.Level.ShouldBe(LogLevel.Critical);
+        entry.Fields.ToDictionary()["Reason"].ShouldBe("sidecar-query-exception");
+        entry.Exception.ShouldBeSameAs(failure);
+        await workflowClient.DidNotReceiveWithAnyArgs().ListInstanceIdsAsync(default, default, default);
     }
 
     private static WorkflowReplaySafetyHostedService CreateService(

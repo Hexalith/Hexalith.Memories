@@ -2079,7 +2079,8 @@ resolution: The Roslyn guard binds explicit, aliased and target-typed metadata d
 origin: migrated from legacy ledger ("Deferred from: code review of 9-2-dual-embedding-and-causal-chain-indexing Session 6 (2026-04-25)"), 2026-09-01
 location: n/a
 reason: - **S6-F2. Replace `LogGateFailedOpen` side-comment contract with explicit outer-caller log on null return.** `WorkflowReplaySafetyHostedService.cs:75-77` currently relies on a code comment that "TryCountInFlightAsync already logged" — fragile to inner-method refactors. Follow-up: add an outer "gate-bypassed" Critical log whenever the count is null, regardless of inner-method logging.
-status: open
+status: done 2026-11-24
+resolution: StartingAsync emits a single Critical 9173 at the fail-open decision, carrying the count failure reason and exception. A registry-failure regression checks the logged fields and absence of further sidecar enumeration.
 
 ### DW-296: S6-F3. Replace reflection-on-private-static in `BuildIndexMetadata_*` test with `internal` + `InternalsVisibleTo`.
 

@@ -60,13 +60,12 @@ internal sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecyc
 
         while (!cancellationToken.IsCancellationRequested)
         {
-            int? inFlight = await TryCountInFlightAsync(cancellationToken).ConfigureAwait(false);
+            (int? inFlight, string? failureReason, Exception? failure) = await TryCountInFlightAsync(cancellationToken).ConfigureAwait(false);
             if (inFlight is null)
             {
                 // Improvement Z: sidecar unreachable — fail open. A stuck pod is worse than a missing
                 // gate. The runbook quiesce still applies as operator-side discipline.
-                // (Note: TryCountInFlightAsync already logged the specific sidecar or registry
-                // failure reason via LogGateFailedOpen. No duplicate log here.)
+                LogGateFailedOpen(_logger, failureReason ?? "count-unavailable", failure);
                 return;
             }
 
@@ -110,7 +109,8 @@ internal sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecyc
     /// <inheritdoc/>
     public Task StoppedAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
-    internal async Task<int?> TryCountInFlightAsync(CancellationToken cancellationToken)
+    /// <summary>Counts active workflows or returns the reason the gate could not obtain a count.</summary>
+    internal async Task<(int? Count, string? FailureReason, Exception? Failure)> TryCountInFlightAsync(CancellationToken cancellationToken)
     {
         try
         {
@@ -128,7 +128,7 @@ internal sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecyc
                     await _inFlightRegistry.MarkInitializedAsync(cancellationToken).ConfigureAwait(false);
                 }
 
-                return fallbackCount;
+                return (fallbackCount, null, null);
             }
 
             foreach (IngestionWorkflowInFlightEntry entry in entries)
@@ -151,18 +151,16 @@ internal sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecyc
                 count++;
             }
 
-            return count;
+            return (count, null, null);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             // Per-query timeout elapsed — sidecar unreachable.
-            LogGateFailedOpen(_logger, "sidecar-query-timeout", null);
-            return null;
+            return (null, "sidecar-query-timeout", null);
         }
         catch (Exception ex)
         {
-            LogGateFailedOpen(_logger, "sidecar-query-exception", ex);
-            return null;
+            return (null, "sidecar-query-exception", ex);
         }
     }
 
