@@ -8,6 +8,9 @@ namespace Hexalith.Memories.Contracts.V1;
 /// <summary>Input for the ingestion workflow — a single file to be processed through the full pipeline.</summary>
 public sealed record IngestionInput : IWorkflowTraceContextCarrier
 {
+    /// <summary>The maximum raw byte length of inline or claim-checked ingestion content.</summary>
+    public const int MaxContentBytes = 1024 * 1024;
+
     /// <summary>Gets scheduler-owned failed-attempt lineage. Null preserves every ordinary and historical workflow's identity rules.</summary>
     public FailedIngestionRetry? FailedRetry { get; init; }
 

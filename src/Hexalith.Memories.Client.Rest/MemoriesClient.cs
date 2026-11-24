@@ -408,6 +408,7 @@ public class MemoriesClient
     /// <param name="metadata">Optional metadata fields (each entry carries its own <see cref="MetadataOrigin"/> and confidence) to attach to the memory unit.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The workflow instance id.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">The content exceeds <see cref="IngestionInput.MaxContentBytes"/> bytes.</exception>
     /// <remarks>
     /// Stable since Story 18.4 — graduated out of <c>HXL001</c>; callers no longer need
     /// <c>#pragma warning disable HXL001</c>. To supply an explicit idempotency token (so two
@@ -445,6 +446,7 @@ public class MemoriesClient
     /// </param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The workflow instance id.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">The content exceeds <see cref="IngestionInput.MaxContentBytes"/> bytes.</exception>
     public virtual Task<string> IngestAsync(
         string tenantId,
         string caseId,
@@ -489,6 +491,7 @@ public class MemoriesClient
     /// <param name="ct">Cancellation.</param>
     /// <param name="reopenSourceVersion">An exact terminal transient-cleanup snapshot, when reopening.</param>
     /// <returns>The admitted workflow handle.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">The content exceeds <see cref="IngestionInput.MaxContentBytes"/> bytes.</exception>
     public virtual Task<string> RefreshAsync(string tenantId, string caseId, string sourceUri, byte[] content,
         string contentType, string ingestedBy, IReadOnlyDictionary<string, MetadataField>? metadata, string idempotencyToken,
         string? expectedMemoryUnitId, long sourceRevisionNumber, CancellationToken ct, string? reopenSourceVersion = null)
@@ -514,6 +517,11 @@ public class MemoriesClient
         ArgumentException.ThrowIfNullOrWhiteSpace(caseId);
         ArgumentException.ThrowIfNullOrWhiteSpace(sourceUri);
         ArgumentNullException.ThrowIfNull(content);
+        if (content.Length > IngestionInput.MaxContentBytes)
+        {
+            throw new ArgumentOutOfRangeException(nameof(content), $"Content must not exceed {IngestionInput.MaxContentBytes} bytes (1 MiB).");
+        }
+
         ArgumentException.ThrowIfNullOrWhiteSpace(contentType);
         ArgumentException.ThrowIfNullOrWhiteSpace(ingestedBy);
 

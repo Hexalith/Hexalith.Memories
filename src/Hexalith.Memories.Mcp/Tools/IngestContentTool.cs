@@ -9,6 +9,7 @@ using System.ComponentModel;
 using System.Text;
 
 using Hexalith.Memories.Client.Rest;
+using Hexalith.Memories.Contracts.V1;
 
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -105,11 +106,20 @@ internal sealed class IngestContentTool
                         toolName);
                 }
 
-                return sourceType != McpSourceType.File
-                    ? mapper.MapValidation(
+                if (sourceType != McpSourceType.File)
+                {
+                    return mapper.MapValidation(
                         "UNSUPPORTED_SOURCE_TYPE",
                         $"sourceType '{sourceType}' is not yet supported by the MCP ingest_content tool.",
                         "Use sourceType=file in Story 10.1; url and event ingestion ship in Story 10.2.",
+                        toolName);
+                }
+
+                return Encoding.UTF8.GetByteCount(content) > IngestionInput.MaxContentBytes
+                    ? mapper.MapValidation(
+                        "INVALID_INPUT",
+                        $"Content must not exceed {IngestionInput.MaxContentBytes} bytes (1 MiB).",
+                        "Submit a smaller content payload.",
                         toolName)
                     : null;
             },

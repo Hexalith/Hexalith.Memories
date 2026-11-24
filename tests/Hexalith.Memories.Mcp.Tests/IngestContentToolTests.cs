@@ -46,6 +46,20 @@ public sealed class IngestContentToolTests
     }
 
     [Fact]
+    public async Task ContentAboveUtf8ByteLimit_ReturnsInvalidInputWithoutCallingClient()
+    {
+        var stub = new StubMemoriesClient();
+        IngestContentTool tool = CreateTool(stub);
+        string content = new('é', (IngestionInput.MaxContentBytes / 2) + 1);
+
+        CallToolResult result = await tool.IngestAsync(
+            "acme", "case-1", content, cancellationToken: TestContext.Current.CancellationToken);
+
+        stub.IngestCalls.ShouldBeEmpty();
+        AssertIsErrorWithCode(result, "INVALID_INPUT");
+    }
+
+    [Fact]
     public async Task TenantSuspended_MapsRemoteException()
     {
         var stub = new StubMemoriesClient

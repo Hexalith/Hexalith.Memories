@@ -11,7 +11,7 @@ using Hexalith.Memories.Server.Activities.Indexing;
 /// <summary>Central validation rules for ingestion requests and workflow input.</summary>
 internal static class IngestionInputValidator
 {
-    internal const int MaxContentBytes = 1024 * 1024;
+    internal const int MaxContentBytes = IngestionInput.MaxContentBytes;
 
     /// <summary>Validates an ingestion payload and throws <see cref="ArgumentException"/> when invalid.</summary>
     /// <param name="input">The ingestion payload to validate.</param>

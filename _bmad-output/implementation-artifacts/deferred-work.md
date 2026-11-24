@@ -1847,7 +1847,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of 7-4-quickstart-and-documentation — Group 2 (MemoriesClient) (2026-04-17)"), 2026-09-01
 location: src/Hexalith.Memories.Client.Rest/MemoriesClient.cs:401
 reason: - **`IngestAsync` has no client-side content-size guard** — server rejects >1 MiB via `IngestionInputValidator` (returns `INVALID_INPUT`) and >2 MiB via `RequestSizeLimitAttribute` (returns 413 with no `ErrorResponse` body, so `ErrorResponseDecoder.DecodeAsync` yields a terse diagnostic). UX polish, not correctness — the quickstart sample is well under 1 MiB. Revisit if `IngestAsync` grows beyond quickstart scope. [src/Hexalith.Memories.Client.Rest/MemoriesClient.cs:401]
-status: open
+status: done 2026-11-24
+resolution: The REST ingest and refresh paths share the server-side 1 MiB limit and reject oversized content before sending HTTP. The retained MCP tool preserves INVALID_INPUT for oversized UTF-8 data. Boundary and error-mapping tests passed.
 
 ### DW-266: Semantic re-index remains intentionally unsupported in `SemanticIndexer`
 

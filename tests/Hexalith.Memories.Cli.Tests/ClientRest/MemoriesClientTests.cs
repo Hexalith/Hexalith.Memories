@@ -149,6 +149,35 @@ public class MemoriesClientTests
     // `#pragma warning disable HXL001`; their mere compilation under TreatWarningsAsErrors proves the
     // experimental marker is gone.
     [Fact]
+    public async Task IngestAsync_AtContentLimit_SendsRequest()
+    {
+        (MemoriesClient client, Func<string?> capturedBody) = CreateCapturingClient("{\"instanceId\":\"workflow\"}");
+
+        string result = await client.IngestAsync("tenant", "case", "urn:source",
+            new byte[IngestionInput.MaxContentBytes], "text/plain", "producer", null,
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBe("workflow");
+        capturedBody().ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task IngestAndRefresh_AboveContentLimit_RejectBeforeSendingRequest()
+    {
+        (MemoriesClient client, Func<string?> capturedBody) = CreateCapturingClient("{\"instanceId\":\"workflow\"}");
+        byte[] content = new byte[IngestionInput.MaxContentBytes + 1];
+        CancellationToken token = TestContext.Current.CancellationToken;
+
+        (await Should.ThrowAsync<ArgumentOutOfRangeException>(() => client.IngestAsync(
+            "tenant", "case", "urn:source", content, "text/plain", "producer", null, token))).ParamName.ShouldBe("content");
+        (await Should.ThrowAsync<ArgumentOutOfRangeException>(() => client.IngestAsync(
+            "tenant", "case", "urn:source", content, "text/plain", "producer", null, "retry", token))).ParamName.ShouldBe("content");
+        (await Should.ThrowAsync<ArgumentOutOfRangeException>(() => client.RefreshAsync(
+            "tenant", "case", "urn:source", content, "text/plain", "producer", null, "retry", "predecessor", 1, token))).ParamName.ShouldBe("content");
+        capturedBody().ShouldBeNull();
+    }
+
+    [Fact]
     public async Task IngestAsync_StableOverload_CompilesWithoutHxl001AndOmitsToken()
     {
         (MemoriesClient client, Func<string?> capturedBody) = CreateCapturingClient("{\"instanceId\":\"wf-1\"}");
