@@ -245,7 +245,7 @@ public class CaseServiceTests
     }
 
     [Fact]
-    public async Task ListCasesAsync_ShouldReturnNewestCasesBeforeApplyingLimit()
+    public async Task ListCasesAsync_ShouldOrderByNewestAndOrdinalIdBeforeApplyingLimit()
     {
         // Arrange
         HashEntry[] olderCase = CreateCaseHash(
@@ -258,6 +258,11 @@ public class CaseServiceTests
             createdAt: "2026-04-01T10:00:00+00:00",
             lastUpdated: "2026-04-01T10:00:00+00:00",
             name: "Newest");
+        HashEntry[] middleCaseTiedLater = CreateCaseHash(
+            id: "case-middle-z",
+            createdAt: "2026-04-01T09:00:00+00:00",
+            lastUpdated: "2026-04-01T09:00:00+00:00",
+            name: "Middle tie");
         HashEntry[] middleCase = CreateCaseHash(
             id: "case-middle",
             createdAt: "2026-04-01T09:00:00+00:00",
@@ -271,6 +276,7 @@ public class CaseServiceTests
         (IConnectionMultiplexer redis, IDatabase redisDb, IServer _) = CreateMockRedisWithKeys(
             ("tenant-1:case:case-older", olderCase),
             ("tenant-1:case:case-newest", newestCase),
+            ("tenant-1:case:case-middle-z", middleCaseTiedLater),
             ("tenant-1:case:case-middle", middleCase),
             ("tenant-1:case:case-newest:activity", activityStreamSentinel));
         (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
@@ -284,7 +290,7 @@ public class CaseServiceTests
         // Assert
         result.Select(item => item.Id).ToList().ShouldBe(["case-newest", "case-middle"]);
         builder.Received(2).BuildCountCaseMemoryUnits(Arg.Any<string>());
-        await redisDb.Received(3).HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>());
+        await redisDb.Received(4).HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>());
         await redisDb.DidNotReceive().HashGetAllAsync("tenant-1:case:case-newest:activity", Arg.Any<CommandFlags>());
     }
 

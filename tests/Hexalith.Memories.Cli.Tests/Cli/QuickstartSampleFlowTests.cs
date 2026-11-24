@@ -46,6 +46,40 @@ public sealed class QuickstartSampleFlowTests
         client.IngestCalls.ShouldBe(1);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task IngestSample_DuplicateCaseNames_ReusesNewestCaseWithOrdinalIdTieBreak(bool reverse)
+    {
+        var client = new StubSampleClient();
+        var newest = new Case(
+            Id: "case-B",
+            TenantId: "acme",
+            Name: QuickstartSampleFlow.DefaultCaseName,
+            Description: null,
+            Status: CaseStatus.Active,
+            CreatedAt: DateTimeOffset.UnixEpoch.AddDays(1),
+            LastUpdated: DateTimeOffset.UnixEpoch.AddDays(1),
+            MemoryUnitCount: 0);
+        client.Cases.AddRange([
+            newest with { Id = "case-a" },
+            newest with { Id = "case-0", CreatedAt = DateTimeOffset.UnixEpoch },
+            newest,
+            newest with { Id = "case-1", Name = "Other case", CreatedAt = newest.CreatedAt.AddDays(1) },
+        ]);
+        if (reverse)
+        {
+            client.Cases.Reverse();
+        }
+
+        var flow = new QuickstartSampleFlow(client, TimeProvider.System);
+        SampleIngestResult result = await flow.IngestSampleAsync("acme", TestContext.Current.CancellationToken);
+
+        result.Success.ShouldBeTrue();
+        result.CaseId.ShouldBe(newest.Id);
+        client.CreateCaseCalls.ShouldBe(0);
+    }
+
     [Fact]
     public async Task IngestSample_CreatesCase_WhenMissing()
     {

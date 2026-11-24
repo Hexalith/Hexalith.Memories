@@ -334,6 +334,7 @@ internal sealed partial class CaseService
 
         List<Case> orderedCases = candidateCases
             .OrderByDescending(item => item.CreatedAt)
+            .ThenBy(item => item.Id, StringComparer.Ordinal)
             .Take(maxResults)
             .ToList();
 

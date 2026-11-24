@@ -89,9 +89,8 @@ public sealed class QuickstartSampleFlow
     }
 
     /// <summary>
-    /// Ensures a sample case exists inside <paramref name="tenantId"/> (reusing the first existing
-    /// quickstart-default case if one is present — idempotent rerun) and ingests the embedded sample
-    /// document into it.
+    /// Reuses the most recently created quickstart-default case in <paramref name="tenantId"/>,
+    /// breaking timestamp ties by ordinal identifier, or creates a sample case before ingesting the sample document.
     /// </summary>
     /// <param name="tenantId">The tenant id.</param>
     /// <param name="ct">Cancellation token.</param>
@@ -305,7 +304,11 @@ public sealed class QuickstartSampleFlow
     private async Task<string> EnsureSampleCaseAsync(string tenantId, CancellationToken ct)
     {
         IReadOnlyList<Case> cases = await _client.ListCasesAsync(tenantId, ct).ConfigureAwait(false);
-        Case? existing = cases.FirstOrDefault(c => string.Equals(c.Name, DefaultCaseName, StringComparison.Ordinal));
+        Case? existing = cases
+            .Where(candidate => string.Equals(candidate.Name, DefaultCaseName, StringComparison.Ordinal))
+            .OrderByDescending(candidate => candidate.CreatedAt)
+            .ThenBy(candidate => candidate.Id, StringComparer.Ordinal)
+            .FirstOrDefault();
         if (existing is not null)
         {
             return existing.Id;

@@ -1795,7 +1795,8 @@ resolution: The advisory check binds both loopback addresses when available. Tes
 origin: migrated from legacy ledger ("Deferred from: code review of 7-4-quickstart-and-documentation (2026-04-17)"), 2026-09-01
 location: src/Hexalith.Memories.Cli/Quickstart/QuickstartSampleFlow.cs:276-283
 reason: - **`EnsureSampleCaseAsync` picks first match of `DefaultCaseName` without stable ordering** — only manifests after repeated failed runs leave duplicate cases in the tenant. Low likelihood; will be neutralized if `CreateCaseAsync` is removed per the open decision. [src/Hexalith.Memories.Cli/Quickstart/QuickstartSampleFlow.cs:276-283]
-status: open
+status: done 2026-11-24
+resolution: The server sorts cases by newest creation time and ordinal ID before applying the limit. Quickstart uses the same order for identically named sample cases regardless of response order.
 
 ### DW-259: `NegativeCanaryQuery` is a literal constant — any future fixture copying the token into a sample body silently breaks the canary invariant
 
@@ -5983,3 +5984,9 @@ resolution: VerifyAsync_MissingSyntacticIndex_RetainsSurvivingKeyFindings passed
 - source_spec: `_bmad-output/implementation-artifacts/spec-ten-deferred-search-response-reliability.md`
   summary: Keep the hybrid fusion candidate set stable across pages.
   evidence: HybridSearchService sizes each axis candidate set from offset plus maxResults before fusion. With equal weights and axis rankings [A, X] and [B, X], the first page of size one returns A and the second can return A again after X gains two contributions. A stable retrieval window or continuation design needs its own ranking and latency validation.
+
+## Deferred from review of spec-ten-ordered-deferred-work-follow-up.md (2026-11-24)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-ten-ordered-deferred-work-follow-up.md`
+  summary: Reuse a quickstart sample case when other cases push it outside the default case-list page.
+  evidence: The server's default 100-case limit can omit an older sample before the wizard can match its name. The client and server now apply the same deterministic order. An exact-name filter or a lookup needs compatible REST and client behavior.
