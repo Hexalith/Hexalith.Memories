@@ -2856,7 +2856,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of 1-1-project-scaffolding-and-single-command-boot (2026-05-16)"), 2026-09-01
 location: src/Hexalith.Memories.AppHost/Program.cs
 reason: - **1.1-RR2. `DAPR_API_TOKEN_MODE` default silently disables token authentication.** A missing or typo'd `DAPR_API_TOKEN_MODE` value yields `(null, null)` from `ResolveDaprApiTokens` and skips both sidecar and application token wiring with no log entry. - ID: 1.1-RR2 - Status: accepted - Source story: 1-1-project-scaffolding-and-single-command-boot - Target artifact: src/Hexalith.Memories.AppHost/Program.cs - Re-open trigger: A production incident traces a missing-token deployment back to a `DAPR_API_TOKEN_MODE` typo or omission. - Rationale: Default-disabled is the intentional posture for local dev and the Aspire integration-test fixture; production runs ship `DAPR_API_TOKEN_MODE=enabled` via secret manifest and never go through this branch silently.
-status: open
+status: done 2026-11-24
+resolution: DaprApiTokenConfiguration now accepts only enabled, disabled, blank or unset DAPR_API_TOKEN_MODE values in the AppHost. Any other value stops startup without echoing the value, so a typo cannot start the sidecars without token authentication. DaprApiTokenConfigurationTests cover the accepted modes, missing tokens, typos and the non-echo rule. See spec-seven-ordered-deferred-items.md.
 
 ### DW-414: 1.1-RR3. Obsolete `WithReference` (CS0618) suppression hides upstream Aspire migration.
 

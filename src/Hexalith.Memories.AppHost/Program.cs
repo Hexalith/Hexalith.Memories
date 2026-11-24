@@ -104,6 +104,7 @@ string? daprSchedulerHostAddress = ResolveOptionalEnvironmentValue("MEMORIES_DAP
 // Story 5.4 AC3 — DAPR API token authentication.
 //
 // Tokens are only wired when DAPR_API_TOKEN_MODE=enabled is set in the environment (production/staging).
+// Any value other than enabled, disabled or unset stops the AppHost instead of silently disabling tokens.
 // They stay disabled for local development and for the Aspire integration-test fixture so the 39+ existing
 // integration tests continue to pass without needing to inject a token into every request. The sidecar
 // validates incoming app-to-sidecar calls using DAPR_API_TOKEN; the application validates incoming
@@ -111,7 +112,7 @@ string? daprSchedulerHostAddress = ResolveOptionalEnvironmentValue("MEMORIES_DAP
 // Secrets / platform secret manager and the application port must NOT be exposed externally — direct
 // access to the app port bypasses the token check. Story D8 (Phase 1.5) adds a proper
 // TenantAuthorizationMiddleware for external callers.
-(string? daprApiToken, string? appApiToken) = ResolveDaprApiTokens();
+(string? daprApiToken, string? appApiToken) = DaprApiTokenConfiguration.Resolve(Environment.GetEnvironmentVariable);
 ApplyProcessEnvironmentTokens(daprApiToken, appApiToken);
 
 // Story 6.4: make Redis durability explicit instead of relying on image defaults.
@@ -1118,28 +1119,6 @@ static void ApplyProcessEnvironmentTokens(string? daprApiToken, string? appApiTo
     {
         Environment.SetEnvironmentVariable("DAPR_API_TOKEN", daprApiToken);
     }
-}
-
-static (string? DaprApiToken, string? AppApiToken) ResolveDaprApiTokens()
-{
-    // Gate on DAPR_API_TOKEN_MODE=enabled so tokens are opt-in. Default (unset) keeps local dev and
-    // the integration-test fixture working without token propagation.
-    string? mode = Environment.GetEnvironmentVariable("DAPR_API_TOKEN_MODE");
-    if (!string.Equals(mode, "enabled", StringComparison.OrdinalIgnoreCase))
-    {
-        return (null, null);
-    }
-
-    string? daprToken = Environment.GetEnvironmentVariable("DAPR_API_TOKEN");
-    string? appToken = Environment.GetEnvironmentVariable("APP_API_TOKEN");
-
-    if (string.IsNullOrWhiteSpace(daprToken) || string.IsNullOrWhiteSpace(appToken))
-    {
-        throw new InvalidOperationException(
-            "DAPR_API_TOKEN_MODE=enabled requires both DAPR_API_TOKEN and APP_API_TOKEN environment variables to be set.");
-    }
-
-    return (daprToken, appToken);
 }
 
 static IResourceBuilder<ProjectResource> PropagateJwtBearerAuthenticationEnvironment(IResourceBuilder<ProjectResource> resource)
