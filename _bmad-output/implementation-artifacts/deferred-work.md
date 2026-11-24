@@ -1819,7 +1819,8 @@ resolution: The health probe returns a fixed diagnostic after an exception. The 
 origin: migrated from legacy ledger ("Deferred from: code review of 7-4-quickstart-and-documentation (2026-04-17)"), 2026-09-01
 location: src/Hexalith.Memories.Cli/Quickstart/QuickstartStepResult.cs:89
 reason: - **`DurationMs` uses `checked((int)Math.Round(...))` — overflows at ~24.85 days and would throw mid-serialization** — real-world risk negligible given the wizard's bounded 60s probe + 30s provisioning. Switch to `long` or clamp if the wizard ever grows unbounded polls. [src/Hexalith.Memories.Cli/Quickstart/QuickstartStepResult.cs:89]
-status: open
+status: done 2026-11-24
+resolution: Quickstart durations preserve away-from-zero rounding and clamp to the existing Int32 JSON range. Serialization tests cover both bounds and ordinary rounding.
 
 ### DW-262: `CreateCaseAsync` exceeds spec-authorized HXL001 surface (Story 7.4 TL;DR items 4-5)
 

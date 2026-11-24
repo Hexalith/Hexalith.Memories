@@ -84,7 +84,8 @@ public sealed record QuickstartStepResult(
     string? Suggestion,
     string? ErrorCode)
 {
-    /// <summary>Wall-clock time spent on this step, serialized as integer milliseconds.</summary>
+    /// <summary>Wall-clock time in milliseconds, rounded away from zero at midpoints and clamped to the wire integer range.</summary>
     [JsonPropertyName("durationMs")]
-    public int DurationMs => checked((int)Math.Round(Duration.TotalMilliseconds, MidpointRounding.AwayFromZero));
+    public int DurationMs => (int)Math.Clamp(
+        Math.Round(Duration.TotalMilliseconds, MidpointRounding.AwayFromZero), int.MinValue, int.MaxValue);
 }
