@@ -146,6 +146,43 @@ public sealed class SearchResultFormatterTests
         output.ShouldNotContain("1. [");
     }
 
+    [Fact]
+    public void HumanFormattersOutputAxisDetailsInOrdinalOrder()
+    {
+        HybridSearchResult hybrid = BuildHybridResult(withExplain: true) with
+        {
+            Explanation = new SearchExplanation
+            {
+                Caveat = PrdCaveat,
+                AxisDetails = new Dictionary<string, AxisExplanation>
+                {
+                    ["semantic"] = new() { NormalizationMethod = "cosine", Description = "cosine similarity" },
+                    ["Syntactic"] = new() { NormalizationMethod = "bm25_saturation", Description = "BM25 saturation" },
+                },
+            },
+        };
+        SearchResult single = new()
+        {
+            Results = [],
+            TotalCount = 0,
+            HasIndexedMemoryUnits = true,
+            Query = hybrid.Query,
+            Explanation = hybrid.Explanation,
+        };
+        using var hybridOutput = new StringWriter();
+        using var singleOutput = new StringWriter();
+
+        new HybridSearchResultHumanFormatter().Write(hybrid, hybridOutput);
+        new SearchResultHumanFormatter().Write(single, singleOutput);
+
+        foreach (string output in new[] { hybridOutput.ToString(), singleOutput.ToString() })
+        {
+            output.ShouldContain("(semantic: cosine)");
+            output.ShouldContain("(Syntactic: bm25_saturation)");
+            output.IndexOf("(Syntactic:", StringComparison.Ordinal).ShouldBeLessThan(output.IndexOf("(semantic:", StringComparison.Ordinal));
+        }
+    }
+
     private static HybridSearchResult BuildHybridResult(
         bool withExplain,
         bool degraded = false,

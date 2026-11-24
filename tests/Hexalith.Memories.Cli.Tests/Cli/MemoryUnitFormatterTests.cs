@@ -71,6 +71,31 @@ public sealed class MemoryUnitFormatterTests
         metadata.GetProperty("topic").GetProperty("origin").GetString().ShouldBe("ai");
     }
 
+    [Fact]
+    public void HumanAndTableOutputMetadataInOrdinalOrder()
+    {
+        MemoryUnit unit = BuildUnit(includeMetadata: true) with
+        {
+            Metadata = new Dictionary<string, MetadataField>
+            {
+                ["author"] = new("Jerome", MetadataOrigin.Human, 1f),
+                ["Topic"] = new("compliance", MetadataOrigin.Ai, 0.87f),
+            },
+        };
+        using var human = new StringWriter();
+        using var table = new StringWriter();
+
+        new MemoryUnitHumanFormatter().Write(unit, human);
+        new MemoryUnitTableFormatter().Write(unit, table);
+
+        foreach (string output in new[] { human.ToString(), table.ToString() })
+        {
+            output.ShouldContain("Jerome");
+            output.ShouldContain("compliance");
+            output.IndexOf("compliance", StringComparison.Ordinal).ShouldBeLessThan(output.IndexOf("Jerome", StringComparison.Ordinal));
+        }
+    }
+
     private static MemoryUnit BuildUnit(bool includeMetadata)
         => new()
         {

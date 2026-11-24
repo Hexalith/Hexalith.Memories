@@ -6,6 +6,7 @@
 namespace Hexalith.Memories.Cli.Commands;
 
 using System.CommandLine;
+using System.Globalization;
 using System.Text;
 
 using Hexalith.Memories.Cli.Errors;
@@ -84,10 +85,10 @@ Examples:
             Description = "Search axis: syntactic, semantic, nl, graph, or hybrid (default).",
             DefaultValueFactory = _ => "hybrid",
         };
-        var maxResultsOption = new Option<int>("--max-results")
+        var maxResultsOption = new Option<string>("--max-results")
         {
             Description = "Max rows (default: server default 10; CLI ceiling: 1000).",
-            DefaultValueFactory = _ => 10,
+            DefaultValueFactory = _ => "10",
         };
         var explainOption = new Option<bool>("--explain")
         {
@@ -123,7 +124,7 @@ Examples:
         string? caseId,
         string? query,
         string axis,
-        int maxResults,
+        string? maxResultsValue,
         bool explain,
         CancellationToken ct)
     {
@@ -158,6 +159,15 @@ Examples:
                 code: "INVALID_INPUT",
                 message: $"--query is required for --axis {normalizedAxis}.",
                 suggestion: "Run 'memories search query --help' to see valid input combinations.");
+        }
+
+        if (!int.TryParse(maxResultsValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out int maxResults))
+        {
+            return WriteValidationError(
+                console,
+                code: "INVALID_INPUT",
+                message: "--max-results must be a whole number.",
+                suggestion: "Run 'memories search query --help' to review the allowed range.");
         }
 
         if (maxResults <= 0)
@@ -248,7 +258,7 @@ Examples:
     }
 
     private static EvidencePacketScope CreateEvidenceScope(string tenantId, string? caseId)
-        => new(tenantId, caseId, EvidencePacketIsolationStatus.Authorized, string.IsNullOrWhiteSpace(caseId) ? "tenant" : "tenant-case");
+        => new(tenantId, caseId, EvidencePacketIsolationStatus.Authorized, EvidencePacketPermissionsContext.ForScope(caseId));
 
     private static int WriteValidationError(CliConsole console, string code, string message, string suggestion)
     {

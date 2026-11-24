@@ -70,7 +70,7 @@ public sealed class HybridSearchResultHumanFormatter : IOutputFormatter<HybridSe
 
         writer.WriteLine(builder.ToString());
 
-        foreach (KeyValuePair<string, AxisExplanation> axis in explanation.AxisDetails)
+        foreach (KeyValuePair<string, AxisExplanation> axis in explanation.AxisDetails.OrderBy(static pair => pair.Key, StringComparer.Ordinal))
         {
             writer.WriteLine($"      ({axis.Key}: {axis.Value.NormalizationMethod})");
         }

@@ -16,6 +16,14 @@ public sealed record HybridSearchResult
     /// <summary>Gets the total number of deduplicated fused results before pagination.</summary>
     public required long TotalCount { get; init; }
 
+    /// <summary>Gets the normalized request offset, or null when the producer did not report a page window.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? Offset { get; init; }
+
+    /// <summary>Gets the normalized maximum page size before budget truncation, or null when unreported.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? MaxResults { get; init; }
+
     /// <summary>Gets a value indicating whether any enabled axis failed at runtime.</summary>
     public required bool Degraded { get; init; }
 

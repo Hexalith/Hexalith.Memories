@@ -6,6 +6,8 @@
 namespace Hexalith.Memories.Cli.Tests.Cli;
 
 using System.CommandLine;
+using System.Net;
+using System.Text;
 using System.Text.Json;
 
 using Hexalith.Memories.Cli;
@@ -13,8 +15,11 @@ using Hexalith.Memories.Cli.Commands;
 using Hexalith.Memories.Cli.Configuration;
 using Hexalith.Memories.Cli.Execution;
 using Hexalith.Memories.Cli.Output;
+using Hexalith.Memories.Client.Rest;
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 using Shouldly;
 
@@ -104,12 +109,75 @@ public sealed class SearchQueryCommandTests
         doc.RootElement.TryGetProperty("data", out _).ShouldBeFalse();
     }
 
-    private static (IServiceProvider Services, StringWriter Stdout, StringWriter Stderr) BuildServices(OutputFormat format = OutputFormat.Human)
+    [Theory]
+    [InlineData("abc")]
+    [InlineData("2147483648")]
+    public async Task Invoke_NonIntegerMaxResults_EmitsStructuredValidationError(string value)
+    {
+        (IServiceProvider services, StringWriter stdout, StringWriter stderr) = BuildServices(OutputFormat.Json);
+        Command query = SearchQueryCommand.Build(services);
+
+        int exit = await query.Parse(["query", "--tenant", "t1", "--query", "x", "--max-results", value]).InvokeAsync();
+
+        exit.ShouldBe(CliExitCodes.Plumbing);
+        stderr.ToString().ShouldBeEmpty();
+        using JsonDocument doc = JsonDocument.Parse(stdout.ToString());
+        doc.RootElement.GetProperty("command").GetString().ShouldBe(SearchQueryCommand.CommandName);
+        doc.RootElement.GetProperty("error").GetProperty("code").GetString().ShouldBe("INVALID_INPUT");
+        doc.RootElement.GetProperty("error").GetProperty("message").GetString()!.ShouldContain("--max-results must be a whole number");
+        doc.RootElement.TryGetProperty("data", out _).ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData(OutputFormat.Human)]
+    [InlineData(OutputFormat.Table)]
+    [InlineData(OutputFormat.Json)]
+    public async Task Invoke_NonFiniteUpstreamScore_EmitsOnlyTheError(OutputFormat format)
+    {
+        const string json = """
+            {"results":[{"memoryUnitId":"mu","compositeScore":1e999,"contentSnippet":"hidden-result","sourceUri":"source","sourceType":"file"}],
+             "totalCount":1,"degraded":false,"unavailableAxes":[],"query":"needle"}
+            """;
+        using var handler = new TestDelegatingHandler((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(json, Encoding.UTF8, "application/json"),
+        }));
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("http://127.0.0.1:65000/") };
+        var client = new MemoriesClient(http, Options.Create(new MemoriesClientOptions()), NullLogger<MemoriesClient>.Instance);
+        (IServiceProvider services, StringWriter stdout, StringWriter stderr) = BuildServices(format, client);
+        Command query = SearchQueryCommand.Build(services);
+
+        int exit = await query.Parse(["query", "--tenant", "t1", "--query", "needle"]).InvokeAsync();
+
+        exit.ShouldBe(CliExitCodes.Plumbing);
+        if (format == OutputFormat.Json)
+        {
+            stderr.ToString().ShouldBeEmpty();
+            using JsonDocument doc = JsonDocument.Parse(stdout.ToString());
+            doc.RootElement.GetProperty("error").GetProperty("code").GetString().ShouldBe("INVALID_RESPONSE");
+            doc.RootElement.TryGetProperty("data", out _).ShouldBeFalse();
+        }
+        else
+        {
+            stdout.ToString().ShouldBeEmpty();
+            stderr.ToString().ShouldContain("INVALID_RESPONSE");
+            stderr.ToString().ShouldNotContain("hidden-result");
+        }
+    }
+
+    private static (IServiceProvider Services, StringWriter Stdout, StringWriter Stderr) BuildServices(
+        OutputFormat format = OutputFormat.Human,
+        MemoriesClient? client = null)
     {
         var stdout = new StringWriter();
         var stderr = new StringWriter();
         IServiceCollection collection = CliServices.BuildCollection();
         collection.AddSingleton(new CliConsole { Out = stdout, Error = stderr, Format = format });
+        if (client is not null)
+        {
+            collection.AddSingleton(client);
+        }
+
         ServiceProvider provider = collection.BuildServiceProvider();
         FlagConfigurationSource flag = provider.GetRequiredService<FlagConfigurationSource>();
         flag.Endpoint = new Uri("http://127.0.0.1:65000/");

@@ -85,6 +85,54 @@ public sealed class SearchEndpointContractTests : IDisposable
         audit.Outcome.ShouldBe("error"); audit.ErrorCode.ShouldBe("SOURCE_PUBLICATION_CHANGED"); audit.ResultCount.ShouldBeNull();
     }
 
+    [Theory]
+    [InlineData("2147483647")]
+    [InlineData("-1")]
+    [InlineData("url,event")]
+    public async Task SearchRejectsInvalidSourceTypeBeforeRetrieval(string sourceType)
+    {
+        StubTenantActive("acme-search");
+        using HttpClient client = _factory.CreateClient();
+
+        using HttpResponseMessage response = await client.GetAsync(
+            $"/api/v1/search?tenantId=acme-search&query=foo&axis=syntactic&sourceType={sourceType}&caseId=missing-case",
+            TestContext.Current.CancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await ReadErrorResponseAsync(response)).Code.ShouldBe("INVALID_SOURCE_TYPE");
+        await _factory.RedisDatabase.DidNotReceive().HashGetAllAsync("acme-search:case:missing-case", Arg.Any<CommandFlags>());
+        await _factory.RedisDatabase.DidNotReceive().ExecuteAsync("FT.PROFILE", Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>());
+    }
+
+    [Theory]
+    [InlineData("FiLe")]
+    [InlineData("0")]
+    public async Task SyntacticSearchReportsClampedPageWindowEvenWhenEmpty(string sourceType)
+    {
+        StubTenantActive("acme-search");
+        _factory.RedisDatabase.ExecuteAsync("FT.PROFILE", Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())
+            .Returns(RedisResult.Create([
+                RedisResult.Create([RedisResult.Create(0)]),
+                RedisResult.Create([RedisResult.Create([RedisResult.Create((RedisValue)"Warning")])]),
+            ]));
+        using HttpClient client = _factory.CreateClient();
+
+        using HttpResponseMessage response = await client.GetAsync(
+            $"/api/v1/search?tenantId=acme-search&query=foo&axis=syntactic&sourceType={sourceType}&maxResults=1000&offset=-4",
+            TestContext.Current.CancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        SearchResult? result = await response.Content.ReadFromJsonAsync<SearchResult>(MemoriesJsonContext.Options, TestContext.Current.CancellationToken);
+        result.ShouldNotBeNull();
+        result.Results.ShouldBeEmpty();
+        result.Offset.ShouldBe(0);
+        result.MaxResults.ShouldBe(100);
+        await _factory.RedisDatabase.Received().ExecuteAsync(
+            "FT.PROFILE",
+            Arg.Is<ICollection<object>>(args => args.Any(arg => arg.ToString()!.Contains("@sourceType:{file}", StringComparison.Ordinal))),
+            Arg.Any<CommandFlags>());
+    }
+
     [Fact]
     public async Task HybridSearch_WithSeparatorOnlyAxes_ReturnsInvalidAxis()
     {
@@ -297,6 +345,18 @@ public sealed class SearchEndpointContractTests : IDisposable
         CaseGroupSummary betaGroup = result.CaseGroups.Single(g => g.CaseId == "case-beta");
         betaGroup.CaseName.ShouldBe("Beta Case");
         betaGroup.ResultCount.ShouldBe(1);
+
+        using HttpResponseMessage secondPage = await client.GetAsync(
+            "/api/v1/search?tenantId=acme-search&query=calibration&axis=hybrid&axes=syntactic&offset=1&maxResults=1",
+            TestContext.Current.CancellationToken);
+
+        secondPage.StatusCode.ShouldBe(HttpStatusCode.OK);
+        HybridSearchResult? paged = await secondPage.Content.ReadFromJsonAsync<HybridSearchResult>(MemoriesJsonContext.Options, TestContext.Current.CancellationToken);
+        paged.ShouldNotBeNull();
+        paged.Offset.ShouldBe(1);
+        paged.MaxResults.ShouldBe(1);
+        paged.TotalCount.ShouldBe(2);
+        paged.Results.Single().MemoryUnitId.ShouldBe("mu-beta");
     }
 
     [Fact]

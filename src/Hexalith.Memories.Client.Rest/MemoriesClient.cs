@@ -162,7 +162,7 @@ public class MemoriesClient
             metadataQuery: null,
             subject: null,
             maxResults: request.MaxResults,
-            offset: 0,
+            offset: request.Offset,
             explain: request.Explain,
             tokenBudget: request.TokenBudget,
             attributeFilters: null);
@@ -608,22 +608,22 @@ public class MemoriesClient
 
     /// <summary>
     /// Story 25.3 — the single generic send/decode path behind the standard "GET → deserialize
-    /// <typeparamref name="T"/> or throw" client methods. Issues a GET to <paramref name="relativePath"/>,
+    /// <typeparamref name="T"/> or throw" client methods. Issues a GET to <paramref name="requestPath"/>,
     /// maps any non-2xx to a <see cref="MemoriesRemoteException"/> via <see cref="ErrorResponseDecoder"/>, and
     /// decodes a required non-null <typeparamref name="T"/> from the 2xx body (empty/unparseable bodies become
     /// a structured <c>INVALID_RESPONSE</c>).
     /// </summary>
     /// <typeparam name="T">The response contract type to decode.</typeparam>
-    /// <param name="relativePath">The relative request path (built from <see cref="MemoriesRoutes"/>), query included.</param>
+    /// <param name="requestPath">The request path built from <see cref="MemoriesRoutes"/>, with its query and optional endpoint prefix.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The decoded, non-null response.</returns>
-    private async Task<T> SendAsync<T>(string relativePath, CancellationToken ct)
+    private async Task<T> SendAsync<T>(string requestPath, CancellationToken ct)
     {
         return await ExecuteWithinHttpTimeoutAsync(
             async effectiveCt =>
             {
                 using HttpResponseMessage response = await _httpClient
-                    .GetAsync(relativePath, HttpCompletionOption.ResponseHeadersRead, effectiveCt)
+                    .GetAsync(requestPath, HttpCompletionOption.ResponseHeadersRead, effectiveCt)
                     .ConfigureAwait(false);
                 await ThrowIfNotSuccessAsync(response, effectiveCt).ConfigureAwait(false);
                 return await ReadRequiredAsync<T>(response, effectiveCt).ConfigureAwait(false);
@@ -684,9 +684,10 @@ public class MemoriesClient
         catch (OperationCanceledException exception)
             when (!ct.IsCancellationRequested && timeoutCts.IsCancellationRequested)
         {
+            const string timeoutMessage = "The request timed out before the response body was read.";
             throw new TaskCanceledException(
-                "The request timed out before the response body was read.",
-                exception,
+                timeoutMessage,
+                new TimeoutException(timeoutMessage, exception),
                 timeoutCts.Token);
         }
     }
@@ -729,9 +730,21 @@ public class MemoriesClient
             T? value = await response.Content
                 .ReadFromJsonAsync<T>(MemoriesJsonContext.Options, ct)
                 .ConfigureAwait(false);
-            return value ?? throw CreateInvalidResponseException(
-                response.StatusCode,
-                $"Server returned a 2xx response with an empty body where a {typeof(T).Name} was expected.");
+            if (value is null)
+            {
+                throw CreateInvalidResponseException(
+                    response.StatusCode,
+                    $"Server returned a 2xx response with an empty body where a {typeof(T).Name} was expected.");
+            }
+
+            if (ContainsNonFiniteSearchValue(value))
+            {
+                throw CreateInvalidResponseException(
+                    response.StatusCode,
+                    "Server returned a non-finite score, weight, or confidence value.");
+            }
+
+            return value;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -819,7 +832,31 @@ public class MemoriesClient
     /// </summary>
     private const int DefaultServerMaxResults = 10;
 
-    private static string BuildSearchPath(
+    private static bool ContainsNonFiniteSearchValue<T>(T value) => value switch
+    {
+        SearchResult search => search.Results?.Any(static result => result is not null && !double.IsFinite(result.Score)) == true
+            || ContainsNonFiniteWeights(search.Explanation?.WeightsUsed)
+            || ContainsNonFinitePacketScores(search.EvidencePacket),
+        HybridSearchResult hybrid => hybrid.Results?.Any(static result => result is not null
+            && (!double.IsFinite(result.CompositeScore) || !double.IsFinite(result.SyntacticScore ?? 0)
+                || !double.IsFinite(result.SemanticScore ?? 0) || !double.IsFinite(result.GraphScore ?? 0)
+                || !double.IsFinite(result.NlScore ?? 0))) == true
+            || ContainsNonFiniteWeights(hybrid.Explanation?.WeightsUsed)
+            || ContainsNonFinitePacketScores(hybrid.EvidencePacket),
+        MemoryUnit unit => unit.Metadata?.Values.Any(static field => field is not null && !float.IsFinite(field.Confidence)) == true,
+        _ => false,
+    };
+
+    private static bool ContainsNonFiniteWeights(FusionWeights? weights)
+        => weights is not null
+            && (!double.IsFinite(weights.SyntacticWeight) || !double.IsFinite(weights.SemanticWeight)
+                || !double.IsFinite(weights.GraphWeight) || !double.IsFinite(weights.NlWeight));
+
+    private static bool ContainsNonFinitePacketScores(EvidencePacket? packet)
+        => packet?.Sources?.Any(static source => !double.IsFinite(source?.Score ?? 0)) == true
+            || packet?.Evidence?.AxisEvidence?.Any(static axis => !double.IsFinite(axis?.Score ?? 0)) == true;
+
+    private string BuildSearchPath(
         string axis,
         string tenantId,
         string? query,
@@ -901,7 +938,14 @@ public class MemoriesClient
             }
         }
 
-        return builder.ToString();
+        string path = builder.ToString();
+        if (_httpClient.BaseAddress is not { } endpoint || endpoint.AbsolutePath.EndsWith('/'))
+        {
+            return path;
+        }
+
+        var directory = new UriBuilder(endpoint) { Path = endpoint.AbsolutePath + "/" };
+        return new Uri(directory.Uri, path).AbsoluteUri;
     }
 
     /// <summary>

@@ -33,7 +33,7 @@ public static partial class EvidencePacketMapper
                 tenantId,
                 caseId,
                 EvidencePacketIsolationStatus.Unknown,
-                caseId is null ? "tenant" : "tenant-case"),
+                EvidencePacketPermissionsContext.ForScope(caseId)),
             new EvidencePacketResultSummary(string.Empty, 0, 0, null, null),
             [],
             new EvidencePacketEvidence(
@@ -679,7 +679,9 @@ public static partial class EvidencePacketMapper
             ? scope with
             {
                 CaseId = null,
-                PermissionsContext = scope.PermissionsContext == "tenant-case" ? "tenant" : scope.PermissionsContext,
+                PermissionsContext = scope.PermissionsContext == EvidencePacketPermissionsContext.TenantCase
+                    ? EvidencePacketPermissionsContext.Tenant
+                    : scope.PermissionsContext,
             }
             : scope;
 

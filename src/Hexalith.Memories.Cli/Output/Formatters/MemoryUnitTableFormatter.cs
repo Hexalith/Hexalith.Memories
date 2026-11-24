@@ -46,7 +46,7 @@ public sealed class MemoryUnitTableFormatter : IOutputFormatter<MemoryUnit>
         }
 
         var metaRows = new List<IReadOnlyList<string>>(value.Metadata.Count);
-        foreach (KeyValuePair<string, MetadataField> kv in value.Metadata)
+        foreach (KeyValuePair<string, MetadataField> kv in value.Metadata.OrderBy(static pair => pair.Key, StringComparer.Ordinal))
         {
             string origin = kv.Value.Origin == MetadataOrigin.Human ? "human" : "ai";
             string confidence = kv.Value.Confidence.ToString("F2", CultureInfo.InvariantCulture);

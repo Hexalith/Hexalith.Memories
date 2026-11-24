@@ -11,6 +11,8 @@ using Hexalith.Memories.Client.Rest;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Mcp;
 
+using Microsoft.Extensions.Logging;
+
 using ModelContextProtocol.Protocol;
 
 using Shouldly;
@@ -58,6 +60,29 @@ public sealed class McpToolExecutorTests
         operationCalled.ShouldBeFalse();
         AssertIsErrorWithCode(result, McpErrorMapper.InternalErrorCode);
         result.StructuredContent!.Value.GetProperty("message").GetString().ShouldBe(McpErrorMapper.SanitizedFailureMessage);
+    }
+
+    [Fact]
+    public async Task RunAsync_ThrowingValidationReturnsSanitizedErrorBeforeOperation()
+    {
+        var logger = new ToolFailureTestLogger();
+        McpToolExecutor executor = McpToolTestFactory.CreateExecutor(logger);
+        bool operationCalled = false;
+        const string rawInput = "private validation input";
+
+        CallToolResult result = await executor.RunAsync(
+            "acme", "test_tool", _ => throw new InvalidOperationException(rawInput),
+            (_, _) =>
+            {
+                operationCalled = true;
+                return Task.FromResult(new CallToolResult());
+            },
+            TestContext.Current.CancellationToken);
+
+        operationCalled.ShouldBeFalse();
+        AssertIsErrorWithCode(result, McpErrorMapper.InternalErrorCode);
+        result.StructuredContent!.Value.GetRawText().ShouldNotContain(rawInput);
+        logger.Entries.ShouldHaveSingleItem().Message.ShouldNotContain(rawInput);
     }
 
     [Fact]
@@ -126,7 +151,8 @@ public sealed class McpToolExecutorTests
     [Fact]
     public async Task RunAsync_UnexpectedFailureUsesSanitizedGenericMapping()
     {
-        McpToolExecutor executor = McpToolTestFactory.CreateExecutor();
+        var logger = new ToolFailureTestLogger();
+        McpToolExecutor executor = McpToolTestFactory.CreateExecutor(logger);
         const string sensitiveDetail = "secret caller input";
 
         CallToolResult result = await executor.RunAsync(
@@ -138,7 +164,32 @@ public sealed class McpToolExecutorTests
 
         AssertIsErrorWithCode(result, McpErrorMapper.InternalErrorCode);
         result.Content[0].ShouldBeOfType<TextContentBlock>().Text.ShouldNotContain(sensitiveDetail);
-        result.StructuredContent!.Value.GetProperty("message").GetString().ShouldBe(McpErrorMapper.SanitizedFailureMessage);
+        var payload = result.StructuredContent!.Value;
+        payload.GetProperty("message").GetString().ShouldBe(McpErrorMapper.SanitizedFailureMessage);
+        payload.GetProperty("evidencePacket").GetProperty("scope").GetProperty("tenantId").GetString().ShouldBe("acme");
+        var log = logger.Entries.ShouldHaveSingleItem();
+        log.Level.ShouldBe(LogLevel.Error);
+        log.Message.ShouldContain("test_tool");
+        log.Message.ShouldContain(nameof(InvalidOperationException));
+        log.Message.ShouldNotContain(sensitiveDetail);
+        log.Exception.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task RunAsync_HttpTimeoutWithLiveCallerReturnsScopedNetworkError()
+    {
+        var logger = new ToolFailureTestLogger();
+        McpToolExecutor executor = McpToolTestFactory.CreateExecutor(logger);
+
+        CallToolResult result = await executor.RunAsync(
+            "acme", "test_tool", _ => null,
+            (_, _) => throw new TaskCanceledException("sensitive", new TimeoutException()),
+            TestContext.Current.CancellationToken, caseId: "case-a");
+
+        AssertIsErrorWithCode(result, McpErrorMapper.NetworkErrorCode);
+        result.StructuredContent!.Value.GetProperty("evidencePacket").GetProperty("scope")
+            .GetProperty("caseId").GetString().ShouldBe("case-a");
+        logger.Entries.ShouldHaveSingleItem().Message.ShouldNotContain("sensitive");
     }
 
     [Fact]

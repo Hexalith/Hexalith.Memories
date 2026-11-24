@@ -1520,7 +1520,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of 2-6-explain-mode-and-confidence-scores (2026-04-02)"), 2026-09-01
 location: n/a
 reason: - **Return `offset` and `maxResults` pagination metadata in search response envelopes** — AC 3 still calls for `offset`, `maxResults`, and `totalCount` in paginated responses, but the response contracts still expose only `TotalCount`. This appears to predate the explain-mode change and would require a broader response-contract update across `SearchResult` and `HybridSearchResult`.
-status: open
+status: done 2026-11-24
+resolution: Both HTTP search envelopes report the effective page window, including clamped and empty pages. REST callers can set the hybrid offset. Endpoint and client tests verify the window and legacy JSON compatibility. See spec-ten-deferred-search-response-reliability.md.
 decision: 2026-09-01 Add pagination metadata — Add fields to paginated envelopes, populate them consistently, update consumers, and test compatibility.
 decision: 2026-09-01 Add pagination metadata — Add fields to paginated envelopes, populate them consistently, update consumers, and test compatibility.
 
@@ -1653,14 +1654,16 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of 7-2-output-formats-and-explain-display (2026-04-16)"), 2026-09-01
 location: src/Hexalith.Memories.Cli/Output/Formatters/HybridSearchResultHumanFormatter.cs, SearchResultHumanFormatter.cs, MemoryUnitHumanFormatter.cs, MemoryUnitTableFormatter.cs
 reason: - **Dictionary iteration order in `AxisDetails` / `Metadata` is not sorted** — `SearchExplanation.AxisDetails` and `MemoryUnit.Metadata` formatters enumerate the underlying `Dictionary<,>` in server-insertion order. Test-fragility for golden snapshots if the server ever reorders its JSON payload; no AC broken today. Sort keys at emit time when that becomes load-bearing. [src/Hexalith.Memories.Cli/Output/Formatters/HybridSearchResultHumanFormatter.cs, SearchResultHumanFormatter.cs, MemoryUnitHumanFormatter.cs, MemoryUnitTableFormatter.cs]
-status: open
+status: done 2026-11-24
+resolution: Human explanation and human/table metadata formatters sort dictionary keys with StringComparer.Ordinal. Mixed-case keys inserted in reverse order verify the output order. See spec-ten-deferred-search-response-reliability.md.
 
 ### DW-251: `NaN` / `Infinity` confidence or composite scores poison the JSON envelope
 
 origin: migrated from legacy ledger ("Deferred from: code review of 7-2-output-formats-and-explain-display (2026-04-16)"), 2026-09-01
 location: src/Hexalith.Memories.Cli/Output/Formatters/HybridSearchResultHumanFormatter.cs, MemoryUnitHumanFormatter.cs
 reason: - **`NaN` / `Infinity` confidence or composite scores poison the JSON envelope** — If the server ever emits non-finite floats, human/table prints `NaN`/`Infinity` and the JSON envelope emits bare `NaN` tokens that strict parsers (jq, `JSON.parse`, Python `allow_nan=False`) reject. Contracts don't currently enable `AllowNamedFloatingPointLiterals`; treat as contract-boundary work if non-finite scores ever become legitimate. [src/Hexalith.Memories.Cli/Output/Formatters/HybridSearchResultHumanFormatter.cs, MemoryUnitHumanFormatter.cs]
-status: open
+status: done 2026-11-24
+resolution: REST decoding returns INVALID_RESPONSE for non-finite search scores, explanation weights, or memory metadata confidence. Overflow regressions cover the REST reader and the CLI human, table, and JSON command paths. See spec-ten-deferred-search-response-reliability.md.
 
 ### DW-252: `IOutputFormatter<T>.Write` signature has no `CancellationToken`
 
@@ -1680,14 +1683,16 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of 7-2-output-formats-and-explain-display (2026-04-16)"), 2026-09-01
 location: src/Hexalith.Memories.Client.Rest/MemoriesClient.cs BuildSearchPath
 reason: - **`BuildSearchPath` drops subpath when `--endpoint` has one** — Constructing `"api/search?..."` as a relative URI against an `HttpClient.BaseAddress` like `http://host:5000/v1` drops `/v1` per `Uri` resolution rules. No 7.2 AC exercises subpath endpoints; Story 7.1 owns endpoint normalization. [src/Hexalith.Memories.Client.Rest/MemoriesClient.cs BuildSearchPath]
-status: open
+status: done 2026-11-24
+resolution: Both REST search methods keep the configured endpoint path prefix. Client tests cover slash-terminated, unterminated, and percent-escaped prefixes. See spec-ten-deferred-search-response-reliability.md.
 
 ### DW-255: `--max-results abc` exits via System.CommandLine default error
 
 origin: migrated from legacy ledger ("Deferred from: code review of 7-2-output-formats-and-explain-display (2026-04-16)"), 2026-09-01
 location: src/Hexalith.Memories.Cli/Commands/SearchQueryCommand.cs Options
 reason: - **`--max-results abc` exits via System.CommandLine default error** — Non-integer input bypasses the 7.2 "plumbing = 2" exit-code contract because System.CommandLine's built-in parser emits its own error format. Parser-level concern consistent with the Story 7.1 baseline; neither story tests this edge. [src/Hexalith.Memories.Cli/Commands/SearchQueryCommand.cs Options]
-status: open
+status: done 2026-11-24
+resolution: CLI search validates the integer in its command action, returning INVALID_INPUT and plumbing exit code 2 for a nonnumeric or overflowing value. JSON command tests pin the envelope. See spec-ten-deferred-search-response-reliability.md.
 
 ### DW-256: `IngestAsync` returns `Task<string>` (workflow id) not `Task<MemoryUnit>` and takes `byte[]` + `contentType` + `ingestedBy`
 
@@ -2820,7 +2825,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of story-2.7-evidence-packet-contract-mapping (2026-05-20)"), 2026-09-01
 location: n/a
 reason: - **2.7-CR6. MCP error path uses `UnknownScope()` for known-tenant errors.** `McpErrorMapper.cs:61, 86, 105, 132` — only the forbidden branch passes real scope. Rationale: requires plumbing `requestedTenantId`/`@case` through `Map`/`MapGeneric`/`MapValidation` from `SearchMemoryTool`; touches every MCP tool that hits the error mapper.
-status: open
+status: done 2026-11-24
+resolution: MCP search diagnostics keep the well-formed tenant and case request context with unknown isolation. Missing or malformed identifiers are suppressed, and search tool tests cover validation and remote errors. See spec-ten-deferred-search-response-reliability.md.
 
 ### DW-429: 2.7-CR7. `MapOmittedReason` falls to default `None` for future enum values
 
@@ -2879,7 +2885,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of story-2.7-evidence-packet-contract-mapping (2026-05-20)"), 2026-09-01
 location: n/a
 reason: - **2.7-CR14. Inconsistent `permissionsContext` values across surfaces** (`tenant`/`tenant-case`/`mcp-auth`/`mcp-error`). Rationale: needs a single source-of-truth constant list.
-status: open
+status: done 2026-11-24
+resolution: EvidencePacketPermissionsContext defines the existing scope vocabulary used by CLI, MCP and the mapper. The contract guide records when each wire value is used. See spec-ten-deferred-search-response-reliability.md.
 
 ### DW-437: 2.7-CR15. State precedence does not model `Redaction`/`Policy` states
 
@@ -2903,7 +2910,8 @@ decision: 2026-09-01 Emit additive recoveries — Keep backend recovery primary 
 origin: migrated from legacy ledger ("Deferred from: code review of story-2.7-evidence-packet-contract-mapping (2026-05-20)"), 2026-09-01
 location: n/a
 reason: - **2.7-CR17. `McpErrorPayload` not registered in source-gen `MemoriesJsonContext`** (AOT-only risk; works today via reflection fallback). Rationale: needs Mcp-side source-gen context.
-status: open
+status: done 2026-11-24
+resolution: McpErrorJsonContext generates the structured error envelope and packet metadata. MCP mapper and tool tests verify the existing camel-case fields and optional case behavior. See spec-ten-deferred-search-response-reliability.md.
 
 ### DW-440: 2.7-CR18. No single-axis MCP packet test, no default-caveat-fallback CLI test, no `AxisEvidence` determinism-ordering test, no CLI-stable-property-names story-assertion.
 
@@ -3523,7 +3531,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: bmad-dev-auto review of spec-25-1-program-cs-decomposition (2026-07-06)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-25-1-program-cs-decomposition.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-25-1-program-cs-decomposition.md` summary: Search source-type validation accepts numeric enum values that do not correspond to defined `SourceType` members. evidence: The review traced `/api/search` validation and found `Enum.TryParse<SourceType>(sourceType, ignoreCase: true, out _)` without `Enum.IsDefined`; numeric values can parse and flow into search filters. This behavior existed before endpoint extraction and is outside the mechanical decomposition scope.
-status: open
+status: done 2026-11-24
+resolution: The endpoint rejects undefined enum values and comma lists with INVALID_SOURCE_TYPE before case lookup or retrieval. Endpoint tests cover rejected inputs and canonicalized defined values. See spec-ten-deferred-search-response-reliability.md.
 
 ### DW-530: Graph traversal treats comma-only `edgeTypes` input as an empty explicit edge-type filter instead of defaulting or rejecting.
 
@@ -3584,7 +3593,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: bmad-dev-auto follow-up review of spec-17-7-runnable-web-specimen-and-browser-at-accessibility-gap-closure (2026-07-06)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-25-6-mcp-tool-executor.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-25-6-mcp-tool-executor.md` summary: Generic MCP tool failures direct operators to inspect server logs, but the current tool/executor path does not log the original exception. evidence: `McpErrorMapper.MapGeneric` emits a sanitized suggestion to inspect MCP server logs, while the pre-existing tool catch blocks and the new shared executor map the exception without an `ILogger` emission; adding redacted source-generated diagnostics requires focused logging and telemetry ownership beyond this behavior-preserving refactor.
-status: open
+status: done 2026-11-24
+resolution: The MCP executor records the tool name, exception type, and HRESULT through source-generated logging. Tests exercise sanitized validation and operation failures and the HTTP timeout mapping. See spec-ten-deferred-search-response-reliability.md.
 
 ### DW-539: The trust strip still renders the packet's confidence (evidence strength) and freshness for an unauthorized or unknown-isolation packet, even though the source-count badge is now fail-closed to "sources unavailable"; the residual confidence/freshness badges leak a coarse "strong evidence exists" inference past the authorization wall.
 
@@ -5884,3 +5894,9 @@ resolution: VerifyAsync_MissingSyntacticIndex_RetainsSurvivingKeyFindings passed
 - source_spec: `_bmad-output/implementation-artifacts/spec-ten-deferred-projection-registry.md`
   summary: Preserve concurrent observation writes when written-index compensation runs.
   evidence: After CAS exhaustion the observation store checks the written index and then deletes state for an absent aggregate. A writer can publish its observation and index entry between those calls. Coordinate compensation with the competing write and assert the resulting persisted observation and membership.
+
+## Deferred from review of spec-ten-deferred-search-response-reliability.md (2026-11-24)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-ten-deferred-search-response-reliability.md`
+  summary: Keep the hybrid fusion candidate set stable across pages.
+  evidence: HybridSearchService sizes each axis candidate set from offset plus maxResults before fusion. With equal weights and axis rankings [A, X] and [B, X], the first page of size one returns A and the second can return A again after X gains two contributions. A stable retrieval window or continuation design needs its own ranking and latency validation.

@@ -58,22 +58,27 @@ public sealed class SearchMemoryToolTests
         AssertIsErrorWithCode(result, "INVALID_INPUT");
     }
 
-    [Fact]
-    public async Task MismatchedTenant_ReturnsAuthorizationErrorWithoutCallingClient()
+    [Theory]
+    [InlineData("other-tenant", "TENANT_FORBIDDEN")]
+    [InlineData("acme\n", "TENANT_MALFORMED")]
+    public async Task DisallowedTenant_ReturnsAuthorizationErrorWithoutCallingClient(string tenantId, string code)
     {
         var stub = new StubMemoriesClient();
         SearchMemoryTool tool = CreateTool(stub);
 
-        CallToolResult result = await tool.SearchAsync("other-tenant", "needle", cancellationToken: TestContext.Current.CancellationToken);
+        CallToolResult result = await tool.SearchAsync(tenantId, "needle", cancellationToken: TestContext.Current.CancellationToken);
 
         stub.SearchRequests.ShouldBeEmpty();
         stub.HybridSearchRequests.ShouldBeEmpty();
-        AssertIsErrorWithCode(result, "TENANT_FORBIDDEN");
+        AssertIsErrorWithCode(result, code);
     }
 
-    [Fact]
-    public async Task ServerTenantNotFound_MapsToErrorPrefix()
+    [Theory]
+    [InlineData(6)]
+    [InlineData(129)]
+    public async Task ServerTenantNotFound_MapsToErrorPrefixAndPreservesCase(int caseLength)
     {
+        string caseId = "case-" + new string('a', caseLength - 5);
         var stub = new StubMemoriesClient
         {
             OnHybridSearch = (_, _) => throw new MemoriesRemoteException(
@@ -82,10 +87,59 @@ public sealed class SearchMemoryToolTests
         };
         SearchMemoryTool tool = CreateTool(stub);
 
-        CallToolResult result = await tool.SearchAsync("acme", "needle", cancellationToken: TestContext.Current.CancellationToken);
+        CallToolResult result = await tool.SearchAsync("acme", "needle", @case: caseId, cancellationToken: TestContext.Current.CancellationToken);
 
         AssertIsErrorWithCode(result, "TENANT_NOT_FOUND");
         ExtractText(result).ShouldStartWith("[TENANT_NOT_FOUND] (service=memories):");
+        var scope = result.StructuredContent!.Value.GetProperty("evidencePacket").GetProperty("scope");
+        scope.GetProperty("tenantId").GetString().ShouldBe("acme");
+        scope.GetProperty("caseId").GetString().ShouldBe(caseId);
+        scope.GetProperty("permissionsContext").GetString().ShouldBe("tenant-case");
+        scope.GetProperty("isolationStatus").GetString().ShouldBe("unknown");
+    }
+
+    [Theory]
+    [InlineData("acme", "case-a", "acme", "case-a", "tenant-case")]
+    [InlineData("acme", "case/a", "acme", null, "tenant")]
+    [InlineData("acme\n", "case-a", "unknown", null, "mcp-error")]
+    public async Task MissingQueryKeepsOnlySafeRequestScope(string tenant, string caseId, string expectedTenant, string? expectedCase, string context)
+    {
+        var stub = new StubMemoriesClient();
+        SearchMemoryTool tool = CreateTool(stub);
+
+        CallToolResult result = await tool.SearchAsync(tenant, " ", @case: caseId, cancellationToken: TestContext.Current.CancellationToken);
+
+        AssertIsErrorWithCode(result, "INVALID_INPUT");
+        stub.SearchRequests.ShouldBeEmpty();
+        stub.HybridSearchRequests.ShouldBeEmpty();
+        var scope = result.StructuredContent!.Value.GetProperty("evidencePacket").GetProperty("scope");
+        scope.GetProperty("tenantId").GetString().ShouldBe(expectedTenant);
+        scope.GetProperty("permissionsContext").GetString().ShouldBe(context);
+        scope.GetProperty("isolationStatus").GetString().ShouldBe("unknown");
+        if (expectedCase is null)
+        {
+            scope.TryGetProperty("caseId", out _).ShouldBeFalse();
+        }
+        else
+        {
+            scope.GetProperty("caseId").GetString().ShouldBe(expectedCase);
+        }
+    }
+
+    [Fact]
+    public async Task MalformedCaseDoesNotReachServerOrAppearInSearchError()
+    {
+        const string malformed = "case/private";
+        var stub = new StubMemoriesClient();
+        SearchMemoryTool tool = CreateTool(stub);
+
+        CallToolResult result = await tool.SearchAsync("acme", "needle", @case: malformed, cancellationToken: TestContext.Current.CancellationToken);
+
+        AssertIsErrorWithCode(result, "INVALID_CASE_ID");
+        stub.HybridSearchRequests.ShouldBeEmpty();
+        stub.SearchRequests.ShouldBeEmpty();
+        ExtractText(result).ShouldNotContain(malformed);
+        result.StructuredContent!.Value.GetRawText().ShouldNotContain(malformed);
     }
 
     [Fact]

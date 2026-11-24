@@ -86,12 +86,23 @@ internal sealed class SearchMemoryTool
                         toolName);
                 }
 
-                return string.IsNullOrWhiteSpace(query)
-                    ? mapper.MapValidation(
+                if (string.IsNullOrWhiteSpace(query))
+                {
+                    return mapper.MapValidation(
                         "INVALID_INPUT",
                         "query is required.",
                         "Provide a non-empty query string.",
-                        toolName)
+                        toolName,
+                        McpErrorMapper.CreateRequestScope(tenantId, @case));
+                }
+
+                return !string.IsNullOrWhiteSpace(@case) && !McpErrorMapper.IsWellFormedCaseId(@case)
+                    ? mapper.MapValidation(
+                        "INVALID_CASE_ID",
+                        "The requested case identifier is malformed.",
+                        "Use a case identifier containing only letters, digits, or hyphens.",
+                        toolName,
+                        McpErrorMapper.CreateRequestScope(tenantId, caseId: null))
                     : null;
             },
             async (authorizedTenant, token) =>
@@ -138,7 +149,8 @@ internal sealed class SearchMemoryTool
                 };
                 return McpToolResultSerializer.Success(result);
             },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken,
+            caseId: @case).ConfigureAwait(false);
     }
 
     private static string AxisToWire(SearchAxis axis) => axis switch
@@ -151,5 +163,5 @@ internal sealed class SearchMemoryTool
     };
 
     private static EvidencePacketScope CreateEvidenceScope(string tenantId, string? caseId)
-        => new(tenantId, caseId, EvidencePacketIsolationStatus.Authorized, string.IsNullOrWhiteSpace(caseId) ? "tenant" : "tenant-case");
+        => new(tenantId, caseId, EvidencePacketIsolationStatus.Authorized, EvidencePacketPermissionsContext.ForScope(caseId));
 }

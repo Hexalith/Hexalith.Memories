@@ -133,7 +133,8 @@ public class MemoriesClientSendDecodeTests
         Task completed = await Task.WhenAny(request, Task.Delay(TimeSpan.FromSeconds(2)));
 
         completed.ShouldBeSameAs(request, "The configured HTTP timeout must remain effective after response headers arrive.");
-        await Should.ThrowAsync<TaskCanceledException>(async () => await request.ConfigureAwait(false));
+        TaskCanceledException timeout = await Assert.ThrowsAsync<TaskCanceledException>(() => request);
+        timeout.InnerException.ShouldBeOfType<TimeoutException>();
     }
 
     [Fact]

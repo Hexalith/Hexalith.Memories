@@ -6,11 +6,11 @@
 namespace Hexalith.Memories.Mcp;
 
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
 using Hexalith.Memories.Client.Rest;
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Mcp.Authentication;
 
 using ModelContextProtocol.Protocol;
 
@@ -46,8 +46,9 @@ internal sealed partial class McpErrorMapper
     /// <param name="exception">The remote exception.</param>
     /// <param name="toolName">The MCP tool that observed the failure (used in <c>StructuredContent.tool</c>).</param>
     /// <param name="failedService">The service identifier reported to the LLM client; defaults to <c>memories</c>.</param>
+    /// <param name="scope">The known request scope, when available.</param>
     /// <returns>A tool result with <see cref="CallToolResult.IsError"/> set.</returns>
-    public CallToolResult Map(MemoriesRemoteException exception, string toolName, string? failedService = null)
+    public CallToolResult Map(MemoriesRemoteException exception, string toolName, string? failedService = null, EvidencePacketScope? scope = null)
     {
         ArgumentNullException.ThrowIfNull(exception);
         ArgumentException.ThrowIfNullOrWhiteSpace(toolName);
@@ -58,7 +59,7 @@ internal sealed partial class McpErrorMapper
             "The server returned an error without a structured envelope.",
             "Check server logs for details.");
 
-        return BuildErrorResult(error, service, toolName, EvidencePacketMapper.FromError(error, UnknownScope()));
+        return BuildErrorResult(error, service, toolName, EvidencePacketMapper.FromError(error, scope ?? UnknownScope()));
     }
 
     /// <summary>
@@ -68,8 +69,9 @@ internal sealed partial class McpErrorMapper
     /// </summary>
     /// <param name="exception">The exception to wrap.</param>
     /// <param name="toolName">The MCP tool that observed the failure.</param>
+    /// <param name="scope">The known request scope, when available.</param>
     /// <returns>A tool result with <see cref="CallToolResult.IsError"/> set.</returns>
-    public CallToolResult MapGeneric(Exception exception, string toolName)
+    public CallToolResult MapGeneric(Exception exception, string toolName, EvidencePacketScope? scope = null)
     {
         ArgumentNullException.ThrowIfNull(exception);
         ArgumentException.ThrowIfNullOrWhiteSpace(toolName);
@@ -83,7 +85,7 @@ internal sealed partial class McpErrorMapper
             SanitizedFailureMessage,
             "Inspect the MCP server logs for diagnostic context. The original message is intentionally not echoed to the LLM.");
 
-        return BuildErrorResult(sanitized, DefaultFailedService, toolName, EvidencePacketMapper.FromError(sanitized, UnknownScope()));
+        return BuildErrorResult(sanitized, DefaultFailedService, toolName, EvidencePacketMapper.FromError(sanitized, scope ?? UnknownScope()));
     }
 
     /// <summary>
@@ -94,15 +96,16 @@ internal sealed partial class McpErrorMapper
     /// <param name="message">A human readable description of the failure.</param>
     /// <param name="suggestion">A recovery suggestion / hint for the LLM.</param>
     /// <param name="toolName">The MCP tool that produced the rejection.</param>
+    /// <param name="scope">The syntactically valid request scope, when available.</param>
     /// <returns>A tool result with <see cref="CallToolResult.IsError"/> set.</returns>
-    public CallToolResult MapValidation(string code, string message, string suggestion, string toolName)
+    public CallToolResult MapValidation(string code, string message, string suggestion, string toolName, EvidencePacketScope? scope = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(code);
         ArgumentException.ThrowIfNullOrWhiteSpace(message);
         ArgumentException.ThrowIfNullOrWhiteSpace(toolName);
 
         ErrorResponse error = new(code, message, suggestion ?? string.Empty);
-        return BuildErrorResult(error, toolName, toolName, EvidencePacketMapper.FromError(error, UnknownScope()));
+        return BuildErrorResult(error, toolName, toolName, EvidencePacketMapper.FromError(error, scope ?? UnknownScope()));
     }
 
     /// <summary>
@@ -119,7 +122,7 @@ internal sealed partial class McpErrorMapper
         ArgumentException.ThrowIfNullOrWhiteSpace(reasonCode);
 
         string requestedTenantId = tenantId ?? string.Empty;
-        if (!TenantIdRegex().IsMatch(requestedTenantId) || string.Equals(reasonCode, TenantMalformedCode, StringComparison.Ordinal))
+        if (!TenantClaimAuthorizationFilter.IsWellFormedTenantId(requestedTenantId) || string.Equals(reasonCode, TenantMalformedCode, StringComparison.Ordinal))
         {
             ErrorResponse malformed = new(
                     TenantMalformedCode,
@@ -132,7 +135,7 @@ internal sealed partial class McpErrorMapper
                 string.Empty,
                 null,
                 EvidencePacketIsolationStatus.Unauthorized,
-                "mcp-auth");
+                EvidencePacketPermissionsContext.McpAuthorization);
             return BuildErrorResult(
                 malformed,
                 "mcp-auth",
@@ -144,7 +147,7 @@ internal sealed partial class McpErrorMapper
             TenantForbiddenCode,
             "The bearer token is not authorized for the requested tenant.",
             "Use a bearer token with a matching tenant claim, or request a tenant that is present in the token.");
-        EvidencePacketScope scope = new(requestedTenantId, null, EvidencePacketIsolationStatus.Authorized, "mcp-auth");
+        EvidencePacketScope scope = new(requestedTenantId, null, EvidencePacketIsolationStatus.Unauthorized, EvidencePacketPermissionsContext.McpAuthorization);
         return BuildErrorResult(
             forbidden,
             "mcp-auth",
@@ -175,7 +178,7 @@ internal sealed partial class McpErrorMapper
             error.Suggestion ?? string.Empty,
             evidencePacket);
 
-        JsonElement structuredElement = JsonSerializer.SerializeToElement(structured, MemoriesJsonContext.Options);
+        JsonElement structuredElement = JsonSerializer.SerializeToElement(structured, McpErrorJsonContext.Default.McpErrorPayload);
 
         return new CallToolResult
         {
@@ -188,17 +191,34 @@ internal sealed partial class McpErrorMapper
     private static string NormalizeService(string? value)
         => string.IsNullOrWhiteSpace(value) ? DefaultFailedService : value;
 
+    /// <summary>Builds an error scope from syntactically valid request identifiers.</summary>
+    /// <param name="tenantId">The requested tenant identifier.</param>
+    /// <param name="caseId">The optional requested case identifier.</param>
+    /// <returns>The request scope with unknown isolation, or null if the tenant is unsafe to echo.</returns>
+    internal static EvidencePacketScope? CreateRequestScope(string? tenantId, string? caseId)
+    {
+        if (tenantId is null || !TenantClaimAuthorizationFilter.IsWellFormedTenantId(tenantId))
+        {
+            return null;
+        }
+
+        string? safeCaseId = IsWellFormedCaseId(caseId) ? caseId : null;
+        return new EvidencePacketScope(
+            tenantId,
+            safeCaseId,
+            EvidencePacketIsolationStatus.Unknown,
+            EvidencePacketPermissionsContext.ForScope(safeCaseId));
+    }
+
+    /// <summary>Checks whether a requested case identifier can be used and surfaced safely.</summary>
+    /// <param name="caseId">The requested case identifier.</param>
+    /// <returns>Whether the identifier is well formed.</returns>
+    internal static bool IsWellFormedCaseId(string? caseId)
+        => caseId is not null && CaseIdRegex().IsMatch(caseId);
+
     private static EvidencePacketScope UnknownScope()
-        => new("unknown", null, EvidencePacketIsolationStatus.Unknown, "mcp-error");
+        => new("unknown", null, EvidencePacketIsolationStatus.Unknown, EvidencePacketPermissionsContext.McpError);
 
-    private sealed record McpErrorPayload(
-        string Code,
-        string Service,
-        string Tool,
-        string Message,
-        string Suggestion,
-        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] EvidencePacket? EvidencePacket);
-
-    [GeneratedRegex("^[A-Za-z0-9_-]{1,128}$", RegexOptions.CultureInvariant)]
-    private static partial Regex TenantIdRegex();
+    [GeneratedRegex(@"\A[A-Za-z0-9-]+\z", RegexOptions.CultureInvariant)]
+    private static partial Regex CaseIdRegex();
 }

@@ -204,6 +204,109 @@ public sealed class MemoriesClientSearchTests
         uri.AbsolutePath.ShouldContain("case%2F1");
     }
 
+    [Theory]
+    [InlineData("/proxy/memories")]
+    [InlineData("/proxy/memories/")]
+    [InlineData("/proxy%20gateway/memories")]
+    public async Task SearchesPreserveTheEndpointPrefixAndReportTheServerWindow(string prefix)
+    {
+        var endpoint = new Uri(Endpoint, prefix);
+        SearchResult single = new() { Results = [], TotalCount = 27, HasIndexedMemoryUnits = true, Query = "needle", Offset = 6, MaxResults = 3 };
+        HybridSearchResult hybrid = BuildHybrid() with { Offset = 6, MaxResults = 3, TotalCount = 27 };
+        (MemoriesClient singleClient, TestDelegatingHandler singleHandler) = CreateClient(
+            HttpStatusCode.OK, JsonSerializer.Serialize(single, MemoriesJsonContext.Options), endpoint);
+        (MemoriesClient hybridClient, TestDelegatingHandler hybridHandler) = CreateClient(
+            HttpStatusCode.OK, JsonSerializer.Serialize(hybrid, MemoriesJsonContext.Options), endpoint);
+
+        SearchResult singleResult = await singleClient.SearchAsync(
+            new SearchRequest("t1", "syntactic", "needle", MaxResults: 3, Offset: 6), TestContext.Current.CancellationToken);
+        HybridSearchResult hybridResult = await hybridClient.HybridSearchAsync(
+            new HybridSearchRequest("t1", "needle", MaxResults: 3) { Offset = 6 }, TestContext.Current.CancellationToken);
+
+        foreach (TestDelegatingHandler handler in new[] { singleHandler, hybridHandler })
+        {
+            Uri uri = handler.Requests.Single().RequestUri!;
+            uri.AbsolutePath.ShouldBe(prefix.TrimEnd('/') + "/api/v1/search");
+            uri.Query.ShouldContain("offset=6");
+            uri.Query.ShouldContain("maxResults=3");
+        }
+
+        (singleResult.Offset, singleResult.MaxResults, singleResult.TotalCount).ShouldBe((6, 3, 27L));
+        (hybridResult.Offset, hybridResult.MaxResults, hybridResult.TotalCount).ShouldBe((6, 3, 27L));
+    }
+
+    [Fact]
+    public async Task SearchReadsLegacyEnvelopesWithoutPaginationMetadata()
+    {
+        const string json = """{"results":[],"totalCount":1,"hasIndexedMemoryUnits":true,"degraded":false,"unavailableAxes":[],"query":"needle"}""";
+        (MemoriesClient client, _) = CreateClient(HttpStatusCode.OK, json);
+
+        SearchResult single = await client.SearchAsync(new SearchRequest("t1", "syntactic", "needle"), TestContext.Current.CancellationToken);
+        HybridSearchResult hybrid = await client.HybridSearchAsync(new HybridSearchRequest("t1", "needle"), TestContext.Current.CancellationToken);
+
+        single.Offset.ShouldBeNull();
+        single.MaxResults.ShouldBeNull();
+        hybrid.Offset.ShouldBeNull();
+        hybrid.MaxResults.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData("score", "1e999")]
+    [InlineData("compositeScore", "-1e999")]
+    [InlineData("semanticScore", "1e999")]
+    public async Task SearchRejectsNonFiniteNumbersBeforeReturningARenderableResponse(string field, string jsonNumber)
+    {
+        string json = """
+            {"results":[{"memoryUnitId":"mu","score":1,"compositeScore":1,"semanticScore":1,"contentSnippet":"text","sourceUri":"source","sourceType":"file"}],
+            "totalCount":1,"hasIndexedMemoryUnits":true,"degraded":false,"unavailableAxes":[],"query":"needle"}
+            """.Replace($"\"{field}\":1", $"\"{field}\":{jsonNumber}", StringComparison.Ordinal);
+        (MemoriesClient client, _) = CreateClient(HttpStatusCode.OK, json);
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        Func<Task> search = field == "score"
+            ? () => client.SearchAsync(new SearchRequest("t1", "syntactic", "needle"), ct)
+            : () => client.HybridSearchAsync(new HybridSearchRequest("t1", "needle"), ct);
+
+        MemoriesRemoteException error = await Should.ThrowAsync<MemoriesRemoteException>(search);
+
+        error.Error.Code.ShouldBe("INVALID_RESPONSE");
+    }
+
+    [Fact]
+    public async Task SearchRejectsNonFiniteScoresInAnAttachedEvidencePacket()
+    {
+        EvidencePacket packet = EvidencePacketMapper.FromHybridSearchResult(BuildHybrid(), new EvidencePacketScope(
+            "t1", null, EvidencePacketIsolationStatus.Authorized, EvidencePacketPermissionsContext.Tenant));
+        packet = packet with
+        {
+            Evidence = packet.Evidence with { AxisEvidence = [new("syntactic", 1, null, null)] },
+        };
+        string json = JsonSerializer.Serialize(BuildHybrid() with { EvidencePacket = packet }, MemoriesJsonContext.Options)
+            .Replace("\"score\":1", "\"score\":1e999", StringComparison.Ordinal);
+        (MemoriesClient client, _) = CreateClient(HttpStatusCode.OK, json);
+
+        MemoriesRemoteException error = await Should.ThrowAsync<MemoriesRemoteException>(
+            () => client.HybridSearchAsync(new HybridSearchRequest("t1", "needle"), TestContext.Current.CancellationToken));
+
+        error.Error.Code.ShouldBe("INVALID_RESPONSE");
+    }
+
+    [Fact]
+    public async Task GetMemoryUnitRejectsNonFiniteMetadataConfidence()
+    {
+        MemoryUnit unit = BuildMemoryUnit() with
+        {
+            Metadata = new Dictionary<string, MetadataField> { ["topic"] = new("text", MetadataOrigin.Ai, 1f) },
+        };
+        string json = JsonSerializer.Serialize(unit, MemoriesJsonContext.Options)
+            .Replace("\"confidence\":1", "\"confidence\":1e99", StringComparison.Ordinal);
+        (MemoriesClient client, _) = CreateClient(HttpStatusCode.OK, json);
+
+        MemoriesRemoteException error = await Should.ThrowAsync<MemoriesRemoteException>(
+            () => client.GetMemoryUnitAsync("t1", "case-1", "mu-1", TestContext.Current.CancellationToken));
+
+        error.Error.Code.ShouldBe("INVALID_RESPONSE");
+    }
+
     private static HybridSearchResult BuildHybrid()
         => new()
         {
@@ -230,15 +333,16 @@ public sealed class MemoriesClientSearchTests
             Status = MemoryUnitStatus.Indexed,
         };
 
-    private static (MemoriesClient Client, TestDelegatingHandler Handler) CreateClient(HttpStatusCode status, string body)
+    private static (MemoriesClient Client, TestDelegatingHandler Handler) CreateClient(HttpStatusCode status, string body, Uri? endpoint = null)
     {
         var handler = new TestDelegatingHandler((_, _) =>
             Task.FromResult(new HttpResponseMessage(status)
             {
                 Content = new StringContent(body, Encoding.UTF8, "application/json"),
             }));
-        var httpClient = new HttpClient(handler) { BaseAddress = Endpoint };
-        IOptions<MemoriesClientOptions> options = Options.Create(new MemoriesClientOptions { Endpoint = Endpoint });
+        endpoint ??= Endpoint;
+        var httpClient = new HttpClient(handler) { BaseAddress = endpoint };
+        IOptions<MemoriesClientOptions> options = Options.Create(new MemoriesClientOptions { Endpoint = endpoint });
         return (new MemoriesClient(httpClient, options, NullLogger<MemoriesClient>.Instance), handler);
     }
 }

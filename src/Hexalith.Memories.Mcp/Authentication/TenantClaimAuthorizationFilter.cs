@@ -70,8 +70,11 @@ internal sealed partial class TenantClaimAuthorizationFilter(
         return true;
     }
 
-    private static bool IsWellFormedTenantId(string tenantId)
-        => !string.IsNullOrWhiteSpace(tenantId) && TenantIdRegex().IsMatch(tenantId);
+    /// <summary>Checks whether a requested tenant identifier is safe to include in a structured scope.</summary>
+    /// <param name="tenantId">The requested identifier.</param>
+    /// <returns>Whether the identifier matches the tenant ID syntax.</returns>
+    internal static bool IsWellFormedTenantId(string? tenantId)
+        => tenantId is not null && TenantIdRegex().IsMatch(tenantId);
 
     private CallToolResult Deny(string tenantId, string toolName, ClaimsPrincipal principal, string reason)
     {
@@ -97,6 +100,6 @@ internal sealed partial class TenantClaimAuthorizationFilter(
             }));
     }
 
-    [GeneratedRegex("^[A-Za-z0-9_-]{1,128}$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"\A[A-Za-z0-9_-]{1,128}\z", RegexOptions.CultureInvariant)]
     private static partial Regex TenantIdRegex();
 }

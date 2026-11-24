@@ -37,7 +37,7 @@ public sealed class SearchResultHumanFormatter : IOutputFormatter<SearchResult>
 
         if (value.Explanation is { } exp)
         {
-            foreach (KeyValuePair<string, AxisExplanation> axis in exp.AxisDetails)
+            foreach (KeyValuePair<string, AxisExplanation> axis in exp.AxisDetails.OrderBy(static pair => pair.Key, StringComparer.Ordinal))
             {
                 writer.WriteLine($"    ({axis.Key}: {axis.Value.NormalizationMethod})");
             }

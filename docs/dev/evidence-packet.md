@@ -53,7 +53,12 @@ truthfulness, or corpus completeness.
 exception text into packet fields. Unauthorized and forbidden codes produce `state:
 unauthorized`, `scope.isolationStatus: unauthorized`, no sources, no expansion handles, and a
 single `checkAuthorization` recovery action. Other diagnostics produce `state: degraded` and
-retry-oriented recovery.
+retry-oriented recovery. MCP search errors retain syntactically valid request scope identifiers with
+unknown isolation unless the error indicates an authorization denial. Missing or malformed request
+identifiers are suppressed.
+
+CLI and MCP use `tenant` for a tenant request and `tenant-case` for a case request. MCP uses
+`mcp-auth` for tenant authorization rejections and `mcp-error` when the request scope is unknown.
 
 Recovery guidance is sanitized before serialization. Guidance that looks like a bearer token,
 connection string, backend identifier, local path, stack trace, prompt, or embedding payload is
@@ -63,6 +68,14 @@ replaced with generic safe guidance.
 
 CLI JSON and MCP search results keep the existing lower-level payload shape and add an optional
 `evidencePacket` member to `SearchResult` and `HybridSearchResult`. Human and table CLI formats explain when a result page is empty even though the search reports matches.
+
+Successful HTTP search responses report `offset` and `maxResults` on the retrieval envelope.
+They describe the effective request window before token budgeting. The HTTP endpoint clamps
+`offset` to zero or greater and `maxResults` to 1 through 100. Older responses may omit these fields.
+In syntactic search, advance the offset by the window size even when the response contains fewer
+rows. REST callers can request a hybrid window with `HybridSearchRequest.Offset`. Hybrid search
+fuses a candidate set sized to the requested window, so changing the offset can change rankings
+and totals.
 
 MCP success results serialize the same object to both `content[0].text` and `structuredContent`.
 MCP error results keep `isError=true`, `code`, `service`, `tool`, `message`, and `suggestion`, and

@@ -10,12 +10,16 @@ using System.Security.Claims;
 using Hexalith.Memories.Mcp.Authentication;
 
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 internal static class McpToolTestFactory
 {
     public static McpToolExecutor CreateExecutor(params string[] tenantIds)
+        => CreateExecutor(NullLogger<McpToolExecutor>.Instance, tenantIds);
+
+    public static McpToolExecutor CreateExecutor(ILogger<McpToolExecutor> logger, params string[] tenantIds)
     {
         if (tenantIds.Length == 0)
         {
@@ -33,6 +37,6 @@ internal static class McpToolTestFactory
             errorMapper,
             Options.Create(new MemoriesMcpAuthenticationOptions()),
             NullLogger<TenantClaimAuthorizationFilter>.Instance);
-        return new McpToolExecutor(authorization, errorMapper);
+        return new McpToolExecutor(authorization, errorMapper, logger);
     }
 }

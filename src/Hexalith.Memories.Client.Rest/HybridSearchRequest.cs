@@ -21,4 +21,8 @@ public sealed record HybridSearchRequest(
     string? CaseId = null,
     int MaxResults = 10,
     bool Explain = false,
-    int? TokenBudget = null);
+    int? TokenBudget = null)
+{
+    /// <summary>Gets the number of fused results to skip. The server default is zero.</summary>
+    public int Offset { get; init; }
+}
