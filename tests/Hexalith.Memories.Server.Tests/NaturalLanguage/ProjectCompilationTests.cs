@@ -7,6 +7,8 @@ namespace Hexalith.Memories.Server.Tests.NaturalLanguage;
 
 using System.Diagnostics;
 
+using Hexalith.Memories.TestHelpers.Documentation;
+
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 
@@ -15,10 +17,12 @@ using Shouldly;
 /// <summary>Checks that the experimental Dapr conversation API can compile only with the Server project's suppression.</summary>
 public sealed class ProjectCompilationTests
 {
-    [Fact]
-    public async Task DaprConversationCall_CompilesWithServerSettingsAndFailsInOtherProjects()
+    [Theory]
+    [InlineData("Debug")]
+    [InlineData("Release")]
+    public async Task DaprConversationCall_CompilesOnlyWithServerSettings(string configuration)
     {
-        string root = LocateRepoRoot();
+        string root = TestRepository.Root;
         MetadataReference[] references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
             .Split(Path.PathSeparator)
             .Select(path => MetadataReference.CreateFromFile(path))
@@ -35,7 +39,7 @@ public sealed class ProjectCompilationTests
 
         foreach (string project in new[] { "Hexalith.Memories.Server", "Hexalith.Memories.Contracts" })
         {
-            string noWarn = await ReadNoWarnAsync(root, project);
+            string noWarn = await ReadNoWarnAsync(root, project, configuration);
             CSharpCompilationOptions options = new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary)
                 .WithGeneralDiagnosticOption(ReportDiagnostic.Error)
                 .WithSpecificDiagnosticOptions(noWarn.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -61,10 +65,13 @@ public sealed class ProjectCompilationTests
     }
 
     [Fact]
-    public void OtherSourceProjects_DoNotDeclareTheServerSuppression()
+    public void SharedPropsAndOtherSourceProjects_DoNotDeclareTheServerSuppression()
     {
+        string root = TestRepository.Root;
+        File.ReadAllText(Path.Combine(root, "Directory.Build.props"))
+            .ShouldNotContain("DAPR_CONVERSATION", Case.Sensitive);
         foreach (string project in Directory.EnumerateFiles(
-            Path.Combine(LocateRepoRoot(), "src"), "*.csproj", SearchOption.AllDirectories))
+            Path.Combine(root, "src"), "*.csproj", SearchOption.AllDirectories))
         {
             if (Path.GetFileName(project) != "Hexalith.Memories.Server.csproj")
             {
@@ -73,7 +80,7 @@ public sealed class ProjectCompilationTests
         }
     }
 
-    private static async Task<string> ReadNoWarnAsync(string root, string project)
+    private static async Task<string> ReadNoWarnAsync(string root, string project, string configuration)
     {
         var start = new ProcessStartInfo("dotnet")
         {
@@ -82,7 +89,8 @@ public sealed class ProjectCompilationTests
             RedirectStandardError = true,
             UseShellExecute = false,
         };
-        foreach (string argument in new[] { "msbuild", Path.Combine("src", project, project + ".csproj"), "-nologo", "-getProperty:NoWarn" })
+        foreach (string argument in new[] { "msbuild", Path.Combine("src", project, project + ".csproj"), "-nologo",
+            $"-p:Configuration={configuration}", "-getProperty:NoWarn" })
         {
             start.ArgumentList.Add(argument);
         }
@@ -105,18 +113,5 @@ public sealed class ProjectCompilationTests
         string noWarn = await output;
         process.ExitCode.ShouldBe(0, noWarn + await error);
         return noWarn.Trim();
-    }
-
-    private static string LocateRepoRoot()
-    {
-        for (DirectoryInfo? current = new(AppContext.BaseDirectory); current is not null; current = current.Parent)
-        {
-            if (File.Exists(Path.Combine(current.FullName, "Hexalith.Memories.slnx")))
-            {
-                return current.FullName;
-            }
-        }
-
-        throw new DirectoryNotFoundException("Could not locate Hexalith.Memories.slnx from the test output directory.");
     }
 }
