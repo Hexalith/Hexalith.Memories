@@ -88,60 +88,50 @@ public sealed class ConsistencyVerifyCommandTests
         stderr.ToString().ShouldBeEmpty();
     }
 
-    [Fact]
-    public async Task Run_WithWait_NoteOnlyResult_PrintsNotesSection()
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Run_WithWait_UsesTheSameNotesSectionForEveryResult(bool hasDiscrepancies, bool hasNotes)
     {
+        const string instanceId = "verify-consistency-acme-notes";
+        DateTimeOffset now = DateTimeOffset.UnixEpoch;
+        int discrepancyCount = hasDiscrepancies ? 1 : 0;
+        int noteCount = hasNotes ? 1 : 0;
+        ConsistencyDiscrepancy discrepancy = new("repair-unit", true, false, true, ConsistencyRepairRecommendation.ReIndexSemantic);
+        ConsistencyDiscrepancy note = new("note-unit", true, true, true, ConsistencyRepairRecommendation.NoOp)
+        {
+            ConsistencyNoteKind = ConsistencyNoteKind.NaturalLanguageEmbeddingMissing,
+            ConsistencyNote = "Missing backends: semantic-nl",
+        };
+        ConsistencyVerificationResult result = new(
+            "acme", discrepancyCount + noteCount, noteCount, discrepancyCount, hasDiscrepancies ? [discrepancy] : [],
+            discrepancyCount, null, false, now, now, TimeSpan.Zero)
+        {
+            NoteCount = noteCount,
+            TotalNoteCount = noteCount,
+            Notes = hasNotes ? [note] : [],
+        };
         ConsistencyStubClient stub = new()
         {
-            VerifyInstanceId = "verify-consistency-acme-notes",
-            VerifyStatusSequence =
-            [
-                CreateVerificationStatus(
-                    "verify-consistency-acme-notes",
-                    "Completed",
-                    new ConsistencyVerificationResult(
-                        "acme",
-                        TotalUnits: 1,
-                        ConsistentCount: 1,
-                        InconsistentCount: 0,
-                        Discrepancies: [],
-                        TotalDiscrepancyCount: 0,
-                        TruncatedAt: null,
-                        EnumerationTruncated: false,
-                        StartedAt: DateTimeOffset.UtcNow.AddMinutes(-1),
-                        CompletedAt: DateTimeOffset.UtcNow,
-                        Duration: TimeSpan.FromSeconds(1))
-                    {
-                        NoteCount = 1,
-                        TotalNoteCount = 1,
-                        Notes =
-                        [
-                            new ConsistencyDiscrepancy(
-                                "01HM5Q9WXGK6T8Q4Z5Y6V7W8X9",
-                                SyntacticPresent: true,
-                                SemanticPresent: true,
-                                GraphPresent: true,
-                                ConsistencyRepairRecommendation.NoOp)
-                            {
-                                NaturalLanguageSemanticPresent = false,
-                                NaturalLanguageEmbeddingStatus = NaturalLanguageEmbeddingStatus.Indexed,
-                                ConsistencyNoteKind = ConsistencyNoteKind.NaturalLanguageEmbeddingMissing,
-                                ConsistencyNote = "Missing backends: semantic-nl",
-                            },
-                        ],
-                    }),
-            ],
+            VerifyInstanceId = instanceId,
+            VerifyStatusSequence = [CreateVerificationStatus(instanceId, "Completed", result)],
         };
-        (IServiceProvider services, StringWriter stdout, StringWriter stderr) =
-            BuildServices(OutputFormat.Human, stub);
+        (IServiceProvider services, StringWriter stdout, StringWriter stderr) = BuildServices(OutputFormat.Human, stub);
 
         int exit = await InvokeAsync(services, ["verify", "--tenant", "acme", "--wait"]);
 
         exit.ShouldBe(CliExitCodes.Success);
-        string output = stdout.ToString();
-        output.ShouldContain("note-only units");
-        output.ShouldContain("Notes:");
-        output.ShouldContain("NaturalLanguageEmbeddingMissing");
+        string[] lines = stdout.ToString().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
+        lines.Count(line => line == "Notes:").ShouldBe(1);
+        int notesHeader = Array.IndexOf(lines, "Notes:");
+        lines[notesHeader - 1].ShouldBe(hasDiscrepancies
+            ? "  - repair-unit: ReIndexSemantic"
+            : "  discrepancies:       none");
+        lines[notesHeader + 1].ShouldBe(hasNotes
+            ? "  - note-unit: NaturalLanguageEmbeddingMissing — Missing backends: semantic-nl"
+            : "  none");
         stderr.ToString().ShouldBeEmpty();
     }
 

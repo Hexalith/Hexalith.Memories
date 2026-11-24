@@ -2163,7 +2163,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of 9-2-dual-embedding-and-causal-chain-indexing Session 6 (2026-04-25)"), 2026-09-01
 location: n/a
 reason: - **S6-FE. Normalize the `ConsistencyVerificationResultHumanFormatter` "notes: none" / "Notes:" header layout across the discrepancy-empty / discrepancy-populated branches.** Cosmetic; minimal operator impact.
-status: open
+status: done 2026-11-24
+resolution: Human verification output always uses the Notes heading, with an indented none line when empty. Four CLI invocation cases check the exact layout with and without notes and discrepancies.
 
 ### DW-308: S6-FF. Strengthen the CLI table-formatter tests with `Shouldly.Case.Sensitive` + numeric-value assertions for the `notes`/`discrepancies` columns.
 

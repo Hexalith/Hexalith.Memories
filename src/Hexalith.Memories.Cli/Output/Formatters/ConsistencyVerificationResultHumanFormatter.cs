@@ -47,13 +47,13 @@ public sealed class ConsistencyVerificationResultHumanFormatter : IOutputFormatt
             }
         }
 
+        writer.WriteLine("Notes:");
         if (value.Notes.Count == 0)
         {
-            writer.WriteLine("  notes:               none");
+            writer.WriteLine("  none");
             return;
         }
 
-        writer.WriteLine("Notes:");
         foreach (ConsistencyDiscrepancy note in value.Notes)
         {
             writer.WriteLine($"  - {note.MemoryUnitId}: {BuildEntrySummary(note, includeRecommendation: false)}");
