@@ -81,7 +81,8 @@ public sealed class AllocatedEndpointResolverTests
         InvalidOperationException exception = Should.Throw<InvalidOperationException>(
             () => AllocatedEndpointResolver.Resolve(resource, "redis"));
 
-        exception.Message.ShouldBe("Resource 'memories-vectors' does not expose endpoints.");
+        exception.Message.ShouldBe(
+            "Resource 'memories-vectors' does not expose endpoints, so endpoint 'redis' cannot be resolved.");
     }
 
     private static EndpointAnnotation AddEndpoint(ContainerResource resource, string name)

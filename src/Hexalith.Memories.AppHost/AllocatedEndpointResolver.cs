@@ -24,7 +24,8 @@ internal static class AllocatedEndpointResolver
         ArgumentException.ThrowIfNullOrWhiteSpace(endpointName);
         if (!resource.TryGetEndpoints(out IEnumerable<EndpointAnnotation>? endpoints))
         {
-            throw new InvalidOperationException($"Resource '{resource.Name}' does not expose endpoints.");
+            throw new InvalidOperationException(
+                $"Resource '{resource.Name}' does not expose endpoints, so endpoint '{endpointName}' cannot be resolved.");
         }
 
         EndpointAnnotation endpoint = SelectSingle(resource, endpointName, [.. endpoints]);
@@ -57,9 +58,7 @@ internal static class AllocatedEndpointResolver
                 $"Resource '{resource.Name}' declares {matches.Length} endpoints named '{endpointName}'; endpoint names must be unique.");
         }
 
-        string available = endpoints.Length == 0
-            ? "none"
-            : string.Join(", ", endpoints.Select(static candidate => $"'{candidate.Name}'"));
+        string available = string.Join(", ", endpoints.Select(static candidate => $"'{candidate.Name}'"));
         throw new InvalidOperationException(
             $"Resource '{resource.Name}' has no endpoint named '{endpointName}'. Available endpoints: {available}.");
     }
