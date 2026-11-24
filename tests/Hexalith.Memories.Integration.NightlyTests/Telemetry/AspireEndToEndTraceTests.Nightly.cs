@@ -64,7 +64,7 @@ public sealed partial class AspireEndToEndTraceTests
             CliExitCodes.Success,
             $"CLI search command failed. stdout:{Environment.NewLine}{cliStdout}{Environment.NewLine}stderr:{Environment.NewLine}{cliStderr}");
         cliStderr.ShouldBeEmpty($"CLI stderr must stay empty on the happy path. stdout:{Environment.NewLine}{cliStdout}");
-        cliStdout.ShouldContain(memoryUnitId, Case.Sensitive);
+        cliStdout.ShouldContain(memoryUnitId, Shouldly.Case.Sensitive);
 
         await harness.ForceFlushAsync(TimeSpan.FromSeconds(2));
 
