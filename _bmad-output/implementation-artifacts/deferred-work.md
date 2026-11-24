@@ -2206,6 +2206,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of stories 11-1
 location: .github/workflows/ci.yml:67-74,108-115
 reason: - **W5. `if-no-files-found: error` + `if: always()` upgrades a build failure to two red checks.** Noisy but correct; reviewers must read the build step first. Resolve by gating artifact upload on `success() || failure()` against the test step specifically. (`.github/workflows/ci.yml:67-74,108-115`)
 status: open
+note: 2026-11-24 — Skipped. Both live artifact uploads still use the recorded condition. Hexalith.CiCd owns the delivered workflow and must make the change there.
 
 ### DW-314: W6. `submodules: recursive` cannot fetch private submodules without PAT.
 
@@ -2218,7 +2219,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of stories 11-1 + 11-2 (2026-04-26)"), 2026-09-01
 location: tests/Hexalith.Memories.IntegrationTests/Telemetry/AspireEndToEndTraceTests.cs:330
 reason: - **W7. `Substitute.For<WorkflowActivityContext>()` may fail if Dapr.Workflow seals the type in a future SDK.** Works against 1.17.6; failure mode is loud (NSubstitute throws at instantiation). (`tests/Hexalith.Memories.IntegrationTests/Telemetry/AspireEndToEndTraceTests.cs:330`)
-status: open
+status: done 2026-11-24
+resolution: Removed the unused syntactic seed helper and its WorkflowActivityContext proxy from the Aspire trace test. The executable trace scenario still seeds through the existing fixture.
 
 ### DW-316: W9. CONTRIBUTING.md skip wording (`Requires Docker - see CONTRIBUTING.md`) is documented but not wired into any test SkipAttribute.
 
