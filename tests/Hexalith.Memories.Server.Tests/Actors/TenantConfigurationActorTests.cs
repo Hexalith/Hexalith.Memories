@@ -141,19 +141,24 @@ public class TenantConfigurationActorTests
             Arg.Any<CancellationToken>());
     }
 
-    [Fact]
-    public async Task SetEmbeddingConfigAsync_ModelChanged_WithoutForceReindex_ShouldThrow()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SetEmbeddingConfigAsync_ProviderSwitch_WithoutForceReindex_ShouldNotWrite(bool fromOllama)
     {
-        // Arrange
         (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
-        SetupExistingState(stateManager, EmbeddingProviderDefaults.Google());
+        TenantEmbeddingConfig current = fromOllama ? CreateOllamaOidcConfig() : EmbeddingProviderDefaults.Google();
+        TenantEmbeddingConfig proposed = fromOllama ? EmbeddingProviderDefaults.Google() : CreateOllamaOidcConfig();
+        SetupExistingState(stateManager, current);
 
-        TenantEmbeddingConfig newConfig = EmbeddingProviderDefaults.Ollama();
-
-        // Act & Assert
         EmbeddingConfigChangeException ex = await Should.ThrowAsync<EmbeddingConfigChangeException>(
-            () => actor.SetEmbeddingConfigAsync(newConfig, forceReindex: false));
-        ex.AffectedFields.ShouldContain("model");
+            () => actor.SetEmbeddingConfigAsync(proposed, forceReindex: false));
+
+        ex.AffectedFields.Order(StringComparer.Ordinal).ShouldBe(["dimensions", "model", "provider"]);
+        await stateManager.DidNotReceive().SetStateAsync(
+            "embeddingConfig",
+            Arg.Any<StoredTenantEmbeddingConfig>(),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -171,22 +176,29 @@ public class TenantConfigurationActorTests
         ex.AffectedFields.ShouldContain("dimensions");
     }
 
-    [Fact]
-    public async Task SetEmbeddingConfigAsync_ForceReindex_ShouldSaveAndSetReindexRequired()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SetEmbeddingConfigAsync_ProviderSwitch_WithForceReindex_ShouldSaveAndSetReindexRequired(bool fromOllama)
     {
-        // Arrange
         (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
-        SetupExistingState(stateManager, EmbeddingProviderDefaults.Google());
+        TenantEmbeddingConfig current = fromOllama ? CreateOllamaOidcConfig() : EmbeddingProviderDefaults.Google();
+        TenantEmbeddingConfig proposed = fromOllama ? EmbeddingProviderDefaults.Google() : CreateOllamaOidcConfig();
+        SetupExistingState(stateManager, current);
 
-        TenantEmbeddingConfig newConfig = EmbeddingProviderDefaults.Ollama();
+        await actor.SetEmbeddingConfigAsync(proposed, forceReindex: true);
 
-        // Act
-        await actor.SetEmbeddingConfigAsync(newConfig, forceReindex: true);
-
-        // Assert
+        await stateManager.Received(1).SetStateAsync(
+            "embeddingConfig",
+            Arg.Any<StoredTenantEmbeddingConfig>(),
+            Arg.Any<CancellationToken>());
         await stateManager.Received().SetStateAsync(
             "embeddingConfig",
-            Arg.Is<StoredTenantEmbeddingConfig>(c => c!.ReindexRequired && c.Provider == "ollama" && c.Model == "qwen3-embedding:4b"),
+            Arg.Is<StoredTenantEmbeddingConfig>(config =>
+                config!.ReindexRequired &&
+                config.Provider == proposed.Provider &&
+                config.Model == proposed.Model &&
+                config.Dimensions == proposed.Dimensions),
             Arg.Any<CancellationToken>());
     }
 

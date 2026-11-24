@@ -402,6 +402,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 15-1-release
 location: tools/release-preflight.ps1
 reason: - **15.1-RV1 - accepted.** Transient network failure in `Test-RemoteTagCollision` aborts the release lane. - ID: 15.1-RV1 - Status: accepted - Source story: 15-1-release-edge-case-preflight-hardening - Target artifact: tools/release-preflight.ps1 - Re-open trigger: A release attempt fails because `git ls-remote` returns a transient network/DNS error and the preflight has no retry/backoff. - Rationale: The preflight currently has no retry. A DNS hiccup turns a recoverable error into a hard abort. Deferred because the right policy (number of retries, backoff window, idempotency boundary) is a release-owner decision rather than a clear patch. Story 19.3 (2026-06-30) buckets this as accept-until-trigger (no release has failed on it; the retry policy is a release-owner decision); natural future home: release-preflight script robustness sweep. Owner: release maintainer.
 status: open
+note: 2026-11-24 — Skipped. No qualifying release failure is linked, and the release owner has yet to choose a retry policy.
 
 ### DW-58: 15.1-RV2: accepted. Dry-run version regex hard-codes English semantic-release output.
 
@@ -409,6 +410,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 15-1-release
 location: tools/release-preflight.ps1
 reason: - **15.1-RV2 - accepted.** Dry-run version regex hard-codes English semantic-release output. - ID: 15.1-RV2 - Status: accepted - Source story: 15-1-release-edge-case-preflight-hardening - Target artifact: tools/release-preflight.ps1 - Re-open trigger: semantic-release ever rewords `The next release version is X.Y.Z` or ships i18n output that no longer matches the regex, and the preflight starts mis-detecting the next version. - Rationale: Bound to current semantic-release output. A more stable contract would be `semantic-release --dry-run --debug` JSON or a plugin hook, but switching is out of scope for Story 15.1. Story 19.3 (2026-06-30) buckets this as accept-until-trigger (no current failure or trigger; the fix is a release-owner decision); natural future home: release-preflight script robustness sweep. Owner: release maintainer.
 status: open
+note: 2026-11-24 — Skipped. The current parser contract still applies, and no release output drift is linked.
 
 ### DW-59: 15.1-RV3: accepted. Final `catch` block loses inner-exception and stack trace.
 
@@ -588,6 +590,7 @@ origin: migrated from legacy ledger ("Carried forward by Story 14.4 (2026-05-04)
 location: src/libraries/Hexalith.Commons/Errors/ValueOrError{T}.cs
 reason: - **13.6-RV3 — carried forward.** `EmbeddingVectorMigrationService` retains string-shaped error returns from `ValidateOptions` and `TryBuildTargetConfig` and routes all operator-visible failures through the structured `EmbeddingMigrationResult` surface. Adopting Hexalith's `ValueOrError<T>` convention requires a project reference to `Hexalith.Commons` (`src/libraries/Hexalith.Commons/Errors/ValueOrError{T}.cs` + `ApplicationError.cs`), which is in this story's forbidden-by-default file scope and would cascade through `Hexalith.Memories.Server`'s reference graph. The internal helpers feed exactly one consumer (the orchestrator) which immediately wraps each message into the public `EmbeddingMigrationResult`, so the local string shape is structurally equivalent to a `ValueOrError<T>` for this surface. Re-open trigger: a Hexalith-wide audit of result-pattern adoption that drops the `Hexalith.Commons` cross-project boundary, or any feature that needs to surface migration errors with `ApplicationError`'s richer shape (Title/Detail/TechnicalDetail/Arguments/Category) rather than a flat operator sentence.
 status: open
+note: 2026-11-24 — Skipped. Duplicates the migration error-shape decision in DW-40, which requires wider dependency scope.
 
 ### DW-87: 13.7-RV4: resolved 2026-05-12. Story 14.4 did not introduce a new shared helper or touch a third copy of `ResolveRepositoryRoot`, so it carried the item forward. The later deferred-work implementation added the AppHost-owned `RepositoryRootLocator` and replaced both local helper copies with calls to it.
 
@@ -685,6 +688,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-13.6 (
 location: src/Hexalith.Memories.Server/Migration/EmbeddingVectorMigrationService.cs
 reason: - **13.6-RV3 — Migration tool surfaces use ad-hoc string error returns + exit codes rather than `ValueOrError<T>`.** `src/Hexalith.Memories.Server/Migration/EmbeddingVectorMigrationService.cs` — `ValidateOptions` returns `string?`; result construction is manual. Hexalith convention prefers `ValueOrError<T>` for expected business failures. Re-open trigger: a refactor of the migration service surface, or a Hexalith-wide audit of result-pattern adoption.
 status: open
+note: 2026-11-24 — Skipped. Duplicates DW-40 and DW-86, whose richer error shape depends on a cross-module decision.
 
 ### DW-103: 13.6-RV4: Redactor does not match AWS access keys, raw JWT signatures, or HTTP Basic auth. `src/Hexalith.Memories.Server/Migration/EmbeddingMigrationRedactor.cs` — Embedding-provider error surfaces are unlikely to expose these credential shapes (Google API key + OIDC bearer + `client_secret` are the realistic vectors). Re-open trigger: a real exception payload caught in production that contains one of these shapes unredacted, or expansion to a third embedding provider.
 
@@ -715,7 +719,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of story-13.5 (2026-05-02)"), 2026-09-01
 location: tests/Hexalith.Memories.Server.Tests/Actors/TenantConfigurationActorTests.cs:91-119
 reason: - **13.5-RV3 — No Ollama-flavored Provider/Model/Dimensions breaking-change actor tests.** `tests/Hexalith.Memories.Server.Tests/Actors/TenantConfigurationActorTests.cs:91-119` — existing Model/Dimensions breaking-change coverage uses `EmbeddingProviderDefaults.Google()` only; Ollama-specific `Validate(...)` ceilings (qwen3 dim lock at 2560, rate-limit ceiling 60_000) are exercised in `EmbeddingProviderDefaultsTests` separately. Re-open trigger: a second Ollama model lands and the dim/provider breaking-change matrix grows.
-status: open
+status: done 2026-11-24
+resolution: Actor tests now cover both Google/Ollama switch directions, exact conflict fields, no unforced write, and one forced write with the reindex flag. All 244 actor and registry tests passed.
 
 ### DW-108: 13.5-RV4: Legacy `provider="ollama"` payload with missing OIDC fields not exercised. `tests/Hexalith.Memories.Server.Tests/Actors/TenantConfigurationActorTests.cs:480-496` (`DeserializeLegacyGoogleConfig`) — pre-13.4 actor state cannot legitimately be Ollama because the provider was added in Story 13.1, but a hypothetical injected legacy Ollama payload's deserialize-then-Validate fallback path is un-pinned. Re-open trigger: any operational incident where an actor state predates the current provider list.
 
