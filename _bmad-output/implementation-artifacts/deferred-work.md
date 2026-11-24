@@ -1703,7 +1703,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of 6-4-pipeline-state-persistence-and-zero-data-loss (2026-04-16)"), 2026-09-01
 location: tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixture.cs
 reason: - **`_logProvider` in the fixture accumulates entries across restart lifetimes** — `RestartTopologyAsync` does not reset the shared log provider, so any future test code that captures a pre-restart index and inspects post-restart entries will see mixed lifetimes. Latent trap rather than a current bug. [tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixture.cs]
-status: open
+status: done 2026-11-24
+resolution: Each full topology start registers a fresh capture provider and carries forward the cursor. Fixture tests cover late writes to the previous provider and the live restart test verifies that public snapshots contain only current logs.
 
 ### DW-247: `[DataMember]` attributes omit explicit `Name`
 

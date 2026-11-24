@@ -25,6 +25,28 @@ using Shouldly;
 public sealed class AspireIngestionPipelineFixtureTests
 {
     [Fact]
+    public void LogCapture_AfterRestart_ReadsOnlyTheCurrentLifetimeAtEitherCursor()
+    {
+        using var previous = new AspireIngestionPipelineFixture.TestLogProvider(0);
+        ILogger staleLogger = ((ILoggerProvider)previous).CreateLogger("before restart");
+        staleLogger.LogWarning("First lifetime");
+        int beforeRestart = previous.Count;
+
+        using var current = new AspireIngestionPipelineFixture.TestLogProvider(beforeRestart);
+        ILogger logger = ((ILoggerProvider)current).CreateLogger("after restart");
+        logger.LogWarning("Second lifetime");
+        staleLogger.LogWarning("Late first-lifetime message");
+        int cursor = current.Count;
+        logger.LogWarning("Later second-lifetime message");
+
+        current.Count.ShouldBe(beforeRestart + 2);
+        current.GetEntriesSince(0).Select(entry => entry.Message)
+            .ShouldBe(["Second lifetime", "Later second-lifetime message"]);
+        current.GetEntriesSince(beforeRestart).Count.ShouldBe(2);
+        current.GetEntriesSince(cursor).ShouldHaveSingleItem().Message.ShouldBe("Later second-lifetime message");
+    }
+
+    [Fact]
     public void OwnedSidecarListenersUseAllocatedPortsAndRetainExactRuntimeOptions()
     {
         var builder = Aspire.Hosting.DistributedApplication.CreateBuilder();

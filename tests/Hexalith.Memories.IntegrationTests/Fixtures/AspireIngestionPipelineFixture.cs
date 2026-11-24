@@ -100,7 +100,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     private string[] _accessTelemetrySeedValues = [];
     private string? _tempDaprConfigPath;
     private int _topologyLogStartIndex;
-    private readonly TestLogProvider _logProvider = new();
+    private TestLogProvider _logProvider = new(0);
     private static readonly Regex DaprHttpPortRegex = new(
         @"HTTP server listening on TCP address: :(?<port>\d+)(?=$|[\s""'])",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -392,7 +392,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     /// <summary>Gets the CloudEvents <c>source</c> prefix mapped to <see cref="EventStoreMappedTenantId"/>.</summary>
     public string EventStoreMappedSourcePrefix => "enterprise.claims";
 
-    /// <summary>Gets the number of captured log entries.</summary>
+    /// <summary>Gets the cursor immediately after the latest captured log entry.</summary>
     public int LogEntryCount => _logProvider.Count;
 
     /// <summary>Gets the Redis Stack connection for backend verification.</summary>
@@ -1440,9 +1440,9 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         _telemetryInMemoryScope = null;
     }
 
-    /// <summary>Returns a snapshot of log entries captured since the specified starting index.</summary>
+    /// <summary>Returns a snapshot of current-topology log entries at or after the specified index.</summary>
     /// <param name="startIndex">The 0-based index from which to read newly-captured log entries.</param>
-    /// <returns>The captured log entries after the starting index.</returns>
+    /// <returns>The captured log entries from the current topology.</returns>
     public IReadOnlyList<CapturedLogEntry> GetLogEntriesSince(int startIndex) => _logProvider.GetEntriesSince(startIndex);
 
     /// <summary>Default wait budget for a tenant to reach <see cref="TenantStatus.Active"/>.</summary>
@@ -1958,6 +1958,8 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     private async Task StartTopologyAsync(CancellationToken cancellationToken)
     {
         int logStartIndex = _logProvider.Count;
+        var logProvider = new TestLogProvider(logStartIndex);
+        _logProvider = logProvider;
         _topologyLogStartIndex = logStartIndex;
 
         _builder = await DistributedApplicationTestingBuilder
@@ -2012,7 +2014,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
                 return level >= LogLevel.Warning;
             });
-            _ = logging.AddProvider(_logProvider);
+            _ = logging.AddProvider(logProvider);
         });
 
         _app = await _builder.BuildAsync().ConfigureAwait(false);
@@ -3023,20 +3025,21 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     public sealed record CapturedLogEntry(LogLevel Level, string Category, string Message);
 
 
-    /// <summary>Captures Aspire integration-test logs for direct endpoint resolution and diagnostics.</summary>
-    internal sealed class TestLogProvider : ILoggerProvider
+    /// <summary>Captures logs for one topology lifetime while keeping cursors valid across restarts.</summary>
+    /// <param name="firstEntryIndex">The cursor at the end of the preceding lifetime.</param>
+    internal sealed class TestLogProvider(int firstEntryIndex) : ILoggerProvider
     {
         private readonly object _gate = new();
         private readonly List<CapturedLogEntry> _entries = [];
 
-        /// <summary>Gets the number of entries captured so far.</summary>
+        /// <summary>Gets the cursor immediately after the latest entry.</summary>
         internal int Count
         {
             get
             {
                 lock (_gate)
                 {
-                    return _entries.Count;
+                    return firstEntryIndex + _entries.Count;
                 }
             }
         }
@@ -3054,7 +3057,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         {
             lock (_gate)
             {
-                int effectiveIndex = Math.Clamp(startIndex, 0, _entries.Count);
+                int effectiveIndex = Math.Clamp(startIndex, firstEntryIndex, firstEntryIndex + _entries.Count) - firstEntryIndex;
                 return _entries.Skip(effectiveIndex).ToList();
             }
         }

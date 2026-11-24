@@ -21,7 +21,13 @@ public sealed partial class OpenBaoTopologyIntegrationTests
         (await fixture.CanReadOpenBaoRuntimeCanaryAsync().ConfigureAwait(true)).ShouldBeTrue();
         (await fixture.CanReadOpenBaoAccessMarkerAsync().ConfigureAwait(true)).ShouldBeTrue();
 
+        int preRestartLogCursor = fixture.LogEntryCount;
+        preRestartLogCursor.ShouldBeGreaterThan(0);
         TimeSpan restartDuration = await fixture.RestartTopologyAsync().ConfigureAwait(true);
+
+        IReadOnlyList<AspireIngestionPipelineFixture.CapturedLogEntry> currentLogs = fixture.GetLogEntriesSince(0);
+        currentLogs.ShouldNotBeEmpty();
+        fixture.GetLogEntriesSince(preRestartLogCursor).Take(currentLogs.Count).ShouldBe(currentLogs);
 
         (await fixture.IsOpenBaoInitializedAndUnsealedAsync().ConfigureAwait(true)).ShouldBeTrue();
         (await fixture.CanReadOpenBaoRuntimeCanaryAsync().ConfigureAwait(true)).ShouldBeTrue();
