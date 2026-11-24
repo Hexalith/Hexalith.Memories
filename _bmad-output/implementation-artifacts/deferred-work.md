@@ -2118,6 +2118,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 9-2-dual-emb
 location: n/a
 reason: - **S6-F7. Map free-text-only `ConsistencyNote` (kind=None, note≠empty) to a typed sentinel in `BuildConsistencyNoteKind`.** Consumers cannot pattern-match on `None`. Follow-up: extend `BuildConsistencyNoteKind` to return `ConsistencyNoteKind.Other` (or similar) when free-text is present without a kind.
 status: open
+note: 2026-11-24 — Skipped. The published hosted-test SDK profile uses a Contracts package without the sentinel. Existing V1 readers reject the new string enum value. Coordinate contract versioning and the supported package floor before enabling it.
 
 ### DW-301: S6-F8. Add inner-loop deadline check to `WorkflowReplaySafetyHostedService.TryCountInFlightAsync`.
 
@@ -2235,6 +2236,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of stories 11-1
 location: .github/rulesets/main.json
 reason: - **W11. `branch-protection.md` is a manual checklist with no automation.** Commit a `.github/rulesets/main.json` and a daily audit workflow. Out of scope for 11.x. (`docs/dev/branch-protection.md`)
 status: open
+note: 2026-11-24 — Skipped. The proposed branch-rule automation belongs to Hexalith.CiCd and requires the effective GitHub ruleset to be defined by its owner.
 
 ### DW-318: W12 [resolved in 14.2]. `tools/release-packages.json` has no `$schema` reference.
 
@@ -2282,6 +2284,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of stories 11-1
 location: .github/workflows/ci.yml
 reason: - **W18. CI `runs-on: ubuntu-latest` is unpinned.** Works today; pin to `ubuntu-22.04` if Docker engine version drift causes Testcontainers regression. (`.github/workflows/ci.yml`)
 status: open
+note: 2026-11-24 — Skipped. No hosted runner drift has met the recorded trigger. Hexalith.CiCd also owns the runner declaration.
 
 ### DW-325: W19 [resolved in 14.2]. `concurrency: cancel-in-progress: false` enables stuck-release deadlock with `--skip-duplicate` self-heal.
 
@@ -2295,6 +2298,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of stories 11-1
 location: n/a
 reason: - **W20. Release workflow runs build+restore+test+pack twice.** Pre-release validation + semantic-release internal pack pipeline duplicate work; optimize when CI minutes become a constraint.
 status: open
+note: 2026-11-24 — Skipped. The cited release pipeline predates the shared Builds release cutover. No measured CI-minutes constraint or equivalent redundant-stage proof is linked.
 
 ### DW-327: W21. `tools/test.sh` Slow/Integration arms collapsed via `|`.
 
@@ -2310,6 +2314,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of stories 11-1
 location: tests/Hexalith.Memories.Contracts.Tests/V1/PublicContractSerializationCoverageTests.cs:54-58
 reason: - **W22. `PublicContractSerializationCoverageTests` uses name-suffix filter (`Validator`/`Defaults`/`Taxonomy`).** Fragile but works today; replace with `[ExcludeFromContractCoverage]` attribute when a false-positive is observed. (`tests/Hexalith.Memories.Contracts.Tests/V1/PublicContractSerializationCoverageTests.cs:54-58`)
 status: open
+note: 2026-11-24 — Skipped. No observed false positive meets the recorded trigger for changing the public contract coverage exclusions.
 
 ### DW-329: W23. `CiTestInventoryTests` uses `Contains` for workflow text.
 
@@ -2317,6 +2322,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of stories 11-1
 location: tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:66-68
 reason: - **W23. `CiTestInventoryTests` uses `Contains` for workflow text.** Too permissive; a future workflow refactor adding another `dotnet test` step with the wrong arguments still passes the assertion. Replace with structural YAML parsing. (`tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:66-68`)
 status: open
+note: 2026-11-24 — Skipped. The cited CiTestInventoryTests file has been removed. The current CI ownership rules also prohibit tests that assert workflow YAML.
 
 ### DW-330: W24. `CiTestInventoryTests` opaque error if `RepoRoot` AssemblyMetadata missing.
 
@@ -2332,7 +2338,8 @@ reopen_trigger: A release workflow or deferred-register format change escapes or
 origin: migrated from legacy ledger ("Deferred from: code review of stories 11-1 + 11-2 (2026-04-26)"), 2026-09-01
 location: tools/integration-fast-required-surfaces.txt
 reason: - **S11-FB. Compile-time symbol verification for `tools/integration-fast-required-surfaces.txt` (review patch P9).** Currently the verifier surfaces missing classes only after CI runs the lane. Promoting the check to compile-time requires either (a) a `ProjectReference` to `Hexalith.Memories.IntegrationTests` from a Docker-free test project (pulls integration deps), (b) a refactor of the surfaces file into a typed C# inventory consumed by both the verifier (after build) and a unit test, or (c) a `dotnet test --list-tests` step in CI before the test run. Re-open trigger: first surface drift incident, or the next time the surfaces list grows past ~10 entries.
-status: open
+status: done 2026-11-24
+resolution: The fast integration build generates nameof references from the 21 registered class and method entries before CoreCompile. A disposable inventory containing a missing class and method failed compilation with CS0234 and CS0117.
 
 ### DW-332: S11-FC. Pre-flight stale-tag detection on release.yml (review patch P16).
 

@@ -54,6 +54,32 @@
     <Using Include="Hexalith.Memories.Server.Serialization" />
   </ItemGroup>
 
+  <!-- Compile references from the same inventory the CI TRX verifier reads. -->
+  <PropertyGroup>
+    <IntegrationFastRequirementsFile Condition="'$(IntegrationFastRequirementsFile)' == ''">$(MSBuildThisFileDirectory)../../tools/integration-fast-required-surfaces.txt</IntegrationFastRequirementsFile>
+  </PropertyGroup>
+  <Target Name="CompileIntegrationFastSurfaceNames" BeforeTargets="CoreCompile">
+    <ReadLinesFromFile File="$(IntegrationFastRequirementsFile)">
+      <Output TaskParameter="Lines" ItemName="_IntegrationFastRequirement" />
+    </ReadLinesFromFile>
+    <ItemGroup>
+      <_IntegrationFastRequirement Remove="@(_IntegrationFastRequirement)"
+        Condition="$([System.String]::Copy('%(Identity)').TrimStart().StartsWith('#'))" />
+      <_IntegrationFastRequirement Update="@(_IntegrationFastRequirement)">
+        <Symbol>$([System.Text.RegularExpressions.Regex]::Replace('%(Identity)', '^\s*[^|]+\|\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+)(?:\s*\|\s*([A-Za-z_]\w*))?\s*$', '$1.$2').TrimEnd('.'))</Symbol>
+      </_IntegrationFastRequirement>
+    </ItemGroup>
+    <Error Condition="'@(_IntegrationFastRequirement)' == ''" Text="No integration-fast surfaces found in $(IntegrationFastRequirementsFile)." />
+    <Error Condition="'%(_IntegrationFastRequirement.Symbol)' == '%(_IntegrationFastRequirement.Identity)'"
+      Text="Invalid integration-fast surface: %(_IntegrationFastRequirement.Identity)" />
+    <WriteLinesToFile File="$(IntermediateOutputPath)IntegrationFastSurfaceNames.g.cs"
+      Lines="@(_IntegrationFastRequirement->'[assembly: global::System.Reflection.AssemblyMetadata(&quot;IntegrationFastSurface&quot;, nameof(global::%(Symbol)))]')"
+      Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <Compile Include="$(IntermediateOutputPath)IntegrationFastSurfaceNames.g.cs" />
+    </ItemGroup>
+  </Target>
+
   <!-- Qualification-only workflows do not use version discovery. Its generated public
        registry collides with the production Server registry imported by this assembly. -->
   <Target Name="RemoveQualificationWorkflowVersionRegistryGenerator" BeforeTargets="CoreCompile">
