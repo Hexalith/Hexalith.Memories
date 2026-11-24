@@ -2219,7 +2219,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of stories 11-1
 location: tests/Hexalith.Memories.IntegrationTests/Telemetry/AspireEndToEndTraceTests.cs:330
 reason: - **W7. `Substitute.For<WorkflowActivityContext>()` may fail if Dapr.Workflow seals the type in a future SDK.** Works against 1.17.6; failure mode is loud (NSubstitute throws at instantiation). (`tests/Hexalith.Memories.IntegrationTests/Telemetry/AspireEndToEndTraceTests.cs:330`)
 status: done 2026-11-24
-resolution: Removed the unused syntactic seed helper and its WorkflowActivityContext proxy from the Aspire trace test. The executable trace scenario still seeds through the existing fixture.
+resolution: The nightly Aspire trace seeds Redis using the canonical syntactic projection and tenant key builder without constructing a WorkflowActivityContext proxy. The trace test requires the CLI to return the seeded unit.
 
 ### DW-316: W9. CONTRIBUTING.md skip wording (`Requires Docker - see CONTRIBUTING.md`) is documented but not wired into any test SkipAttribute.
 

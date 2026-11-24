@@ -21,15 +21,15 @@ using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.IntegrationTests.Fixtures;
 using Hexalith.Memories.IntegrationTests.Telemetry.Infrastructure;
 using Hexalith.Memories.Server.Activities.Indexing;
+using Hexalith.Memories.Server.Infrastructure;
 using Hexalith.Memories.Telemetry;
 using Hexalith.Memories.TestHelpers.Factories;
 
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging.Abstractions;
-
-using NSubstitute;
 
 using Shouldly;
+
+using StackExchange.Redis;
 
 using Xunit;
 
@@ -49,7 +49,7 @@ public sealed partial class AspireEndToEndTraceTests
         // HEXALITH_MEMORIES_TELEMETRY_INMEMORY=1 and parsed from the Aspire log stream.
         string tenantId = await _fixture.ProvisionActiveTenantAsync($"tenant-telemetry-trace-{Guid.NewGuid():N}");
         string query = $"traceredisprobe{Guid.NewGuid():N}";
-        await SeedSyntacticDocumentAsync(tenantId, query);
+        string memoryUnitId = await SeedSyntacticDocumentAsync(tenantId, query);
 
         await using CliTracingHarness harness = CliTracingHarness.Create();
         int logStartIndex = _fixture.LogEntryCount;
@@ -64,7 +64,7 @@ public sealed partial class AspireEndToEndTraceTests
             CliExitCodes.Success,
             $"CLI search command failed. stdout:{Environment.NewLine}{cliStdout}{Environment.NewLine}stderr:{Environment.NewLine}{cliStderr}");
         cliStderr.ShouldBeEmpty($"CLI stderr must stay empty on the happy path. stdout:{Environment.NewLine}{cliStdout}");
-        cliStdout.ShouldNotBeNullOrWhiteSpace();
+        cliStdout.ShouldContain(memoryUnitId, Case.Sensitive);
 
         await harness.ForceFlushAsync(TimeSpan.FromSeconds(2));
 
@@ -164,5 +164,37 @@ public sealed partial class AspireEndToEndTraceTests
             DumpDiagnostics(harness, logStartIndex, httpSpanId, cliStdout, cliStderr);
             throw;
         }
+    }
+
+    private async Task<string> SeedSyntacticDocumentAsync(string tenantId, string queryToken)
+    {
+        IndexInput input = IndexInputFactory.Create(
+            tenantId: tenantId,
+            memoryUnitId: $"mu-trace-{Guid.NewGuid():N}",
+            caseId: $"case-trace-{Guid.NewGuid():N}",
+            content: $"Redis span trace probe document containing {queryToken}.",
+            sourceUri: $"file:///{Guid.NewGuid():N}.txt",
+            embeddingVector: IndexInputFactory.CreateRealisticVector(768),
+            embeddingDimensions: 768);
+        List<HashEntry> entries = SyntacticHashProjection.BuildEntries(
+            input.MemoryUnitId,
+            input.TenantId,
+            input.Content,
+            input.SourceUri,
+            input.SourceType,
+            input.Metadata,
+            input.ContentHash,
+            input.CaseId,
+            input.EmbeddingProvider,
+            input.EmbeddingModel,
+            input.EmbeddingDimensions,
+            input.IngestedBy,
+            input.IngestedAt,
+            input.IngestedAt);
+
+        await _fixture.RedisConnection.GetDatabase().HashSetAsync(
+            IndexSchemaDefinitions.BuildSyntacticKey(input.TenantId, input.MemoryUnitId),
+            [.. entries]);
+        return input.MemoryUnitId;
     }
 }
