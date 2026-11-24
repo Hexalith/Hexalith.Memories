@@ -1226,6 +1226,7 @@ origin: migrated from legacy ledger ("Deferred from: Story 10.2 Token-Budget Res
 location: n/a
 reason: - **Story-10.x-McpAuthAnonymousDevBindAddress (A2).** Bind-address invariant for the anonymous-dev gate — refuse to run when `Authentication:JwtBearer:Authority` AND `SigningKey` are both unset and the process binds a non-loopback address. The 10.2 wiring requires `Authority` OR `SigningKey` at startup (validator hard-fails otherwise), so the anonymous-dev path no longer exists; this defense-in-depth check is N/A unless the anonymous-dev path is reintroduced. Re-open trigger: any future story re-introducing an anonymous mode for development.
 status: open
+note: 2026-11-24 — Skipped. Startup authentication already requires issuer credentials and the anonymous development mode was removed.
 
 ### DW-183: Story-10.x-McpAuthDriftDetectorCi (A14). Monthly GitHub Actions workflow that diffs `src/submodules/Hexalith.EventStore/src/Hexalith.EventStore/Authentication/` against `src/Hexalith.Memories.Mcp/Authentication/` and posts structural drift summaries to an ops issue. Allowed-divergence list mirrors ADR-10.2-001 invariants. Effort > 45 min for a robust diff + allowlist + ops-issue integration; deferred to keep the 10.2 envelope on track. Re-open trigger: first observed drift incident, or quarterly review.
 
@@ -1233,6 +1234,7 @@ origin: migrated from legacy ledger ("Deferred from: Story 10.2 Token-Budget Res
 location: src/submodules/Hexalith.EventStore/src/Hexalith.EventStore/Authentication/
 reason: - **Story-10.x-McpAuthDriftDetectorCi (A14).** Monthly GitHub Actions workflow that diffs `src/submodules/Hexalith.EventStore/src/Hexalith.EventStore/Authentication/` against `src/Hexalith.Memories.Mcp/Authentication/` and posts structural drift summaries to an ops issue. Allowed-divergence list mirrors ADR-10.2-001 invariants. Effort > 45 min for a robust diff + allowlist + ops-issue integration; deferred to keep the 10.2 envelope on track. Re-open trigger: first observed drift incident, or quarterly review.
 status: open
+note: 2026-11-24 — Skipped. A scheduled cross-repository drift report requires CI/CD ownership, an allowlist, and an issue-publishing policy.
 
 ### DW-184: Story-10.x-RetroLessonForwardReferenceGuards (A16). Capture the "10.1 `McpUnauthenticatedStartupGuard` lifecycle pattern" as a retro lesson (forward-reference guards have non-trivial N+1 deletion cost; account for it in N+1 effort estimates). Lands in the Story 10.2 retro deliverable.
 
@@ -1246,6 +1248,7 @@ origin: migrated from legacy ledger ("Deferred from: Story 10.1 MCP Server & Too
 location: tests/Hexalith.Memories.IntegrationTests/Telemetry/AspireEndToEndTraceTests.cs
 reason: - **Story-10.x-McpTraceHopAssertion.** `tests/Hexalith.Memories.IntegrationTests/Telemetry/AspireEndToEndTraceTests.cs` does not yet include an MCP-hop assertion — adding one is out of scope for 10.1 and tempting-but-fragile until 10.2 auth is wired (so the test does not need to mint bearer tokens). The MCP integration test (`McpServerIntegrationTests.CallSearchMemory_EndToEnd_ExecutesAcrossDaprHop`) covers a happy-path execution, but does NOT yet assert that the outbound trace contains a span resolving to the DAPR sidecar invocation path (`/v1.0/invoke/memories-server/method/*`). **Re-open trigger:** post-10.2 follow-up story or first observation that direct-HTTP regressions slip through.
 status: open
+note: 2026-11-24 — Skipped. The existing fixture cannot attribute and export the outbound sidecar span to the same request without a cross-process trace harness.
 
 ### DW-186: Story-10.x-StatelessModeAuditFor10.2Auth: closed for bearer auth. Story 10.2 kept `WithHttpTransport(o => o.Stateless = true)` because the implemented flow is bearer-only and validates each request independently. Re-open if OAuth-PKCE, refresh-token rotation, sampling, or elicitation requires server-side session state.
 
@@ -1259,6 +1262,7 @@ origin: migrated from legacy ledger ("Deferred from: Story 10.1 MCP Server & Too
 location: n/a
 reason: - **Story-10.x-McpAotCompatibility.** ModelContextProtocol 1.2.0 uses reflection for tool-schema generation. Setting `<PublishAot>true</PublishAot>` on `Hexalith.Memories.Mcp.csproj` will likely surface trim/reflection warnings. 10.1 deliberately leaves AOT off — same default as `Contracts`, `Client.Rest`, `EventStore`, `Cli`. **Re-open trigger:** an explicit AOT-publishing requirement, or upstream MCP SDK release that ships a source-generator-based schema path.
 status: open
+note: 2026-11-24 — Skipped. There is no agreed AOT publication requirement for the retained compatibility MCP server.
 
 ### DW-188: Story-10.x-McpTokenizerAccurateBudget. Story 10.2 replaced the 10.1 per-result soft clamp with server-side `contentSnippet.Length / 4 + overhead` estimation. This is still heuristic and can over-prune non-ASCII content. Phase 2 Sprint 1 candidate; escalate on first non-ASCII tenant onboarding or quantitative observation that the estimate causes >2x under-utilization on real workloads.
 
@@ -1266,6 +1270,7 @@ origin: migrated from legacy ledger ("Deferred from: Story 10.1 MCP Server & Too
 location: n/a
 reason: - **Story-10.x-McpTokenizerAccurateBudget.** Story 10.2 replaced the 10.1 per-result soft clamp with server-side `contentSnippet.Length / 4 + overhead` estimation. This is still heuristic and can over-prune non-ASCII content. Phase 2 Sprint 1 candidate; escalate on first non-ASCII tenant onboarding or quantitative observation that the estimate causes >2x under-utilization on real workloads.
 status: open
+note: 2026-11-24 — Skipped. Accurate budgets need a tokenizer contract shared with the server and clients; the retained MCP surface is frozen for feature changes.
 
 ### DW-189: Story-10.x-TraverseSemanticPrimaryPath. Story 10.2 traversal truncation preserves a BFS shortest path to the deepest node before pruning branches. A semantically weighted primary path (`causedBy` > `correlatedWith`, etc.) may produce better narratives under tight budgets, but edge weights are not exposed today. Re-open when traversal edge weights become available.
 
@@ -1273,6 +1278,7 @@ origin: migrated from legacy ledger ("Deferred from: Story 10.1 MCP Server & Too
 location: n/a
 reason: - **Story-10.x-TraverseSemanticPrimaryPath.** Story 10.2 traversal truncation preserves a BFS shortest path to the deepest node before pruning branches. A semantically weighted primary path (`causedBy` > `correlatedWith`, etc.) may produce better narratives under tight budgets, but edge weights are not exposed today. Re-open when traversal edge weights become available.
 status: open
+note: 2026-11-24 — Skipped. Traversal edges do not expose weights, and the narrative ranking policy is undefined.
 
 ### DW-190: Story-10.x-OpenTelemetryAspNetCoreAlignment. Story 10.1 bumped `OpenTelemetry`, `OpenTelemetry.Exporter.OpenTelemetryProtocol`, `OpenTelemetry.Extensions.Hosting`, `OpenTelemetry.Exporter.InMemory` from 1.15.1 → 1.15.3 to clear NU1902 advisories (GHSA-mr8r-92fq-pj8p, GHSA-q834-8qmm-v933). `OpenTelemetry.Instrumentation.AspNetCore` only has 1.15.2 published (no 1.15.3), so it stays at 1.15.2 — the advisories did not target it. Re-open trigger: AspNetCore instrumentation lands a 1.15.3 patch and we want to re-align all OTel pins on the same point release.
 
@@ -1298,6 +1304,7 @@ origin: migrated from legacy ledger ("Deferred from: Story 9.3 Handler Registrat
 location: n/a
 reason: - **Story-9.3-ObservationWindowConfig.** The 24h observation window is hardcoded in `HandlerRegistryService.ObservationWindow`. Making it configurable per-tenant complicates Redis TTL (TTL must exceed the widest possible window) and global-config awkwardness. **Re-open trigger:** first operator explicitly requests a non-24h window in a real deployment.
 status: open
+note: 2026-11-24 — Skipped. No operator request defines the replacement window or how the observation retention should grow.
 
 ### DW-194: Story-9.3-ProjectionRegistryCrossCheck. The detector validates observed events against the ROUTING config (`SourceToTenantMap`), NOT against the set of projections the tenant's application code has bound at runtime. An event can be "handled from routing's POV" but silently ignored downstream by the application. A declarative projection registry (attribute-scanned, reflection-verified) is the right future solution. Re-open trigger: operator-driven demand for this gap to be closed.
 
@@ -1311,6 +1318,7 @@ origin: migrated from legacy ledger ("Deferred from: Story 9.3 Handler Registrat
 location: n/a
 reason: - **Story-9.3-SinceFlagForLowVolume.** `--since <duration>` CLI flag on `memories handlers mismatches` to widen the observation window for low-volume tenants, reducing `StaleHandler` Info noise on weekly-publishing patterns. Requires the observation store TTL to be widened to `2 × max(window)` globally, or a dedicated expanded-window store. Material cost, deferred.
 status: open
+note: 2026-11-24 — Skipped. The compatibility CLI is frozen for new flags, and a larger observation window requires a retention decision.
 
 ### DW-196: Story-9.3-TenantCardinalityBucketing. Switch `memories.handlers.registered` from `tenant_id`-tagged gauge to a bucketed summary (0 / 1-10 / 10-100 / 100+ tenants) when N ≥ 1000 tenants approaches. Not an issue in current deployments. Re-open trigger: tenant count crosses 1000 in any real environment.
 
@@ -1318,6 +1326,7 @@ origin: migrated from legacy ledger ("Deferred from: Story 9.3 Handler Registrat
 location: n/a
 reason: - **Story-9.3-TenantCardinalityBucketing.** Switch `memories.handlers.registered` from `tenant_id`-tagged gauge to a bucketed summary (0 / 1-10 / 10-100 / 100+ tenants) when N ≥ 1000 tenants approaches. Not an issue in current deployments. **Re-open trigger:** tenant count crosses 1000 in any real environment.
 status: open
+note: 2026-11-24 — Skipped. No deployment has been identified as reaching the tenant-count trigger for changing the metrics contract.
 
 ### DW-197: Story-9.3-VersionMismatchAttributeApproach. Replace regex-based `VersionMismatch` with a publisher-declared `[EventType("ClaimSubmitted", Version=2)]` attribute, surfaced via `ReflectionTypeLoader` at startup. Becomes an O(1) dictionary lookup with no ReDoS surface, no length cap, no regex-timeout event id 9141. Deferred: requires coordinating a convention change with every publisher repo.
 
@@ -1327,6 +1336,7 @@ reason: - **Story-9.3-VersionMismatchAttributeApproach.** Replace regex-based `V
 status: open
 decision: 2026-09-01 Await publisher program
 decision: 2026-09-01 Await publisher program
+note: 2026-11-24 — Skipped. Publisher-declared version attributes require a coordinated convention and rollout across publisher repositories.
 
 ### DW-198: Story-9.3-SubscriptionStatusConfigured. 4-state `HandlerSubscriptionStatus` enum (add `Configured` between `Unknown` and `Active`) to disambiguate "routing is set up but has never seen events" from "routing is set up and has seen events." Breaking change for downstream C# `switch` consumers. Re-open trigger: operator feedback post-landing indicates the 3-state model is ambiguous.
 
@@ -1340,6 +1350,7 @@ origin: migrated from legacy ledger ("Deferred from: Story 9.3 Handler Registrat
 location: n/a
 reason: - **Story-9.3-ObservationStoreRebuildFromAuditLog.** Rebuild observation store from `AccessTelemetryLog` on startup to recover from sidecar-restart observation loss (Risk #8 degraded mode). Out of scope for 9.3.
 status: open
+note: 2026-11-24 — Skipped. Boot-time replay needs a supported telemetry read model, ownership, and restart behavior decisions.
 
 ### DW-200: Story-9.3-PostgresObservationStoreAlternative. Investigate using an `AccessTelemetryLog`-backed Postgres VIEW in place of the dedicated Redis observation store — eliminates Redis write amplification (Risk #1) and sidecar-restart loss (Risk #8) in one move. Blocked until (a) `AccessTelemetryLog` backing is confirmed as Postgres and (b) a read-latency benchmark of the VIEW-based approach shows acceptable p95.
 
@@ -1349,6 +1360,7 @@ reason: - **Story-9.3-PostgresObservationStoreAlternative.** Investigate using a
 status: open
 decision: 2026-09-01 Benchmark Postgres view — Build a representative view prototype, measure query latency and write amplification, and recommend a substrate.
 decision: 2026-09-01 Benchmark Postgres view — Build a representative view prototype, measure query latency and write amplification, and recommend a substrate.
+note: 2026-11-24 — Skipped. No approved PostgreSQL observation read model or p95 benchmark is available.
 
 ### DW-201: Story-9.3-CrossTenantVersionConsumerLookup. A dedicated endpoint for publisher-owners to see "which tenants consume each version of my event type." Requires cross-tenant read permissions (operator-scope authZ). Deferred because the simpler tenant-scoped `VersionMismatch` detection satisfies the operational need inside 9.3; Epic 5 tenant-isolation invariant prevents a naive implementation.
 
@@ -1358,6 +1370,7 @@ reason: - **Story-9.3-CrossTenantVersionConsumerLookup.** A dedicated endpoint f
 status: open
 decision: 2026-09-01 Await operator auth model
 decision: 2026-09-01 Await operator auth model
+note: 2026-11-24 — Skipped. A cross-tenant endpoint requires explicit operator authorization and a new cross-tenant data contract.
 
 ### DW-202: Story-9.3-PostLaunchCategoryReview. Measure 3 months of post-launch `memories.handlers.mismatches` counter data tagged by category; drop categories showing near-zero operator acknowledgement or >95% false-positive rate. Target review: 2026-09 or later. The three-category decision is explicitly revisitable based on measured telemetry, not speculation.
 
@@ -1365,6 +1378,7 @@ origin: migrated from legacy ledger ("Deferred from: Story 9.3 Handler Registrat
 location: n/a
 reason: - **Story-9.3-PostLaunchCategoryReview.** Measure 3 months of post-launch `memories.handlers.mismatches` counter data tagged by category; drop categories showing near-zero operator acknowledgement or >95% false-positive rate. Target review: 2026-09 or later. The three-category decision is explicitly revisitable based on measured telemetry, not speculation.
 status: open
+note: 2026-11-24 — Skipped. Three months of post-launch category and operator-acknowledgement telemetry are unavailable.
 
 ### DW-203: Story-9.3-Tier2IntegrationTests. 9.3's Task 10 (Tier-2 Aspire-AppHost integration tests 10.0–10.12) was deferred during the initial landing pass. Unit coverage (45 new tests) pins the per-component invariants; the Tier-2 tests would add cross-component proof against a real Redis + DAPR sidecar. Specific deferred tests: `HandlersFixtureSmokeTests`, `HandlersListIntegrationTests`, `HandlersMismatchIntegrationTests` (VersionMismatch + healthy + StaleHandler), `ObservationStoreLostWrites_DetectorConvergesWithinTwoWindows` (property-based, dropProbability ∈ {0.0, 0.1, 0.3}), `HandlerEndpointLatencyNfrTests` (N=100 tenants, p95 500ms/200ms), `HandlerObservationKillSwitchIntegrationTests` (AC #21), `EventIngestionTelemetryAdapterSlowRedisTests` (AC #22 — bounded-FAF contract), `RedisObservedEventTypeStoreTests.ServerClockSkew_DoesNotPoisonWindow` (AC #26 — Finding N), `HandlerMetricsCardinalitySmokeTests`, `EndpointRoutingTests` + `MemoriesClientPathConstantTests` (AC #29 — Findings U, V), `HandlersListCommandTests.TableFormat_NoWrap_TruncatesWithEllipsis` + operator-polish tests (AC #30 — Findings B, X). Re-open trigger: first post-landing Tier-2 regression run or any cross-component bug report on 9.3 surface. Each test ~30s startup via Aspire fixture; budget ~1d to close the set.
 
@@ -1372,6 +1386,7 @@ origin: migrated from legacy ledger ("Deferred from: Story 9.3 Handler Registrat
 location: n/a
 reason: - **Story-9.3-Tier2IntegrationTests.** 9.3's Task 10 (Tier-2 Aspire-AppHost integration tests 10.0–10.12) was deferred during the initial landing pass. Unit coverage (45 new tests) pins the per-component invariants; the Tier-2 tests would add cross-component proof against a real Redis + DAPR sidecar. Specific deferred tests: `HandlersFixtureSmokeTests`, `HandlersListIntegrationTests`, `HandlersMismatchIntegrationTests` (VersionMismatch + healthy + StaleHandler), `ObservationStoreLostWrites_DetectorConvergesWithinTwoWindows` (property-based, dropProbability ∈ {0.0, 0.1, 0.3}), `HandlerEndpointLatencyNfrTests` (N=100 tenants, p95 500ms/200ms), `HandlerObservationKillSwitchIntegrationTests` (AC #21), `EventIngestionTelemetryAdapterSlowRedisTests` (AC #22 — bounded-FAF contract), `RedisObservedEventTypeStoreTests.ServerClockSkew_DoesNotPoisonWindow` (AC #26 — Finding N), `HandlerMetricsCardinalitySmokeTests`, `EndpointRoutingTests` + `MemoriesClientPathConstantTests` (AC #29 — Findings U, V), `HandlersListCommandTests.TableFormat_NoWrap_TruncatesWithEllipsis` + operator-polish tests (AC #30 — Findings B, X). Re-open trigger: first post-landing Tier-2 regression run or any cross-component bug report on 9.3 surface. Each test ~30s startup via Aspire fixture; budget ~1d to close the set.
 status: open
+note: 2026-11-24 — Skipped. The entry calls for thirteen cross-component Aspire scenarios and needs a dedicated verification slice.
 
 ### DW-204: Source-prefix observation granularity / true per-handler fidelity.
 
@@ -1379,6 +1394,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 9-3-handler-
 location: n/a
 reason: - **Source-prefix observation granularity / true per-handler fidelity.** The current observation store records tenant + aggregateType + eventType only; it does not persist the CloudEvent `source` or matched `SourceToTenantMap` prefix. As a result, `HandlerRegistryService` duplicates one tenant-wide observation set across every row, `StaleHandler` can only mean "tenant saw nothing" rather than "this configured sourcePrefix saw nothing", and `UnhandledEventType` remains heuristic versus the real longest-prefix router on `source`. Re-open trigger: first operator/reporting need for true per-`sourcePrefix` fidelity, or any follow-up story that revisits the observation-store write model.
 status: open
+note: 2026-11-24 — Skipped. A handler-keyed observation contract requires coordinated producer and subscriber identity semantics.
 
 ### DW-205: Rolling 24h counts in `RedisObservedEventTypeStore`.
 
@@ -1386,6 +1402,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 9-3-handler-
 location: n/a
 reason: - **Rolling 24h counts in `RedisObservedEventTypeStore`.** `GetObservedTypesAsync` currently reads last-seen membership from the zset and counts from a lifetime `HINCRBY` hash, so `eventsProcessedCount` and per-type counts are not truly window-bounded. Accurate rolling counts require a different write model (per-occurrence events, rolling buckets, or another substrate) rather than a small read-side patch. Re-open trigger: when the observation-store model is next revised — ideally in the same change as the source-prefix-fidelity fix so the write/read contracts only churn once.
 status: open
+note: 2026-11-24 — Skipped. An exact sliding window needs a new aggregation model for the current Dapr-backed observation store.
 
 ### DW-206: F1: Retry backpressure + 9174 + exponential backoff (Task 8.5 / D2). `NaturalLanguageEmbeddingRetryHostedService.TickAsync` has no rate-limiter utilization check, no skip counter, no `9174` LoggerMessage, and no interval multiplier when `backlog > 1000`. Re-open trigger: rate-limiter consistently >80% utilization with retry queue contributing >20% of total calls.
 
@@ -1393,6 +1410,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 9-2-dual-emb
 location: n/a
 reason: - **F1 — Retry backpressure + 9174 + exponential backoff** (Task 8.5 / D2). `NaturalLanguageEmbeddingRetryHostedService.TickAsync` has no rate-limiter utilization check, no skip counter, no `9174` LoggerMessage, and no interval multiplier when `backlog > 1000`. Re-open trigger: rate-limiter consistently >80% utilization with retry queue contributing >20% of total calls.
 status: open
+note: 2026-11-24 — Skipped. The retry service lacks a utilization signal and needs an agreed backpressure and retry schedule.
 
 ### DW-207: F2: Tier-2 / Tier-3 integration test suite for AC #14/#15/#16 (Task 9.1–9.6). `DualEmbeddingRoundTripTests`, `OutOfOrderEventTests`, `DegradedNaturalLanguageEmbeddingTests`, `CorrelationRootEdgeTests`, `IngestionWorkflowReplaySafetyTests`, consistency verification NL cases. Deferred per Task 9 header; re-open when Tier-2 environment is stable.
 
@@ -1400,6 +1418,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 9-2-dual-emb
 location: n/a
 reason: - **F2 — Tier-2 / Tier-3 integration test suite for AC #14/#15/#16** (Task 9.1–9.6). `DualEmbeddingRoundTripTests`, `OutOfOrderEventTests`, `DegradedNaturalLanguageEmbeddingTests`, `CorrelationRootEdgeTests`, `IngestionWorkflowReplaySafetyTests`, consistency verification NL cases. Deferred per Task 9 header; re-open when Tier-2 environment is stable.
 status: open
+note: 2026-11-24 — Skipped. The requested cross-tier ingestion and recovery test matrix is larger than a focused backlog item.
 
 ### DW-208: F3: `RateLimiterSizingValidator` + event 9163 (Task 8.7). Needed when first `SourceType.Event` ingest hits an under-sized tenant configuration. Re-open trigger: first production `9162` warning or tenant NL-pipeline SLO breach.
 
@@ -1407,6 +1426,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 9-2-dual-emb
 location: n/a
 reason: - **F3 — `RateLimiterSizingValidator` + event 9163** (Task 8.7). Needed when first `SourceType.Event` ingest hits an under-sized tenant configuration. Re-open trigger: first production `9162` warning or tenant NL-pipeline SLO breach.
 status: open
+note: 2026-11-24 — Skipped. No recorded production sizing warning or SLO breach establishes a sizing policy.
 
 ### DW-209: F4: `retry-nl-embeddings` CLI dead-letter surface (Task 8.8). Re-open when dead-letter volume > 0 in any tenant for >24h.
 
@@ -1414,6 +1434,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 9-2-dual-emb
 location: n/a
 reason: - **F4 — `retry-nl-embeddings` CLI dead-letter surface** (Task 8.8). Re-open when dead-letter volume > 0 in any tenant for >24h.
 status: open
+note: 2026-11-24 — Skipped. A new dead-letter command is outside the retained compatibility CLI scope and needs a designated tool owner.
 
 ### DW-210: F5: Logprobs extraction for confidence promotion (Task 2.5 / D1). Blocked on Dapr.AI 1.17.6 SDK surface. Re-open when `ConversationClient` exposes `logprobs` or the equivalent shape on `ConversationResponse`.
 
@@ -1421,6 +1442,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 9-2-dual-emb
 location: n/a
 reason: - **F5 — Logprobs extraction for confidence promotion** (Task 2.5 / D1). Blocked on Dapr.AI 1.17.6 SDK surface. Re-open when `ConversationClient` exposes `logprobs` or the equivalent shape on `ConversationResponse`.
 status: open
+note: 2026-11-24 — Skipped. The pinned Dapr.AI SDK does not expose token log probabilities on conversation choices.
 
 ### DW-211: F6: Per-tenant LLM configuration. Phase 2. MVP is single system-wide `conversation.openai` component; operators swap via YAML.
 
@@ -1428,6 +1450,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 9-2-dual-emb
 location: n/a
 reason: - **F6 — Per-tenant LLM configuration.** Phase 2. MVP is single system-wide `conversation.openai` component; operators swap via YAML.
 status: open
+note: 2026-11-24 — Skipped. Per-tenant LLM selection requires a configuration, credential, and routing design.
 
 ### DW-212: F7: `NaturalLanguageEmbeddingRetryHostedService.ScheduleRetryAsync` orphaned-workflow dead-letter. When `ScheduleNewWorkflowAsync` + `WaitForWorkflowCompletionAsync` loop times out repeatedly for the same record, move to dead-letter after N ticks rather than leaving stuck instances in queue.
 
@@ -1435,6 +1458,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 9-2-dual-emb
 location: n/a
 reason: - **F7 — `NaturalLanguageEmbeddingRetryHostedService.ScheduleRetryAsync` orphaned-workflow dead-letter.** When `ScheduleNewWorkflowAsync` + `WaitForWorkflowCompletionAsync` loop times out repeatedly for the same record, move to dead-letter after N ticks rather than leaving stuck instances in queue.
 status: open
+note: 2026-11-24 — Skipped. Dead-lettering repeated timeouts needs durable attempt tracking and a policy for workflows still running.
 
 ### DW-213: F8: Redis cluster multi-node enumeration in `FailedNaturalLanguageEmbeddingRegistry.ListTenantsWithBacklogAsync`. Current `GetFirstConnectedServer()` covers single-node / replicated deployments only. Cluster deployment re-open trigger: moving to Redis Cluster in production infrastructure.
 
@@ -1442,6 +1466,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 9-2-dual-emb
 location: n/a
 reason: - **F8 — Redis cluster multi-node enumeration in `FailedNaturalLanguageEmbeddingRegistry.ListTenantsWithBacklogAsync`.** Current `GetFirstConnectedServer()` covers single-node / replicated deployments only. Cluster deployment re-open trigger: moving to Redis Cluster in production infrastructure.
 status: open
+note: 2026-11-24 — Skipped. Supporting Redis Cluster needs topology-wide scanning and compatibility with the existing multi-key operations.
 
 ### DW-214: F9: `OrphanSemanticIndexReconciler` interval-based re-run. Currently one-shot startup sweep only (per D3 decision pending). Re-open if post-startup SIGKILL-during-provisioning produces orphan NL indexes in production.
 
@@ -1449,6 +1474,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 9-2-dual-emb
 location: n/a
 reason: - **F9 — `OrphanSemanticIndexReconciler` interval-based re-run.** Currently one-shot startup sweep only (per D3 decision pending). Re-open if post-startup SIGKILL-during-provisioning produces orphan NL indexes in production.
 status: open
+note: 2026-11-24 — Skipped. Periodic orphan cleanup needs a guard against racing live provisioning; the one-shot startup policy remains in effect.
 
 ### DW-215: F10: `IsStubBackfillMigration` atomic gate-write + backfill safety. Partial-commit risk after backfill if `MERGE SchemaMigration` throws. Defer to ops runbook monitoring; re-open if migration re-runs cause operator friction.
 
@@ -1456,6 +1482,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 9-2-dual-emb
 location: n/a
 reason: - **F10 — `IsStubBackfillMigration` atomic gate-write + backfill safety.** Partial-commit risk after backfill if `MERGE SchemaMigration` throws. Defer to ops runbook monitoring; re-open if migration re-runs cause operator friction.
 status: open
+note: 2026-11-24 — Skipped. The recorded operator trigger is absent, and changing the graph migration requires an atomicity and retry proof on FalkorDB.
 
 ### DW-216: DataContract/DataMember attributes missing on V1 contracts
 
@@ -1469,6 +1496,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 1-3-content-
 location: n/a
 reason: - **No transient/permanent exception classification for Kreuzberg errors** — AC4 is met (exceptions propagate for DAPR Workflow retry). However, permanent failures (corrupt files) will be retried indefinitely. Future work: classify KreuzbergValidationException as non-retriable, KreuzbergOcrException as retriable.
 status: open
+note: 2026-11-24 — Skipped. Changing extraction retry behavior requires classifying provider failures while preserving deterministic workflow replay.
 
 ### DW-218: Large byte[] in ExtractionInput persisted to workflow state store
 
@@ -1482,6 +1510,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 1-3-content-
 location: n/a
 reason: - **byte[] mutable on immutable record** — ExtractionInput uses byte[] which is mutable, breaking record immutability semantics and reference-based equality. No practical alternative exists in .NET for JSON-serializable binary data (ImmutableArray/ReadOnlyMemory don't serialize well).
 status: open
+note: 2026-11-24 — Skipped. Changing the binary workflow record needs a wire-compatibility and allocation review for retained workflow payloads.
 
 ### DW-220: End-to-end embedding flow is not wired into orchestration
 
@@ -1503,6 +1532,7 @@ reason: - **Story transition rationale is comment-only and not machine-readable*
 status: open
 decision: 2026-09-06 Add evidence field — Add and validate a machine-readable transition-rationale field.
 decision: 2026-09-06 Add evidence field — Add and validate a machine-readable transition-rationale field.
+note: 2026-11-24 — Skipped. A machine-readable transition field requires a shared writer, schema migration, and consumer updates.
 
 ### DW-223: Story status requires manual dual-write across tracking files
 
@@ -1516,6 +1546,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 1-6-ingestio
 location: n/a
 reason: - **ValidateResult.IsValid/ErrorMessage is dead code on failure path** — ValidateContentActivity throws exceptions for invalid input; the ValidateResult record is only used for the success path. Spec mandates this contract shape, so keeping as-is.
 status: open
+note: 2026-11-24 — Skipped. The result shape is prescribed by the existing workflow contract and may appear in historical payloads.
 
 ### DW-225: SaveDedupKeyActivity: no TTL on dedup keys
 
@@ -1523,6 +1554,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 1-6-ingestio
 location: n/a
 reason: - **SaveDedupKeyActivity: no TTL on dedup keys** — Dedup keys persist forever in DAPR state store, preventing re-ingestion of deleted content. Cleanup mechanism belongs to Epic 8 (Story 8.2 consistency verification).
 status: open
+note: 2026-11-24 — Skipped. Expiring permanent deduplication keys changes replay and duplicate-ingestion behavior and needs a retention policy.
 
 ### DW-226: ContentBytes serialized inline in DAPR workflow state
 
@@ -1536,6 +1568,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 1-6-ingestio
 location: n/a
 reason: - **Duplicate dedup entries are returned without confirming the referenced memory unit still exists** — The workflow fast-returns on a dedup hit without verifying that the stored `MemoryUnitId` is still present in the indexed backends, so manual cleanup or backend drift can leave callers with a duplicate response that points at missing data.
 status: open
+note: 2026-11-24 — Skipped. Repairing stale dedup pointers requires consistent Redis, graph, and ingestion lifecycle state under concurrent work.
 
 ### DW-228: indexedAt set to ingestedAt in GraphQueryBuilder
 
@@ -1545,6 +1578,7 @@ reason: - **indexedAt set to ingestedAt in GraphQueryBuilder** — `BuildMergeMe
 status: open
 decision: 2026-09-06 Add distinct timestamp — Persist and expose indexedAt with migration-safe tests.
 decision: 2026-09-06 Add distinct timestamp — Persist and expose indexedAt with migration-safe tests.
+note: 2026-11-24 — Skipped. Changing indexedAt requires a graph schema decision and an explicit fallback for legacy graph records.
 
 ### DW-229: CaseId not validated for special characters
 
@@ -1598,6 +1632,7 @@ origin: migrated from legacy ledger ("Deferred from: 3-5-memory-unit-deletion-an
 location: n/a
 reason: - **Dedup key orphaning after MU deletion** — Deleting a memory unit removes it from RediSearch, Redis Vector, and FalkorDB, but the DAPR state store dedup key persists. Re-ingesting identical content is silently blocked by dedup detection, returning a stale MU ID. Fix: add dedup key TTL or explicit dedup key deletion during MU deletion. Belongs in Epic 8 (Story 8.2 consistency verification).
 status: open
+note: 2026-11-24 — Skipped. Dedup deletion must coordinate with the existing reservation and publication authorities to keep retries consistent.
 
 ### DW-237: Ingestion workflow must check `CaseStatus.Deleting`
 
@@ -1605,6 +1640,7 @@ origin: migrated from legacy ledger ("Deferred from: 3-5-memory-unit-deletion-an
 location: n/a
 reason: - **Ingestion workflow must check `CaseStatus.Deleting`** — Story 3.5 sets case status to `Deleting` during case deletion, but the ingestion workflow (`ValidateContentActivity`) does not yet check this status before creating CONTAINS edges. A concurrent ingestion during case deletion could create orphaned MUs. Wire the status check into ingestion validation.
 status: open
+note: 2026-11-24 — Skipped. A single status check cannot close the ingestion/deletion race; the lifecycle needs a shared admission boundary.
 
 ### DW-238: Story 3.6 must extend `DeleteMemoryUnitAsync` for annotation cascade
 
@@ -1618,13 +1654,15 @@ origin: migrated from legacy ledger ("Deferred from: code review of 3-4-case-sco
 location: n/a
 reason: - **metadataQuery no length/content validation** — The `metadataQuery` query parameter has no length limit or format validation at the endpoint level, unlike `sourceType` (enum-validated) and `caseId` (existence-checked). General input validation concern across all query parameters. [Program.cs:436]
 status: open
+note: 2026-11-24 — Skipped. The metadata filter is free text and has no agreed format or compatible length limit.
 
 ### DW-240: cancellationToken not propagated in ResolveNamesAsync
 
 origin: migrated from legacy ledger ("Deferred from: code review of 3-4-case-scoped-and-cross-case-search (2026-04-12)"), 2026-09-01
 location: n/a
 reason: - **cancellationToken not propagated in ResolveNamesAsync** — `CaseService.ResolveNamesAsync` accepts a CancellationToken but never passes it to Redis batch operations or Task.WhenAll. StackExchange.Redis batch ops have limited cancellation support; pre-existing pattern in other batch methods. [CaseService.cs:321]
-status: open
+status: done 2026-11-24
+resolution: Case-name resolution checks cancellation before dispatch and stops waiting when the caller cancels an in-flight Redis batch. All 43 CaseService tests passed.
 
 ### DW-241: No input validation on caseId format before Redis key construction
 

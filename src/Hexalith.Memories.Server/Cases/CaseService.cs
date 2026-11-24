@@ -594,18 +594,19 @@ internal sealed class CaseService
     public async Task<Dictionary<string, string>> ResolveNamesAsync(
         string tenantId, IEnumerable<string> caseIds, CancellationToken cancellationToken)
     {
-        IDatabase db = _redis.GetDatabase();
+        cancellationToken.ThrowIfCancellationRequested();
         List<string> uniqueIds = caseIds.Distinct().ToList();
         if (uniqueIds.Count == 0)
         {
             return [];
         }
 
-        IBatch batch = db.CreateBatch();
+        cancellationToken.ThrowIfCancellationRequested();
+        IBatch batch = _redis.GetDatabase().CreateBatch();
         Task<RedisValue>[] tasks = uniqueIds.Select(id =>
             batch.HashGetAsync($"{tenantId}:case:{id}", "name")).ToArray();
         batch.Execute();
-        RedisValue[] names = await Task.WhenAll(tasks).ConfigureAwait(false);
+        RedisValue[] names = await Task.WhenAll(tasks).WaitAsync(cancellationToken).ConfigureAwait(false);
 
         Dictionary<string, string> result = new(uniqueIds.Count);
         for (int i = 0; i < uniqueIds.Count; i++)

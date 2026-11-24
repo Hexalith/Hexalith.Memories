@@ -1079,6 +1079,43 @@ public class CaseServiceTests
         result.ShouldBeEmpty();
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ResolveNamesAsync_ObservesCancellation(bool cancelBeforeCalling)
+    {
+        (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        CaseService service = new(
+            redis, falkorDb, CreateMockBuilder(), CreateMockActivityService(),
+            CreateMockWorkflowClient(), CreateMockActorProxyFactory(), NullLogger<CaseService>.Instance);
+        IBatch batch = Substitute.For<IBatch>();
+        redisDb.CreateBatch(Arg.Any<object>()).Returns(batch);
+        TaskCompletionSource<RedisValue> pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        batch.HashGetAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<CommandFlags>()).Returns(pending.Task);
+        using CancellationTokenSource cancellation = new();
+        if (cancelBeforeCalling)
+        {
+            cancellation.Cancel();
+        }
+
+        Task<Dictionary<string, string>> resolution = service.ResolveNamesAsync("tenant-1", ["case-1"], cancellation.Token);
+        cancellation.Cancel();
+
+        try
+        {
+            OperationCanceledException exception = await Should.ThrowAsync<OperationCanceledException>(
+                () => resolution.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+            exception.CancellationToken.ShouldBe(cancellation.Token);
+            redisDb.Received(cancelBeforeCalling ? 0 : 1).CreateBatch(Arg.Any<object>());
+            batch.Received(cancelBeforeCalling ? 0 : 1).Execute();
+        }
+        finally
+        {
+            pending.SetResult("Alpha");
+        }
+    }
+
     [Fact]
     public async Task ResolveNamesAsync_WithDuplicateCaseIds_ShouldDeduplicateAndResolve()
     {
