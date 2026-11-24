@@ -2917,7 +2917,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of 15-6-scaffolding-hardening-sweep (2026-05-18)"), 2026-09-01
 location: src/Hexalith.Memories.AppHost/Program.cs
 reason: - **15.6-CR3. `File.WriteAllText` on DAPR component files is not atomic.** AppHost writes component YAMLs via `File.WriteAllText` which truncates-then-writes; a hot-reload watcher could read a partial file. - ID: 15.6-CR3 - Status: accepted - Source story: 15-6-scaffolding-hardening-sweep - Target artifact: src/Hexalith.Memories.AppHost/Program.cs - Re-open trigger: `DAPR_COMPONENT_RELOAD_INTERVAL` gets enabled for local dev, or a developer reports a transient "invalid YAML" sidecar error during AppHost restart. - Rationale: Per-PID directory isolation means no other daprd process watches the same path; the local daprd does not have hot-reload enabled by default. Switching to write-temp-then-rename is a standalone hardening, not a Story 15.6 regression.
-status: open
+status: done 2026-11-24
+resolution: DaprRedisComponentFiles now installs the state store, pub/sub, access-telemetry store and configuration components through OpenBaoProtectedFileSystem.WriteAllTextAtomically, and the llm component uses the same helper. Each file is staged and moved into place, so a reader never sees a truncated document. DaprRedisComponentFilesTests prove an open reader keeps the complete earlier document after a rewrite, leave no temporary files and check owner-only modes. AppHostComponentFileOrderingTests started the real topology. See spec-seven-ordered-deferred-items.md.
 
 ### DW-422: 15.6-CR4: resolved. `ResolveAllocatedEndpoint` is no longer called before awaiting the rewrite TCS in `BeforeResourceStartedEvent`. The endpoint lookup now occurs after `WaitForRedisComponentRewriteAsync`, so an early sidecar-start event gives Redis allocation and component-file rewrite a chance to complete before the lookup runs.
 

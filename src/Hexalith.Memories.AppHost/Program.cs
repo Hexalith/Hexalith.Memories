@@ -144,7 +144,7 @@ redis.OnResourceReady((resource, _, _) =>
     try
     {
         (string host, int port) = AllocatedEndpointResolver.Resolve(resource, "redis");
-        WriteDaprRedisComponentFiles(
+        DaprRedisComponentFiles.Write(
             daprComponentPaths.StateStore,
             daprComponentPaths.PubSub,
             daprComponentPaths.AccessTelemetryStore,
@@ -535,7 +535,7 @@ static GeneratedDaprComponentPaths EnsureDaprComponentFiles(string daprAppId)
 
     // These files are rewritten with Aspire's allocated Redis endpoint before the Dapr sidecars start.
     // The initial localhost value keeps the files valid for design-time inspection and local fallbacks.
-    WriteDaprRedisComponentFiles(
+    DaprRedisComponentFiles.Write(
         stateStorePath,
         pubSubPath,
         accessTelemetryStorePath,
@@ -543,7 +543,7 @@ static GeneratedDaprComponentPaths EnsureDaprComponentFiles(string daprAppId)
         "127.0.0.1:6379",
         daprAppId);
 
-    File.WriteAllText(
+    OpenBaoProtectedFileSystem.WriteAllTextAtomically(
         conversationLlmPath,
         """
         apiVersion: dapr.io/v1alpha1
@@ -785,116 +785,6 @@ static void WriteOpenBaoComponentDocuments(GeneratedDaprComponentPaths paths, Ur
           - {paths.DaprAppId}
           - memories-access-telemetry
           - memories-access-telemetry-clock
-        """);
-}
-
-static void WriteDaprRedisComponentFiles(
-    string stateStorePath,
-    string pubSubPath,
-    string accessTelemetryStorePath,
-    string accessTelemetryConfigPath,
-    string redisHost,
-    string daprAppId)
-{
-    File.WriteAllText(
-        stateStorePath,
-        $"""
-        apiVersion: dapr.io/v1alpha1
-        kind: Component
-        metadata:
-          name: statestore
-        spec:
-          type: state.redis
-          version: v1
-          metadata:
-            - name: redisHost
-              value: "{redisHost}"
-            - name: redisPassword
-              value: ""
-            - name: redisMaxRetries
-              value: "60"
-            - name: redisMinRetryInterval
-              value: "500ms"
-            - name: redisMaxRetryInterval
-              value: "2s"
-            - name: actorStateStore
-              value: "true"
-        scopes:
-          - {daprAppId}
-        """);
-
-    File.WriteAllText(
-        pubSubPath,
-        $"""
-        apiVersion: dapr.io/v1alpha1
-        kind: Component
-        metadata:
-          name: pubsub
-        spec:
-          type: pubsub.redis
-          version: v1
-          metadata:
-            - name: redisHost
-              value: "{redisHost}"
-            - name: redisPassword
-              value: ""
-            - name: redisMaxRetries
-              value: "60"
-            - name: redisMinRetryInterval
-              value: "500ms"
-            - name: redisMaxRetryInterval
-              value: "2s"
-        """);
-
-    File.WriteAllText(
-        accessTelemetryStorePath,
-        $$"""
-        apiVersion: dapr.io/v1alpha1
-        kind: Component
-        metadata:
-          name: access-telemetry-store
-        spec:
-          type: state.redis
-          version: v1
-          metadata:
-            - name: redisHost
-              value: "{{redisHost}}"
-            - name: redisPassword
-              value: ""
-            - name: actorStateStore
-              value: "true"
-            - name: queryIndexes
-              value: |
-                [
-                  {
-                    "name": "expiryMinute",
-                    "indexes": [
-                      { "key": "expiryMinute", "type": "NUMERIC" }
-                    ]
-                  }
-                ]
-        scopes:
-          - memories-access-telemetry
-        """);
-
-    File.WriteAllText(
-        accessTelemetryConfigPath,
-        $"""
-        apiVersion: dapr.io/v1alpha1
-        kind: Component
-        metadata:
-          name: access-telemetry-config
-        spec:
-          type: configuration.redis
-          version: v1
-          metadata:
-            - name: redisHost
-              value: "{redisHost}"
-            - name: redisPassword
-              value: ""
-        scopes:
-          - {daprAppId}
-          - memories-access-telemetry
         """);
 }
 
