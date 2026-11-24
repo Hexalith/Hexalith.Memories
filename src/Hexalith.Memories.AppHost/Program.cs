@@ -1314,6 +1314,7 @@ static async Task WaitForRedisPingAsync(
 {
     DateTimeOffset deadline = DateTimeOffset.UtcNow.Add(timeout);
     Exception? lastError = null;
+    int failedAttempts = 0;
     byte[] ping = "*1\r\n$4\r\nPING\r\n"u8.ToArray();
     byte[] responseChunk = new byte[16];
 
@@ -1376,7 +1377,15 @@ static async Task WaitForRedisPingAsync(
                                    (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
         {
             lastError = ex;
-            await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken).ConfigureAwait(false);
+            failedAttempts++;
+
+            // Back off exponentially with jitter instead of reconnecting every 500 ms against a Redis
+            // that may already be struggling; the delay never outlasts the probe deadline.
+            TimeSpan delay = RedisReadinessBackoff.GetDelay(
+                failedAttempts,
+                Random.Shared.NextDouble(),
+                deadline - DateTimeOffset.UtcNow);
+            await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
         }
 
         // RedisProbeNonRetryableException is intentionally NOT in the catch filter above — it
