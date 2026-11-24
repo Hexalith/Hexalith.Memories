@@ -11,7 +11,7 @@ using System.Net;
 public sealed class OidcTokenAcquisitionException : Exception
 {
     /// <summary>Initializes a new instance of the <see cref="OidcTokenAcquisitionException"/> class.</summary>
-    /// <param name="statusCode">The token endpoint status code, when an HTTP response was received.</param>
+    /// <param name="statusCode">The token endpoint status code, when available.</param>
     /// <param name="responseBodyPreview">A sanitized and bounded response body preview.</param>
     /// <param name="tokenEndpoint">The token endpoint used for acquisition.</param>
     /// <param name="clientId">The OIDC client identifier.</param>
@@ -38,7 +38,7 @@ public sealed class OidcTokenAcquisitionException : Exception
     /// <summary>Gets the HTTP status code returned by the token endpoint, if available.</summary>
     public HttpStatusCode? StatusCode { get; }
 
-    /// <summary>Gets the sanitized response body preview, capped by the provider before construction.</summary>
+    /// <summary>Gets the bounded, sanitized error response preview when the provider can supply one.</summary>
     public string ResponseBodyPreview { get; }
 
     /// <summary>Gets the token endpoint used for acquisition.</summary>

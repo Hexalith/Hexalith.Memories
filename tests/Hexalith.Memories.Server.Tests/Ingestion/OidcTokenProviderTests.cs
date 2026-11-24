@@ -401,7 +401,11 @@ public class OidcTokenProviderTests
     [InlineData("""{"access_token":"token-1","token_type":"Bearer"}""")]
     [InlineData("""{"access_token":"token-1","expires_in":0,"token_type":"Bearer"}""")]
     [InlineData("""{"access_token":"token-1","expires_in":3600,"token_type":"Basic"}""")]
-    [InlineData("""not-json""")]
+    [InlineData("""{"access_token":"token-1","expires_in":"canary","token_type":"Bearer"}""")]
+    [InlineData("""["canary"]""")]
+    [InlineData("""{"access_token":"token-1","expires_in":3600,"token_type":"canary"}""")]
+    [InlineData("""canary-invalid-json""")]
+    [InlineData("""{"access_token":"\uDC00","expires_in":3600,"token_type":"Bearer"}""")]
     public async Task GetAccessTokenAsync_MalformedSuccess_ThrowsTypedExceptionWithoutCaching(string responseBody)
     {
         // Arrange
@@ -425,8 +429,60 @@ public class OidcTokenProviderTests
 
         // Assert
         ex.StatusCode.ShouldBeNull();
+        ex.ResponseBodyPreview.ShouldBeEmpty();
+        ex.InnerException.ShouldBeNull();
+        ex.ToString().ShouldNotContain("canary");
         token.ShouldBe("token-after-malformed-response");
         handler.Requests.Count.ShouldBe(2);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GetAccessTokenAsync_OversizedSuccess_DoesNotCacheOrExposeResponse(bool unknownLength)
+    {
+        const string canary = "oversized-response-canary";
+        string oversizedToken = canary + new string('x', OidcTokenProvider.MaxResponseBytes);
+        string oversizedJson = $$"""{"access_token":"{{oversizedToken}}","expires_in":3600,"token_type":"Bearer"}""";
+        int requests = 0;
+        ScriptedTokenHandler handler = new((_, _) => ++requests == 1
+            ? new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = unknownLength
+                    ? new UnknownLengthTokenContent(oversizedJson)
+                    : new StringContent(oversizedJson, Encoding.UTF8, "application/json"),
+            }
+            : TokenResponse("replacement", 3600));
+        OidcTokenProvider provider = CreateProvider(handler);
+
+        OidcTokenAcquisitionException ex = await Should.ThrowAsync<OidcTokenAcquisitionException>(
+            () => provider.GetAccessTokenAsync(TokenEndpoint, ClientId, ClientSecret, null, CancellationToken.None));
+        string token = await provider.GetAccessTokenAsync(TokenEndpoint, ClientId, ClientSecret, null, CancellationToken.None);
+
+        ex.InnerException.ShouldBeOfType<HttpRequestException>();
+        ex.ResponseBodyPreview.ShouldBeEmpty();
+        ex.ToString().ShouldNotContain(canary);
+        token.ShouldBe("replacement");
+        handler.Requests.Count.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task GetAccessTokenAsync_InvalidCharset_DoesNotExposeProviderValue()
+    {
+        const string canary = "invalid-provider-charset";
+        ScriptedTokenHandler handler = new(_ =>
+        {
+            HttpResponseMessage response = TokenResponse("token", 3600);
+            response.Content.Headers.ContentType!.CharSet = canary;
+            return response;
+        });
+        OidcTokenProvider provider = CreateProvider(handler);
+
+        OidcTokenAcquisitionException ex = await Should.ThrowAsync<OidcTokenAcquisitionException>(
+            () => provider.GetAccessTokenAsync(TokenEndpoint, ClientId, ClientSecret, null, CancellationToken.None));
+
+        ex.ToString().ShouldNotContain(canary);
+        ex.ResponseBodyPreview.ShouldBeEmpty();
     }
 
     [Fact]

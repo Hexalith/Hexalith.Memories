@@ -887,7 +887,8 @@ resolution: The token cache is capped at 1,024 keys, evicts expired or nearest-t
 origin: migrated from legacy ledger ("Deferred from: code review of story-13.2 (2026-05-02)"), 2026-09-01
 location: n/a
 reason: - **13.2-RV8 — `JsonDocument.Parse` materializes adversarial large bodies; `InvalidOperationException.Message` may pass provider-controlled text.** `OidcTokenProvider.cs:188,217` — a 200 OK with an outsized body is read fully before parsing; provider-supplied `tokenType`/`propertyName` values appear inside the malformed-response reason string (then in the typed exception message). Modern HttpClient defaults bound the buffer at 2 MiB so practical risk is low. Re-open trigger: an SLA pass that wants explicit `MaxResponseContentBufferSize` or a sanitization audit on exception text.
-status: open
+status: done 2026-11-24
+resolution: Token responses buffer at most 64 KiB. Malformed successful responses use fixed diagnostics without raw bodies, and both declared and undeclared oversized bodies are rejected. All 146 focused provider and client tests passed.
 
 ### DW-134: 13.2-RV9: `ScriptedTokenHandler.Requests` is a non-thread-safe `List<T>` mutated from concurrent `SendAsync`; `WaitForRequestsAsync` TCS is single-shot. `tests/Hexalith.Memories.Server.Tests/Ingestion/OidcTokenProviderTests.cs:404,406-412` — concurrency tests fire two parallel handler invocations; `List.Add` resizing under contention can throw or produce wrong `Count`. Tests pass on current schedulers. Re-open trigger: first observed flake in `GetAccessTokenAsync_ConcurrentDifferentKeys_DoNotBlockEachOther` or `GetAccessTokenAsync_ConcurrentSameKey_SendsSingleRequest`.
 

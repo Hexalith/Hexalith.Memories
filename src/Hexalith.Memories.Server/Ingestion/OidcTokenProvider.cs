@@ -23,6 +23,9 @@ public sealed partial class OidcTokenProvider : IOidcTokenProvider
     /// <summary>The maximum number of token cache keys retained by a provider instance.</summary>
     internal const int MaxCachedTokens = 1024;
 
+    /// <summary>The maximum number of response bytes buffered for a token request.</summary>
+    internal const int MaxResponseBytes = 64 * 1024;
+
     private const int ResponsePreviewLimit = 1024;
     private const string RedactedPlaceholder = "[redacted]";
     private static readonly TimeSpan RefreshSkew = TimeSpan.FromSeconds(30);
@@ -295,12 +298,13 @@ public sealed partial class OidcTokenProvider : IOidcTokenProvider
 
         // Resolve a fresh HttpClient from the factory per fetch so handler rotation (DNS, TLS
         // session pooling, PooledConnectionLifetime) is honored (AC2).
-        HttpClient httpClient = _httpClientFactory.CreateClient(HttpClientName);
+        using HttpClient httpClient = _httpClientFactory.CreateClient(HttpClientName);
+        httpClient.MaxResponseContentBufferSize = Math.Min(httpClient.MaxResponseContentBufferSize, MaxResponseBytes);
 
         HttpResponseMessage response;
         try
         {
-            response = await httpClient.SendAsync(request, CancellationToken.None).ConfigureAwait(false);
+            response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseContentRead, CancellationToken.None).ConfigureAwait(false);
         }
         catch (HttpRequestException ex)
         {
@@ -334,7 +338,7 @@ public sealed partial class OidcTokenProvider : IOidcTokenProvider
                     "token endpoint returned a non-success status code");
             }
 
-            return ParseSuccessfulResponse(key, responseBody, clientSecret);
+            return ParseSuccessfulResponse(key, responseBody);
         }
         finally
         {
@@ -349,6 +353,10 @@ public sealed partial class OidcTokenProvider : IOidcTokenProvider
         try
         {
             return await response.Content.ReadAsStringAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (InvalidOperationException)
+        {
+            throw CreateMalformedException(key, "invalid token response text encoding");
         }
         catch (HttpRequestException ex)
         {
@@ -381,26 +389,33 @@ public sealed partial class OidcTokenProvider : IOidcTokenProvider
             innerException: innerException);
     }
 
-    private CachedOidcToken ParseSuccessfulResponse(
-        OidcTokenCacheKey key,
-        string responseBody,
-        string clientSecret)
+    private CachedOidcToken ParseSuccessfulResponse(OidcTokenCacheKey key, string responseBody)
     {
         try
         {
             using JsonDocument document = JsonDocument.Parse(responseBody);
             JsonElement root = document.RootElement;
-            string accessToken = ReadRequiredString(root, "access_token");
-            int expiresIn = ReadRequiredPositiveInt32(root, "expires_in");
-            string tokenType = ReadRequiredString(root, "token_type").Trim();
-
-            if (!string.Equals(tokenType, "Bearer", StringComparison.OrdinalIgnoreCase))
+            if (root.ValueKind != JsonValueKind.Object)
             {
-                throw CreateMalformedException(
-                    key,
-                    responseBody,
-                    clientSecret,
-                    $"unsupported token_type '{tokenType}'");
+                throw CreateMalformedException(key, "expected a JSON object");
+            }
+
+            if (ReadString(root, "access_token") is not { } accessToken)
+            {
+                throw CreateMalformedException(key, "missing or blank 'access_token'");
+            }
+
+            if (!root.TryGetProperty("expires_in", out JsonElement expiry)
+                || expiry.ValueKind != JsonValueKind.Number
+                || !expiry.TryGetInt32(out int expiresIn)
+                || expiresIn <= 0)
+            {
+                throw CreateMalformedException(key, "missing or invalid 'expires_in'");
+            }
+
+            if (!string.Equals(ReadString(root, "token_type")?.Trim(), "Bearer", StringComparison.OrdinalIgnoreCase))
+            {
+                throw CreateMalformedException(key, "expected Bearer token_type");
             }
 
             DateTimeOffset now = _timeProvider.GetUtcNow();
@@ -411,57 +426,42 @@ public sealed partial class OidcTokenProvider : IOidcTokenProvider
             LogAcquisitionSucceeded(key, expiresAt);
             return new CachedOidcToken(accessToken, expiresAt);
         }
-        catch (JsonException ex)
+        catch (JsonException)
         {
-            throw CreateMalformedException(key, responseBody, clientSecret, "invalid JSON token response", ex);
-        }
-        catch (InvalidOperationException ex)
-        {
-            throw CreateMalformedException(key, responseBody, clientSecret, ex.Message, ex);
+            throw CreateMalformedException(key, "invalid JSON token response");
         }
     }
 
-    private static string ReadRequiredString(JsonElement root, string propertyName)
+    private static string? ReadString(JsonElement root, string propertyName)
     {
-        if (!root.TryGetProperty(propertyName, out JsonElement value)
-            || value.ValueKind != JsonValueKind.String
-            || string.IsNullOrWhiteSpace(value.GetString()))
+        if (!root.TryGetProperty(propertyName, out JsonElement value) || value.ValueKind != JsonValueKind.String)
         {
-            throw new InvalidOperationException($"missing or blank '{propertyName}'");
+            return null;
         }
 
-        return value.GetString()!;
-    }
-
-    private static int ReadRequiredPositiveInt32(JsonElement root, string propertyName)
-    {
-        if (!root.TryGetProperty(propertyName, out JsonElement value)
-            || !value.TryGetInt32(out int parsed)
-            || parsed <= 0)
+        try
         {
-            throw new InvalidOperationException($"missing or non-positive '{propertyName}'");
+            string? text = value.GetString();
+            return string.IsNullOrWhiteSpace(text) ? null : text;
         }
-
-        return parsed;
+        catch (InvalidOperationException)
+        {
+            // JSON can contain a string token with an unpaired UTF-16 surrogate escape.
+            return null;
+        }
     }
 
-    private OidcTokenAcquisitionException CreateMalformedException(
-        OidcTokenCacheKey key,
-        string responseBody,
-        string clientSecret,
-        string reason,
-        Exception? innerException = null)
+    private OidcTokenAcquisitionException CreateMalformedException(OidcTokenCacheKey key, string reason)
     {
         string correlationId = NewCorrelationId();
         LogMalformedResponse(key, correlationId);
         return new OidcTokenAcquisitionException(
             statusCode: null,
-            responseBodyPreview: SanitizePreview(responseBody, clientSecret),
+            responseBodyPreview: string.Empty,
             tokenEndpoint: key.TokenEndpoint,
             clientId: key.ClientId,
             correlationId: correlationId,
-            reason: reason,
-            innerException: innerException);
+            reason: reason);
     }
 
     private static string SanitizePreview(string responseBody, string clientSecret)
