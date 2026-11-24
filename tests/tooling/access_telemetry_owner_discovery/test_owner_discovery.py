@@ -362,7 +362,8 @@ class OwnerDiscoveryTests(unittest.TestCase):
         calls = []
         def execute(*args):
             calls.append(1)
-            self.credential.touch()
+            metadata = self.credential.stat()
+            os.utime(self.credential, ns=(metadata.st_atime_ns, metadata.st_mtime_ns + 1_000_000_000))
             return b"observation", b"", 0, None
         with self.assertRaises(discovery.DiscoveryError):
             self.run_offline(execute)
