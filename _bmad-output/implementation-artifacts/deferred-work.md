@@ -6,6 +6,7 @@ origin: migrated from legacy ledger ("Schema for Active Entries"), 2026-09-01
 location: n/a
 reason: - `ID:` — unique entry id, exactly as referenced elsewhere (e.g. `12.4-RV6`, `S11-FX`, `13.6-RV1`). Tests match the field value as a verbatim token; partial prose mentions and near-matches such as `12x4-RV6` or `112.4-RV6` do not count.
 status: open
+note: 2026-11-24 — Skipped. This is an imported schema rule with no standalone change to implement.
 
 ### DW-2: `Status:` — one of `open`, `resolved`, `accepted`, or `carried-forward`. The
 
@@ -13,6 +14,7 @@ origin: migrated from legacy ledger ("Schema for Active Entries"), 2026-09-01
 location: n/a
 reason: - `Status:` — one of `open`, `resolved`, `accepted`, or `carried-forward`. The vocabulary is closed and lowercase. Synonyms such as `done`, `closed`, `fixed`, or `deferred-again` are not allowed and will fail validation.
 status: open
+note: 2026-11-24 — Skipped. This is an imported schema rule with no standalone change to implement.
 
 ### DW-3: `Source story:` — the story key, retro key, or review pass that produced the
 
@@ -20,6 +22,7 @@ origin: migrated from legacy ledger ("Schema for Active Entries"), 2026-09-01
 location: n/a
 reason: - `Source story:` — the story key, retro key, or review pass that produced the entry (for example `12-4-baseline-failures-sweep`).
 status: open
+note: 2026-11-24 — Skipped. This is an imported schema rule with no standalone change to implement.
 
 ### DW-4: `Target artifact:` — the repository-relative path or planning artifact the entry
 
@@ -28,6 +31,7 @@ location: tools/test-release.ps1
 reason: - `Target artifact:` — the repository-relative path or planning artifact the entry targets. For release-lane baseline entries, this points at the consumer that owns the release filter (typically `tools/test-release.ps1` or a parser test).
 status: open
 note: 2026-11-16 — Story 30.6 code review. Story 30.6 retired `tools/test-release.ps1` (D4), so no release-lane baseline consumer exists. The structured field contract (DW-1..DW-6) stays enforced by `DeferredWorkRegister_RealRepo_StructuredEntriesSatisfyFieldContract` in `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs`.
+note: 2026-11-24 — Skipped. This is an imported schema rule with no standalone change to implement.
 
 ### DW-5: `Re-open trigger:` — one sentence describing the event or evidence that would
 
@@ -35,6 +39,7 @@ origin: migrated from legacy ledger ("Schema for Active Entries"), 2026-09-01
 location: n/a
 reason: - `Re-open trigger:` — one sentence describing the event or evidence that would re-open the entry. Required even for `resolved` and `accepted` so a future reviewer knows when the disposition no longer applies.
 status: open
+note: 2026-11-24 — Skipped. This is an imported schema rule with no standalone change to implement.
 
 ### DW-6: One of `Evidence:` or `Rationale:` — `Evidence:` is required when `Status` is
 
@@ -42,6 +47,7 @@ origin: migrated from legacy ledger ("Schema for Active Entries"), 2026-09-01
 location: n/a
 reason: - One of `Evidence:` or `Rationale:` — `Evidence:` is required when `Status` is `resolved` and names the change (story, commit, test, or doc) that closes the risk; `Rationale:` is required when `Status` is `accepted` or `carried-forward` and explains why the risk remains intentionally.
 status: open
+note: 2026-11-24 — Skipped. This is an imported schema rule with no standalone change to implement.
 
 ### DW-7: `open` — planned action is still needed.
 
@@ -49,6 +55,7 @@ origin: migrated from legacy ledger ("Schema for Active Entries"), 2026-09-01
 location: n/a
 reason: - `open` — planned action is still needed.
 status: open
+note: 2026-11-24 — Skipped. This is an imported schema rule with no standalone change to implement.
 
 ### DW-8: `resolved` — code, test, or documentation evidence shows the risk no longer
 
@@ -56,6 +63,7 @@ origin: migrated from legacy ledger ("Schema for Active Entries"), 2026-09-01
 location: n/a
 reason: - `resolved` — code, test, or documentation evidence shows the risk no longer applies.
 status: open
+note: 2026-11-24 — Skipped. This is an imported schema rule with no standalone change to implement.
 
 ### DW-9: `accepted` — the risk remains but is intentionally accepted with a written
 
@@ -63,6 +71,7 @@ origin: migrated from legacy ledger ("Schema for Active Entries"), 2026-09-01
 location: n/a
 reason: - `accepted` — the risk remains but is intentionally accepted with a written rationale.
 status: open
+note: 2026-11-24 — Skipped. This is an imported schema rule with no standalone change to implement.
 
 ### DW-10: `carried-forward` — the risk remains and has been moved to a named future
 
@@ -70,6 +79,7 @@ origin: migrated from legacy ledger ("Schema for Active Entries"), 2026-09-01
 location: n/a
 reason: - `carried-forward` — the risk remains and has been moved to a named future artifact, story, or trigger.
 status: open
+note: 2026-11-24 — Skipped. This is an imported schema rule with no standalone change to implement.
 
 ### DW-11: `Test:` — fully-qualified `Class.Method` name when the entry is paired with a
 
@@ -78,6 +88,7 @@ location: tools/test-release.ps1
 reason: - `Test:` — fully-qualified `Class.Method` name when the entry is paired with a release-lane filter in `tools/test-release.ps1`. Required when `Target artifact` references the release-lane test script.
 status: open
 note: 2026-11-16 — Story 30.6 code review. The `tools/test-release.ps1` release-lane pairing was retired with the runner (D4). The structured reader still recognises a legacy `Test:` field, but no current check pairs it with a release filter.
+note: 2026-11-24 — Skipped. This is an imported schema rule with no standalone change to implement.
 
 ### DW-12: Case activity stream append and summary-hash update should be made atomic if duplicate retry side effects become observable.
 
@@ -85,6 +96,7 @@ origin: migrated from legacy ledger ("Story 24.5 Review Deferred Items (2026-07-
 location: src/Hexalith.Memories.Server/Cases/CaseActivityService.cs
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-24-5-hot-path-write-amplification-cleanup.md` summary: Case activity stream append and summary-hash update should be made atomic if duplicate retry side effects become observable. evidence: Story 24.5 bounded the stream and added summary backfill for missing legacy summaries, but `XADD` and summary hash updates remain separate Redis operations, so a failure between them can leave a read-model summary temporarily stale until rebuild/backfill. - ID: 24.5-CASE-ACTIVITY-ATOMIC-SUMMARY - Status: open - Source story: 24-5-hot-path-write-amplification-cleanup - Target artifact: src/Hexalith.Memories.Server/Cases/CaseActivityService.cs - Re-open trigger: duplicate case activity appends, stale failed-count/last-activity summaries, or Redis partial-write telemetry are observed after Story 24.5 ships. - Evidence: Review pass found `RecordEventAsync` writes the stream and summary hash separately; Story 24.5 mitigated missing legacy summaries with backfill but did not introduce Lua/transactional atomicity for this projection summary.
 status: open
+note: 2026-11-24 — Skipped. The recorded trigger requires observed duplicate appends or stale summaries, and no such incident is linked.
 
 ### DW-13: `MEM-2-ASPIRATE` and `MEM-3-OPENAPI` target Story 19.2 unless the story
 
@@ -136,6 +148,7 @@ origin: migrated from legacy ledger ("New accepted-debt entries (Epic 18 retrosp
 location: src/Hexalith.Memories.Server/Ingestion/IngestDedupReservation.cs (idempotency-token anchoring path)
 reason: - **18.4-TOKEN-EDGE - accepted.** Story 18.4 token-anchoring edge: a token whose first use falls back to a pre-existing `sourceUri` unit relies on the 24h reservation key rather than the permanent dedup record. - ID: 18.4-TOKEN-EDGE - Status: accepted - Source story: 19-1-deferred-register-active-entry-classification-sweep - Target artifact: src/Hexalith.Memories.Server/Ingestion/IngestDedupReservation.cs (idempotency-token anchoring path) - Re-open trigger: a token whose first use falls back to a pre-existing `sourceUri` unit relying on the 24h reservation key (not a permanent record) causes a real dedup/idempotency defect, or a hardening story is scheduled. - Rationale: tokens augment and never replace the permanent source-URI dedup record, so the edge is a known narrow case accepted until it produces a real defect or a hardening story is scheduled. Owner: Amelia / release maintainer. [Source: epic-18-retro-2026-06-25.md Action Item 4; Story 18.4 / MEM-4]
 status: open
+note: 2026-11-24 — Skipped. The accepted token-anchoring tradeoff needs a deduplication defect or a dedicated hardening story.
 
 ### DW-21: 12.4-RV20: accepted. Strict literal per-SHA replay evidence is a
 
@@ -143,6 +156,7 @@ origin: migrated from legacy ledger ("Story 15.5 Triage Rollup (2026-05-15)"), 2
 location: _bmad-output/implementation-artifacts/12-4-baseline-failures-sweep.md; tools/test-release.ps1; tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs
 reason: - **12.4-RV20 - accepted.** Strict literal per-SHA replay evidence is a release-quality proof candidate, not a runtime defect. Ancestry-based HEAD-inheritance proof remains acceptable for existing close-out evidence; Story 19.3 declines to schedule a strict replay evidence story now. - ID: 12.4-RV20 - Status: accepted - Source story: 15-5-deferred-register-triage-sweep - Target artifact: _bmad-output/implementation-artifacts/12-4-baseline-failures-sweep.md; tools/test-release.ps1; tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs - Re-open trigger: A release post-mortem traces a regression to a test that existed at one of the named anchor SHAs but was silently fixed before HEAD, or a release-quality story explicitly requests strict literal replay evidence over ancestry-based proof. - Rationale: Story 19.3 (2026-06-30) reviewed the release-evidence need (AC1) and accepts ancestry-based HEAD-inheritance proof as sufficient for current close-out evidence, declining to create the proposed "Strict Release Baseline Replay Evidence" story until the re-open trigger fires. This governance sweep does not run historical checkout/build/test lanes or mutate release tooling. Owner: release maintainer.
 status: open
+note: 2026-11-24 — Skipped. Story 19.3 accepted ancestry evidence, and no trigger justifies historical replay through the retired release lane.
 
 ### DW-22: 12.6-RV5: resolved. The `EmbeddingInputContentKindTests` telemetry
 
@@ -203,7 +217,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Epic 14 Retrospective Reconciliation"), 2026-09-01
 location: n/a
 reason: - The Epic 14 retrospective's "Preparation For The Next Work" note is stale because Epic 15 now exists. This rollup records the reconciliation instead of rewriting retrospective history.
-status: open
+status: done 2026-11-24
+resolution: The Epic 14 retrospective now links to the later Epic 15 plan and the Story 15.5 ownership reconciliation.
 
 ### DW-32: 15.5-RV1: `git diff --check` validation claim is inaccurate. Story 15.5 Dev Agent Record states `git diff --check ... passed with only expected LF-to-CRLF working-copy warnings`, but actual `git diff --check 9042c17..c2e575c` reports trailing-whitespace errors on `_15-5-review-diff.patch`. Re-open trigger: any future story's validation block reuses the same tolerance wording without verifying `--check` output is genuinely error-free.
 
