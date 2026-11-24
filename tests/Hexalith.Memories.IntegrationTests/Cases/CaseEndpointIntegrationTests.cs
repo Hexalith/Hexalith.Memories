@@ -303,6 +303,8 @@ public sealed partial class CaseEndpointIntegrationTests
         CaseRecord? createdCase = await createCaseResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
         createdCase.ShouldNotBeNull();
 
+        await WaitForCaseCreatedAsync(tenantId, createdCase.Id);
+
         // Add a member (creates :members key)
         var memberInput = new AddCaseMemberInput("user-alice", CaseMemberType.User);
         using HttpResponseMessage putResponse = await _fixture.MemoriesClient.PutAsJsonAsync(
