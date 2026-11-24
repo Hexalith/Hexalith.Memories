@@ -1901,7 +1901,8 @@ resolution: NuGet still lists only prerelease versions and the imported Hexalith
 origin: migrated from legacy ledger ("Deferred from: code review of 8-5-redis-otel-instrumentation (2026-04-23)"), 2026-09-01
 location: tests/Hexalith.Memories.IntegrationTests/Telemetry/Infrastructure/ServerActivityStreamReader.cs
 reason: - **Malformed or truncated Redis breadcrumbs are still silently dropped by `ServerActivityStreamReader`.** `TryParse(...)` catches `JsonException` and returns `null`, so the Story 8.5 hard Redis-span assertion can report a missing span when the real failure is capture corruption / truncation. Deferred as pre-existing review debt in the existing stderr-breadcrumb reader path. [tests/Hexalith.Memories.IntegrationTests/Telemetry/Infrastructure/ServerActivityStreamReader.cs]
-status: open
+status: done 2026-11-24
+resolution: The trace reader identifies malformed Memories-server activity breadcrumbs with a sanitized capture position. Seven parser cases cover truncation, malformed fields, and ordinary log messages that mention the marker.
 
 ### DW-273: Task 8.7 — `RateLimiterSizingValidator` (Winston promoted, Improvement AB).
 

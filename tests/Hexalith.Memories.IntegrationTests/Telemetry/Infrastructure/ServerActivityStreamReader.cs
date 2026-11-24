@@ -5,6 +5,7 @@
 
 namespace Hexalith.Memories.IntegrationTests.Telemetry.Infrastructure;
 
+using System.Globalization;
 using System.Text.Json;
 
 using Hexalith.Memories.IntegrationTests.Fixtures;
@@ -47,7 +48,7 @@ internal static class ServerActivityStreamReader
                 cancellationToken.ThrowIfCancellationRequested();
             }
 
-            latest = ScanCapturedLogs(fixture, logStartIndex);
+            latest = ScanCapturedLogs(fixture.GetLogEntriesSince(logStartIndex), logStartIndex);
             int matchingCount = matchPredicate is null
                 ? latest.Count
                 : latest.Count(matchPredicate);
@@ -83,34 +84,58 @@ internal static class ServerActivityStreamReader
     private static bool IsAtPollingDeadline(DateTimeOffset deadline, TimeSpan pollInterval)
         => DateTimeOffset.UtcNow + pollInterval >= deadline;
 
-    private static IReadOnlyList<CapturedServerActivity> ScanCapturedLogs(
-        AspireIngestionPipelineFixture fixture,
+    /// <summary>Parses activity breadcrumbs from the captured log tail.</summary>
+    internal static IReadOnlyList<CapturedServerActivity> ScanCapturedLogs(
+        IReadOnlyList<AspireIngestionPipelineFixture.CapturedLogEntry> entries,
         int logStartIndex)
     {
-        IReadOnlyList<AspireIngestionPipelineFixture.CapturedLogEntry> entries = fixture.GetLogEntriesSince(logStartIndex);
         List<CapturedServerActivity> matches = [];
-        foreach (AspireIngestionPipelineFixture.CapturedLogEntry entry in entries)
+        for (int i = 0; i < entries.Count; i++)
         {
-            if (string.IsNullOrEmpty(entry.Message))
+            AspireIngestionPipelineFixture.CapturedLogEntry entry = entries[i];
+            if (!string.Equals(entry.Category, "memories", StringComparison.Ordinal)
+                && !entry.Category.EndsWith(".Resources.memories", StringComparison.Ordinal))
             {
                 continue;
             }
 
-            int prefixIndex = entry.Message.IndexOf(InMemoryTelemetryEnvironment.ActivityBreadcrumbPrefix, StringComparison.Ordinal);
-            if (prefixIndex < 0)
+            string payload = StripAspireLogPrefix(entry.Message);
+            if (!payload.StartsWith(InMemoryTelemetryEnvironment.ActivityBreadcrumbPrefix, StringComparison.Ordinal))
             {
                 continue;
             }
 
-            string json = entry.Message[(prefixIndex + InMemoryTelemetryEnvironment.ActivityBreadcrumbPrefix.Length)..].Trim();
+            string json = payload[InMemoryTelemetryEnvironment.ActivityBreadcrumbPrefix.Length..].Trim();
             CapturedServerActivity? captured = TryParse(entry, json);
-            if (captured is not null)
+            if (captured is null)
             {
-                matches.Add(captured);
+                throw new InvalidDataException(
+                    $"Malformed server activity breadcrumb at captured log index {logStartIndex + i}. "
+                    + "Expected JSON with sourceName, operationName, traceId, spanId and kind.");
             }
+
+            matches.Add(captured);
         }
 
         return matches;
+    }
+
+    private static string StripAspireLogPrefix(string message)
+    {
+        // Aspire formats captured resource lines as "<line>: <timestamp> <message>".
+        string payload = message.TrimStart();
+        int lineEnd = payload.IndexOf(": ", StringComparison.Ordinal);
+        if (lineEnd <= 0 || !int.TryParse(payload.AsSpan(0, lineEnd), NumberStyles.None, CultureInfo.InvariantCulture, out _))
+        {
+            return payload;
+        }
+
+        int timeStart = lineEnd + 2;
+        int timeEnd = payload.IndexOf(' ', timeStart);
+        return timeEnd > timeStart && DateTimeOffset.TryParse(payload.AsSpan(timeStart, timeEnd - timeStart),
+            CultureInfo.InvariantCulture, DateTimeStyles.None, out _)
+            ? payload[(timeEnd + 1)..]
+            : payload;
     }
 
     private static CapturedServerActivity? TryParse(
@@ -121,6 +146,10 @@ internal static class ServerActivityStreamReader
         {
             using JsonDocument doc = JsonDocument.Parse(json);
             JsonElement root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
 
             string? sourceName = TryReadString(root, "sourceName");
             string? operationName = TryReadString(root, "operationName");
@@ -131,7 +160,9 @@ internal static class ServerActivityStreamReader
                 || string.IsNullOrWhiteSpace(operationName)
                 || string.IsNullOrWhiteSpace(traceId)
                 || string.IsNullOrWhiteSpace(spanId)
-                || string.IsNullOrWhiteSpace(kind))
+                || string.IsNullOrWhiteSpace(kind)
+                || (root.TryGetProperty("parentSpanId", out JsonElement parent)
+                    && parent.ValueKind is not (JsonValueKind.String or JsonValueKind.Null)))
             {
                 return null;
             }
