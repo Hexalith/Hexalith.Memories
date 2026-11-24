@@ -2025,7 +2025,8 @@ resolution: Both embedding kinds consume the same real tenant rate-limit actor s
 origin: migrated from legacy ledger ("Deferred from: code review of 9-2-dual-embedding-and-causal-chain-indexing (2026-04-24)"), 2026-09-01
 location: n/a
 reason: - **Risk #9 follow-up tests** — `MultipleTenantsWithBacklog_FairlyDequeuesAcrossTenants`, `RestartMidIteration_DoesNotDoubleScheduleSameRecord`, `NaturalLanguageEmbeddingRetryWorkflowTests.Idempotency_DuplicateScheduling_DoesNotDoubleIndex`. Tied to Task 9.3 `DegradedNaturalLanguageEmbeddingTests`.
-status: open
+status: done 2026-11-24
+resolution: The retry worker test verifies fair batch progress across 100 tenants. Live Redis and Dapr tests cover interruption after dequeue, restart with an accepted schedule whose acknowledgement was lost, and a repeated retry while one workflow owns the same record. Only the original attempt generates and publishes the vector.
 
 ### DW-289: Orphan stub operator surface
 

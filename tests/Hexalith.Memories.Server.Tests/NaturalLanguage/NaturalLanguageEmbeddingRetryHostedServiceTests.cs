@@ -20,6 +20,52 @@ using Shouldly;
 public class NaturalLanguageEmbeddingRetryHostedServiceTests
 {
     [Fact]
+    public async Task TickAsync_BoundsEachTenantBatchAndDrainsSmallTenantsDespiteLargeBacklog()
+    {
+        string[] tenantIds = Enumerable.Range(0, 100).Select(index => $"tenant-{index}").ToArray();
+        var backlog = tenantIds.ToDictionary(tenant => tenant, tenant => new Queue<FailedNaturalLanguageEmbeddingRecord>(
+            Enumerable.Range(0, tenant == "tenant-0" ? 1000 : 10)
+                .Select(index => Record($"unit-{index}") with { TenantId = tenant })), StringComparer.Ordinal);
+        var registry = Substitute.For<IFailedNaturalLanguageEmbeddingRegistry>();
+        registry.ListTenantsWithBacklogAsync(Arg.Any<CancellationToken>())
+            .Returns(_ => EnumerateTenantsAsync(tenantIds));
+        registry.GetBacklogCountAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(call => backlog[call.Arg<string>()].Count);
+        registry.DequeueBatchAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(call => backlog[call.Arg<string>()].Take(call.Arg<int>()).ToArray());
+
+        var scheduled = new List<(string Tenant, string Unit)>();
+        var client = Substitute.For<IDaprWorkflowClient>();
+        client.ScheduleNewWorkflowAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<NaturalLanguageEmbeddingRetryInput>())
+            .Returns(call =>
+            {
+                NaturalLanguageEmbeddingRetryInput input = call.Arg<NaturalLanguageEmbeddingRetryInput>();
+                string id = call.ArgAt<string>(1);
+                id.ShouldBe(NaturalLanguageEmbeddingRetryHostedService.GetRetryWorkflowInstanceId(input.TenantId, input.MemoryUnitId));
+                backlog[input.TenantId].Dequeue().MemoryUnitId.ShouldBe(input.MemoryUnitId);
+                scheduled.Add((input.TenantId, input.MemoryUnitId));
+                return id;
+            });
+
+        var options = new NaturalLanguageDescriptionOptions { RetryWorkerEnabled = true, BatchSize = 5 };
+        var monitor = Substitute.For<IOptionsMonitor<NaturalLanguageDescriptionOptions>>();
+        monitor.CurrentValue.Returns(options);
+        var worker = new NaturalLanguageEmbeddingRetryHostedService(
+            registry, client, monitor, NullLogger<NaturalLanguageEmbeddingRetryHostedService>.Instance);
+
+        await worker.TickAsync(options, TestContext.Current.CancellationToken);
+        scheduled.GroupBy(item => item.Tenant).ToDictionary(group => group.Key, group => group.Count())
+            .ShouldBe(tenantIds.ToDictionary(tenant => tenant, _ => 5));
+        await worker.TickAsync(options, TestContext.Current.CancellationToken);
+        await worker.TickAsync(options, TestContext.Current.CancellationToken);
+
+        scheduled.Count.ShouldBe((99 * 10) + 15);
+        scheduled.Distinct().Count().ShouldBe(scheduled.Count);
+        backlog["tenant-0"].Count.ShouldBe(985);
+        backlog.Where(item => item.Key != "tenant-0").ShouldAllBe(item => item.Value.Count == 0);
+    }
+
+    [Fact]
     public async Task TickAsync_DisabledDuringBacklogRead_StopsBeforeDequeuing()
     {
         var registry = Substitute.For<IFailedNaturalLanguageEmbeddingRegistry>();
@@ -152,9 +198,16 @@ public class NaturalLanguageEmbeddingRetryHostedServiceTests
     private static FailedNaturalLanguageEmbeddingRecord Record(string memoryUnitId)
         => new("tenant-a", memoryUnitId, "{}", "event", null, "case-a", "provider", "model", 3, 1, 0);
 
-    private static async IAsyncEnumerable<string> OneTenant()
+    private static IAsyncEnumerable<string> OneTenant()
+        => EnumerateTenantsAsync(["tenant-a"]);
+
+    private static async IAsyncEnumerable<string> EnumerateTenantsAsync(IEnumerable<string> tenants)
     {
-        yield return "tenant-a";
+        foreach (string tenant in tenants)
+        {
+            yield return tenant;
+        }
+
         await Task.CompletedTask;
     }
 

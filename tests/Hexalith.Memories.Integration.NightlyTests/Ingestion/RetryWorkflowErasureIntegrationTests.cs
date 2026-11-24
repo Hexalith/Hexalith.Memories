@@ -942,6 +942,29 @@ public sealed class RetryWorkflowErasureIntegrationTests(RedisStackFixture redis
             using IHost host = BuildHost();
             await host.StartAsync(token);
             var client = host.Services.GetRequiredService<DaprWorkflowClient>();
+            if (!failAfterEmbedding)
+            {
+                using var interrupted = CancellationTokenSource.CreateLinkedTokenSource(token);
+                var interruptedRegistry = CreateOwnedRegistry(registry, tenant);
+                interruptedRegistry.DequeueBatchAsync(tenant, options.BatchSize, Arg.Any<CancellationToken>())
+                    .Returns(async call =>
+                    {
+                        var batch = await registry.DequeueBatchAsync(tenant, options.BatchSize, call.Arg<CancellationToken>());
+                        batch.ShouldHaveSingleItem().ShouldBe(record);
+                        await interrupted.CancelAsync();
+                        interrupted.Token.ThrowIfCancellationRequested();
+                        return batch;
+                    });
+                var interruptedWorker = new NaturalLanguageEmbeddingRetryHostedService(interruptedRegistry, client, monitor,
+                    NullLogger<NaturalLanguageEmbeddingRetryHostedService>.Instance, redis.Connection);
+
+                await Should.ThrowAsync<OperationCanceledException>(
+                    () => interruptedWorker.TickAsync(options, interrupted.Token));
+                (await client.GetWorkflowStateAsync(id, true, token)).Exists.ShouldBeFalse();
+                (await db.KeyExistsAsync(RetryWorkflowHistory.Lease(tenant, unit))).ShouldBeFalse();
+                (await db.SortedSetLengthAsync(FailedNaturalLanguageEmbeddingRegistry.LiveKey(tenant))).ShouldBe(1);
+            }
+
             var worker = new NaturalLanguageEmbeddingRetryHostedService(owned, client, monitor, NullLogger<NaturalLanguageEmbeddingRetryHostedService>.Instance, redis.Connection);
             Task tick = worker.TickAsync(options, token);
             await entered.Task.WaitAsync(token);
@@ -949,6 +972,26 @@ public sealed class RetryWorkflowErasureIntegrationTests(RedisStackFixture redis
             running.ReadInputAs<NaturalLanguageEmbeddingRetryInput>().ShouldNotBeNull().RawJsonPayload.ShouldBeEmpty();
             (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant), unit)).ToString().ShouldContain(sentinel);
             await AssertHistoryExcludesAsync();
+            if (!failAfterEmbedding)
+            {
+                while (await db.KeyExistsAsync(RetryWorkflowHistory.Lease(tenant, unit)).WaitAsync(token))
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(50), token);
+                }
+
+                var duplicateClient = Substitute.For<IDaprWorkflowClient>();
+                duplicateClient.GetWorkflowStateAsync(id, true, Arg.Any<CancellationToken>())
+                    .Returns(call => client.GetWorkflowStateAsync(id, true, call.Arg<CancellationToken>()));
+                var duplicateWorker = new NaturalLanguageEmbeddingRetryHostedService(
+                    CreateOwnedRegistry(registry, tenant), duplicateClient, monitor,
+                    NullLogger<NaturalLanguageEmbeddingRetryHostedService>.Instance, redis.Connection);
+
+                await duplicateWorker.TickAsync(options, token);
+                _ = await duplicateClient.Received(1).GetWorkflowStateAsync(id, true, Arg.Any<CancellationToken>());
+                _ = await duplicateClient.DidNotReceive().ScheduleNewWorkflowAsync(
+                    Arg.Any<string>(), Arg.Any<string>(), Arg.Any<NaturalLanguageEmbeddingRetryInput>());
+            }
+
             release.SetResult(new ConversationResponse([new ConversationResponseResult([new ConversationResultChoice(null, 0, new ResultMessage(description))])], string.Empty));
             await tick.WaitAsync(token);
             (await db.StringGetAsync(RetryWorkflowHistory.Unresolved(malformedTenant))).ToString().ShouldBe("1");
@@ -962,6 +1005,10 @@ public sealed class RetryWorkflowErasureIntegrationTests(RedisStackFixture redis
             if (failAfterEmbedding) (await db.KeyExistsAsync(output)).ShouldBeFalse();
             else
             {
+                _ = await conversation.Received(1).ConverseAsync(
+                    Arg.Any<IReadOnlyList<ConversationInput>>(), Arg.Any<ConversationOptions>(), Arg.Any<CancellationToken>());
+                _ = await embedding.Received(1).GenerateAsync(
+                    description, tenant, Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>());
                 (await db.HashGetAsync(output, "naturalLanguageDescription")).ToString().ShouldBe(description);
                 ((byte[]?)(await db.HashGetAsync(output, "embedding")))!.ShouldBe(vectorBytes);
             }
