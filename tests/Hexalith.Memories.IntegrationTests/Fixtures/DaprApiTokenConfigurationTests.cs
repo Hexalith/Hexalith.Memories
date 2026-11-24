@@ -66,6 +66,18 @@ public sealed class DaprApiTokenConfigurationTests
         exception.Message.ShouldContain("DAPR_API_TOKEN_MODE has an unrecognized value");
     }
 
+    [Theory]
+    [InlineData(" enabled", true)]
+    [InlineData("disabled ", true)]
+    [InlineData("enable", false)]
+    public void Resolve_UnrecognizedMode_NamesPaddingWithoutEchoingTheValue(string mode, bool padded)
+    {
+        InvalidOperationException exception = Should.Throw<InvalidOperationException>(
+            () => DaprApiTokenConfiguration.Resolve(Environment(mode, daprToken: "dapr-token", appToken: "app-token")));
+
+        exception.Message.Contains("leading or trailing whitespace", StringComparison.Ordinal).ShouldBe(padded);
+    }
+
     [Fact]
     public void Resolve_UnrecognizedMode_DoesNotEchoTheConfiguredValue()
     {

@@ -14,14 +14,14 @@ namespace Hexalith.Memories.Mcp;
 /// </summary>
 /// <remarks>
 /// Task 3.7 evaluated whether this needed to be a full <see cref="DelegatingHandler"/>. Conclusion:
-/// no — token mode is startup-fixed (Story 5.4 AC3 ResolveDaprApiTokens / DAPR_API_TOKEN_MODE), so
+/// no — token mode is startup-fixed (Story 5.4 AC3 DAPR_API_TOKEN_MODE, resolved in the AppHost by DaprApiTokenConfiguration), so
 /// a static <see cref="HttpRequestHeaders.Add(string, string)"/> at DI time on the singleton invoke
 /// client is sufficient and keeps the pipeline simple. If a future story needs hot-reload of the
 /// token, this becomes a delegating handler again.
 /// </remarks>
 internal sealed class MemoriesMcpDaprInvocationHandler
 {
-    /// <summary>Environment variable that gates token propagation. Mirrors AppHost ResolveDaprApiTokens.</summary>
+    /// <summary>Environment variable that gates token propagation; the AppHost DaprApiTokenConfiguration reads the same variable.</summary>
     internal const string TokenModeEnvVar = "DAPR_API_TOKEN_MODE";
 
     /// <summary>Environment variable that carries the actual DAPR API token.</summary>

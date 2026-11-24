@@ -37,8 +37,13 @@ internal static class DaprApiTokenConfiguration
 
         if (!string.Equals(mode, EnabledMode, StringComparison.OrdinalIgnoreCase))
         {
+            string trimmed = mode.Trim();
+            string whitespaceHint = string.Equals(trimmed, EnabledMode, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(trimmed, DisabledMode, StringComparison.OrdinalIgnoreCase)
+                ? " The value has leading or trailing whitespace; remove it."
+                : string.Empty;
             throw new InvalidOperationException(
-                $"{ModeVariable} has an unrecognized value. Set it to '{EnabledMode}' to require Dapr API tokens, " +
+                $"{ModeVariable} has an unrecognized value.{whitespaceHint} Set it to '{EnabledMode}' to require Dapr API tokens, " +
                 $"or to '{DisabledMode}' or leave it unset for local development.");
         }
 
