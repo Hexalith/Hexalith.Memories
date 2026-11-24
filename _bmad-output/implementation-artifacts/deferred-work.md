@@ -6064,3 +6064,13 @@ origin: DW-271 stable-release review, 2026-11-24
 location: docs/dev/telemetry.md; NuGet.config; references/Hexalith.Builds/Props/Directory.Packages.props
 reason: The current Builds pin is prerelease. The Memories release-manager rotation should review the official package feed within 14 days of its first stable release or by 2027-02-24, whichever comes first, and coordinate any pin change with Hexalith.Builds.
 status: open
+
+## Deferred from review of spec-seven-ordered-deferred-items.md (2026-11-24)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-seven-ordered-deferred-items.md`
+  summary: Share one AppHost Redis readiness probe per Redis allocation cycle instead of one probe loop per starting resource.
+  evidence: The BeforeResourceStartedEvent handler in src/Hexalith.Memories.AppHost/Program.cs runs WaitForRedisPingAsync separately for each Redis-consuming project and its Dapr CLI resource, up to eight concurrent loops. DW-419 spaced each loop out but did not reduce their number. The handler could await one shared readiness task, as it already shares the component rewrite signal.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-seven-ordered-deferred-items.md`
+  summary: Remove the IndexGraphActivity compatibility constructor that skips the tenant-ownership write check without the keyed Redis connection.
+  evidence: IndexGraphActivity keeps a public constructor without the keyed "redis" connection and then skips TenantIngestionOwnership.BeginOperationAsync. The server host always registers that connection, so the guard runs today, but a host without it would silently create the unguarded activity, the pattern DW-400 removed from the embedding activities.
