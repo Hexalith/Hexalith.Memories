@@ -207,7 +207,8 @@ public class WorkflowReplaySafetyHostedServiceTests
     [InlineData(true, false)]
     [InlineData(true, true)]
     [InlineData(false, true)]
-    public async Task StartingAsync_DistinguishesQueryTimeoutFromHostCancellation(bool queryTimesOut, bool hostCancels)
+    [InlineData(false, false)]
+    public async Task StartingAsync_DistinguishesTheFirstQueryCancellation(bool timeoutFirst, bool fireSecondSource)
     {
         IDaprWorkflowClient workflowClient = Substitute.For<IDaprWorkflowClient>();
         IIngestionWorkflowInFlightRegistry registry = Substitute.For<IIngestionWorkflowInFlightRegistry>();
@@ -226,20 +227,27 @@ public class WorkflowReplaySafetyHostedServiceTests
 
         Task starting = service.StartingAsync(shutdown.Token);
         await queryStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        if (queryTimesOut)
+        if (timeoutFirst)
         {
             timeProvider.Advance(WorkflowReplaySafetyHostedService.PerQueryTimeout);
+            if (fireSecondSource)
+            {
+                await shutdown.CancelAsync();
+            }
         }
-
-        if (hostCancels)
+        else
         {
             await shutdown.CancelAsync();
+            if (fireSecondSource)
+            {
+                timeProvider.Advance(WorkflowReplaySafetyHostedService.PerQueryTimeout);
+            }
         }
 
         releaseQuery.SetResult();
         await starting.WaitAsync(TimeSpan.FromSeconds(5));
 
-        if (queryTimesOut)
+        if (timeoutFirst)
         {
             AuditLogCapture entry = logs.Captures.ShouldHaveSingleItem();
             entry.EventId.ShouldBe(9173);

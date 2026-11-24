@@ -131,6 +131,33 @@ public sealed class IngestionWorkflowInFlightRegistryTests
     }
 
     [Fact]
+    public async Task RemoveAsync_CanceledDuringLookup_DoesNotStartPruning()
+    {
+        (IConnectionMultiplexer redis, IDatabase db) = CreateRedis();
+        var lookup = new TaskCompletionSource<RedisValue>(TaskCreationOptions.RunContinuationsAsynchronously);
+        db.HashGetAsync(
+            RedisIngestionWorkflowInFlightRegistry.InstanceMemberLookupKey,
+            "instance-1",
+            Arg.Any<CommandFlags>()).Returns(lookup.Task);
+        using var cancellation = new CancellationTokenSource();
+        RedisIngestionWorkflowInFlightRegistry registry = CreateRegistry(redis);
+
+        Task removal = registry.RemoveAsync("instance-1", cancellation.Token);
+        await cancellation.CancelAsync();
+        lookup.SetResult(RedisIngestionWorkflowInFlightRegistry.CreateMember("tenant-a", "instance-1"));
+
+        await Should.ThrowAsync<OperationCanceledException>(() => removal);
+        await db.DidNotReceive().SortedSetRemoveAsync(
+            RedisIngestionWorkflowInFlightRegistry.RegistryKey,
+            Arg.Any<RedisValue>(),
+            Arg.Any<CommandFlags>());
+        await db.DidNotReceive().HashDeleteAsync(
+            RedisIngestionWorkflowInFlightRegistry.InstanceMemberLookupKey,
+            "instance-1",
+            Arg.Any<CommandFlags>());
+    }
+
+    [Fact]
     public async Task TrackAsync_WhenOverCap_DoesNotTrimBeforeDaprStateObservation()
     {
         (IConnectionMultiplexer redis, IDatabase db) = CreateRedis();

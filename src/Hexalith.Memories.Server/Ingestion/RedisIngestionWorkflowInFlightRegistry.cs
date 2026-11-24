@@ -79,6 +79,7 @@ internal sealed class RedisIngestionWorkflowInFlightRegistry : IIngestionWorkflo
 
         if (corruptMembers.Count > 0)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             _ = await db.SortedSetRemoveAsync(RegistryKey, [.. corruptMembers]).ConfigureAwait(false);
         }
 
@@ -111,6 +112,7 @@ internal sealed class RedisIngestionWorkflowInFlightRegistry : IIngestionWorkflo
 
         IDatabase db = _redis.GetDatabase();
         RedisValue member = await db.HashGetAsync(InstanceMemberLookupKey, instanceId).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
         if (member.HasValue)
         {
             _ = await db.SortedSetRemoveAsync(RegistryKey, member).ConfigureAwait(false);
@@ -118,6 +120,7 @@ internal sealed class RedisIngestionWorkflowInFlightRegistry : IIngestionWorkflo
         else
         {
             RedisValue[] fallbackMembers = await FindMembersByInstanceIdAsync(db, instanceId).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
             if (fallbackMembers.Length > 0)
             {
                 _ = await db.SortedSetRemoveAsync(RegistryKey, fallbackMembers).ConfigureAwait(false);

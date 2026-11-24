@@ -65,11 +65,6 @@ internal sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecyc
             {
                 (int? inFlight, string? failureReason, Exception? failure) =
                     await TryCountInFlightAsync(startup.Token).ConfigureAwait(false);
-                if (deadline.IsCancellationRequested)
-                {
-                    break;
-                }
-
                 if (inFlight is null)
                 {
                     // Fail open when the sidecar or registry is unavailable. Operators still quiesce intake.
@@ -232,14 +227,27 @@ internal sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecyc
     {
         cancellationToken.ThrowIfCancellationRequested();
         using var queryTimeout = new CancellationTokenSource(PerQueryTimeout, _timeProvider);
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(queryTimeout.Token, cancellationToken);
+        using var queryCancellation = new CancellationTokenSource();
+        var firstCancellation = new TaskCompletionSource<bool>();
+        using var startupRegistration = cancellationToken.Register(() => CancelQuery(timedOut: false));
+        using var timeoutRegistration = queryTimeout.Token.Register(() => CancelQuery(timedOut: true));
         try
         {
-            return await query(linked.Token).WaitAsync(linked.Token).ConfigureAwait(false);
+            queryCancellation.Token.ThrowIfCancellationRequested();
+            return await query(queryCancellation.Token).WaitAsync(queryCancellation.Token).ConfigureAwait(false);
         }
-        catch (OperationCanceledException exception) when (queryTimeout.IsCancellationRequested)
+        catch (OperationCanceledException exception) when (firstCancellation.Task.IsCompletedSuccessfully
+            && firstCancellation.Task.Result)
         {
             throw new ReplaySafetyQueryTimeoutException(exception);
+        }
+
+        void CancelQuery(bool timedOut)
+        {
+            if (firstCancellation.TrySetResult(timedOut))
+            {
+                queryCancellation.Cancel();
+            }
         }
     }
 
