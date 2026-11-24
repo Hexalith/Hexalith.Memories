@@ -198,18 +198,19 @@ either list dropped records. The JSON result identifies which list was cut short
 | `Discrepancies` | Length of `discrepancies` | `totalDiscrepancyCount` | 8204 `DiscrepancyListTruncated` |
 | `Notes` | `noteCount` (length of `notes`) | `totalNoteCount` | 8210 `NotesListTruncated` |
 
-When a full count exceeds its retained count, use the workflow's information-level
-event 8201 (`DiscrepancyDetected`) to recover individual findings from retained
-logs for the verification run. Match `TenantId` and `WorkflowInstanceId` to the
-scheduling receipt, then filter `EntryKind` for `Discrepancy` or `Note`. Each
-event includes the memory-unit ID.
+When a full count exceeds its retained count, recover individual findings
+from the workflow logs. Use Warning event 8201 (`DiscrepancyDetected`) for repair
+findings and Information event 8212 (`ConsistencyNoteObserved`) for notes.
+Match `TenantId` and `WorkflowInstanceId` to the scheduling receipt. Each event
+includes the memory-unit ID and its `EntryKind`.
 The `Recommendation` field carries the repair action, the note kind, or
 `InformationalNote` for a free-text-only observation. The CLI table shows
 retained counts in its `discrepancies` and `notes` columns.
 
-When reviewing logs across an upgrade, include older 8201 events that lack
-`EntryKind`. A repair action in `Recommendation` identifies a discrepancy. A
-note kind or `InformationalNote` identifies a note. Older events also lack
+When reviewing logs across an upgrade, include older 8201 events with
+`EntryKind=Note`. For events that lack `EntryKind`, a repair action in
+`Recommendation` identifies a discrepancy, and a note kind or
+`InformationalNote` identifies a note. The oldest events also lack
 `WorkflowInstanceId`. If runs overlap for a tenant, attributing those events
 to an individual run requires correlation from the log sink.
 
@@ -296,7 +297,7 @@ The following are explicitly NOT delivered by Story 8.2:
 | EventId | Level | Name |
 | --- | --- | --- |
 | 8200 | Info | `ConsistencyInspection` |
-| 8201 | Info | `DiscrepancyDetected` |
+| 8201 | Warning | `DiscrepancyDetected` |
 | 8202 | Info | `RepairActionApplied` |
 | 8203 | Warning | `UnrepairableDiscrepancy` |
 | 8204 | Warning | `EnumerationTruncated` / `DiscrepancyListTruncated` |
@@ -306,6 +307,7 @@ The following are explicitly NOT delivered by Story 8.2:
 | 8210 | Warning | `NotesListTruncated` (verification workflow) |
 | 8210 | Info | `SemanticReIndexStarted` (semantic indexer) |
 | 8211 | Info | `GraphReMergeCompleted` |
+| 8212 | Info | `ConsistencyNoteObserved` |
 | 8220 | Warning | `RedisScanFailed` |
 | 8221 | Warning | `GraphEnumerationFailed` |
 | 8222 | Info | `RepairNoOp` (re-verify reports consistent) |

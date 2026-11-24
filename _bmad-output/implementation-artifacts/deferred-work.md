@@ -2095,7 +2095,8 @@ resolution: The Server test assembly calls internal IngestionWorkflow.BuildIndex
 origin: migrated from legacy ledger ("Deferred from: code review of 9-2-dual-embedding-and-causal-chain-indexing Session 6 (2026-04-25)"), 2026-09-01
 location: n/a
 reason: - **S6-F4. Split `LogDiscrepancyDetected` emission for note-only vs. true-discrepancy cases.** Notes now flow through the same Warning logger event as discrepancies, inflating volume for healthy tenants during NL rollout. Follow-up: split into `LogDiscrepancyDetected` (Warn) + `LogConsistencyNoteObserved` (Info/Debug).
-status: open
+status: done 2026-11-24
+resolution: Consistency verification emits Warning 8201 for repair findings and Information 8212 for note-only observations. The structured fields and historic recovery guidance are documented. The mixed and over-cap tests verify both streams.
 
 ### DW-298: S6-F5. Tighten OCE `when` filter at `WorkflowReplaySafetyHostedService.cs:177-181` to log per-call timeouts even during host shutdown.
 

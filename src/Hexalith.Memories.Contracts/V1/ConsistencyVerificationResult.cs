@@ -14,7 +14,7 @@ namespace Hexalith.Memories.Contracts.V1;
 /// length tells the operator which list (if any) was truncated. <see cref="TruncatedAt"/> is
 /// non-null iff EITHER list was truncated. Operators needing the full actionable list can either
 /// re-run repair (which processes all discrepancies regardless of result truncation) or consume
-/// structured log EventId 8201.
+/// structured log EventId 8201. The full informational list is available in EventId 8212.
 /// </summary>
 /// <param name="TenantId">The tenant audited.</param>
 /// <param name="TotalUnits">Total unique memory unit IDs discovered (union of three backends).</param>

@@ -138,13 +138,17 @@ public sealed partial class ConsistencyVerificationWorkflow
                     totalDiscrepancyCount++;
                 }
 
-                string discrepancyLabel = recommendation != ConsistencyRepairRecommendation.NoOp
-                    ? recommendation.ToString()
-                    : consistencyNoteKind != ConsistencyNoteKind.None
+                if (isNoteOnlyObservation)
+                {
+                    string noteLabel = consistencyNoteKind != ConsistencyNoteKind.None
                         ? consistencyNoteKind.ToString()
                         : "InformationalNote";
-                LogDiscrepancyDetected(logger, input.TenantId, unitId, discrepancyLabel,
-                    isNoteOnlyObservation ? "Note" : "Discrepancy", context.InstanceId);
+                    LogConsistencyNoteObserved(logger, input.TenantId, unitId, noteLabel, "Note", context.InstanceId);
+                }
+                else
+                {
+                    LogDiscrepancyDetected(logger, input.TenantId, unitId, recommendation.ToString(), "Discrepancy", context.InstanceId);
+                }
 
                 ConsistencyDiscrepancy entry = new ConsistencyDiscrepancy(
                     unitId,
@@ -252,9 +256,16 @@ public sealed partial class ConsistencyVerificationWorkflow
 
     [LoggerMessage(
         EventId = 8201,
-        Level = LogLevel.Information,
+        Level = LogLevel.Warning,
         Message = "DiscrepancyDetected tenant '{TenantId}' unit '{MemoryUnitId}' recommendation {Recommendation} entry kind {EntryKind} workflow {WorkflowInstanceId}")]
     private static partial void LogDiscrepancyDetected(
+        ILogger logger, string tenantId, string memoryUnitId, string recommendation, string entryKind, string workflowInstanceId);
+
+    [LoggerMessage(
+        EventId = 8212,
+        Level = LogLevel.Information,
+        Message = "ConsistencyNoteObserved tenant '{TenantId}' unit '{MemoryUnitId}' recommendation {Recommendation} entry kind {EntryKind} workflow {WorkflowInstanceId}")]
+    private static partial void LogConsistencyNoteObserved(
         ILogger logger, string tenantId, string memoryUnitId, string recommendation, string entryKind, string workflowInstanceId);
 
     // S6-P6 (re-review 2026-04-25): restore the original DiscrepancyListTruncated message prefix

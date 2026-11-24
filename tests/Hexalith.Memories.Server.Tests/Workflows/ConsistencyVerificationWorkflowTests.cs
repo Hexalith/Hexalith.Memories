@@ -108,7 +108,7 @@ public class ConsistencyVerificationWorkflowTests
     }
 
     [Fact]
-    public async Task RunAsync_Event8201_SeparatesNotesFromRepairsAndPreservesRecommendation()
+    public async Task RunAsync_LogsNotesAtInformationAndRepairFindingsAtWarning()
     {
         WorkflowContext context = CreateContext();
         using CapturingAuditLoggerProvider logs = new();
@@ -137,8 +137,10 @@ public class ConsistencyVerificationWorkflowTests
 
         await new ConsistencyVerificationWorkflow().RunAsync(context, new ConsistencyVerificationInput(TestTenantId));
 
-        var findings = logs.Captures.Where(entry => entry.EventId == 8201).Select(entry => entry.Fields.ToDictionary()).ToArray();
-        findings.Length.ShouldBe(3);
+        var entries = logs.Captures.Where(entry => entry.EventId is 8201 or 8212).ToArray();
+        entries.Select(entry => (entry.EventId, entry.Level)).ShouldBe(
+            [(8212, LogLevel.Information), (8212, LogLevel.Information), (8201, LogLevel.Warning)]);
+        var findings = entries.Select(entry => entry.Fields.ToDictionary()).ToArray();
         foreach (var fields in findings)
         {
             fields["TenantId"].ShouldBe(TestTenantId);
@@ -290,9 +292,9 @@ public class ConsistencyVerificationWorkflowTests
     }
 
     [Theory]
-    [InlineData(false, "Discrepancy")]
-    [InlineData(true, "Note")]
-    public async Task RunAsync_CapExceeded_LogsFindingOmittedFromPayload(bool noteOnly, string expectedKind)
+    [InlineData(false, "Discrepancy", 8201, LogLevel.Warning)]
+    [InlineData(true, "Note", 8212, LogLevel.Information)]
+    public async Task RunAsync_CapExceeded_LogsFindingOmittedFromPayload(bool noteOnly, string expectedKind, int eventId, LogLevel level)
     {
         WorkflowContext context = CreateContext();
         using CapturingAuditLoggerProvider logs = new();
@@ -317,8 +319,9 @@ public class ConsistencyVerificationWorkflowTests
         var retained = noteOnly ? result.Notes : result.Discrepancies;
         retained.ShouldNotContain(entry => entry.MemoryUnitId == ids[10_000]);
 
-        var findings = logs.Captures.Where(entry => entry.EventId == 8201).ToArray();
+        var findings = logs.Captures.Where(entry => entry.EventId == eventId).ToArray();
         findings.Length.ShouldBe(10_001);
+        findings[^1].Level.ShouldBe(level);
         var last = findings[^1].Fields.ToDictionary();
         last["MemoryUnitId"].ShouldBe(ids[10_000]);
         last["EntryKind"].ShouldBe(expectedKind);
