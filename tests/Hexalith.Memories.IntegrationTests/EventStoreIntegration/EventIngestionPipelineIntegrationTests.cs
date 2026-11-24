@@ -184,7 +184,8 @@ public sealed partial class EventIngestionPipelineIntegrationTests
         return null!;
     }
 
-    private async Task PublishEventViaDaprAsync(HttpClient daprClient, string eventId, string subject, string queryToken)
+    private async Task PublishEventViaDaprAsync(
+        HttpClient daprClient, string eventId, string subject, string queryToken, CancellationToken cancellationToken = default)
     {
         string envelope = $$"""
             {
@@ -203,7 +204,8 @@ public sealed partial class EventIngestionPipelineIntegrationTests
 
         using HttpResponseMessage response = await daprClient.PostAsync(
             $"/v1.0/publish/{EventIngestionController.PubSubName}/memories-events",
-            new StringContent(envelope, Encoding.UTF8, "application/cloudevents+json")).ConfigureAwait(false);
+            new StringContent(envelope, Encoding.UTF8, "application/cloudevents+json"),
+            cancellationToken).ConfigureAwait(false);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
     }
@@ -213,7 +215,8 @@ public sealed partial class EventIngestionPipelineIntegrationTests
         string query,
         string subject,
         string expectedSourceUri,
-        string? memoryUnitId = null)
+        string? memoryUnitId = null,
+        CancellationToken cancellationToken = default)
     {
         Stopwatch timeout = Stopwatch.StartNew();
         HttpStatusCode? lastStatusCode = null;
@@ -222,9 +225,10 @@ public sealed partial class EventIngestionPipelineIntegrationTests
         while (timeout.Elapsed < SearchTimeout)
         {
             using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-                $"/api/v1/search?tenantId={Uri.EscapeDataString(tenantId)}&axis=syntactic&query={Uri.EscapeDataString(query)}&subject={Uri.EscapeDataString(subject)}");
+                $"/api/v1/search?tenantId={Uri.EscapeDataString(tenantId)}&axis=syntactic&query={Uri.EscapeDataString(query)}&subject={Uri.EscapeDataString(subject)}",
+                cancellationToken);
             lastStatusCode = response.StatusCode;
-            lastBody = await response.Content.ReadAsStringAsync();
+            lastBody = await response.Content.ReadAsStringAsync(cancellationToken);
             if (response.StatusCode == HttpStatusCode.OK)
             {
                 SearchResult? result = JsonSerializer.Deserialize<SearchResult>(lastBody, MemoriesJsonContext.Options);
@@ -238,10 +242,11 @@ public sealed partial class EventIngestionPipelineIntegrationTests
             }
 
             using HttpResponseMessage unfiltered = await _fixture.MemoriesClient.GetAsync(
-                $"/api/v1/search?tenantId={Uri.EscapeDataString(tenantId)}&axis=syntactic&query={Uri.EscapeDataString(query)}");
-            lastUnfilteredBody = await unfiltered.Content.ReadAsStringAsync();
+                $"/api/v1/search?tenantId={Uri.EscapeDataString(tenantId)}&axis=syntactic&query={Uri.EscapeDataString(query)}",
+                cancellationToken);
+            lastUnfilteredBody = await unfiltered.Content.ReadAsStringAsync(cancellationToken);
 
-            await Task.Delay(TimeSpan.FromMilliseconds(500));
+            await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
         }
 
         false.ShouldBeTrue(

@@ -14,6 +14,10 @@ using System.Text.Json;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.EventStore;
 using Hexalith.Memories.IntegrationTests.Fixtures;
+using Hexalith.Memories.Server.Activities.Ingestion;
+using Hexalith.Memories.Server.Infrastructure;
+
+using NFalkorDB;
 
 using Shouldly;
 
@@ -22,6 +26,85 @@ using StackExchange.Redis;
 /// <summary>Contains the nightly integration cases for EventIngestionPipelineIntegrationTests.</summary>
 public sealed partial class EventIngestionPipelineIntegrationTests
 {
+    [Fact]
+    [Trait("Category", "IntegrationSlow")]
+    public async Task PublishViaDaprPubSub_IndexesRawAndNaturalLanguageEmbeddingsWithinSevenSeconds()
+    {
+        string tenantId = _fixture.EventStoreMappedTenantId;
+        await EnsureTenantActiveAsync(tenantId, $"Tenant {tenantId}");
+        string eventId = $"evt-dual-{Guid.NewGuid():N}";
+        string marker = $"dual{Guid.NewGuid():N}";
+        const string Subject = "claim-dual-embedding";
+        using HttpClient daprClient = AspireIngestionPipelineFixture.CreateDaprSidecarClient(_fixture.DaprSidecarHttpEndpoint);
+
+        using var indexBudget = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        indexBudget.CancelAfter(TimeSpan.FromSeconds(7));
+        CancellationToken token = indexBudget.Token;
+        await PublishEventViaDaprAsync(daprClient, eventId, Subject, marker, token);
+        SearchResult search = await WaitForSearchAsync(tenantId, marker, Subject, eventId, cancellationToken: token);
+        ScoredResult unit = search.Results.Where(hit => hit.SourceUri == eventId).ShouldHaveSingleItem();
+        string caseId = unit.CaseId.ShouldNotBeNull();
+        caseId.ShouldNotBeNullOrWhiteSpace();
+
+        IDatabase redis = _fixture.RedisConnection.GetDatabase();
+        string rawKey = IndexSchemaDefinitions.BuildSemanticChunkKey(tenantId, unit.MemoryUnitId, 0);
+        string descriptionKey = IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenantId, unit.MemoryUnitId);
+        RedisValue[] names = ["tenantId", "memoryUnitId", "caseId", "embedding", "embeddingDimensions", "naturalLanguageDescription", "descriptionOrigin"];
+        RedisValue[] raw;
+        RedisValue[] description;
+        while (true)
+        {
+            Task<RedisValue[]> rawRead = redis.HashGetAsync(rawKey, names);
+            Task<RedisValue[]> descriptionRead = redis.HashGetAsync(descriptionKey, names);
+            RedisValue[][] hashes = await Task.WhenAll(rawRead, descriptionRead).WaitAsync(token);
+            raw = hashes[0];
+            description = hashes[1];
+            if (raw[3].HasValue && description[3].HasValue)
+            {
+                break;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(50), token);
+        }
+
+        foreach (RedisValue[] hash in new[] { raw, description })
+        {
+            hash[0].ToString().ShouldBe(tenantId);
+            hash[1].ToString().ShouldBe(unit.MemoryUnitId);
+            hash[2].ToString().ShouldBe(caseId);
+            int dimensions = (int)hash[4];
+            dimensions.ShouldBeGreaterThan(0);
+            ((byte[]?)hash[3]).ShouldNotBeNull().Length.ShouldBe(dimensions * sizeof(float));
+        }
+
+        raw[5].IsNull.ShouldBeTrue();
+        description[5].ToString().ShouldNotBeNullOrWhiteSpace();
+        description[6].ToString().ShouldBe("ai");
+
+        var graph = new FalkorDB(_fixture.FalkorDbConnection.GetDatabase()).SelectGraph(tenantId);
+        ResultSet graphResult = await graph.QueryAsync(
+            "MATCH (unit:MemoryUnit {id: $id}) RETURN unit.isStub AS isStub",
+            new Dictionary<string, object> { ["id"] = unit.MemoryUnitId }).WaitAsync(token);
+        graphResult.ShouldHaveSingleItem().GetValue<bool>("isStub").ShouldBeFalse();
+
+        string workflow = Uri.EscapeDataString(DedupKeyBuilder.BuildKey(tenantId, caseId, eventId));
+        while (true)
+        {
+            JsonElement state = await daprClient.GetFromJsonAsync<JsonElement>(
+                $"/v1.0/workflows/dapr/{workflow}", token);
+            if (string.Equals(state.GetProperty("runtimeStatus").GetString(), "COMPLETED", StringComparison.OrdinalIgnoreCase))
+            {
+                string output = state.GetProperty("properties").GetProperty("dapr.workflow.output").GetString().ShouldNotBeNull();
+                IngestionResult result = JsonSerializer.Deserialize<IngestionResult>(output, MemoriesJsonContext.Options).ShouldNotBeNull();
+                result.MemoryUnitId.ShouldBe(unit.MemoryUnitId);
+                result.NaturalLanguageEmbeddingStatus.ShouldBe(NaturalLanguageEmbeddingStatus.Indexed);
+                break;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(50), token);
+        }
+    }
+
     [Fact]
     [Trait("Category", "IntegrationSlow")]
     public async Task PostEventsIngest_ShouldIndexMemoryUnitAndRespectExactSubjectFilter()

@@ -1910,6 +1910,7 @@ origin: migrated from legacy ledger ("Deferred from: 9-2-dual-embedding-and-caus
 location: n/a
 reason: - **Task 8.7 — `RateLimiterSizingValidator` (Winston promoted, Improvement AB).** Validator emits `9163 RateLimiterUnderSizedForEvents` at Warning when a tenant's `EmbeddingRateLimiterActor` ceiling is below `sustainedUsage * 2` over a 15-min sliding window. Core dual-embedding path ships without the validator; the degraded-state queue path already protects against cascade failure under doubled API volume. Follow-up: add `RateLimiterSizingValidator.cs` that reuses the retry hosted service's scheduling slot, plus unit tests `.SustainedUnderSizing_Emits9163 / .TransientBurst_DoesNotEmit / .CeilingSufficient_DoesNotEmit`.
 status: open
+note: 2026-11-24 — Skipped. This is the sizing validator tracked by DW-208. No production measurement has triggered a sizing policy and the actor still exposes no sustained-utilization signal.
 
 ### DW-274: Task 8.8 — `memories retry-nl-embeddings` CLI surface (Improvement F).
 
@@ -1917,13 +1918,15 @@ origin: migrated from legacy ledger ("Deferred from: 9-2-dual-embedding-and-caus
 location: n/a
 reason: - **Task 8.8 — `memories retry-nl-embeddings` CLI surface (Improvement F).** Dead-letter inspection + re-enqueue is interim via `redis-cli` commands (documented in operator runbook section 10.1.3). Follow-up: add the sub-command to `Hexalith.Memories.Cli` once that project surfaces — current story scope ships no CLI project. Interim commands: `redis-cli ZCARD nl-embedding-retry-dead:{tenant}` + `redis-cli ZRANGEBYSCORE ... | xargs redis-cli ZADD nl-embedding-retry:{tenant} ...`.
 status: open
+note: 2026-11-24 — Skipped. The new command would extend the frozen proprietary CLI. The dead-letter operation needs an authorized McpCli contract or another designated owner, as recorded in DW-209.
 
 ### DW-275: Task 9.1 — `DualEmbeddingRoundTripTests` (Tier 2/3).
 
 origin: migrated from legacy ledger ("Deferred from: 9-2-dual-embedding-and-causal-chain-indexing (2026-04-24)"), 2026-09-01
 location: tests/Hexalith.Memories.IntegrationTests/Ingestion/
 reason: - **Task 9.1 — `DualEmbeddingRoundTripTests` (Tier 2/3).** Publishes a test CloudEvent via `DaprClient.PublishEventAsync` and polls both raw + NL hashes for dual indexing within 7s. Requires Aspire `DistributedApplicationTestingBuilder` + DAPR slim + Redis + FalkorDB + `conversation.echo` component. Follow-up: add under `tests/Hexalith.Memories.IntegrationTests/Ingestion/`.
-status: open
+status: done 2026-11-24
+resolution: The live nightly test publishes one CloudEvent through Dapr and checks both persisted vectors, their tenant and case, the AI description, the resolved graph node, and the completed Indexed workflow result within seven seconds.
 
 ### DW-276: Task 9.2 — `OutOfOrderEventTests` (Tier 2/3).
 
