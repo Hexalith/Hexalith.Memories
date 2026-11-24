@@ -34,6 +34,13 @@ public sealed class GenerateChunkEmbeddingsActivity : WorkflowTraceLinkedActivit
     private readonly ITenantEmbeddingConfigProvider _tenantEmbeddingConfigProvider;
 
     /// <summary>Initializes a new instance of the <see cref="GenerateChunkEmbeddingsActivity"/> class.</summary>
+    /// <param name="embeddingClient">The embedding client for provider batch API calls.</param>
+    /// <param name="actorProxyFactory">The factory for creating DAPR actor proxies.</param>
+    /// <param name="options">The content chunking options.</param>
+    /// <param name="logger">Logger for structured rate-limit events.</param>
+    /// <param name="redis">The keyed Redis connection that stores the tenant-scoped migration marker. It is required so the migration write guard always runs.</param>
+    /// <param name="payloadStore">The optional claim-check store for referenced content and chunk results.</param>
+    /// <param name="tenantEmbeddingConfigProvider">The cached tenant embedding configuration provider.</param>
     public GenerateChunkEmbeddingsActivity(
         EmbeddingClient embeddingClient,
         IActorProxyFactory actorProxyFactory,

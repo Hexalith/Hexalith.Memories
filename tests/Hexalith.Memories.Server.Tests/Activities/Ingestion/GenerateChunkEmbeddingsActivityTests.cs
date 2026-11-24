@@ -484,8 +484,10 @@ public class GenerateChunkEmbeddingsActivityTests
 
     private static IConnectionMultiplexer CreateRedisWithActiveMarker(string tenantId)
     {
+        // Only the tenant's active-marker key read from the primary returns the marker, so a wrong key or a
+        // dropped DemandMaster flag would leave the write unblocked and fail the test.
         IDatabase db = Substitute.For<IDatabase>();
-        db.HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+        db.HashGetAllAsync((RedisKey)$"{tenantId}:embedding-migration:active", CommandFlags.DemandMaster)
             .Returns(Task.FromResult(new[]
             {
                 new HashEntry("tenantId", tenantId),
