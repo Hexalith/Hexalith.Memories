@@ -1117,6 +1117,26 @@ public class CaseServiceTests
     }
 
     [Fact]
+    public async Task ResolveNamesAsync_WithRedisCommandError_ShouldPropagate()
+    {
+        (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        CaseService service = new(
+            redis, falkorDb, CreateMockBuilder(), CreateMockActivityService(),
+            CreateMockWorkflowClient(), CreateMockActorProxyFactory(), NullLogger<CaseService>.Instance);
+        IBatch batch = Substitute.For<IBatch>();
+        redisDb.CreateBatch(Arg.Any<object>()).Returns(batch);
+        RedisServerException commandError = new("Wrong value type for case-name lookup.");
+        batch.HashGetAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<CommandFlags>())
+            .Returns(Task.FromException<RedisValue>(commandError));
+
+        RedisServerException thrown = await Should.ThrowAsync<RedisServerException>(
+            () => service.ResolveNamesAsync("tenant-1", ["case-1"], TestContext.Current.CancellationToken));
+
+        thrown.ShouldBeSameAs(commandError);
+    }
+
+    [Fact]
     public async Task ResolveNamesAsync_WithDuplicateCaseIds_ShouldDeduplicateAndResolve()
     {
         // Arrange

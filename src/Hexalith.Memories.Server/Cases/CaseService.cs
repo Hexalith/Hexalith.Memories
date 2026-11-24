@@ -33,7 +33,7 @@ using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
 
 /// <summary>Manages case lifecycle: create, list, and get operations backed by Redis and FalkorDB.</summary>
-internal sealed class CaseService
+internal sealed partial class CaseService
 {
     private const int MaxMembersPerCase = 1000;
 
@@ -590,7 +590,8 @@ internal sealed class CaseService
     /// <param name="tenantId">The tenant identifier.</param>
     /// <param name="caseIds">The case IDs to resolve.</param>
     /// <param name="cancellationToken">A cancellation token.</param>
-    /// <returns>A dictionary mapping each case ID to its name (falls back to case ID if name is missing).</returns>
+    /// <returns>A dictionary of case names, using IDs for individual missing names. Returns an empty
+    /// dictionary if Redis cannot be reached.</returns>
     public async Task<Dictionary<string, string>> ResolveNamesAsync(
         string tenantId, IEnumerable<string> caseIds, CancellationToken cancellationToken)
     {
@@ -602,11 +603,21 @@ internal sealed class CaseService
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        IBatch batch = _redis.GetDatabase().CreateBatch();
-        Task<RedisValue>[] tasks = uniqueIds.Select(id =>
-            batch.HashGetAsync($"{tenantId}:case:{id}", "name")).ToArray();
-        batch.Execute();
-        RedisValue[] names = await Task.WhenAll(tasks).WaitAsync(cancellationToken).ConfigureAwait(false);
+        RedisValue[] names;
+        try
+        {
+            IBatch batch = _redis.GetDatabase().CreateBatch();
+            Task<RedisValue>[] tasks = uniqueIds.Select(id =>
+                batch.HashGetAsync($"{tenantId}:case:{id}", "name")).ToArray();
+            batch.Execute();
+            names = await Task.WhenAll(tasks).WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is RedisConnectionException or RedisTimeoutException)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            LogCaseNamesUnavailable(_logger, tenantId);
+            return [];
+        }
 
         Dictionary<string, string> result = new(uniqueIds.Count);
         for (int i = 0; i < uniqueIds.Count; i++)
@@ -616,6 +627,9 @@ internal sealed class CaseService
 
         return result;
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Case names are unavailable from Redis for tenant {TenantId}.")]
+    private static partial void LogCaseNamesUnavailable(ILogger logger, string tenantId);
 
     /// <summary>Gets the number of members in a case via HashLengthAsync.</summary>
     /// <param name="tenantId">The tenant identifier.</param>

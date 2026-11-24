@@ -1675,7 +1675,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of 3-4-case-scoped-and-cross-case-search (2026-04-12)"), 2026-09-01
 location: n/a
 reason: - **No error handling for Redis failure in case name enrichment** — If Redis fails during the optional `ResolveNamesAsync` call, the entire search request returns 500 even though core search results are already available. Should degrade gracefully by returning results without case names. [Program.cs:988]
-status: open
+status: done 2026-11-24
+resolution: Search preserves hits and case-ID groups during Redis case-name timeout or disconnect. Per-hit names are omitted; command errors still propagate. All 76 focused service and endpoint tests passed.
 
 ### DW-243: Keep actor-proxy fallback for tenant summaries instead of forcing the Task 1.6 state-store bypass
 

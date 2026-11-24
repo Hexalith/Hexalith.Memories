@@ -279,11 +279,27 @@ public sealed class SearchEndpointContractTests : IDisposable
         error.Suggestion.ShouldContain("Reduce offset or maxResults");
     }
 
-    [Fact]
-    public async Task HybridSearch_WithFusedCaseAttribution_ReturnsCaseGroupsAndEnrichedNames()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("timeout")]
+    [InlineData("connection")]
+    public async Task HybridSearch_WithFusedCaseAttribution_ReturnsGroupsWhenCaseNamesAreUnavailable(string? redisFailure)
     {
         StubTenantActive("acme-search");
-        StubCaseNames(("case-alpha", "Alpha Case"), ("case-beta", "Beta Case"));
+        if (redisFailure is null)
+        {
+            StubCaseNames(("case-alpha", "Alpha Case"), ("case-beta", "Beta Case"));
+        }
+        else
+        {
+            Exception failure = redisFailure == "timeout"
+                ? new RedisTimeoutException(CommandFlags.None, "Case-name query timed out.", CommandStatus.Unknown)
+                : new RedisConnectionException(ConnectionFailureType.SocketFailure, CommandFlags.None, "Case-name query disconnected.");
+            IBatch batch = Substitute.For<IBatch>();
+            _factory.RedisDatabase.CreateBatch(Arg.Any<object>()).Returns(batch);
+            batch.HashGetAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<CommandFlags>())
+                .Returns(Task.FromException<RedisValue>(failure));
+        }
 
         using WebApplicationFactory<Program> factory = _factory.WithWebHostBuilder(builder =>
         {
@@ -328,22 +344,22 @@ public sealed class SearchEndpointContractTests : IDisposable
 
         FusedScoredResult alpha = result.Results.Single(r => r.MemoryUnitId == "mu-alpha");
         alpha.CaseId.ShouldBe("case-alpha");
-        alpha.CaseName.ShouldBe("Alpha Case");
+        alpha.CaseName.ShouldBe(redisFailure is null ? "Alpha Case" : null);
         alpha.AnnotationsCount.ShouldBe(2);
         alpha.SyntacticScore.ShouldNotBeNull();
 
         FusedScoredResult beta = result.Results.Single(r => r.MemoryUnitId == "mu-beta");
         beta.CaseId.ShouldBe("case-beta");
-        beta.CaseName.ShouldBe("Beta Case");
+        beta.CaseName.ShouldBe(redisFailure is null ? "Beta Case" : null);
         beta.AnnotationsCount.ShouldBe(3);
         beta.SyntacticScore.ShouldNotBeNull();
 
         result.CaseGroups.ShouldNotBeNull();
         CaseGroupSummary alphaGroup = result.CaseGroups.Single(g => g.CaseId == "case-alpha");
-        alphaGroup.CaseName.ShouldBe("Alpha Case");
+        alphaGroup.CaseName.ShouldBe(redisFailure is null ? "Alpha Case" : "case-alpha");
         alphaGroup.ResultCount.ShouldBe(1);
         CaseGroupSummary betaGroup = result.CaseGroups.Single(g => g.CaseId == "case-beta");
-        betaGroup.CaseName.ShouldBe("Beta Case");
+        betaGroup.CaseName.ShouldBe(redisFailure is null ? "Beta Case" : "case-beta");
         betaGroup.ResultCount.ShouldBe(1);
 
         using HttpResponseMessage secondPage = await client.GetAsync(
