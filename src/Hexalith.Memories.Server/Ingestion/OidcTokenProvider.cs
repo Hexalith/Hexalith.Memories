@@ -10,6 +10,8 @@ using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
+using Hexalith.Memories.Server.Caching;
+
 using Microsoft.Extensions.Logging;
 
 /// <summary>Singleton-safe OIDC client credentials token provider with per-client caching.</summary>
@@ -18,12 +20,16 @@ public sealed partial class OidcTokenProvider : IOidcTokenProvider
     /// <summary>The configured HttpClient name used by dependency injection.</summary>
     internal const string HttpClientName = nameof(OidcTokenProvider);
 
+    /// <summary>The maximum number of token cache keys retained by a provider instance.</summary>
+    internal const int MaxCachedTokens = 1024;
+
     private const int ResponsePreviewLimit = 1024;
     private const string RedactedPlaceholder = "[redacted]";
     private static readonly TimeSpan RefreshSkew = TimeSpan.FromSeconds(30);
 
     private readonly ConcurrentDictionary<OidcTokenCacheKey, CachedOidcToken> _cache = new();
     private readonly ConcurrentDictionary<InflightTokenFetchKey, Task<CachedOidcToken>> _inflight = new();
+    private readonly Lock _cacheWriteGate = new();
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<OidcTokenProvider> _logger;
     private readonly TimeProvider _timeProvider;
@@ -218,7 +224,7 @@ public sealed partial class OidcTokenProvider : IOidcTokenProvider
             // cancellation flows through Task.WaitAsync(ct) at the public surface; the underlying
             // request is bounded by HttpClient.Timeout configured at registration.
             CachedOidcToken token = await FetchTokenAsync(key, clientSecret).ConfigureAwait(false);
-            _cache[key] = token;
+            CacheToken(key, token);
             tcs.SetResult(token);
         }
         catch (Exception ex)
@@ -231,6 +237,25 @@ public sealed partial class OidcTokenProvider : IOidcTokenProvider
             // started a fresh fetch is not displaced.
             ((ICollection<KeyValuePair<InflightTokenFetchKey, Task<CachedOidcToken>>>)_inflight)
                 .Remove(new KeyValuePair<InflightTokenFetchKey, Task<CachedOidcToken>>(inflightKey, tcs.Task));
+        }
+    }
+
+    private void CacheToken(OidcTokenCacheKey key, CachedOidcToken token)
+    {
+        lock (_cacheWriteGate)
+        {
+            DateTimeOffset now = _timeProvider.GetUtcNow();
+            if (token.ExpiresAt <= now)
+            {
+                return;
+            }
+
+            if (!_cache.ContainsKey(key))
+            {
+                BoundedCache.PruneIfNeeded(_cache, MaxCachedTokens, now, static entry => entry.ExpiresAt);
+            }
+
+            _cache[key] = token;
         }
     }
 

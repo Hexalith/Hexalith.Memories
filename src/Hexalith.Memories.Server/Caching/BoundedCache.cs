@@ -20,17 +20,20 @@ internal static class BoundedCache
     /// Prunes <paramref name="cache"/> back under <paramref name="maxEntries"/> when it has reached the cap.
     /// Removes already-expired entries first (the common case for short TTLs); if still at the cap with
     /// live entries, evicts those closest to expiry. A no-op while the cache is below the cap.
+    /// Callers that require a strict bound must serialize pruning and insertion together.
     /// </summary>
-    /// <typeparam name="TValue">The cache value tuple type.</typeparam>
+    /// <typeparam name="TKey">The cache key type.</typeparam>
+    /// <typeparam name="TValue">The cache value type.</typeparam>
     /// <param name="cache">The cache to prune.</param>
     /// <param name="maxEntries">The maximum number of retained entries.</param>
     /// <param name="now">The current timestamp used to detect expired entries.</param>
     /// <param name="expiresAtSelector">Projects an entry value to its expiry timestamp.</param>
-    public static void PruneIfNeeded<TValue>(
-        ConcurrentDictionary<string, TValue> cache,
+    public static void PruneIfNeeded<TKey, TValue>(
+        ConcurrentDictionary<TKey, TValue> cache,
         int maxEntries,
         DateTimeOffset now,
         Func<TValue, DateTimeOffset> expiresAtSelector)
+        where TKey : notnull
     {
         ArgumentNullException.ThrowIfNull(cache);
         ArgumentNullException.ThrowIfNull(expiresAtSelector);
@@ -41,7 +44,7 @@ internal static class BoundedCache
         }
 
         // First pass: drop entries whose TTL already elapsed.
-        foreach (KeyValuePair<string, TValue> pair in cache)
+        foreach (KeyValuePair<TKey, TValue> pair in cache)
         {
             if (expiresAtSelector(pair.Value) <= now)
             {
@@ -57,7 +60,7 @@ internal static class BoundedCache
         // Second pass: still at the cap with live entries. Evict those closest to expiry so a single
         // caller can make room, bounding worst-case memory under sustained distinct-key load.
         int toRemove = (cache.Count - maxEntries) + 1;
-        foreach (string key in cache
+        foreach (TKey key in cache
             .OrderBy(pair => expiresAtSelector(pair.Value))
             .Take(toRemove)
             .Select(pair => pair.Key)

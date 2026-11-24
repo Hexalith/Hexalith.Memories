@@ -94,6 +94,32 @@ public class OidcTokenProviderTests
     }
 
     [Fact]
+    public async Task GetAccessTokenAsync_CacheAtCapacity_EvictsScopeClosestToExpiry()
+    {
+        FakeTimeProvider timeProvider = new(new DateTimeOffset(2026, 5, 2, 8, 0, 0, TimeSpan.Zero));
+        int requestCount = 0;
+        ScriptedTokenHandler handler = new((_, _) => TokenResponse($"token-{++requestCount}", 3600));
+        OidcTokenProvider provider = CreateProvider(handler, timeProvider);
+
+        for (int i = 0; i < OidcTokenProvider.MaxCachedTokens; i++)
+        {
+            await provider.GetAccessTokenAsync(TokenEndpoint, ClientId, ClientSecret, $"scope-{i}", CancellationToken.None);
+            timeProvider.Advance(TimeSpan.FromSeconds(1));
+        }
+
+        string newest = await provider.GetAccessTokenAsync(TokenEndpoint, ClientId, ClientSecret, "new-scope", CancellationToken.None);
+        string cached = await provider.GetAccessTokenAsync(TokenEndpoint, ClientId, ClientSecret, "new-scope", CancellationToken.None);
+        string stillCached = await provider.GetAccessTokenAsync(
+            TokenEndpoint, ClientId, ClientSecret, $"scope-{OidcTokenProvider.MaxCachedTokens - 1}", CancellationToken.None);
+        string evicted = await provider.GetAccessTokenAsync(TokenEndpoint, ClientId, ClientSecret, "scope-0", CancellationToken.None);
+
+        cached.ShouldBe(newest);
+        stillCached.ShouldBe($"token-{OidcTokenProvider.MaxCachedTokens}");
+        evicted.ShouldNotBe("token-1");
+        handler.Requests.Count.ShouldBe(OidcTokenProvider.MaxCachedTokens + 2);
+    }
+
+    [Fact]
     public async Task GetAccessTokenAsync_ExpiredEntry_FetchesNewToken()
     {
         // Arrange

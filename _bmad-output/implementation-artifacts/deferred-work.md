@@ -766,6 +766,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-13.3 (
 location: src/Hexalith.Memories.Server/Ingestion/EmbeddingClient.cs:213-234
 reason: - **13.3-RV9 — No per-tenant circuit-breaker on persistent OIDC 401s.** `src/Hexalith.Memories.Server/Ingestion/EmbeddingClient.cs:213-234` — AC5 mandates "exactly once" per request. Across many requests with a misconfigured client, each call still hits the IdP. Re-open trigger: a production incident where Keycloak traffic spikes correlate with embedding 401 storms.
 status: open
+note: 2026-11-24 — Skipped. The trigger requires a production OIDC retry storm, and circuit-breaker timing and tenant partitioning need an operational decision.
 
 ### DW-115: 13.3-RV10: No 429/Retry-After test on the Ollama path. `tests/Hexalith.Memories.Server.Tests/Ingestion/EmbeddingClientTests.cs` — 429 mapping is provider-agnostic and reused for Ollama, but no test exercises it via the Ollama dispatch. Re-open trigger: Story 13.7 production hardening pass or a real Ollama gateway 429 incident.
 
@@ -878,7 +879,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of story-13.2 (2026-05-02)"), 2026-09-01
 location: n/a
 reason: - **13.2-RV7 — Unbounded `_cache` and `_guards` growth + undisposed `SemaphoreSlim`.** `OidcTokenProvider.cs:24-25` — singleton dictionary growth is bounded by unique `(endpoint, clientId, scope)` tuples but never evicted; semaphores in `_guards` are never `Dispose()`'d. Re-open trigger: a long-running tenant churn scenario or a leak diagnostic that traces growth to this provider.
-status: open
+status: done 2026-11-24
+resolution: The token cache is capped at 1,024 keys, evicts expired or nearest-to-expiry entries, and retains existing detached-fetch cleanup. All 68 focused cache tests passed.
 
 ### DW-133: 13.2-RV8: `JsonDocument.Parse` materializes adversarial large bodies; `InvalidOperationException.Message` may pass provider-controlled text. `OidcTokenProvider.cs:188,217` — a 200 OK with an outsized body is read fully before parsing; provider-supplied `tokenType`/`propertyName` values appear inside the malformed-response reason string (then in the typed exception message). Modern HttpClient defaults bound the buffer at 2 MiB so practical risk is low. Re-open trigger: an SLA pass that wants explicit `MaxResponseContentBufferSize` or a sanitization audit on exception text.
 
