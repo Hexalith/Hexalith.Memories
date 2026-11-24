@@ -14,6 +14,7 @@ import unittest
 from datetime import datetime
 from pathlib import Path
 
+from approved_profile_fixture import stage_approved_inputs
 from runtime_control_plane_identity_test import FIXTURE, REPO_ROOT, TOKEN_CANARY, write_fake_kubectl
 
 sys.path.insert(0, str(REPO_ROOT / 'tools'))
@@ -55,10 +56,11 @@ class Pg2RuntimeControlPlaneIdentityTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         root = Path(temporary.name)
-        for relative in (*SOURCE_PATHS, *INPUT_PATHS, '.gitattributes'):
+        for relative in (*SOURCE_PATHS, '.gitattributes'):
             target = root / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(REPO_ROOT / relative, target)
+        stage_approved_inputs(REPO_ROOT, root, PROFILE_HELPER)
         # Only this disposable fixture gets a baseline; the workspace is never staged or committed.
         message = 'test: establish disposable source fixture\n'
         for command in (['git', 'init', '-q'], ['git', 'add', '.'],
@@ -73,6 +75,9 @@ class Pg2RuntimeControlPlaneIdentityTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         root = Path(temporary.name)
+        if runner == RUNNER:
+            runner = self.temporary_repository() / SOURCE_PATHS[0]
+        self.last_source_root = runner.parents[1]
         fake_bin = root / 'bin'
         fake_bin.mkdir()
         write_fake_kubectl(fake_bin)
@@ -243,9 +248,9 @@ if scenario.get("failPurpose") == purpose:
         self.assertEqual(2, len(packets))
         self.assertEqual(2, len({path.name for path in evidence.glob('*.json')}))
         packet = packets[0]
-        self.assertEqual(subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=REPO_ROOT, text=True).strip(), packet['sourceCommit'])
+        self.assertEqual(subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=self.last_source_root, text=True).strip(), packet['sourceCommit'])
         expected_dirty = bool(subprocess.check_output(
-            ['git', 'status', '--porcelain=v1', '--untracked-files=all'], cwd=REPO_ROOT))
+            ['git', 'status', '--porcelain=v1', '--untracked-files=all'], cwd=self.last_source_root))
         self.assertEqual(expected_dirty, packet['worktreeDirty'])
         expected_disposition = 'dirty-development' if expected_dirty or any(
             source['modified'] or not source['matchesHead'] for source in packet['producerSources']) else 'clean'
@@ -255,7 +260,7 @@ if scenario.get("failPurpose") == purpose:
         self.assertEqual(WORKLOAD_ID, packet['workloadId'])
         self.assertEqual(WORKLOAD_HASH, packet['workloadSha256'])
         for source in packet['producerSources']:
-            raw = (REPO_ROOT / source['source']).read_bytes()
+            raw = (self.last_source_root / source['source']).read_bytes()
             self.assertEqual(digest(raw), source['executedBytesSha256'])
             self.assertEqual(digest(raw.replace(b'\r\n', b'\n')), source['gitNormalizedSha256'])
             self.assertIsInstance(source['modified'], bool)
@@ -287,7 +292,7 @@ if scenario.get("failPurpose") == purpose:
         self.assertGreater(len(packet['sourceCommands']), 0)
         for entry in packet['sourceCommands']:
             if entry['arguments'][0] == 'show':
-                exact = subprocess.check_output(['git', *entry['arguments']], cwd=REPO_ROOT)
+                exact = subprocess.check_output(['git', *entry['arguments']], cwd=self.last_source_root)
                 self.assertEqual(digest(exact), entry['stdoutSha256'])
 
         self.assertEqual({'validated'}, {entry['streamSafety'] for entry in packet['commands']})

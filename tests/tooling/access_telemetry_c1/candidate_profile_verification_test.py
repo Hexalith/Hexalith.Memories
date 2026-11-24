@@ -9,6 +9,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from approved_profile_fixture import stage_approved_inputs
+
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PACKAGE = REPO_ROOT / '_bmad-output/planning-artifacts/c1-security-prerequisites-2026-10-04/profile-candidate'
@@ -24,12 +26,18 @@ class CandidateProfileVerificationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             package = Path(temporary) / 'candidate'
             shutil.copytree(PACKAGE, package)
+            repository = Path(temporary) / 'repository'
+            tools = repository / 'tools'
+            tools.mkdir(parents=True)
+            for name in ('verify_access_telemetry_lifecycle.py', 'access_telemetry_campaign_profile.py'):
+                shutil.copyfile(REPO_ROOT / 'tools' / name, tools / name)
+            stage_approved_inputs(REPO_ROOT, repository, REPO_ROOT / 'tools/access-telemetry-c1-profile.ps1')
             if mutate:
                 mutate(package)
             command = [sys.executable]
             if optimized:
                 command.append('-O')
-            command += [str(package / 'verify_candidate.py'), '--repo-root', str(REPO_ROOT)]
+            command += [str(package / 'verify_candidate.py'), '--repo-root', str(repository)]
             env = os.environ.copy()
             env['PYTHONDONTWRITEBYTECODE'] = '1'
             return subprocess.run(command, env=env, cwd=REPO_ROOT, text=True,

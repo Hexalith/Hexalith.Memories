@@ -14,6 +14,8 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from approved_profile_fixture import stage_approved_inputs
+
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 RUNNER = REPO_ROOT / 'tools/verify-access-telemetry-c1-linkage.ps1'
@@ -204,6 +206,13 @@ class ConnectionLinkageTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         root = Path(temporary.name)
+        if runner == RUNNER:
+            tools = root / 'tools'
+            tools.mkdir()
+            for source in (RUNNER, HELPER):
+                shutil.copyfile(source, tools / source.name)
+            stage_approved_inputs(REPO_ROOT, root, RUNNER)
+            runner = tools / RUNNER.name
         binary = root / 'bin'
         binary.mkdir()
         write_fake_kubectl(binary)
@@ -244,7 +253,8 @@ class ConnectionLinkageTests(unittest.TestCase):
             # Each run is an independent synthetic observation; preserve prior immutable packets.
             calls_path.unlink(missing_ok=True)
             started = time.monotonic()
-            result = subprocess.run(command, cwd=REPO_ROOT, env=env, text=True, capture_output=True, timeout=20)
+            # One observation executes several children with their own deadlines.
+            result = subprocess.run(command, cwd=REPO_ROOT, env=env, text=True, capture_output=True, timeout=60)
             self.last_elapsed = time.monotonic() - started
             self.last_root = root
             if result.returncode:
@@ -337,13 +347,8 @@ class ConnectionLinkageTests(unittest.TestCase):
             target = repository / 'tools' / source.name
             target.parent.mkdir(exist_ok=True)
             shutil.copyfile(source, target)
-        inputs = re.findall(r"'(deploy/[^']+)' = '[0-9a-f]{64}'", RUNNER.read_text())
-        self.assertEqual(16, len(inputs))
-        for relative in inputs:
-            target = repository / relative
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(REPO_ROOT / relative, target)
-        (repository / inputs[0]).write_bytes(b'drift')
+        stage_approved_inputs(REPO_ROOT, repository, RUNNER)
+        (repository / 'deploy/dapr/components/access-telemetry-config.yaml').write_bytes(b'drift')
         result, packets, calls, evidence, captured = self.run_collector(runner=repository / 'tools' / RUNNER.name)
         self.assertNotEqual(0, result.returncode)
         self.assertIn('approved-profile-input-drift', captured)

@@ -13,6 +13,8 @@ import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from approved_profile_fixture import stage_approved_inputs
+
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 RUNNER = REPO_ROOT / 'tools/verify-access-telemetry-c1.ps1'
@@ -131,6 +133,14 @@ class ComponentBackendCaptureTests(unittest.TestCase):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
         root = Path(temp.name)
+        if profile == 'PG-ONPREM-2' and runner == RUNNER:
+            tools = root / 'tools'
+            tools.mkdir()
+            for source in (RUNNER, HELPER, PROFILE_HELPER):
+                shutil.copyfile(source, tools / source.name)
+            stage_approved_inputs(REPO_ROOT, root, PROFILE_HELPER)
+            runner = tools / RUNNER.name
+        self.last_source_root = runner.parents[1]
         fake_bin = root / 'bin'
         fake_bin.mkdir()
         write_fake_kubectl(fake_bin)
@@ -677,7 +687,7 @@ class ComponentBackendCaptureTests(unittest.TestCase):
                     self.assertEqual(16, len([name for name in sources if name.startswith('deploy/')]))
                     for name, digest in sources.items():
                         if name.startswith(('deploy/', 'tools/')):
-                            self.assertEqual(hashlib.sha256((REPO_ROOT / name).read_bytes()).hexdigest(), digest)
+                            self.assertEqual(hashlib.sha256((self.last_source_root / name).read_bytes()).hexdigest(), digest)
                 for path in evidence.glob('*.json'):
                     self.assertFalse(path.stat().st_mode & stat.S_IWUSR)
 
@@ -762,17 +772,7 @@ class ComponentBackendCaptureTests(unittest.TestCase):
             tools.mkdir()
             for source in (RUNNER, HELPER, PROFILE_HELPER):
                 shutil.copy2(source, tools / source.name)
-            proposal = REPO_ROOT / '_bmad-output/planning-artifacts/c1-security-prerequisites-2026-10-04/profile-candidate/candidate-profile.json'
-            identity = json.loads(proposal.read_text())['manifest']['canonical_profile']['identity']
-            paths = list(identity['securityPlatform']['secretAndConfigurationInputs']) + [
-                'deploy/openbao/values.yaml', 'deploy/kubernetes/base/access-telemetry-postgresql.yaml',
-                'deploy/kubernetes/base/access-telemetry-deployments.yaml',
-                'deploy/kubernetes/overlays/qualification/physical-evidence-reporter-job.yaml',
-            ]
-            for relative in paths:
-                target = root / relative
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(REPO_ROOT / relative, target)
+            stage_approved_inputs(REPO_ROOT, root, PROFILE_HELPER)
             target = root / 'deploy/openbao/values.yaml'
             target.write_bytes(target.read_bytes() + b'\n# drift\n')
             result, packets, calls, _ = self.run_gate(self.successor_scenario(), profile='PG-ONPREM-2',
