@@ -2117,8 +2117,7 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of 9-2-dual-embedding-and-causal-chain-indexing Session 6 (2026-04-25)"), 2026-09-01
 location: n/a
 reason: - **S6-F7. Map free-text-only `ConsistencyNote` (kind=None, note≠empty) to a typed sentinel in `BuildConsistencyNoteKind`.** Consumers cannot pattern-match on `None`. Follow-up: extend `BuildConsistencyNoteKind` to return `ConsistencyNoteKind.Other` (or similar) when free-text is present without a kind.
-status: done 2026-11-24
-resolution: Legacy free-text findings now carry InformationalNote while typed and inferred embedding kinds retain precedence. Workflow tests prove note and repair routing and blank handling. The source-generated contract round-trips informationalNote.
+status: open
 
 ### DW-301: S6-F8. Add inner-loop deadline check to `WorkflowReplaySafetyHostedService.TryCountInFlightAsync`.
 

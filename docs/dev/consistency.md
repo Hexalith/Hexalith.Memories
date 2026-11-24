@@ -204,9 +204,7 @@ findings and Information event 8212 (`ConsistencyNoteObserved`) for notes.
 Match `TenantId` and `WorkflowInstanceId` to the scheduling receipt. Each event
 includes the memory-unit ID and its `EntryKind`.
 The `Recommendation` field carries the repair action, the note kind, or
-`InformationalNote` for a free-text-only observation. Verification results
-serialize that note kind as `informationalNote`. Clients that deserialize the
-note-kind enum need to recognize this value. The CLI table shows
+`InformationalNote` for a free-text-only observation. The CLI table shows
 retained counts in its `discrepancies` and `notes` columns.
 
 When reviewing logs across an upgrade, include older 8201 events with
