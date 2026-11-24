@@ -408,6 +408,25 @@ public class GraphTraversalServiceTests
     }
 
     [Fact]
+    public async Task TraverseAsync_ReportsExplicitAndLegacyStubsAsGapMarkers()
+    {
+        GraphTraversalService service = CreateTraversalService(out IDatabase graph,
+            TraversalRow("real", 0, [], isStub: false),
+            TraversalRow("explicit-stub", 1, [], isStub: true),
+            TraversalRow("legacy-stub", 2, [], isStub: null, content: null));
+
+        TraversalResult result = await service.TraverseAsync(
+            "tenant-1", "real", 2, null, [EdgeType.CausedBy], TestContext.Current.CancellationToken);
+
+        _ = graph.Received(1).ExecuteAsync(Arg.Any<string>(), Arg.Is<ICollection<object>>(arguments =>
+            arguments.Any(arg => arg.ToString()!.Contains("n.isStub AS isStub", StringComparison.Ordinal))),
+            Arg.Any<CommandFlags>());
+        result.Nodes.ShouldHaveSingleItem().MemoryUnitId.ShouldBe("real");
+        result.GapMarkers.Select(gap => (gap.MissingNodeId, gap.HopDistance))
+            .ShouldBe([("explicit-stub", 1), ("legacy-stub", 2)], ignoreOrder: true);
+    }
+
+    [Fact]
     public async Task TraverseAsync_WithNullEdgeTypes_PassesNullToQueryBuilder()
     {
         // Arrange

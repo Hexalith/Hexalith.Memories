@@ -2009,7 +2009,8 @@ resolution: The traversal regression decodes the FalkorDB compact edge-map respo
 origin: migrated from legacy ledger ("Deferred from: code review of 9-2-dual-embedding-and-causal-chain-indexing (2026-04-24)"), 2026-09-01
 location: n/a
 reason: - **Risk #4 gap-marker unit tests** — `GraphTraversalServiceTests.ExplicitIsStubTrue_IdentifiesGapMarker` + `.ExplicitIsStubFalse_IncludedInTraversal` + `.ContentAbsentHeuristicFallback_ForLegacyNodes`. Tied to Task 9.2 `OutOfOrderEventTests`.
-status: open
+status: done 2026-11-24
+resolution: The traversal test proves explicit stubs and legacy content-absent nodes are gap markers, while an explicitly non-stub node remains a normal result.
 
 ### DW-287: Risk #6 unit tests
 
