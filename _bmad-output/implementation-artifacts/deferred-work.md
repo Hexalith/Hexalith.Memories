@@ -2017,7 +2017,8 @@ resolution: The traversal test proves explicit stubs and legacy content-absent n
 origin: migrated from legacy ledger ("Deferred from: code review of 9-2-dual-embedding-and-causal-chain-indexing (2026-04-24)"), 2026-09-01
 location: n/a
 reason: - **Risk #6 unit tests** — `GenerateEmbeddingActivityTests.ContentKind_PropagatesToTelemetryTag` + `EmbeddingRateLimiterActorTests.BothContentKinds_ConsumeSameBudget`. Tied to Task 8.7 `RateLimiterSizingValidator` deferral (Risk #6 guard + follow-up).
-status: open
+status: done 2026-11-24
+resolution: Both embedding kinds consume the same real tenant rate-limit actor state and the exhausted budget prevents another provider call. The existing telemetry theory verifies both content_kind values.
 
 ### DW-288: Risk #9 follow-up tests
 

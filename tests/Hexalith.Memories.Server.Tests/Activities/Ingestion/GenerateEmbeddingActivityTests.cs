@@ -449,6 +449,46 @@ public class GenerateEmbeddingActivityTests
         single.delta.ShouldBe(1);
     }
 
+    [Theory]
+    [InlineData(EmbeddingContentKind.Payload, EmbeddingContentKind.NaturalLanguageDescription)]
+    [InlineData(EmbeddingContentKind.NaturalLanguageDescription, EmbeddingContentKind.Payload)]
+    public async Task BothContentKinds_ConsumeSameTenantBudget(EmbeddingContentKind first, EmbeddingContentKind second)
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { RateLimitPerMinute = 2 };
+        EmbeddingClient embeddingClient = CreateMockEmbeddingClient(new float[config.Dimensions]);
+        IActorProxyFactory actorProxyFactory = Substitute.For<IActorProxyFactory>();
+        var (rateLimiter, stateManager) = Hexalith.Memories.Server.Tests.Actors.EmbeddingRateLimiterActorTests
+            .CreateActorWithMockState();
+        RateLimitState state = new(2, DateTime.UtcNow, config.RateLimitPerMinute);
+        stateManager.TryGetStateAsync<RateLimitState>("rateState", Arg.Any<CancellationToken>())
+            .Returns(_ => new Dapr.Actors.Runtime.ConditionalValue<RateLimitState>(true, state));
+        stateManager.SetStateAsync("rateState", Arg.Any<RateLimitState>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                state = call.Arg<RateLimitState>();
+                return Task.CompletedTask;
+            });
+        ITenantConfigurationActor tenantConfigActor = Substitute.For<ITenantConfigurationActor>();
+        tenantConfigActor.GetEmbeddingConfigAsync().Returns(config);
+        actorProxyFactory.CreateActorProxy<IEmbeddingRateLimiterActor>(
+            Arg.Is<ActorId>(id => id.ToString() == TenantId), "EmbeddingRateLimiterActor").Returns(rateLimiter);
+        actorProxyFactory.CreateActorProxy<ITenantConfigurationActor>(
+            Arg.Is<ActorId>(id => id.ToString() == TenantId), "TenantConfigurationActor").Returns(tenantConfigActor);
+        GenerateEmbeddingActivity activity = CreateActivity(embeddingClient, actorProxyFactory);
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+
+        _ = await activity.RunAsync(context, new EmbeddingInput(TenantId, "first", first));
+        state.Remaining.ShouldBe(1);
+        _ = await activity.RunAsync(context, new EmbeddingInput(TenantId, "second", second));
+        state.Remaining.ShouldBe(0);
+        await Should.ThrowAsync<EmbeddingRateLimitException>(
+            () => activity.RunAsync(context, new EmbeddingInput(TenantId, "over budget", first)));
+
+        state.Remaining.ShouldBe(0);
+        await embeddingClient.Received(2).GenerateAsync(Arg.Any<string>(), TenantId, config, CancellationToken.None);
+        await embeddingClient.DidNotReceive().GenerateAsync("over budget", TenantId, config, CancellationToken.None);
+    }
+
     private static GenerateEmbeddingActivity CreateActivity(
         EmbeddingClient embeddingClient,
         IActorProxyFactory actorProxyFactory,

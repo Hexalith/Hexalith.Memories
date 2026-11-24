@@ -273,7 +273,8 @@ public class EmbeddingRateLimiterActorTests
             () => actor.SetCeilingAsync(0));
     }
 
-    private static (EmbeddingRateLimiterActor Actor, IActorStateManager StateManager) CreateActorWithMockState(
+    /// <summary>Creates a real embedding quota actor backed by a substitutable state manager.</summary>
+    internal static (EmbeddingRateLimiterActor Actor, IActorStateManager StateManager) CreateActorWithMockState(
         ILogger<EmbeddingRateLimiterActor>? logger = null)
     {
         IActorStateManager stateManager = Substitute.For<IActorStateManager>();
