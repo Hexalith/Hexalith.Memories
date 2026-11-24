@@ -334,7 +334,7 @@ server = RandomizeProjectHttpEndpointIfRequested(server);
 // Story 6.1: dev-only default allow-list for POST /api/v1/ingest/directory so developers can batch-ingest
 // the repo-local test-data/ folder without touching config. Production deployments must NOT rely on this
 // — appsettings.json keeps AllowedDirectoryRoots empty, so the endpoint is disabled by default.
-string testDataRoot = EnsureTestDataRoot();
+string testDataRoot = TestDataRoot.Ensure(RepositoryRootLocator.Resolve());
 server = server.WithEnvironment("Ingestion__AllowedDirectoryRoots__0", testDataRoot);
 
 // Story 9.1: the controller subscription binding uses [Topic("pubsub", "$(MEMORIES_EVENTSTORE_TOPIC)")].
@@ -507,22 +507,6 @@ try
 finally
 {
     DeleteDaprComponentDirectory(daprComponentPaths.ComponentsDirectory);
-}
-
-static string EnsureTestDataRoot()
-{
-    string repoRoot = RepositoryRootLocator.Resolve();
-    string testData = Path.Combine(repoRoot, "test-data");
-    Directory.CreateDirectory(testData);
-    string readme = Path.Combine(testData, "README.md");
-    if (!File.Exists(readme))
-    {
-        File.WriteAllText(
-            readme,
-            "# test-data\n\nDev-only allow-list root for POST /api/v1/ingest/directory. Safe to add sample files here; the endpoint is still disabled in production by default (appsettings.json AllowedDirectoryRoots=[]).\n");
-    }
-
-    return testData;
 }
 
 static GeneratedDaprComponentPaths EnsureDaprComponentFiles(string daprAppId)

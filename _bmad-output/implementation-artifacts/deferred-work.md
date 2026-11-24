@@ -2879,7 +2879,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of 1-1-project-scaffolding-and-single-command-boot (2026-05-16)"), 2026-09-01
 location: src/Hexalith.Memories.AppHost/Program.cs
 reason: - **1.1-RR5. `test-data/README.md` write race between parallel AppHosts.** `EnsureTestDataRoot` uses non-atomic `File.Exists` then `File.WriteAllText`; two simultaneous AppHost runs can collide on the README. - ID: 1.1-RR5 - Status: accepted - Source story: 1-1-project-scaffolding-and-single-command-boot - Target artifact: src/Hexalith.Memories.AppHost/Program.cs - Re-open trigger: A developer reports a transient `IOException: file in use` on AppHost startup, or CI begins running multiple parallel AppHosts in a single sandbox. - Rationale: The README is created once per workspace lifetime; subsequent AppHost runs short-circuit on `File.Exists`. Collision window is sub-millisecond and only on the first ever run.
-status: open
+status: done 2026-11-24
+resolution: TestDataRoot stages the first-run README in a unique temporary file and installs it with a non-overwriting move. Concurrent AppHosts therefore neither collide on an open file nor truncate an existing README. TestDataRootTests cover creation, preservation of an existing README, and 32 concurrent first runs that leave one complete README and no temporary files. See spec-seven-ordered-deferred-items.md.
 
 ### DW-417: 1.1-RR6. `AddJsonConsole` plus OTEL logger create dual log sinks.
 
