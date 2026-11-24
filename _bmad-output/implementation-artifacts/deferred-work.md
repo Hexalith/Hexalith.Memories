@@ -1711,7 +1711,8 @@ resolution: Each full topology start registers a fresh capture provider and carr
 origin: migrated from legacy ledger ("Deferred from: code review of 6-4-pipeline-state-persistence-and-zero-data-loss (2026-04-16)"), 2026-09-01
 location: src/Hexalith.Memories.Server/Actors/CorpusStatistics.cs, RateLimitState.cs; src/Hexalith.Memories.Contracts/V1/CaseIngestionCounts.cs
 reason: - **`[DataMember]` attributes omit explicit `Name`** — Property renames on `CorpusStatistics`, `RateLimitState`, and `CaseIngestionCounts` will silently break wire format for existing persisted actor state. Set `[DataMember(Name = "...")]` explicitly before the next rename. [src/Hexalith.Memories.Server/Actors/CorpusStatistics.cs, RateLimitState.cs; src/Hexalith.Memories.Contracts/V1/CaseIngestionCounts.cs]
-status: open
+status: done 2026-11-24
+resolution: The affected DataContract and actor JSON members explicitly use their established wire names. Tests check DataMember metadata and round-trip legacy JSON for persisted state and the counts response.
 
 ### DW-248: `BuildDedupKey` duplicates server-side hash logic in the test
 

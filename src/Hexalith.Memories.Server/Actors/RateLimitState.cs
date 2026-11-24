@@ -6,6 +6,7 @@
 namespace Hexalith.Memories.Server.Actors;
 
 using System.Runtime.Serialization;
+using System.Text.Json.Serialization;
 
 /// <summary>State for the per-tenant embedding rate limiter.</summary>
 /// <param name="Remaining">The number of requests remaining in the current window.</param>
@@ -13,6 +14,6 @@ using System.Runtime.Serialization;
 /// <param name="CeilingPerMinute">The maximum requests allowed per minute.</param>
 [DataContract]
 public sealed record RateLimitState(
-    [property: DataMember] int Remaining,
-    [property: DataMember] DateTime WindowStart,
-    [property: DataMember] int CeilingPerMinute);
+    [property: DataMember(Name = "Remaining"), JsonPropertyName("remaining")] int Remaining,
+    [property: DataMember(Name = "WindowStart"), JsonPropertyName("windowStart")] DateTime WindowStart,
+    [property: DataMember(Name = "CeilingPerMinute"), JsonPropertyName("ceilingPerMinute")] int CeilingPerMinute);

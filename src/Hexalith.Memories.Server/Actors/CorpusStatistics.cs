@@ -6,6 +6,7 @@
 namespace Hexalith.Memories.Server.Actors;
 
 using System.Runtime.Serialization;
+using System.Text.Json.Serialization;
 
 /// <summary>
 /// Per-tenant corpus statistics cached by <see cref="CorpusStatisticsActor"/>.
@@ -16,6 +17,6 @@ using System.Runtime.Serialization;
 /// <param name="LastRefreshedAt">The timestamp when statistics were last refreshed from RediSearch.</param>
 [DataContract]
 public sealed record CorpusStatistics(
-    [property: DataMember] int DocumentCount,
-    [property: DataMember] double AverageDocumentLength,
-    [property: DataMember] DateTimeOffset LastRefreshedAt);
+    [property: DataMember(Name = "DocumentCount"), JsonPropertyName("documentCount")] int DocumentCount,
+    [property: DataMember(Name = "AverageDocumentLength"), JsonPropertyName("averageDocumentLength")] double AverageDocumentLength,
+    [property: DataMember(Name = "LastRefreshedAt"), JsonPropertyName("lastRefreshedAt")] DateTimeOffset LastRefreshedAt);
