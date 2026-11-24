@@ -2087,7 +2087,8 @@ resolution: StartingAsync emits a single Critical 9173 at the fail-open decision
 origin: migrated from legacy ledger ("Deferred from: code review of 9-2-dual-embedding-and-causal-chain-indexing Session 6 (2026-04-25)"), 2026-09-01
 location: n/a
 reason: - **S6-F3. Replace reflection-on-private-static in `BuildIndexMetadata_*` test with `internal` + `InternalsVisibleTo`.** Test currently uses `BindingFlags.NonPublic | BindingFlags.Static` to reach `IngestionWorkflow.BuildIndexMetadata`. Follow-up: mark the method `internal`, add `InternalsVisibleTo` to `Hexalith.Memories.Server.Tests`, and rewrite the test to call directly.
-status: open
+status: done 2026-11-24
+resolution: The Server test assembly calls internal IngestionWorkflow.BuildIndexMetadata directly using the existing friend assembly declaration. The workflow tests verify ordinal, case-sensitive lookup across the copy.
 
 ### DW-297: S6-F4. Split `LogDiscrepancyDetected` emission for note-only vs. true-discrepancy cases.
 

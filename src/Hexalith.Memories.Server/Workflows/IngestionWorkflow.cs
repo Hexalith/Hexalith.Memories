@@ -1153,7 +1153,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
     /// Story 6.1 AC10: attach http.* metadata as AI-origin fields (confidence 1.0) when the ingestion
     /// source is a URL. Caller-supplied metadata is preserved verbatim.
     /// </summary>
-    private static Dictionary<string, MetadataField> BuildIndexMetadata(
+    internal static Dictionary<string, MetadataField> BuildIndexMetadata(
         IngestionInput input,
         UrlFetchResult? urlFetch,
         string effectiveUrl,

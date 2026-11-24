@@ -1729,14 +1729,8 @@ public class IngestionWorkflowTests
             FinalUrl: "https://example.test/articles/42?redirected=true",
             HttpStatusCode: 200);
 
-        System.Reflection.MethodInfo? method = typeof(IngestionWorkflow).GetMethod(
-            "BuildIndexMetadata",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-
-        method.ShouldNotBeNull();
-        Dictionary<string, MetadataField> metadata = (Dictionary<string, MetadataField>)method!.Invoke(
-            null,
-            [input, fetch, fetch.FinalUrl, fetch.ContentLength])!;
+        Dictionary<string, MetadataField> metadata = IngestionWorkflow.BuildIndexMetadata(
+            input, fetch, fetch.FinalUrl, fetch.ContentLength);
 
         metadata.Comparer.ShouldBe(StringComparer.Ordinal);
         metadata.ShouldContainKey("cloudevent.type");
