@@ -34,3 +34,9 @@ Resume the priority-ordered deferred register after DW-288 and complete ten elig
 - Medium, corrected DW-291 and DW-294. The compiler guard exercises Debug and Release with evaluated project settings. The dictionary guard scans both EventStore profiles and rejects collection expressions that construct a default dictionary.
 - Medium, corrected DW-297. The runbook covers old Information 8201 entries and explains which parts of a truncated note the log can recover.
 - High, corrected DW-315. The initial full build found the linked nightly seed caller. The helper now lives in that nightly partial and the CLI assertion checks the seeded memory-unit ID.
+
+## Verification defects
+
+- The full fast integration run failed to initialize the Testcontainers resource reaper for the shared FalkorDB fixture. All 19 affected graph cases passed in one isolated rerun against the same binaries. The same fixture-start failure also occurred in the previous batch. Investigate reaper startup under concurrent host load if it recurs.
+- The full run also saw a transient nonzero exit from the disposable runtime secret-store bootstrap probe. The same case passed in an isolated rerun on Dapr 1.19.1. The wrapper did not surface the subprocess diagnostic in the failed assertion. Retain subprocess output on recurrence to distinguish a startup timeout from a contract failure.
+- The unfiltered run and isolated retries cover 642 passing expanded fast integration cases and nine existing skips. The TRX acceptance verifier found passing evidence for all 21 required surfaces.
