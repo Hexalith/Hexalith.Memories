@@ -167,7 +167,7 @@ public sealed class TenantConfigurationIntegrationTests
             MemoriesJsonContext.Options);
         response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
         using JsonDocument conflict = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        conflict.RootElement.GetProperty("error").GetString().ShouldBe("EmbeddingConfigChangeRequired");
+        conflict.RootElement.GetProperty("error").GetString().ShouldBe("EMBEDDING_CONFIG_BREAKING_CHANGE");
         conflict.RootElement.GetProperty("affectedFields").EnumerateArray()
             .Select(field => field.GetString()).ShouldContain("dimensions");
 

@@ -1689,7 +1689,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of 5-5-tenant-configuration-and-listing (2026-04-14)"), 2026-09-01
 location: src/Hexalith.Memories.Server/Program.cs:1888
 reason: - **Breaking-change conflict response still returns the wrong error contract** — `CreateEmbeddingConfigConflictResponse` still emits `error = "EmbeddingConfigChangeRequired"` instead of the pinned `EMBEDDING_CONFIG_BREAKING_CHANGE` response contract. This predates Story 5.5 and was not introduced by the current diff, so it remains deferred here. [src/Hexalith.Memories.Server/Program.cs:1888]
-status: open
+status: done 2026-11-24
+resolution: The embedding configuration PUT conflict returns EMBEDDING_CONFIG_BREAKING_CHANGE with both configurations and affected fields. The serialization tests exercise the production formatter and the integration assertion checks the HTTP contract.
 
 ### DW-245: Per-run Docker named volumes are never torn down
 

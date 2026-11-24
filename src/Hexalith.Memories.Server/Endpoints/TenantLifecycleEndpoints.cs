@@ -702,7 +702,13 @@ internal static class TenantLifecycleEndpoints
         };
     }
 
-    private static object CreateEmbeddingConfigConflictResponse(
+    /// <summary>Builds the versioned HTTP conflict payload for a breaking embedding configuration change.</summary>
+    /// <param name="tenantId">The affected tenant identifier.</param>
+    /// <param name="currentConfig">The tenant's stored embedding configuration.</param>
+    /// <param name="proposedConfig">The requested embedding configuration.</param>
+    /// <param name="affectedFields">The fields that require reindexing.</param>
+    /// <returns>The response payload.</returns>
+    internal static object CreateEmbeddingConfigConflictResponse(
         string tenantId,
         TenantEmbeddingConfig currentConfig,
         TenantEmbeddingConfig proposedConfig,
@@ -716,7 +722,7 @@ internal static class TenantLifecycleEndpoints
 
         return new
         {
-            error = "EmbeddingConfigChangeRequired",
+            error = "EMBEDDING_CONFIG_BREAKING_CHANGE",
             message = exception.Message,
             currentConfig,
             proposedConfig,

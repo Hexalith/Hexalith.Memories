@@ -8,6 +8,7 @@ namespace Hexalith.Memories.Server.Tests.Endpoints;
 using System.Text.Json;
 
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Endpoints;
 using Hexalith.Memories.Server.Ingestion;
 
 using Shouldly;
@@ -49,22 +50,17 @@ public class TenantEmbeddingConfigEndpointTests
         TenantEmbeddingConfig current = EmbeddingProviderDefaults.Google();
         TenantEmbeddingConfig proposed = current with { Dimensions = 3072 };
 
-        var conflictBody = new
-        {
-            error = "EmbeddingConfigChangeRequired",
-            message = "Embedding configuration change requires reindex",
-            currentConfig = current,
-            proposedConfig = proposed,
-            affectedFields = new[] { "dimensions" },
-        };
+        object conflictBody = TenantLifecycleEndpoints.CreateEmbeddingConfigConflictResponse(
+            "test-tenant", current, proposed, ["dimensions"]);
 
         string json = JsonSerializer.Serialize(conflictBody, MemoriesJsonContext.Options);
         using JsonDocument doc = JsonDocument.Parse(json);
 
-        doc.RootElement.GetProperty("error").GetString().ShouldBe("EmbeddingConfigChangeRequired");
-        doc.RootElement.TryGetProperty("currentConfig", out _).ShouldBeTrue();
-        doc.RootElement.TryGetProperty("proposedConfig", out _).ShouldBeTrue();
-        doc.RootElement.TryGetProperty("affectedFields", out _).ShouldBeTrue();
+        doc.RootElement.GetProperty("error").GetString().ShouldBe("EMBEDDING_CONFIG_BREAKING_CHANGE");
+        doc.RootElement.GetProperty("message").GetString().ShouldNotBeNull().ShouldContain("reindex");
+        doc.RootElement.GetProperty("currentConfig").GetProperty("dimensions").GetInt32().ShouldBe(current.Dimensions);
+        doc.RootElement.GetProperty("proposedConfig").GetProperty("dimensions").GetInt32().ShouldBe(proposed.Dimensions);
+        doc.RootElement.GetProperty("affectedFields").EnumerateArray().Select(field => field.GetString()).ShouldBe(["dimensions"]);
     }
 
     [Fact]
@@ -99,14 +95,8 @@ public class TenantEmbeddingConfigEndpointTests
         TenantEmbeddingConfig current = EmbeddingProviderDefaults.Ollama();
         TenantEmbeddingConfig proposed = current with { BaseUrl = "https://other-llm.tache.ai" };
 
-        var conflictBody = new
-        {
-            error = "EmbeddingConfigChangeRequired",
-            message = "Embedding configuration change requires reindex",
-            currentConfig = current,
-            proposedConfig = proposed,
-            affectedFields = new[] { "baseUrl" },
-        };
+        object conflictBody = TenantLifecycleEndpoints.CreateEmbeddingConfigConflictResponse(
+            "test-tenant", current, proposed, ["baseUrl"]);
 
         string json = JsonSerializer.Serialize(conflictBody, MemoriesJsonContext.Options);
         using JsonDocument doc = JsonDocument.Parse(json);
@@ -130,11 +120,8 @@ public class TenantEmbeddingConfigEndpointTests
     public void ConflictResponse_AffectedFields_ShouldSerializeAsArray()
     {
         // Verify affectedFields serializes properly
-        var conflictBody = new
-        {
-            error = "EmbeddingConfigChangeRequired",
-            affectedFields = new[] { "provider", "dimensions" },
-        };
+        object conflictBody = TenantLifecycleEndpoints.CreateEmbeddingConfigConflictResponse(
+            "test-tenant", EmbeddingProviderDefaults.Google(), EmbeddingProviderDefaults.Ollama(), ["provider", "dimensions"]);
 
         string json = JsonSerializer.Serialize(conflictBody, MemoriesJsonContext.Options);
         using JsonDocument doc = JsonDocument.Parse(json);
