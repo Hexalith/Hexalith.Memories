@@ -18,6 +18,7 @@ using Hexalith.Memories.Server.Workflows;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
 
 using NSubstitute;
 
@@ -200,6 +201,63 @@ public class WorkflowReplaySafetyHostedServiceTests
         entry.Fields.ToDictionary()["Reason"].ShouldBe("sidecar-query-exception");
         entry.Exception.ShouldBeSameAs(failure);
         await workflowClient.DidNotReceiveWithAnyArgs().ListInstanceIdsAsync(default, default, default);
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    public async Task StartingAsync_DistinguishesQueryTimeoutFromHostCancellation(bool queryTimesOut, bool hostCancels)
+    {
+        IDaprWorkflowClient workflowClient = Substitute.For<IDaprWorkflowClient>();
+        IIngestionWorkflowInFlightRegistry registry = Substitute.For<IIngestionWorkflowInFlightRegistry>();
+        registry.ListAsync(Arg.Any<CancellationToken>())
+            .Returns([new IngestionWorkflowInFlightEntry("tenant-a", "active-instance", DateTimeOffset.UnixEpoch)]);
+        using var shutdown = new CancellationTokenSource();
+        var queryStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseQuery = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        workflowClient.GetWorkflowStateAsync("active-instance", false, Arg.Any<CancellationToken>())
+            .Returns(call => CompleteQueryAsync(call.Arg<CancellationToken>()));
+        using CapturingAuditLoggerProvider logs = new();
+        using ILoggerFactory loggerFactory = LoggerFactory.Create(builder => builder.AddProvider(logs));
+        FakeTimeProvider timeProvider = new();
+        WorkflowReplaySafetyHostedService service = new(
+            workflowClient, registry, loggerFactory.CreateLogger<WorkflowReplaySafetyHostedService>(), timeProvider);
+
+        Task starting = service.StartingAsync(shutdown.Token);
+        await queryStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        if (queryTimesOut)
+        {
+            timeProvider.Advance(WorkflowReplaySafetyHostedService.PerQueryTimeout);
+        }
+
+        if (hostCancels)
+        {
+            await shutdown.CancelAsync();
+        }
+
+        releaseQuery.SetResult();
+        await starting.WaitAsync(TimeSpan.FromSeconds(5));
+
+        if (queryTimesOut)
+        {
+            AuditLogCapture entry = logs.Captures.ShouldHaveSingleItem();
+            entry.EventId.ShouldBe(9173);
+            entry.Level.ShouldBe(LogLevel.Critical);
+            entry.Fields.ToDictionary()["Reason"].ShouldBe("sidecar-query-timeout");
+        }
+        else
+        {
+            logs.Captures.ShouldBeEmpty();
+        }
+
+        async Task<WorkflowState> CompleteQueryAsync(CancellationToken cancellationToken)
+        {
+            queryStarted.SetResult();
+            await releaseQuery.Task;
+            cancellationToken.ThrowIfCancellationRequested();
+            return CreateState("active-instance", WorkflowRuntimeStatus.Running);
+        }
     }
 
     private static WorkflowReplaySafetyHostedService CreateService(

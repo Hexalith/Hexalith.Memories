@@ -60,7 +60,17 @@ internal sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecyc
 
         while (!cancellationToken.IsCancellationRequested)
         {
-            (int? inFlight, string? failureReason, Exception? failure) = await TryCountInFlightAsync(cancellationToken).ConfigureAwait(false);
+            (int? inFlight, string? failureReason, Exception? failure) result;
+            try
+            {
+                result = await TryCountInFlightAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            (int? inFlight, string? failureReason, Exception? failure) = result;
             if (inFlight is null)
             {
                 // Improvement Z: sidecar unreachable — fail open. A stuck pod is worse than a missing
@@ -133,14 +143,9 @@ internal sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecyc
 
             foreach (IngestionWorkflowInFlightEntry entry in entries)
             {
-                WorkflowState? state;
-                using (CancellationTokenSource stateCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
-                {
-                    stateCts.CancelAfter(PerQueryTimeout);
-                    state = await _workflowClient
-                        .GetWorkflowStateAsync(entry.InstanceId, false, stateCts.Token)
-                        .ConfigureAwait(false);
-                }
+                WorkflowState? state = await QuerySidecarAsync(
+                    token => _workflowClient.GetWorkflowStateAsync(entry.InstanceId, false, token),
+                    cancellationToken).ConfigureAwait(false);
 
                 if (state is null || !state.Exists || !IsActive(state.RuntimeStatus))
                 {
@@ -153,10 +158,13 @@ internal sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecyc
 
             return (count, null, null);
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch (ReplaySafetyQueryTimeoutException)
         {
-            // Per-query timeout elapsed — sidecar unreachable.
             return (null, "sidecar-query-timeout", null);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -185,26 +193,16 @@ internal sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecyc
 
         do
         {
-            WorkflowInstancePage page;
-            using (CancellationTokenSource listCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
-            {
-                listCts.CancelAfter(PerQueryTimeout);
-                page = await _workflowClient
-                    .ListInstanceIdsAsync(continuationToken, EnumerationFallbackPageSize, listCts.Token)
-                    .ConfigureAwait(false);
-            }
+            WorkflowInstancePage page = await QuerySidecarAsync(
+                token => _workflowClient.ListInstanceIdsAsync(continuationToken, EnumerationFallbackPageSize, token),
+                cancellationToken).ConfigureAwait(false);
 
             foreach (string instanceId in page.InstanceIds)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                WorkflowState? state;
-                using (CancellationTokenSource stateCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
-                {
-                    stateCts.CancelAfter(PerQueryTimeout);
-                    state = await _workflowClient
-                        .GetWorkflowStateAsync(instanceId, false, stateCts.Token)
-                        .ConfigureAwait(false);
-                }
+                WorkflowState? state = await QuerySidecarAsync(
+                    token => _workflowClient.GetWorkflowStateAsync(instanceId, false, token),
+                    cancellationToken).ConfigureAwait(false);
 
                 if (state is null)
                 {
@@ -224,6 +222,20 @@ internal sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecyc
         while (!string.IsNullOrEmpty(continuationToken));
 
         return count;
+    }
+
+    private async Task<T> QuerySidecarAsync<T>(Func<CancellationToken, Task<T>> query, CancellationToken cancellationToken)
+    {
+        using var queryTimeout = new CancellationTokenSource(PerQueryTimeout, _timeProvider);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(queryTimeout.Token, cancellationToken);
+        try
+        {
+            return await query(linked.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException exception) when (queryTimeout.IsCancellationRequested)
+        {
+            throw new ReplaySafetyQueryTimeoutException(exception);
+        }
     }
 
     [LoggerMessage(EventId = 9171, Level = LogLevel.Warning, Message = "Replay-safety gate: {InFlightCount} in-flight IngestionWorkflow instance(s) detected — delaying startup (event 9171).")]

@@ -2103,7 +2103,8 @@ resolution: Consistency verification emits Warning 8201 for repair findings and 
 origin: migrated from legacy ledger ("Deferred from: code review of 9-2-dual-embedding-and-causal-chain-indexing Session 6 (2026-04-25)"), 2026-09-01
 location: n/a
 reason: - **S6-F5. Tighten OCE `when` filter at `WorkflowReplaySafetyHostedService.cs:177-181` to log per-call timeouts even during host shutdown.** Currently `when (!cancellationToken.IsCancellationRequested)` swallows the per-call timeout when outer cancellation is concurrent. Follow-up: track the per-call CTS source explicitly and log if it was the cause regardless of outer state.
-status: open
+status: done 2026-11-24
+resolution: Each Dapr query uses its own timeout source linked to startup cancellation. Fake-clock tests cover an isolated timeout, a timeout concurrent with shutdown, and shutdown alone. The first two retain the Critical sidecar-query-timeout reason.
 
 ### DW-299: S6-F6. Move `MetadataField = typeof(WorkflowState).GetField(...)` from static cctor to `Lazy<FieldInfo?>` with try/catch + 9173 emission.
 
