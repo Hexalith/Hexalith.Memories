@@ -1062,7 +1062,7 @@ internal sealed partial class CaseService
     {
         if (string.IsNullOrWhiteSpace(metadataJson))
         {
-            return [];
+            return new(StringComparer.Ordinal);
         }
 
         try
@@ -1070,11 +1070,11 @@ internal sealed partial class CaseService
             Dictionary<string, StoredMetadataField>? stored = JsonSerializer.Deserialize<Dictionary<string, StoredMetadataField>>(
                 metadataJson,
                 MemoriesPersistenceJsonContext.Options);
-            return stored is null ? [] : PersistenceModelMapper.ToContract(stored);
+            return stored is null ? new(StringComparer.Ordinal) : PersistenceModelMapper.ToContract(stored);
         }
         catch (JsonException)
         {
-            return [];
+            return new(StringComparer.Ordinal);
         }
     }
 

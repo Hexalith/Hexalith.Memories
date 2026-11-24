@@ -184,7 +184,7 @@ internal sealed class ReIngestionCoordinator
         ContentBytes = null,
         PayloadReference = record.SourceType == SourceType.Url ? null : record.SourcePayloadReference,
         Metadata = record.Metadata is null
-            ? []
+            ? new Dictionary<string, MetadataField>(StringComparer.Ordinal)
             : new Dictionary<string, MetadataField>(record.Metadata, StringComparer.Ordinal),
         CausationId = record.CausationId,
         CorrelationId = record.CorrelationId,

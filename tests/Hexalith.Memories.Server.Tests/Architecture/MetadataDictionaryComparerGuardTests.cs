@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Tests.Architecture;
 
+using Hexalith.Memories.TestHelpers.Documentation;
+
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -23,26 +25,29 @@ public sealed class MetadataDictionaryComparerGuardTests
     [Fact]
     public void ServerMetadataDictionaries_PassAnExplicitOrdinalComparer()
     {
-        DirectoryInfo? directory = new(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Hexalith.Memories.slnx")))
-        {
-            directory = directory.Parent;
-        }
-
-        directory.ShouldNotBeNull("The guard must run against the Server sources.");
-        string server = Path.Combine(directory.FullName, "src", "Hexalith.Memories.Server");
-        SyntaxTree[] trees = Directory.EnumerateFiles(server, "*.cs", SearchOption.AllDirectories)
+        string root = TestRepository.Root;
+        string server = Path.Combine(root, "src", "Hexalith.Memories.Server");
+        var sources = Directory.EnumerateFiles(server, "*.cs", SearchOption.AllDirectories)
             .Where(path => !Path.GetRelativePath(server, path).Split(Path.DirectorySeparatorChar).Any(segment => segment is "bin" or "obj"))
-            .Select(path => CSharpSyntaxTree.ParseText(File.ReadAllText(path), path: Path.GetRelativePath(directory.FullName, path)))
+            .Select(path => (Path: Path.GetRelativePath(root, path), Text: File.ReadAllText(path)))
             .ToArray();
 
-        CheckConstructors(trees, out int checkedCount).ShouldBeEmpty("Metadata dictionaries must pass StringComparer.Ordinal explicitly.");
-        checkedCount.ShouldBeGreaterThan(0, "The guard must bind constructors in the Server sources.");
+        // Directory.Build.targets enables these symbols on the supported EventStore source and package profiles.
+        string[][] profiles = [[], ["HEXALITH_DEVELOPMENT_CATALOG_SOURCE", "HEXALITH_EVENTSTORE_MULTI_DOMAIN_WORKLOAD"]];
+        foreach (string[] symbols in profiles)
+        {
+            CSharpParseOptions options = CSharpParseOptions.Default.WithPreprocessorSymbols(symbols);
+            SyntaxTree[] trees = sources.Select(source => CSharpSyntaxTree.ParseText(source.Text, options, source.Path)).ToArray();
+            CheckConstructors(trees, out int checkedCount)
+                .ShouldBeEmpty("Metadata dictionaries must pass StringComparer.Ordinal explicitly.");
+            checkedCount.ShouldBeGreaterThan(0, "The guard must bind constructors in the Server sources.");
+        }
     }
 
     [Theory]
     [InlineData("new Dictionary<string, MetadataField>(source)", false)]
     [InlineData("new(source.Count)", false)]
+    [InlineData("[]", false)]
     [InlineData("new MetadataMap(comparer: StringComparer.OrdinalIgnoreCase)", false)]
     [InlineData("new MetadataMap(comparer: StringComparer.Ordinal)", true)]
     [InlineData("new(source, StringComparer.Ordinal)", true)]
@@ -81,9 +86,15 @@ public sealed class MetadataDictionaryComparerGuardTests
         foreach (SyntaxTree tree in trees)
         {
             SemanticModel model = compilation.GetSemanticModel(tree);
-            foreach (var expression in tree.GetRoot().DescendantNodes().OfType<BaseObjectCreationExpressionSyntax>())
+            foreach (ExpressionSyntax expression in tree.GetRoot().DescendantNodes().OfType<ExpressionSyntax>())
             {
-                if (!SymbolEqualityComparer.Default.Equals(model.GetTypeInfo(expression).Type, metadataDictionary))
+                if (expression is not (BaseObjectCreationExpressionSyntax or CollectionExpressionSyntax))
+                {
+                    continue;
+                }
+
+                TypeInfo typeInfo = model.GetTypeInfo(expression);
+                if (!SymbolEqualityComparer.Default.Equals(typeInfo.Type ?? typeInfo.ConvertedType, metadataDictionary))
                 {
                     continue;
                 }
