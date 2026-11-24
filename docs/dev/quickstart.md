@@ -95,7 +95,7 @@ Runs a hybrid search for a sample-specific validation token embedded in the curr
 
 ### Windows
 
-- **Port reservation caveat**: `TcpListener.Start` on `127.0.0.1:<port>` may succeed even when Docker Desktop reserves the port via Hyper-V without an active listener. The wizard's port check is best-effort — a pass is advisory; a fail is load-bearing. If step 1 passes but boot (step 3 implicitly) fails with port conflicts, check the Aspire dashboard for the actual bind port and `netstat -ano | findstr :<port>`.
+- **Port reservation caveat**: The wizard probes `127.0.0.1` and, where supported, `::1`. A loopback bind can succeed even when Docker Desktop reserves the port via Hyper-V without an active listener. The wizard's port check is best-effort — a pass is advisory; a fail is load-bearing. If step 1 passes but boot (step 3 implicitly) fails with port conflicts, check the Aspire dashboard for the actual bind port and `netstat -ano | findstr :<port>`.
 - **WSL2 requirement**: Docker Desktop must be configured with WSL2 integration for Linux-container builds.
 
 ### macOS

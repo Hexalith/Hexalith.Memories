@@ -1787,7 +1787,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of 7-4-quickstart-and-documentation (2026-04-17)"), 2026-09-01
 location: src/Hexalith.Memories.Cli/Quickstart/PrerequisiteChecks.cs:182
 reason: - **Port availability check binds `IPAddress.Loopback` only; IPv6-only services missed, and bind-success is TOCTOU-advisory on Windows port reservations** — platform-specific caveat is already acknowledged in spec Task 2.4; upgrade to dual-stack check and/or `IpGlobalProperties.GetActiveTcpListeners` lookup when touched next. [src/Hexalith.Memories.Cli/Quickstart/PrerequisiteChecks.cs:182]
-status: open
+status: done 2026-11-24
+resolution: The advisory check binds both loopback addresses when available. Tests cover an occupied IPv6-only port and the quickstart guide records the platform reservation caveat.
 
 ### DW-258: `EnsureSampleCaseAsync` picks first match of `DefaultCaseName` without stable ordering
 

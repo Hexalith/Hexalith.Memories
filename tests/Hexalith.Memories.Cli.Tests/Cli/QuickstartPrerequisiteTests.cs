@@ -5,6 +5,10 @@
 
 namespace Hexalith.Memories.Cli.Tests.Cli;
 
+using System.Net;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
+
 using Hexalith.Memories.Cli.Quickstart;
 
 using Shouldly;
@@ -208,6 +212,24 @@ public sealed class QuickstartPrerequisiteTests
         }
     }
 
+    public static bool HasIPv6Loopback => Socket.OSSupportsIPv6 && NetworkInterface.GetAllNetworkInterfaces()
+        .Any(network => network.GetIPProperties().UnicastAddresses.Any(address => IPAddress.IPv6Loopback.Equals(address.Address)));
+
+    [Fact(SkipUnless = nameof(HasIPv6Loopback), Skip = "IPv6 loopback is unavailable on this host.")]
+    public async Task CheckPortAvailability_Fails_WhenIPv6LoopbackPortInUse()
+    {
+        var checks = new PrerequisiteChecks(new FakeProcessRunner());
+        using var listener = new TcpListener(IPAddress.IPv6Loopback, 0);
+        listener.Server.DualMode = false;
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+
+        PrerequisiteCheckResult result = await checks.CheckPortAvailabilityAsync([port], TestContext.Current.CancellationToken);
+
+        result.Passed.ShouldBeFalse();
+        result.Diagnostic.ShouldBe($"Port {port} in use.");
+    }
+
     [Fact]
     public void CheckOsPlatform_AlwaysPasses()
     {
@@ -250,7 +272,7 @@ public sealed class QuickstartPrerequisiteTests
     {
         var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
         listener.Start();
-        int port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
         listener.Stop();
         return port;
     }

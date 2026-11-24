@@ -221,7 +221,7 @@ internal sealed partial class PrerequisiteChecks
         return sdkResult with { Diagnostic = $"{sdkResult.Diagnostic}; .NET 11 and ASP.NET Core 11 runtimes available." };
     }
 
-    /// <summary>Attempts to bind each port on the loopback interface to verify availability.</summary>
+    /// <summary>Checks whether each port can be bound on IPv4 and, when supported, IPv6 loopback.</summary>
     /// <param name="ports">The ports to check.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The sub-check result. Fails fast on the first in-use port.</returns>
@@ -232,11 +232,16 @@ internal sealed partial class PrerequisiteChecks
 
         foreach (int port in ports)
         {
+            ct.ThrowIfCancellationRequested();
             try
             {
-                using var listener = new TcpListener(IPAddress.Loopback, port);
-                listener.Start();
-                listener.Stop();
+                using var ipv4Listener = new TcpListener(IPAddress.Loopback, port);
+                ipv4Listener.Start();
+
+                if (Socket.OSSupportsIPv6)
+                {
+                    TryBindIPv6Loopback(port);
+                }
             }
             catch (SocketException)
             {
@@ -249,8 +254,21 @@ internal sealed partial class PrerequisiteChecks
 
         return Task.FromResult(new PrerequisiteCheckResult(
             Passed: true,
-            Diagnostic: $"Ports {string.Join(", ", ports)} available.",
+            Diagnostic: $"Ports {string.Join(", ", ports)} available at the time of the check.",
             RecoverySuggestion: null));
+    }
+
+    private static void TryBindIPv6Loopback(int port)
+    {
+        try
+        {
+            using var listener = new TcpListener(IPAddress.IPv6Loopback, port);
+            listener.Start();
+        }
+        catch (SocketException ex) when (ex.SocketErrorCode == SocketError.AddressNotAvailable)
+        {
+            // An IPv6-capable host can have IPv6 disabled on its loopback interface.
+        }
     }
 
     /// <summary>Detects the current OS platform. Purely informational — always passes.</summary>
