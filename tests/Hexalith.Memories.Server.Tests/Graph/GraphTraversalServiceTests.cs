@@ -370,6 +370,44 @@ public class GraphTraversalServiceTests
     }
 
     [Fact]
+    public async Task TraverseAsync_CorrelatedWith_PreservesIncomingEdgesFromRootToSiblings()
+    {
+        RedisResult[] rootEdges =
+        [
+            CorrelationEdge("first", "outgoing"),
+            CorrelationEdge("second", "outgoing"),
+        ];
+        GraphTraversalService service = CreateTraversalService(out IDatabase graph,
+            TraversalRow("first", 0, [CorrelationEdge("root", "incoming")]),
+            TraversalRow("root", 1, rootEdges),
+            TraversalRow("second", 2, [CorrelationEdge("root", "incoming")]));
+
+        TraversalResult result = await service.TraverseAsync(
+            "tenant-1", "first", 2, null, [EdgeType.CorrelatedWith], TestContext.Current.CancellationToken);
+
+        _ = graph.Received(1).ExecuteAsync(Arg.Any<string>(), Arg.Is<ICollection<object>>(arguments =>
+            arguments.Any(arg => arg.ToString()!.Contains("[:CORRELATED_WITH*0..2]", StringComparison.Ordinal))),
+            Arg.Any<CommandFlags>());
+        result.Nodes.Select(node => node.MemoryUnitId).ShouldBe(["first", "root", "second"], ignoreOrder: true);
+        TraversalNode sibling = result.Nodes.Single(node => node.MemoryUnitId == "second");
+        sibling.HopDistance.ShouldBe(2);
+        sibling.Edges.ShouldHaveSingleItem().ShouldBe(
+            new TraversalEdgeInfo(EdgeType.CorrelatedWith, 1, EdgeOrigin.Explicit, "root", "incoming"));
+
+        static RedisResult CorrelationEdge(string nodeId, string direction)
+            => CompactCell(10, RedisResult.Create(
+            [
+                Scalar("edgeType"), CompactCell(2, Scalar("CORRELATED_WITH")),
+                Scalar("confidence"), CompactCell(5, Scalar("1")),
+                Scalar("origin"), CompactCell(2, Scalar("explicit")),
+                Scalar("connectedId"), CompactCell(2, Scalar(nodeId)),
+                Scalar("direction"), CompactCell(2, Scalar(direction)),
+            ]));
+
+        static RedisResult Scalar(RedisValue value) => RedisResult.Create(value);
+    }
+
+    [Fact]
     public async Task TraverseAsync_WithNullEdgeTypes_PassesNullToQueryBuilder()
     {
         // Arrange
@@ -395,6 +433,41 @@ public class GraphTraversalServiceTests
     }
 
     // --- Helpers ---
+
+    private static GraphTraversalService CreateTraversalService(out IDatabase graph, params RedisResult[] rows)
+    {
+        string[] columns = ["nodeId", "hopDistance", "content", "sourceUri", "sourceType", "ingestedAt", "edges", "isStub"];
+        RedisResult header = RedisResult.Create(columns.Select(column =>
+            CompactCell(1, RedisResult.Create((RedisValue)column))).ToArray());
+        RedisResult stats = RedisResult.Create([RedisResult.Create((RedisValue)"Query internal execution time: 0.1 milliseconds")]);
+        (IConnectionMultiplexer falkorDb, graph) = CreateMockFalkorDb();
+        graph.ExecuteAsync(Arg.Any<string>(), Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())
+            .Returns(RedisResult.Create([header, RedisResult.Create(rows), stats]));
+
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        IDatabase documents = Substitute.For<IDatabase>();
+        documents.HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>()).Returns(Array.Empty<HashEntry>());
+        redis.GetDatabase().Returns(documents);
+        return new GraphTraversalService(falkorDb, redis, new GraphQueryBuilder(), NullLogger<GraphTraversalService>.Instance);
+    }
+
+    private static RedisResult TraversalRow(string id, int hop, RedisResult[] edges, bool? isStub = false, string? content = "payload")
+        => RedisResult.Create(
+        [
+            CompactCell(2, RedisResult.Create((RedisValue)id)),
+            CompactCell(3, RedisResult.Create((RedisValue)hop)),
+            CompactCell(content is null ? 1 : 2, RedisResult.Create((RedisValue)content)),
+            CompactCell(2, RedisResult.Create((RedisValue)$"urn:example:{id}")),
+            CompactCell(2, RedisResult.Create((RedisValue)"event")),
+            CompactCell(2, RedisResult.Create((RedisValue)"2026-11-24T00:00:00Z")),
+            CompactCell(6, RedisResult.Create(edges)),
+            isStub.HasValue
+                ? CompactCell(4, RedisResult.Create((RedisValue)(isStub.Value ? "true" : "false")))
+                : CompactCell(1, RedisResult.Create(RedisValue.Null)),
+        ]);
+
+    private static RedisResult CompactCell(int type, RedisResult value)
+        => RedisResult.Create([RedisResult.Create((RedisValue)type), value]);
 
     private static (IConnectionMultiplexer, IDatabase) CreateMockFalkorDb()
     {

@@ -1934,6 +1934,7 @@ origin: migrated from legacy ledger ("Deferred from: 9-2-dual-embedding-and-caus
 location: n/a
 reason: - **Task 9.2 — `OutOfOrderEventTests` (Tier 2/3).** Publishes event B (with `causationid = A_id`) before event A; asserts stub node is created with `isStub = true` + `stubCreatedAt` set; publishes A; asserts stub promoted (`isStub = false`, `9154 StubNodeResolved` emitted). Requires FalkorDB integration fixture + replay window.
 status: open
+note: 2026-11-24 — Skipped. The active CloudEvent mapper does not propagate causationid and the event source ID is distinct from the indexed memory-unit ID. A producer mapping and stable identity resolution are required before the requested Dapr publication can prove stub promotion.
 
 ### DW-277: Task 9.3 — `DegradedNaturalLanguageEmbeddingTests` (Tier 2, 3 scenarios).
 
@@ -1941,6 +1942,7 @@ origin: migrated from legacy ledger ("Deferred from: 9-2-dual-embedding-and-caus
 location: n/a
 reason: - **Task 9.3 — `DegradedNaturalLanguageEmbeddingTests` (Tier 2, 3 scenarios).** Scenario A: LLM transient failure → `Queued` + retry completes on next tick. Scenario B: index-side partial failure → workflow-level retry recovers. Scenario C: index-side terminal failure → compensation drops both hashes. Requires NSubstitute-replaceable DAPR Conversation client + fault injector for `IndexNaturalLanguageSemanticActivity`.
 status: open
+note: 2026-11-24 — Skipped. The real Dapr call surfaces activity failures as WorkflowTaskFailedException. The ingestion branch catches the original description exception only, and the current integration topology exposes no per-activity NL index fault seam. The original three-scenario suite needs the durable failure contract and fault controls.
 
 ### DW-278: Task 9.4 — `CorrelationRootEdgeTests` (Tier 2 FalkorDB fixture).
 
@@ -1948,6 +1950,7 @@ origin: migrated from legacy ledger ("Deferred from: 9-2-dual-embedding-and-caus
 location: n/a
 reason: - **Task 9.4 — `CorrelationRootEdgeTests` (Tier 2 FalkorDB fixture).** Publishes 1 root + 3 correlated events; asserts root has no self-edge, each correlated event has exactly one edge from root, no edges between correlated events, `9155` emitted once. Guard for Risk #3 at the integration level — the unit test already covers the activity-level behavior via `IndexGraphActivityTests.CorrelationId_CreatesRootToCurrentEdge` + `.CorrelationIdEqualsMemoryUnitId_NoSelfEdge_LogsDebug`.
 status: open
+note: 2026-11-24 — Skipped. The current CloudEvent mapper does not propagate correlationid or resolve event IDs to graph node IDs. The integration proof depends on that producer contract. Existing unit coverage verifies the root-only edge pattern.
 
 ### DW-279: Task 9.5 — `IngestionWorkflowReplaySafetyTests` (Tier 1).
 
@@ -1955,6 +1958,7 @@ origin: migrated from legacy ledger ("Deferred from: 9-2-dual-embedding-and-caus
 location: n/a
 reason: - **Task 9.5 — `IngestionWorkflowReplaySafetyTests` (Tier 1).** Simulates a 9.1-shape history replaying under 9.2 code. Requires fabricating a `durable-task` state snapshot — the SDK surface for this is undocumented. Document the failure mode as deterministic (it is) and rely on the runbook quiesce (AC #11) + `WorkflowReplaySafetyHostedService` startup gate (Task 5.9) as the combined mitigation.
 status: open
+note: 2026-11-24 — Skipped. There is no captured pre-9.2 durable-task history that can verify replay against the current workflow. A fabricated mock transcript cannot establish compatibility.
 
 ### DW-280: Per-tenant LLM provider configuration (Phase 2 per architecture L1254).
 
@@ -1962,6 +1966,7 @@ origin: migrated from legacy ledger ("Deferred from: 9-2-dual-embedding-and-caus
 location: deploy/dapr/components/conversation-llm.yaml
 reason: - **Per-tenant LLM provider configuration (Phase 2 per architecture L1254).** MVP ships one system-wide `llm` DAPR Conversation component. Operators swap providers by editing `deploy/dapr/components/conversation-llm.yaml` (no code change required). Per-tenant LLM is tracked as a Phase 2 follow-up.
 status: open
+note: 2026-11-24 — Skipped. This duplicates the Phase 2 provider selection and credential-routing decision already recorded in DW-211.
 
 ### DW-281: Content-absent fallback in `GraphTraversalService`
 
@@ -1969,6 +1974,7 @@ origin: migrated from legacy ledger ("Deferred from: 9-2-dual-embedding-and-caus
 location: src/Hexalith.Memories.Server/Graph/GraphTraversalService.cs:~95-100
 reason: - **Content-absent fallback in `GraphTraversalService`** (`src/Hexalith.Memories.Server/Graph/GraphTraversalService.cs:~95-100`). Retire after the Task 7.6 `IsStubBackfillMigration` has been executed against all production databases. Until then, the fallback MUST be kept — pre-9.2 stubs have neither the `isStub` flag nor content.
 status: open
+note: 2026-11-24 — Skipped. The recorded prerequisite is confirmed stub-backfill execution on every production graph. That coverage is unavailable.
 
 ### DW-282: Integration tests for `NaturalLanguageSemanticSearchService`.
 
@@ -1988,13 +1994,15 @@ origin: migrated from legacy ledger ("Deferred from: code review of 9-2-dual-emb
 location: n/a
 reason: - **Risk-mapped guard tests that depend on integration topology** — `DualEmbeddingLatencyTests` (Risk #2, P95 benchmark), `DaprConversationIntegrationTests.ApiSurfaceSmokeTest` (Risk #11), `GraphQueryBuilderTests.BuildMergeStubNode_OnExistingNonStub_DoesNotRegressIsStubFlag` (Risk #12 Tier-2 FalkorDB fixture), `EmbeddingInputReplaySafetyTests.PreNineTwoEmbeddingActivityHistory_ReplaysSuccessfully` (Risk #17). All bound to the Task 9.x integration-test deferral above.
 status: open
+note: 2026-11-24 — Skipped. The risk bundle includes replay of a pre-9.2 activity history and a P95 workload baseline. No historical history fixture or controlled baseline is available. The conversation path has direct live coverage in DW-275.
 
 ### DW-285: Risk #3 coverage gap at unit level
 
 origin: migrated from legacy ledger ("Deferred from: code review of 9-2-dual-embedding-and-causal-chain-indexing (2026-04-24)"), 2026-09-01
 location: n/a
 reason: - **Risk #3 coverage gap at unit level** — `IndexGraphActivityTests.MultipleEventsSameCorrelationId_NoFanOut` and `GraphTraversalServiceTests.CorrelatedWith_InboundDirection_ReturnsCorrelatedSiblings` — the fan-out-prevention and inbound-traversal tests name-listed in Risk #3 that go beyond the two shipped tests. Tied to Task 9.4 `CorrelationRootEdgeTests`.
-status: open
+status: done 2026-11-24
+resolution: The traversal regression decodes the FalkorDB compact edge-map response for a correlated sibling and verifies the scoped CorrelatedWith query. The existing indexing test covers the no-fan-out producer behavior.
 
 ### DW-286: Risk #4 gap-marker unit tests
 
