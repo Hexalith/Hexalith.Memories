@@ -105,6 +105,8 @@ public class ConsistencyVerificationWorkflowTests
         result.NoteCount.ShouldBe(3);
         result.Notes.Select(note => note.MemoryUnitId).ShouldBe(new[] { ids[9], ids[18], ids[20] });
         result.Discrepancies.Select(entry => entry.MemoryUnitId).ShouldBe(new[] { ids[8], ids[10], ids[19] });
+        result.Notes.Concat(result.Discrepancies).ShouldAllBe(entry =>
+            entry.ConsistencyNoteKind == ConsistencyNoteKind.InformationalNote && entry.ConsistencyNote == "Review embedding");
     }
 
     [Fact]
@@ -115,7 +117,7 @@ public class ConsistencyVerificationWorkflowTests
         context.CreateReplaySafeLogger<ConsistencyVerificationWorkflow>()
             .Returns(logs.CreateLogger(nameof(ConsistencyVerificationWorkflow)));
         SetEnumeration(context, ["clean", "note", "free-text", "repair"]);
-        SetAllProbes(context, new ConsistencyResult(true, true, true));
+        SetAllProbes(context, new ConsistencyResult(true, true, true) { ConsistencyNote = "  " });
         context.CallActivityAsync<ConsistencyResult>(
             nameof(VerifyConsistencyActivity),
             Arg.Is<ConsistencyInput>(input => input!.MemoryUnitId == "note"),

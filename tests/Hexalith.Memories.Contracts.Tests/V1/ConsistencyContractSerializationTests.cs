@@ -62,14 +62,16 @@ public class ConsistencyContractSerializationTests
         json.ShouldBe("\"removeOrphanedSemanticAndGraph\"");
     }
 
-    [Fact]
-    public void ConsistencyVerificationResult_RoundTripsThroughMemoriesJsonContext()
+    [Theory]
+    [InlineData(ConsistencyNoteKind.NaturalLanguageEmbeddingQueued, "naturalLanguageEmbeddingQueued")]
+    [InlineData(ConsistencyNoteKind.InformationalNote, "informationalNote")]
+    public void ConsistencyVerificationResult_RoundTripsThroughMemoriesJsonContext(ConsistencyNoteKind noteKind, string wireKind)
     {
         DateTimeOffset now = DateTimeOffset.UnixEpoch;
         ConsistencyDiscrepancy note = new("unit-note", true, true, true, ConsistencyRepairRecommendation.NoOp)
         {
-            ConsistencyNoteKind = ConsistencyNoteKind.NaturalLanguageEmbeddingQueued,
-            ConsistencyNote = "Embedding queued",
+            ConsistencyNoteKind = noteKind,
+            ConsistencyNote = "An embedding observation",
         };
         ConsistencyDiscrepancy discrepancy = new("unit-repair", true, false, true, ConsistencyRepairRecommendation.ReIndexSemantic);
         ConsistencyVerificationResult original = new("tenant-1", 12, 11, 1, [discrepancy], 1, now, false, now, now, TimeSpan.Zero)
@@ -83,7 +85,9 @@ public class ConsistencyContractSerializationTests
         typeInfo.OriginatingResolver.ShouldBeAssignableTo<System.Text.Json.Serialization.JsonSerializerContext>();
         string json = JsonSerializer.Serialize(original, typeInfo);
         using JsonDocument wire = JsonDocument.Parse(json);
-        wire.RootElement.GetProperty("notes")[0].GetProperty("memoryUnitId").GetString().ShouldBe("unit-note");
+        JsonElement wireNote = wire.RootElement.GetProperty("notes")[0];
+        wireNote.GetProperty("memoryUnitId").GetString().ShouldBe("unit-note");
+        wireNote.GetProperty("consistencyNoteKind").GetString().ShouldBe(wireKind);
         wire.RootElement.GetProperty("noteCount").GetInt32().ShouldBe(1);
         wire.RootElement.GetProperty("totalNoteCount").GetInt32().ShouldBe(11);
 

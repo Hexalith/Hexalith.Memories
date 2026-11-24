@@ -115,9 +115,9 @@ public sealed partial class ConsistencyVerificationWorkflow
                     ? probe.ConsistencyNoteKind
                     : NaturalLanguageConsistencyState.BuildConsistencyNoteKind(
                         probe.NaturalLanguageEmbeddingStatus,
-                        probe.NaturalLanguageSemanticExists);
-                bool hasConsistencyNote = consistencyNoteKind != ConsistencyNoteKind.None
-                    || !string.IsNullOrWhiteSpace(probe.ConsistencyNote);
+                        probe.NaturalLanguageSemanticExists,
+                        probe.ConsistencyNote);
+                bool hasConsistencyNote = consistencyNoteKind != ConsistencyNoteKind.None;
                 // S6-P11 (re-review 2026-04-25): hoist isNoteOnlyObservation once so early-continue,
                 // counter increment, and routing all share a single source of truth.
                 bool isNoteOnlyObservation = recommendation == ConsistencyRepairRecommendation.NoOp && hasConsistencyNote;
@@ -140,10 +140,7 @@ public sealed partial class ConsistencyVerificationWorkflow
 
                 if (isNoteOnlyObservation)
                 {
-                    string noteLabel = consistencyNoteKind != ConsistencyNoteKind.None
-                        ? consistencyNoteKind.ToString()
-                        : "InformationalNote";
-                    LogConsistencyNoteObserved(logger, input.TenantId, unitId, noteLabel, "Note", context.InstanceId);
+                    LogConsistencyNoteObserved(logger, input.TenantId, unitId, consistencyNoteKind.ToString(), "Note", context.InstanceId);
                 }
                 else
                 {

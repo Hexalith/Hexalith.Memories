@@ -59,13 +59,15 @@ internal static class NaturalLanguageConsistencyState
     /// for existing consumers while typed filtering now works without string parsing.</summary>
     public static ConsistencyNoteKind BuildConsistencyNoteKind(
         NaturalLanguageEmbeddingStatus status,
-        bool naturalLanguageSemanticPresent)
+        bool naturalLanguageSemanticPresent,
+        string? note = null)
         => status switch
         {
             NaturalLanguageEmbeddingStatus.Queued when !naturalLanguageSemanticPresent
                 => ConsistencyNoteKind.NaturalLanguageEmbeddingQueued,
             NaturalLanguageEmbeddingStatus.Indexed when !naturalLanguageSemanticPresent
                 => ConsistencyNoteKind.NaturalLanguageEmbeddingMissing,
+            _ when !string.IsNullOrWhiteSpace(note) => ConsistencyNoteKind.InformationalNote,
             _ => ConsistencyNoteKind.None,
         };
 }

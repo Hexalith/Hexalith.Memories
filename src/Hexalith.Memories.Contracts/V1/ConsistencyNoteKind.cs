@@ -24,4 +24,7 @@ public enum ConsistencyNoteKind
     /// <summary>Memory unit reports <c>NaturalLanguageEmbeddingStatus = Indexed</c> but no NL semantic
     /// hash exists. REAL inconsistency that consistency-verification must flag for repair.</summary>
     NaturalLanguageEmbeddingMissing = 2,
+
+    /// <summary>A free-text observation without a more specific note kind.</summary>
+    InformationalNote = 3,
 }
