@@ -1856,6 +1856,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 8-2-consiste
 location: src/Hexalith.Memories.Server/Consistency/SemanticIndexer.cs:84
 reason: - **Semantic re-index remains intentionally unsupported in `SemanticIndexer`** — `SemanticIndexer.ReIndexFromSyntacticAsync` still throws `NotSupportedException`, so `ReIndexSemantic` / `ReIndexSemanticAndGraph` remain documented follow-up work rather than live repair paths. [src/Hexalith.Memories.Server/Consistency/SemanticIndexer.cs:84]
 status: open
+note: 2026-11-24 — Skipped. The requested syntactic-hash repair has been superseded by Story 34.30. Repair now requires an authoritative EventStore revision and active write fencing before regenerating vectors.
 
 ### DW-267: Classification metadata is not persisted into the syntactic export source of truth
 
@@ -1863,6 +1864,7 @@ origin: migrated from legacy ledger ("Deferred from: code review fix pass of 8-3
 location: src/Hexalith.Memories.Contracts/V1/IndexInput.cs, src/Hexalith.Memories.Server/Activities/Indexing/IndexSyntacticActivity.cs, src/Hexalith.Memories.Server/Cases/CaseService.cs
 reason: - **Classification metadata is not persisted into the syntactic export source of truth** — `MemoryUnit.Classification` exists on the contract/export surface, but the ingestion/indexing path (`IndexInput`, `IndexSyntacticActivity`) does not write classification into the Redis memory-unit hash. `CaseService.ParseMemoryUnitFromHash` and `TenantExportService` therefore cannot recover it during export. Fix in a future story by persisting classification at ingest/index time, then plumb it through export. [src/Hexalith.Memories.Contracts/V1/IndexInput.cs, src/Hexalith.Memories.Server/Activities/Indexing/IndexSyntacticActivity.cs, src/Hexalith.Memories.Server/Cases/CaseService.cs]
 status: open
+note: 2026-11-24 — Skipped. The target IndexInput moved and the source-metadata field is absent from ingestion and retained source artifacts. Capturing it requires a caller contract and authoritative persistence through the EventStore source path before projecting it into Redis and exporting it.
 
 ### DW-268: Tier-3 Aspire end-to-end integration tests for EventStore subscription
 
@@ -1870,6 +1872,7 @@ origin: migrated from legacy ledger ("Deferred from: 9-1-event-auto-discovery-an
 location: tests/Hexalith.Memories.EventStore.Tests/
 reason: - **Tier-3 Aspire end-to-end integration tests for EventStore subscription** — Task 6 guard tests that require a running DAPR sidecar + Redis + FalkorDB are deferred to a follow-up Tier-3 / nightly harness. This covers: `EventIngestionRoundTripTests` (publish via DAPR → search within 5 s, NFR6), `EventIngestionSubscriptionDiscoveryTests.DaprSubscribeEndpoint_ListsConfiguredTopic` + `Startup_FailsFast_WhenSubscribeEndpointEmpty`, `EventIngestionReplayAfterRestoreTests.ReplayedEvent_AfterTenantRestore_BlockedByIdempotency`, and `EventIngestionLatencyTests.SingleEvent_P50Under3s_Enforcement` / `SingleEvent_P95Under5s_Observation`. The existing Tier-1 (65 tests, `tests/Hexalith.Memories.EventStore.Tests/`) + Tier-2 (10 tests, `tests/Hexalith.Memories.Server.Tests/EventStoreIntegration/` — outcome mapping, middleware-order, documentation completeness) coverage pins every non-end-to-end guard test from the story's risk table. Rationale: standing up the full Aspire topology for one subscription round-trip is disproportionate to the risk the Tier-2 tests already cover at the controller / outcome-mapping level; the replay-after-restore case is behaviorally correct as long as `CheckIdempotencyActivity` runs (a Tier-2 concern covered by `CheckIdempotencyActivityTests`). The nightly Aspire harness is the right place to catch sidecar / broker wiring regressions.
 status: open
+note: 2026-11-24 — Skipped. Nightly already verifies the Dapr publish-to-search path and duplicate delivery. The full suite still needs a supported restore-and-replay procedure for the same tenant, which is pending DW-733, plus a latency sampling harness.
 
 ### DW-269: Review findings from the planning validation (Review Findings block in the story file)
 
@@ -1882,7 +1885,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of 8-4-end-to-end-telemetry-integration-tests (2026-04-22)"), 2026-09-01
 location: n/a
 reason: - **Activity / HttpResponseMessage using-scope pattern inconsistency in retry test** — `SearchOperation_RetrySequence_EmitsDistinctAuditEventsPerStatus` uses mixed `using` statement vs `using` statement scopes for `Activity retryRoot` vs `Activity secondAttempt`; the pattern is correct, just inconsistent. Pre-existing style nit, not caused by 8.4 scope boundary.
-status: open
+status: done 2026-11-24
+resolution: The nightly audit retry test now scopes both HTTP responses and attempt spans to matching sibling blocks. The live Dapr/Aspire test passed.
 
 ### DW-271: `OpenTelemetry.Instrumentation.StackExchangeRedis` prerelease pin — upgrade-on-GA trigger.
 

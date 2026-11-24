@@ -63,14 +63,16 @@ public sealed partial class AuditLogStreamIntegrationTests
             first.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
         }
 
-        string traceId = retryRoot.TraceId.ToString();
+        using (Activity? secondAttempt = retrySource.StartActivity("telemetry-retry-attempt-2"))
+        {
+            using HttpResponseMessage second = await _fixture.MemoriesClient.GetAsync(
+                $"/api/v1/search?tenantId={tenantId}&axis=syntactic&query={secondAttemptQuery}");
+            second.StatusCode.ShouldBe(HttpStatusCode.OK);
+            SearchResult? retryResult = await second.Content.ReadFromJsonAsync<SearchResult>(MemoriesJsonContext.Options);
+            retryResult.ShouldNotBeNull();
+        }
 
-        using Activity? secondAttempt = retrySource.StartActivity("telemetry-retry-attempt-2");
-        using HttpResponseMessage second = await _fixture.MemoriesClient.GetAsync(
-            $"/api/v1/search?tenantId={tenantId}&axis=syntactic&query={secondAttemptQuery}");
-        second.StatusCode.ShouldBe(HttpStatusCode.OK);
-        SearchResult? retryResult = await second.Content.ReadFromJsonAsync<SearchResult>(MemoriesJsonContext.Options);
-        retryResult.ShouldNotBeNull();
+        string traceId = retryRoot.TraceId.ToString();
 
         TimeSpan timeout = TimeSpan.FromMinutes(4);
         using CancellationTokenSource cts = new(timeout);
