@@ -143,7 +143,7 @@ redis.OnResourceReady((resource, _, _) =>
 
     try
     {
-        (string host, int port) = ResolveAllocatedEndpoint(resource, "redis");
+        (string host, int port) = AllocatedEndpointResolver.Resolve(resource, "redis");
         WriteDaprRedisComponentFiles(
             daprComponentPaths.StateStore,
             daprComponentPaths.PubSub,
@@ -183,7 +183,7 @@ builder.Eventing.Subscribe<BeforeResourceStartedEvent>(async (@event, cancellati
         // Resolve the endpoint AFTER awaiting the rewrite signal — if BeforeResourceStartedEvent
         // ever races allocation, the rewrite-signal wait gives Redis a chance to finish allocating
         // before the endpoint lookup throws InvalidOperationException.
-        (string host, int port) = ResolveAllocatedEndpoint(redis.Resource, "redis");
+        (string host, int port) = AllocatedEndpointResolver.Resolve(redis.Resource, "redis");
         await WaitForRedisPingAsync(host, port, TimeSpan.FromMinutes(2), cancellationToken)
             .ConfigureAwait(false);
     }
@@ -1114,29 +1114,6 @@ static IResourceBuilder<ProjectResource> PropagateJwtBearerAuthenticationEnviron
     return resource;
 }
 
-static (string Host, int Port) ResolveAllocatedEndpoint(IResource resource, string endpointName)
-{
-    if (!resource.TryGetEndpoints(out IEnumerable<EndpointAnnotation>? endpoints))
-    {
-        throw new InvalidOperationException($"Resource '{resource.Name}' does not expose endpoints.");
-    }
-
-    EndpointAnnotation endpoint = endpoints.Single(candidate =>
-        string.Equals(candidate.Name, endpointName, StringComparison.Ordinal));
-    AllocatedEndpoint allocated = endpoint.AllocatedEndpoint
-        ?? throw new InvalidOperationException($"Endpoint '{resource.Name}/{endpointName}' has not been allocated yet.");
-
-    string host = allocated.Address;
-    if (string.IsNullOrWhiteSpace(host) ||
-        string.Equals(host, "0.0.0.0", StringComparison.Ordinal) ||
-        string.Equals(host, "::", StringComparison.Ordinal))
-    {
-        host = "127.0.0.1";
-    }
-
-    return (host, allocated.Port);
-}
-
 static async Task InitializeOpenBaoGenerationAsync(
     IResource resource,
     IServiceProvider services,
@@ -1160,7 +1137,7 @@ static async Task InitializeOpenBaoGenerationAsync(
             [KnownResourceStates.Starting, KnownResourceStates.Running],
             generationToken).ConfigureAwait(false);
 
-        (string host, int port) = ResolveAllocatedEndpoint(resource, OpenBaoDevelopmentProfile.EndpointName);
+        (string host, int port) = AllocatedEndpointResolver.Resolve(resource, OpenBaoDevelopmentProfile.EndpointName);
         var endpoint = new UriBuilder(Uri.UriSchemeHttp, host, port).Uri;
         string runtimeSeedJson = await runtimeSeedParameter.GetValueAsync(generationToken).ConfigureAwait(false)
             ?? throw new InvalidOperationException("The protected runtime seed parameter has no value.");

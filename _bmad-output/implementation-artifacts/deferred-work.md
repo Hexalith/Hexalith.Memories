@@ -2894,7 +2894,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of 1-1-project-scaffolding-and-single-command-boot (2026-05-16)"), 2026-09-01
 location: src/Hexalith.Memories.AppHost/Program.cs
 reason: - **1.1-RR7. `ResolveAllocatedEndpoint` `Single()` failure lacks context.** A missing or duplicated endpoint name surfaces as a bare `InvalidOperationException` with no message naming the resource or endpoint. - ID: 1.1-RR7 - Status: accepted - Source story: 1-1-project-scaffolding-and-single-command-boot - Target artifact: src/Hexalith.Memories.AppHost/Program.cs - Re-open trigger: An Aspire upgrade renames endpoint keys and the unmatched lookup produces a triage ticket that costs more than the wrapping cost would have saved. - Rationale: AppHost-internal helper used for two known endpoint names (`redis`, `falkordb`); the surrounding `OnResourceReady`/`BeforeResourceStartedEvent` callbacks would themselves fail in a debuggable way if the endpoint contract drifts.
-status: open
+status: done 2026-11-24
+resolution: AllocatedEndpointResolver replaces the Single() lookup for the Redis and OpenBao endpoints. A missing name reports the resource, the endpoint and the available endpoint names, and a duplicate name reports the resource, endpoint and count. AllocatedEndpointResolverTests cover host normalization, missing, duplicate and unallocated endpoints, and a resource without endpoints. See spec-seven-ordered-deferred-items.md.
 
 ### DW-419: 15.6-CR1. Tight Redis PING reconnect loop without exponential backoff.
 
