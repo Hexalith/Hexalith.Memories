@@ -65,6 +65,11 @@ Examples:
         CliConsole console = services.GetRequiredService<CliConsole>();
         OutputFormatterRouter router = services.GetRequiredService<OutputFormatterRouter>();
 
+        if (CliPathIdentifier.RejectSlash(console, CommandName, tenantId))
+        {
+            return CliExitCodes.Plumbing;
+        }
+
         return await executor.ExecuteAsync(CommandName, async (config, innerCt) =>
         {
             MemoriesClient client = services.GetRequiredService<MemoriesClient>();

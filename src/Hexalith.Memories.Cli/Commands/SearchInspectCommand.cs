@@ -77,6 +77,11 @@ Example:
             return CliExitCodes.Plumbing;
         }
 
+        if (CliPathIdentifier.RejectSlash(console, CommandName, tenantId, caseId, memoryUnitId))
+        {
+            return CliExitCodes.Plumbing;
+        }
+
         return await executor.ExecuteAsync(CommandName, async (config, innerCt) =>
         {
             MemoriesClient client = services.GetRequiredService<MemoriesClient>();

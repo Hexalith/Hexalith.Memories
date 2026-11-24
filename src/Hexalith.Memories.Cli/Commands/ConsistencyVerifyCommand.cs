@@ -102,6 +102,11 @@ Examples:
             return CliExitCodes.Plumbing;
         }
 
+        if (CliPathIdentifier.RejectSlash(console, CommandName, tenantId))
+        {
+            return CliExitCodes.Plumbing;
+        }
+
         ConsistencyPollOptions pollOptions = services.GetService<IOptions<ConsistencyPollOptions>>()?.Value
             ?? new ConsistencyPollOptions();
 

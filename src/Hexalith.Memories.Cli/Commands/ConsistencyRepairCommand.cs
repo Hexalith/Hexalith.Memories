@@ -112,6 +112,11 @@ Examples:
             return CliExitCodes.Plumbing;
         }
 
+        if (CliPathIdentifier.RejectSlash(console, CommandName, tenantId))
+        {
+            return CliExitCodes.Plumbing;
+        }
+
         if (!yes)
         {
             if (!console.IsInteractive)

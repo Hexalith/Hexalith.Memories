@@ -1728,6 +1728,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 6-4-pipeline
 location: src/Hexalith.Memories.AppHost/Program.cs:183-198
 reason: - **AppHost token propagation uses process-env side effects** — `ApplyProcessEnvironmentTokens` seeds `APP_API_TOKEN` / `DAPR_API_TOKEN` into the AppHost process environment because CommunityToolkit.Aspire.Hosting.Dapr 9.7 does not expose a sidecar-scoped env API. Tokens leak to every child container/subprocess and are never unset. Revisit when the toolkit exposes a sidecar-env builder. [src/Hexalith.Memories.AppHost/Program.cs:183-198]
 status: open
+note: 2026-11-24 — Skipped. The pinned toolkit can scope sidecar annotations, but Aspire child executables still inherit the documented ambient token inputs. Removing the redundant process assignments alone leaves that exposure. Closure needs an AppHost-scoped token source compatible with existing operators or verified filtering of inherited values.
 
 ### DW-250: Dictionary iteration order in `AxisDetails` / `Metadata` is not sorted
 
@@ -1756,7 +1757,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of 7-2-output-formats-and-explain-display (2026-04-16)"), 2026-09-01
 location: src/Hexalith.Memories.Client.Rest/MemoriesClient.cs:810
 reason: - **`Uri.EscapeDataString` on path-segment IDs produces `%2F` for embedded slashes** — ASP.NET Core rejects `%2F` in path segments by default (404 Not Found), surfacing as an opaque "not found" error to the user. IDs containing `/` are unusual; the clean fix is CLI-side rejection or server-side `AllowEncodedSlashes`. Server concern. [src/Hexalith.Memories.Client.Rest/MemoriesClient.cs:810]
-status: open
+status: done 2026-11-24
+resolution: Compatibility CLI commands reject slash-bearing path identifiers with INVALID_INPUT before dispatch. CLI command tests cover the affected routes and lookup tests preserve source URIs in query parameters.
 
 ### DW-254: `BuildSearchPath` drops subpath when `--endpoint` has one
 

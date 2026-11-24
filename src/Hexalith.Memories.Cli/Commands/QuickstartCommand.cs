@@ -155,6 +155,11 @@ Examples:
         CliConsole console = services.GetRequiredService<CliConsole>();
         PrerequisiteChecks prereq = services.GetRequiredService<PrerequisiteChecks>();
 
+        if (CliPathIdentifier.RejectSlash(console, CommandName, options.TenantId))
+        {
+            return CliExitCodes.Plumbing;
+        }
+
         return await executor.ExecuteAsync(CommandName, async (config, innerCt) =>
         {
             HealthProbe probe = services.GetRequiredService<HealthProbe>();

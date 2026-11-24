@@ -101,6 +101,11 @@ Examples:
             return CliExitCodes.Plumbing;
         }
 
+        if (CliPathIdentifier.RejectSlash(console, CommandName, tenantId))
+        {
+            return CliExitCodes.Plumbing;
+        }
+
         if (console.Format != OutputFormat.Human)
         {
             console.Error.WriteLine($"warning: --format={console.Format.ToString().ToLowerInvariant()} is ignored for 'export tenant'; output is raw JSON.");
