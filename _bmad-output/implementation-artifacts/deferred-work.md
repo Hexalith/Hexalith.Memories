@@ -1893,7 +1893,8 @@ resolution: The nightly audit retry test now scopes both HTTP responses and atte
 origin: migrated from legacy ledger ("Deferred from: 8-5-redis-otel-instrumentation (2026-04-23)"), 2026-09-01
 location: Directory.Packages.props, NuGet.config, docs/dev/telemetry.md ADR-8.5-001
 reason: - **`OpenTelemetry.Instrumentation.StackExchangeRedis` prerelease pin — upgrade-on-GA trigger.** Package pinned at `1.15.1-beta.1` in `Directory.Packages.props` per ADR-8.5-001 (b). Revisit this pin within **14 days of `1.15.0`** (non-prerelease) shipping on nuget.org, **OR by 2026-09-30**, whichever comes first. Owner: Memories release-manager rotation. Review-by: **2026-09-30**. On review, either (a) bump to the GA version and remove the `-beta.N` tag from `Directory.Packages.props` + update `packageSourceMapping` comment, or (b) file a new deferred-work entry with a fresh review-by if GA is still not shipped. Tracking: ADR-8.5-001 (g). [Directory.Packages.props, NuGet.config, docs/dev/telemetry.md ADR-8.5-001]
-status: open
+status: done 2026-11-24
+resolution: NuGet still lists only prerelease versions and the imported Hexalith.Builds catalog pins 1.21.0-beta.1. ADR-8.5-001 documents the review and tracks the next review in DW-739.
 
 ### DW-272: Malformed or truncated Redis breadcrumbs are still silently dropped by `ServerActivityStreamReader`.
 
@@ -5999,3 +6000,10 @@ resolution: VerifyAsync_MissingSyntacticIndex_RetainsSurvivingKeyFindings passed
 - source_spec: `_bmad-output/implementation-artifacts/spec-ten-ordered-deferred-work-follow-up.md`
   summary: Reuse a quickstart sample case when other cases push it outside the default case-list page.
   evidence: The server's default 100-case limit can omit an older sample before the wizard can match its name. The client and server now apply the same deterministic order. An exact-name filter or a lookup needs compatible REST and client behavior.
+
+### DW-739: Review the shared Redis OpenTelemetry instrumentation pin for a stable release.
+
+origin: DW-271 stable-release review, 2026-11-24
+location: docs/dev/telemetry.md; NuGet.config; references/Hexalith.Builds/Props/Directory.Packages.props
+reason: The current Builds pin is prerelease. The Memories release-manager rotation should review the official package feed within 14 days of its first stable release or by 2027-02-24, whichever comes first, and coordinate any pin change with Hexalith.Builds.
+status: open

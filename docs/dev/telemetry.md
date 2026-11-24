@@ -682,7 +682,7 @@ and consider re-splitting the capture path per the original Rev 0.5 framing.
 ## ADR-8.5-001 — Redis OTEL instrumentation package + registration shape
 
 **Status:** Accepted (2026-04-23, Story 8.5). **Decision:** register
-`OpenTelemetry.Instrumentation.StackExchangeRedis 1.15.1-beta.1` on the Memories Server's tracer
+`OpenTelemetry.Instrumentation.StackExchangeRedis` on the Memories Server's tracer
 pipeline via the shared `AddServiceDefaults()` / `ConfigureOpenTelemetry()` path using one
 `AddRedisInstrumentation(ConfigureRedisInstrumentation)` call plus a post-build
 `ConfigureRedisInstrumentation((sp, instrumentation) => ...)` callback that attaches both keyed
@@ -703,13 +703,13 @@ instrumentation benefit.
 
 ### (b) Prerelease tag + supply-chain mitigation
 
-Version `1.15.1-beta.1` is the latest release as of 2026-04-21. We explicitly accept the `-beta.N`
-tag because the upstream GA window for the 1.15 series has not opened yet, and deferring Story 8.5
-until GA would let Story 8.4's AC #2 soft-skip rot indefinitely.
+Story 8.5 accepted the then-current `1.15.1-beta.1` prerelease on 2026-04-21 so it could enable
+the Story 8.4 Redis-span assertion. The shared Hexalith.Builds catalog now supplies the exact
+version. Section (g) records the latest stable-release review.
 
 Supply-chain mitigations:
 
-1. **Exact version pin** in `Directory.Packages.props` (no floating `*`, no `[1.15, 2.0)` range).
+1. **Exact version pin** in the Hexalith.Builds package catalog imported by `Directory.Packages.props`.
 2. **`NuGet.config` with `packageSourceMapping`** at the repo root. Pins all `OpenTelemetry.*`
    packages to the official `nuget.org` source. During the prerelease window, a typosquat-adjacent
    attacker uploading a malicious `OpenTelemetry.Instrumentation.StackExchangeRedis.Extensions`
@@ -802,11 +802,11 @@ extension cannot leave it unreachable.
 
 ### (g) Upgrade-on-GA trigger (dated, not loose)
 
-Revisit this prerelease pin within **14 days of `OpenTelemetry.Instrumentation.StackExchangeRedis
-1.15.0`** (non-prerelease) shipping on nuget.org, **OR** by **2026-09-30**, whichever comes first.
-Tracking lives in `_bmad-output/implementation-artifacts/deferred-work.md` (not a loose
-`// TODO:` code comment — the loose-comment form was explicitly rejected). Owner:
-Memories release-manager rotation; review-by date: `2026-09-30`.
+The 2026-11-24 review (DW-271) confirmed that the current shared Builds pin, `1.21.0-beta.1`,
+is still prerelease. Revisit the pin within 14 days of the first stable release or by
+2027-02-24, whichever comes first. The Memories release-manager rotation tracks the review
+under DW-739 and coordinates any version change with Hexalith.Builds.
+[Upstream package versions](https://www.nuget.org/packages/OpenTelemetry.Instrumentation.StackExchangeRedis/).
 
 ### (h) FalkorDB `db.system` semantic-conventions debt — Path A (ship now)
 
