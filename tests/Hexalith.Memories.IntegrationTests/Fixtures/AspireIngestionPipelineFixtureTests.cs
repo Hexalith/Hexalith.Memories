@@ -701,7 +701,7 @@ public sealed class AspireIngestionPipelineFixtureTests
     [Fact]
     public async Task WaitForEndpointProbeAsync_CallerCancellationDuringProbe_Propagates()
     {
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(25));
+        using var cts = new CancellationTokenSource();
         int probeCount = 0;
 
         _ = await Should.ThrowAsync<OperationCanceledException>(() =>
@@ -709,6 +709,7 @@ public sealed class AspireIngestionPipelineFixtureTests
                 _ =>
                 {
                     Interlocked.Increment(ref probeCount);
+                    cts.Cancel();
                     return new TaskCompletionSource<HttpStatusCode>(
                         TaskCreationOptions.RunContinuationsAsynchronously).Task;
                 },

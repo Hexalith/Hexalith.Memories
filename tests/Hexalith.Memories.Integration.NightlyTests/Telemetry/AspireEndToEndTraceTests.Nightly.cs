@@ -83,8 +83,8 @@ public sealed partial class AspireEndToEndTraceTests
                 $"CLI root span ({MemoriesActivitySource.CliInvoke})");
 
             Activity httpClientSpan = SelectSingle(
-                capturedSpans.Where(a => a.Source.Name == "System.Net.Http").ToList(),
-                "outbound HttpClient span (System.Net.Http source)");
+                capturedSpans.Where(a => a.Source.Name == "System.Net.Http" && a.TraceId == cliRootSpan.TraceId).ToList(),
+                "outbound HttpClient span in the CLI trace (System.Net.Http source)");
 
             httpSpanId = httpClientSpan.SpanId.ToString();
             string expectedTraceId = cliRootSpan.TraceId.ToString();
