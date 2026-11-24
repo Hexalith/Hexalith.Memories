@@ -38,7 +38,7 @@ public sealed class ReferencedSourceProducerIntegrationTests(RedisStackFixture r
     [InlineData(true, "foreign")]
     [InlineData(true, "unknown")]
     [InlineData(true, "candidate")]
-    public async Task FailedReingestionCopiesPriorSourceAndReconcilesOnlyTheNewOwnerAcrossRestart(bool failBeforeScheduling, string storedOwner)
+    public async Task FailedReingestionCopiesPriorSourceAndRequiresOwnershipToReconcileAcrossRestart(bool failBeforeScheduling, string storedOwner)
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         string tenant = "reference-copy-" + Guid.NewGuid().ToString("N");
@@ -131,20 +131,22 @@ public sealed class ReferencedSourceProducerIntegrationTests(RedisStackFixture r
         app.MapSourceInventoryEndpoints(); await app.StartAsync(token);
         using var http = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
         using HttpResponseMessage response = await http.GetAsync("/api/v1/tenants/" + tenant + "/source-inventory?sourceUri=urn:synthetic:referenced", token);
-        if (failBeforeScheduling && storedOwner != "foreign")
+        if (failBeforeScheduling)
         {
+            // A historical retry cannot acquire new coverage authority. A proven foreign
+            // legacy alias does not establish that the retry unit has no other artifacts.
             response.StatusCode.ShouldBe(System.Net.HttpStatusCode.Conflict);
             (await recreated.ReadAsync(tenant, source, null, 100, token)).Entries.ShouldHaveSingleItem().TerminalVerified.ShouldBeFalse();
             ((byte[])(await restarted.GetDatabase().ExecuteAsync("DUMP", foreignKey))!).ShouldBe(foreignBefore);
             (await recreatedPayloads.ReadAsync(admitted.SourcePayloadReference!, tenant, "retry-unit", WorkflowPayloadKind.SourceBytes, token)).ShouldBe([1, 2, 3]);
+            (await recreatedPayloads.ReadAsync(original, tenant, sourceOwner, WorkflowPayloadKind.SourceBytes, token)).ShouldBe([1, 2, 3]);
+            (await restarted.GetDatabase().KeyExistsAsync(PersistFailedUnitActivity.BuildHashKey(tenant, "retry-unit"))).ShouldBeTrue();
             (await restarted.GetDatabase().KeyExistsAsync(SourcePublicationVisibility.Tombstone(tenant, "retry-unit"))).ShouldBeFalse();
             return;
         }
         response.StatusCode.ShouldBe(System.Net.HttpStatusCode.OK, await response.Content.ReadAsStringAsync(token));
         SourceInventoryEntry terminal = (await recreated.ReadAsync(tenant, "urn:synthetic:referenced", null, 100, token)).Entries.ShouldHaveSingleItem();
         terminal.State.ShouldBe("Deleted"); terminal.TerminalVerified.ShouldBeTrue();
-        if (failBeforeScheduling)
-            ((byte[])(await restarted.GetDatabase().ExecuteAsync("DUMP", foreignKey))!).ShouldBe(foreignBefore);
         (await Should.ThrowAsync<WorkflowPayloadException>(() => recreatedPayloads.ReadAsync(admitted.SourcePayloadReference!, tenant, "retry-unit", WorkflowPayloadKind.SourceBytes, token))).ErrorCode.ShouldBe("PAYLOAD_NOT_FOUND");
         (await recreatedPayloads.ReadAsync(original, tenant, sourceOwner, WorkflowPayloadKind.SourceBytes, token)).ShouldBe([1, 2, 3]);
         (await restarted.GetDatabase().SetLengthAsync(WorkflowPayloadLedger.Key(tenant, sourceOwner))).ShouldBe(1);
