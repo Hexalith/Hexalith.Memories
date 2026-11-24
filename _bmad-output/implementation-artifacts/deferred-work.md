@@ -2056,6 +2056,7 @@ origin: migrated from legacy ledger ("Deferred from: Session 5 — 9-2 review fo
 location: src/Hexalith.Memories.Server/Activities/Ingestion/GenerateNaturalLanguageDescriptionActivity.cs:~206
 reason: - **D1 — Logprobs-based confidence extraction in `GenerateNaturalLanguageDescriptionActivity`.** Dapr.AI 1.17.6 `ConversationResultChoice` exposes only `FinishReason`, `Index`, and `Message` (verified against `C:/Users/.nuget/packages/dapr.ai/1.17.6/lib/net9.0/Dapr.AI.xml`). The SDK does not surface per-token `logprobs` from the underlying provider response, so the spec-documented `exp(avg(logprob))` computation has no upstream to pull from. Task 2.5 permanently documents `ConfidenceSource = Constant` + `EstimatedConfidence = null` as the MVP behavior. Re-open triggers: (a) Dapr.AI exposes logprobs on `ConversationResultChoice` or an extension surface, OR (b) a follow-up story ships a direct-provider client path (bypassing DAPR) that exposes logprobs — only relevant if operator UX research confirms users want measured confidence numbers. Evidence in comments at `src/Hexalith.Memories.Server/Activities/Ingestion/GenerateNaturalLanguageDescriptionActivity.cs:~206`.
 status: open
+note: 2026-11-24 — Skipped. The pinned Dapr.AI 1.19.1 ConversationResultChoice exposes no log probabilities, and no direct-provider confidence path or UX decision is recorded.
 
 ### DW-293: Retry backpressure `9174 RetryBackpressureOverride` deferred.
 
@@ -2063,13 +2064,15 @@ origin: migrated from legacy ledger ("Deferred from: Session 5 — 9-2 review fo
 location: 9170/9179
 reason: - **Retry backpressure `9174 RetryBackpressureOverride` deferred.** Decision D2 was originally resolved "implement now" but on inspection the `EmbeddingRateLimiterActor` public surface does not currently expose a read-side "budget utilization %" API that the retry hosted service can consume without a new actor method + DI wiring. Shipping a partial implementation risks either (a) always-dequeue (false-negative backpressure) or (b) always-skip until manual bypass (stampede when LLM recovers). Re-open trigger: add `EmbeddingRateLimiterActor.GetCurrentUtilizationAsync()` as part of a follow-up Task 8.5.1, then layer the skip-counter + 9174 override + exponential backoff over the top. The current hosted service's `9170/9179` backlog Warning/Error + the underlying rate-limiter's throttling on the LLM calls themselves cover the acute failure mode (doubled API volume rate-limited at the embedding layer).
 status: open
+note: 2026-11-24 — Skipped. The embedding rate limiter exposes no utilization query. The ledger assigns that prerequisite to Task 8.5.1 before retry-aware backpressure can be added.
 
 ### DW-294: S6-F1. Comparer-rebuild guard test/analyzer for `new Dictionary<string, MetadataField>(...)` without explicit comparer.
 
 origin: migrated from legacy ledger ("Deferred from: code review of 9-2-dual-embedding-and-causal-chain-indexing Session 6 (2026-04-25)"), 2026-09-01
 location: n/a
 reason: - **S6-F1. Comparer-rebuild guard test/analyzer for `new Dictionary<string, MetadataField>(...)` without explicit comparer.** D6 normalizes Ordinal at the contract boundary (`IngestionInput.Metadata` / `IndexInput.Metadata` `init` accessors), but intermediate copies that build a fresh `Dictionary` without passing the comparer escape the safety net. Follow-up: add a unit test that scans the server project sources for `new Dictionary<string, MetadataField>` calls and asserts each one passes a comparer, OR introduce a Roslyn analyzer.
-status: open
+status: done 2026-11-24
+resolution: The Roslyn guard binds explicit, aliased and target-typed metadata dictionary constructors. Case annotation metadata and directory ingestion copies now pass StringComparer.Ordinal. All 58 focused guard and service tests passed.
 
 ### DW-295: S6-F2. Replace `LogGateFailedOpen` side-comment contract with explicit outer-caller log on null return.
 

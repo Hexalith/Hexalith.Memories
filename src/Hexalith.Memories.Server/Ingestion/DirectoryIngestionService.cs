@@ -644,7 +644,7 @@ internal sealed partial class DirectoryIngestionService
 
     private static Dictionary<string, MetadataField> CloneMetadata(IReadOnlyDictionary<string, MetadataField> source)
     {
-        Dictionary<string, MetadataField> clone = new(source.Count);
+        Dictionary<string, MetadataField> clone = new(source.Count, StringComparer.Ordinal);
         foreach ((string key, MetadataField value) in source)
         {
             clone[key] = value;

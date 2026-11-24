@@ -154,7 +154,7 @@ internal sealed partial class CaseService
         string sourceUri = BuildAnnotationSourceUri(input.TargetMemoryUnitId, annotationMuId);
 
         // Build annotation metadata
-        Dictionary<string, MetadataField> metadata = new()
+        Dictionary<string, MetadataField> metadata = new(StringComparer.Ordinal)
         {
             ["_system.annotation_target"] = new MetadataField(input.TargetMemoryUnitId, MetadataOrigin.Human, 1.0f),
         };
