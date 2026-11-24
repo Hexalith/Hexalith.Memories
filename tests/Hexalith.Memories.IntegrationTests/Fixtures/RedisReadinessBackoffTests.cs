@@ -16,12 +16,11 @@ public sealed class RedisReadinessBackoffTests
     private static readonly TimeSpan _ample = TimeSpan.FromMinutes(2);
 
     [Theory]
-    [InlineData(1, 250)]
-    [InlineData(2, 500)]
-    [InlineData(3, 1000)]
-    [InlineData(4, 2000)]
-    [InlineData(5, 2000)]
-    [InlineData(int.MaxValue, 2000)]
+    [InlineData(1, 1000)]
+    [InlineData(2, 2000)]
+    [InlineData(3, 4000)]
+    [InlineData(4, 4000)]
+    [InlineData(int.MaxValue, 4000)]
     public void GetDelay_DoublesUpToTheCap(int failedAttempts, int expectedBackoffMilliseconds)
     {
         RedisReadinessBackoff.GetDelay(failedAttempts, 0, _ample)
@@ -36,10 +35,10 @@ public sealed class RedisReadinessBackoffTests
     [InlineData(0.999999)]
     public void GetDelay_JitterStaysBetweenHalfAndAllOfTheBackoff(double jitterSample)
     {
-        TimeSpan delay = RedisReadinessBackoff.GetDelay(3, jitterSample, _ample);
+        TimeSpan delay = RedisReadinessBackoff.GetDelay(2, jitterSample, _ample);
 
-        delay.ShouldBeGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(500));
-        delay.ShouldBeLessThan(TimeSpan.FromMilliseconds(1000));
+        delay.ShouldBeGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(1000));
+        delay.ShouldBeLessThan(TimeSpan.FromMilliseconds(2000));
     }
 
     [Fact]
@@ -52,18 +51,13 @@ public sealed class RedisReadinessBackoffTests
     }
 
     [Fact]
-    public void GetDelay_RepeatedFailuresProbeLessOftenThanTheFixedCadence()
+    public void GetDelay_NeverProbesFasterThanTheFormerFixedCadence()
     {
-        TimeSpan total = TimeSpan.Zero;
-        for (int attempt = 1; attempt <= 9; attempt++)
+        for (int attempt = 1; attempt <= 20; attempt++)
         {
-            total += RedisReadinessBackoff.GetDelay(attempt, 0, _ample);
+            // Jitter sample 0 gives the shortest delay for each attempt.
+            RedisReadinessBackoff.GetDelay(attempt, 0, _ample).ShouldBeGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(500));
         }
-
-        // The former fixed 500 ms cadence reached its tenth attempt after 4.5 seconds. The backoff spaces
-        // repeated failures further apart while each wait stays bounded by the cap.
-        total.ShouldBeGreaterThan(TimeSpan.FromMilliseconds(4500));
-        total.ShouldBeLessThanOrEqualTo(TimeSpan.FromSeconds(9));
     }
 
     [Theory]

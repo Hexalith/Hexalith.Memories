@@ -2917,7 +2917,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 15-6-scaffol
 location: src/Hexalith.Memories.AppHost/Program.cs
 reason: - **15.6-CR1. Tight Redis PING reconnect loop without exponential backoff.** `WaitForRedisPingAsync` reconnects every 500 ms for up to 2 minutes against a Redis that may already be struggling; no backoff, no jitter. - ID: 15.6-CR1 - Status: accepted - Source story: 15-6-scaffolding-hardening-sweep - Target artifact: src/Hexalith.Memories.AppHost/Program.cs - Re-open trigger: A developer reports AppHost log spam or a Redis backpressure incident traces back to the readiness probe loop. - Rationale: Cosmetic vs functional under current single-developer / CI load profile; the 500 ms cadence is below SE.Redis's own retry intervals and never has more than one in-flight connection.
 status: done 2026-11-24
-resolution: The AppHost Redis readiness probe now waits between failed attempts using RedisReadinessBackoff: 250 ms doubling to a 2 s cap, with equal jitter and no wait past the probe deadline. The former fixed 500 ms cadence is gone. RedisReadinessBackoffTests cover growth, the cap, jitter bounds, deadline clamping and argument validation. See spec-seven-ordered-deferred-items.md.
+resolution: The AppHost Redis readiness probe now waits between failed attempts using RedisReadinessBackoff: 1 s doubling to a 4 s cap, with equal jitter, so no wait is shorter than the former fixed 500 ms cadence and none runs past the probe deadline. RedisReadinessBackoffTests cover growth, the cap, jitter bounds, the 500 ms floor, deadline clamping and argument validation. See spec-seven-ordered-deferred-items.md.
 
 ### DW-420: 15.6-CR2. Submodule guard `.git`-existence check does not detect partially-cloned submodules.
 
