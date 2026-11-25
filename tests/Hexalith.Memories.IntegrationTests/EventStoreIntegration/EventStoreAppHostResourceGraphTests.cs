@@ -18,8 +18,6 @@ using CommunityToolkit.Aspire.Hosting.Dapr;
 
 using Hexalith.Memories.TestHelpers.Process;
 
-using Microsoft.Extensions.DependencyInjection;
-
 using Shouldly;
 
 /// <summary>
@@ -58,14 +56,13 @@ public sealed class EventStoreAppHostResourceGraphTests
 
         await using IDistributedApplicationTestingBuilder builder = await DistributedApplicationTestingBuilder
             .CreateAsync<Projects.Hexalith_Memories_AppHost>();
-        await using DistributedApplication app = await builder.BuildAsync();
-
-        DistributedApplicationModel model = app.Services.GetRequiredService<DistributedApplicationModel>();
+        // Read declared resources before Aspire's build lifecycle can mutate the model.
+        IResource[] resources = [.. builder.Resources];
 
         // Exactly one `eventstore` resource -- satisfies the "AppHost adds exactly one `eventstore`
         // resource" boundary and rules out AddHexalithEventStore(...) also having been called with a
         // different resource name for the gateway itself.
-        IResource eventStoreResource = model.Resources
+        IResource eventStoreResource = resources
             .Where(r => r.Name == EventStoreResourceName)
             .ShouldHaveSingleItem();
 
@@ -75,10 +72,10 @@ public sealed class EventStoreAppHostResourceGraphTests
         // the duplicate resource name at build time (this test would then fail with a build
         // exception, not silently pass) or, were that ever relaxed, this count assertion would
         // catch the resulting double ownership directly.
-        model.Resources.OfType<IDaprComponentResource>()
+        resources.OfType<IDaprComponentResource>()
             .Count(r => r.Name == StateStoreComponentName)
             .ShouldBe(1, $"exactly one '{StateStoreComponentName}' Dapr component (single ownership)");
-        model.Resources.OfType<IDaprComponentResource>()
+        resources.OfType<IDaprComponentResource>()
             .Count(r => r.Name == PubSubComponentName)
             .ShouldBe(1, $"exactly one '{PubSubComponentName}' Dapr component (single ownership)");
 
@@ -112,6 +109,8 @@ public sealed class EventStoreAppHostResourceGraphTests
         eventStoreResource.Annotations
             .OfType<DaprComponentReferenceAnnotation>()
             .ShouldBeEmpty();
+
+        await using DistributedApplication app = await builder.BuildAsync();
     }
 
     /// <summary>

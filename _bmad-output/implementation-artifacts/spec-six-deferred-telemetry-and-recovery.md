@@ -45,3 +45,4 @@ Continue the priority-ordered deferred work after DW-518. Complete six items, ad
 - Redis fixture startup now waits for the port published to the test host. The Redis handshake and subsequent commands verify readiness at that endpoint. All twelve new Redis regressions and the six affected search cases passed.
 - The PowerShell selector fixture now allows up to two minutes for its subprocess under host load. All thirteen integration coverage tooling tests passed after the change.
 - The integration run encountered an OpenBao generation recovery timeout after Aspire could no longer find live fixture containers. The same shared topology caused subsequent connection failures.
+- The EventStore resource-graph check now inspects the declared resources before Aspire can mutate them during its build lifecycle. Both Dapr model checks passed individually.
