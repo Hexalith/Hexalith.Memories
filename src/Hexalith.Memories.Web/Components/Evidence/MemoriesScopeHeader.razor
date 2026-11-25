@@ -24,6 +24,12 @@
                 <strong data-testid="mem-scope-case">@(EvidenceDisplay.SafeText(Packet.Scope.CaseId, Localizer[EvidenceResourceKeys.TenantScope]))</strong>
             </FluentLabel>
         </FluentStack>
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="2">
+            <FluentLabel Size="LabelSize.Small">@Localizer[EvidenceResourceKeys.PermissionsLabel]</FluentLabel>
+            <FluentLabel Size="LabelSize.Medium" Weight="LabelWeight.Semibold">
+                <strong data-testid="mem-scope-permissions">@Localizer[PermissionsKey]</strong>
+            </FluentLabel>
+        </FluentStack>
         <div data-testid="mem-scope-isolation">
             <FcStatusBadge Slot="@EvidenceDisplay.SlotForIsolation(Packet.Scope.IsolationStatus)"
                            Label="@EvidenceDisplay.Label(Packet.Scope.IsolationStatus, Localizer)"
@@ -36,6 +42,21 @@
     [Parameter]
     [EditorRequired]
     public EvidencePacket Packet { get; set; } = default!;
+
+    private string PermissionsKey => Packet.Scope.PermissionsContext switch
+    {
+        EvidencePacketPermissionsContext.Tenant when HasAuthorizedScope && string.IsNullOrWhiteSpace(Packet.Scope.CaseId)
+            => EvidenceResourceKeys.TenantPermissions,
+        EvidencePacketPermissionsContext.TenantCase when HasAuthorizedScope && !string.IsNullOrWhiteSpace(Packet.Scope.CaseId)
+            => EvidenceResourceKeys.CasePermissions,
+        EvidencePacketPermissionsContext.McpAuthorization => EvidenceResourceKeys.McpAuthorizationPermissions,
+        EvidencePacketPermissionsContext.McpError => EvidenceResourceKeys.McpErrorPermissions,
+        _ => EvidenceResourceKeys.Unavailable,
+    };
+
+    private bool HasAuthorizedScope => Packet.Scope.IsolationStatus == EvidencePacketIsolationStatus.Authorized
+        && Packet.State != EvidencePacketState.Unauthorized
+        && Packet.OmittedDetails.Reason != EvidencePacketOmissionReason.Authorization;
 
     private string TenantText => Packet.Scope.IsolationStatus == EvidencePacketIsolationStatus.Unknown
         && string.Equals(Packet.Scope.TenantId, "unknown", StringComparison.Ordinal)

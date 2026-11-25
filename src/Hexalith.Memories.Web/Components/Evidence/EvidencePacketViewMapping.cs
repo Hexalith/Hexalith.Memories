@@ -21,6 +21,7 @@ public static class EvidencePacketViewMapping
     public static IReadOnlyList<EvidencePacketFieldMapping> RenderedFields { get; } =
     [
         new("scope.tenant", "EvidencePacket.Scope.TenantId", EvidenceResourceKeys.UnknownTenant),
+        new("scope.permissionsContext", "EvidencePacket.Scope.PermissionsContext", EvidenceResourceKeys.Unavailable),
         new("scope.case", "EvidencePacket.Scope.CaseId", EvidenceResourceKeys.TenantScope),
         new("scope.isolation", "EvidencePacket.Scope.IsolationStatus", EvidenceResourceKeys.Isolation(EvidencePacketIsolationStatus.Unknown)),
         new("trust.confidence", "EvidencePacket.Evidence.EvidenceStrength", EvidenceResourceKeys.Strength(EvidencePacketEvidenceStrength.None)),

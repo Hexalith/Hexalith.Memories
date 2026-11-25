@@ -3045,6 +3045,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-2.7-ev
 location: n/a
 reason: - **2.7-CR15. State precedence does not model `Redaction`/`Policy` states** (Party-Mode Hardening). Rationale: no upstream signal exists today; paired with 2.7-CR11.
 status: open
+note: 2026-11-25 — Skipped. The search producer has no Redaction or Policy omission signal. The packet mapper cannot derive either state without an upstream contract and precedence decision.
 
 ### DW-438: 2.7-CR16. `Combined` omission reason on degraded result strips token-budget hint from recovery.
 
@@ -3209,7 +3210,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of 17-1-evidence-cockpit-and-trust-components (2026-05-20)"), 2026-09-01
 location: src/Hexalith.Memories.Web/Components/Evidence/MemoriesScopeHeader.razor
 reason: - **17.1-CR2. `EvidencePacketScope.PermissionsContext` not surfaced anywhere in `MemoriesScopeHeader` or mapping** (`src/Hexalith.Memories.Web/Components/Evidence/MemoriesScopeHeader.razor`, `EvidencePacketViewMapping.cs`). Rationale: needs a UX call on where/how to display the machine-readable permission context (chip? expandable detail?); not blocking AC1.
-status: open
+status: done 2026-11-25
+resolution: The scope header displays localized, allowlisted permission context labels with an unavailable fallback. MemoriesScopeHeader_PermissionsContext_ShouldRenderOnlyKnownLabels covers tenant, case and MCP contexts and rejects unknown input.
 
 ### DW-460: 17.1-CR3. `EvidencePacketOmittedDetails` body fields (`OmittedCount/FieldNames/DetailGroups/ExpansionHandles`) silently dropped beyond the binary token-budget indicator
 
@@ -3328,7 +3330,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Triage: Story 17.1 deferred web items and architecture decisions (2026-07-06)"), 2026-09-01
 location: _bmad-output/planning-artifacts/epics.md` (future web story: Evidence Metadata and Trust Semantics Surfacing); `src/Hexalith.Memories.Web/Components/Evidence/MemoriesScopeHeader.razor`; `src/Hexalith.Memories.Web/Components/Evidence/EvidencePacketViewMapping.cs
 reason: - ID: 17.1-CR2 - Status: carried-forward - Source story: 17-1-evidence-cockpit-and-trust-components - Target artifact: `_bmad-output/planning-artifacts/epics.md` (future web story: Evidence Metadata and Trust Semantics Surfacing); `src/Hexalith.Memories.Web/Components/Evidence/MemoriesScopeHeader.razor`; `src/Hexalith.Memories.Web/Components/Evidence/EvidencePacketViewMapping.cs` - Re-open trigger: before the web surface claims to render the full Evidence Packet scope contract or adds a permissions-context chip/detail surface. - Rationale: `permissionsContext` placement is a UX information-architecture decision. It should be implemented with the other metadata surfacing work so scope, permission, and isolation signals stay coherent.
-status: open
+status: done 2026-11-25
+resolution: Duplicate of DW-459. Covered by the scope header, field mapping and localization tests.
 
 ### DW-478: ID: 17.1-CR3
 

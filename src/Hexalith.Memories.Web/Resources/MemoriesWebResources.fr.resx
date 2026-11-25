@@ -990,6 +990,11 @@
   <data name="Evidence_Scope_Label" xml:space="preserve"><value>Portée des preuves</value></data>
   <data name="Evidence_Tenant_Label" xml:space="preserve"><value>Locataire</value></data>
   <data name="Evidence_Case_Label" xml:space="preserve"><value>Dossier</value></data>
+  <data name="Evidence_Permissions_Label" xml:space="preserve"><value>Contexte d’autorisation</value></data>
+  <data name="Evidence_Permissions_Tenant" xml:space="preserve"><value>Demande limitée au locataire</value></data>
+  <data name="Evidence_Permissions_Case" xml:space="preserve"><value>Demande limitée au dossier</value></data>
+  <data name="Evidence_Permissions_McpAuth" xml:space="preserve"><value>Autorisation MCP refusée</value></data>
+  <data name="Evidence_Permissions_McpError" xml:space="preserve"><value>Portée MCP indisponible</value></data>
   <data name="Evidence_Scope_Column" xml:space="preserve"><value>Portée</value></data>
   <data name="Evidence_Trust_Label" xml:space="preserve"><value>Résumé de confiance des preuves</value></data>
   <data name="Evidence_Confidence_Column" xml:space="preserve"><value>Confiance</value></data>

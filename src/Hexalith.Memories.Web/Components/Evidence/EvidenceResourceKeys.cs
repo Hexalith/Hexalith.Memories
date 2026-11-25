@@ -13,6 +13,11 @@ internal static class EvidenceResourceKeys
     public const string ScopeLabel = "Evidence_Scope_Label";
     public const string TenantLabel = "Evidence_Tenant_Label";
     public const string CaseLabel = "Evidence_Case_Label";
+    public const string PermissionsLabel = "Evidence_Permissions_Label";
+    public const string TenantPermissions = "Evidence_Permissions_Tenant";
+    public const string CasePermissions = "Evidence_Permissions_Case";
+    public const string McpAuthorizationPermissions = "Evidence_Permissions_McpAuth";
+    public const string McpErrorPermissions = "Evidence_Permissions_McpError";
     public const string ScopeColumn = "Evidence_Scope_Column";
     public const string TrustLabel = "Evidence_Trust_Label";
     public const string ConfidenceColumn = "Evidence_Confidence_Column";

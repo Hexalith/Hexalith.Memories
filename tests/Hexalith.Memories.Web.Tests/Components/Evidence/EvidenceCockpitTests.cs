@@ -41,6 +41,56 @@ public sealed class EvidenceCockpitTests : FrontComposerTestBase
         component.Find("[data-testid='mem-evidence-scope']").TextContent.ShouldContain("case-a");
     }
 
+    [Theory]
+    [InlineData(EvidencePacketPermissionsContext.Tenant, EvidencePacketIsolationStatus.Authorized, null, "Tenant-scoped request")]
+    [InlineData(EvidencePacketPermissionsContext.TenantCase, EvidencePacketIsolationStatus.Authorized, "case-a", "Case-scoped request")]
+    [InlineData(EvidencePacketPermissionsContext.McpAuthorization, EvidencePacketIsolationStatus.Unauthorized, "case-a", "MCP authorization denied")]
+    [InlineData(EvidencePacketPermissionsContext.McpError, EvidencePacketIsolationStatus.Unknown, "case-a", "MCP scope unavailable")]
+    [InlineData(EvidencePacketPermissionsContext.TenantCase, EvidencePacketIsolationStatus.Unknown, "case-a", "Unavailable")]
+    [InlineData("raw-permission-value", EvidencePacketIsolationStatus.Authorized, "case-a", "Unavailable")]
+    [InlineData(null, EvidencePacketIsolationStatus.Authorized, "case-a", "Unavailable")]
+    [InlineData(EvidencePacketPermissionsContext.Tenant, EvidencePacketIsolationStatus.Authorized, "case-a", "Unavailable")]
+    [InlineData(EvidencePacketPermissionsContext.TenantCase, EvidencePacketIsolationStatus.Authorized, null, "Unavailable")]
+    public void MemoriesScopeHeader_PermissionsContext_ShouldRenderOnlyKnownLabels(
+        string? context,
+        EvidencePacketIsolationStatus isolationStatus,
+        string? caseId,
+        string expected)
+    {
+        EvidencePacket packet = EvidencePacketFixtures.CompletePacket();
+        packet = packet with { Scope = packet.Scope with { PermissionsContext = context!, IsolationStatus = isolationStatus, CaseId = caseId } };
+
+        Render<MemoriesScopeHeader>(parameters => parameters.Add(p => p.Packet, packet))
+            .Find("[data-testid='mem-scope-permissions']").TextContent.ShouldBe(expected);
+    }
+
+    [Fact]
+    public void MemoriesScopeHeader_AuthorizationOmission_ShouldHideCasePermissionContext()
+    {
+        EvidencePacket packet = EvidencePacketFixtures.CompletePacket();
+        packet = packet with { OmittedDetails = packet.OmittedDetails with { Reason = EvidencePacketOmissionReason.Authorization } };
+
+        Render<MemoriesScopeHeader>(parameters => parameters.Add(p => p.Packet, packet))
+            .Find("[data-testid='mem-scope-permissions']").TextContent.ShouldBe("Unavailable");
+    }
+
+    [Theory]
+    [InlineData(true, null)]
+    [InlineData(false, "Evidence refresh failed")]
+    public void MemoriesEvidenceCockpit_Refresh_ShouldHidePriorPermissionContext(bool loading, string? error)
+    {
+        EvidencePacket packet = EvidencePacketFixtures.CompletePacket();
+
+        IRenderedComponent<MemoriesEvidenceCockpit> component =
+            Render<MemoriesEvidenceCockpit>(parameters => parameters.Add(p => p.Packet, packet));
+        component.Find("[data-testid='mem-scope-permissions']").TextContent.ShouldBe("Case-scoped request");
+
+        component.Render(parameters => parameters.Add(p => p.IsLoading, loading).Add(p => p.ErrorMessage, error));
+
+        component.Find("[data-testid='mem-scope-permissions']").TextContent.ShouldBe("Unavailable");
+        component.Find("[data-testid='mem-scope-tenant']").TextContent.ShouldBe("tenant-a");
+    }
+
     [Fact]
     public void MemoriesEvidenceCockpit_RealPacket_ShouldRenderOneMultiExpandAccordionWithPrimaryExpanded()
     {
@@ -233,7 +283,7 @@ public sealed class EvidenceCockpitTests : FrontComposerTestBase
         // Every UI display field shown to operators must be tracked.
         string[] requiredFields =
         [
-            "scope.tenant", "scope.case", "scope.isolation",
+            "scope.tenant", "scope.case", "scope.isolation", "scope.permissionsContext",
             "trust.confidence", "trust.freshness", "trust.sourceCount", "trust.evidenceHealth", "trust.tokenBudget",
             "result.query", "result.summary",
             "sources.originIdentifier", "sources.type", "sources.snippet", "sources.memoryUnit", "sources.rank", "sources.score",
@@ -342,6 +392,7 @@ public sealed class EvidenceCockpitTests : FrontComposerTestBase
                 .Add(p => p.Packet, EvidencePacketFixtures.CompletePacket())).Markup;
             complete.ShouldContain("Cockpit de preuves");
             complete.ShouldContain("Locataire");
+            complete.ShouldContain("Demande limitée au dossier");
             complete.ShouldContain("Confiance");
             complete.ShouldContain("Preuves");
             complete.ShouldContain("Axes de recherche");

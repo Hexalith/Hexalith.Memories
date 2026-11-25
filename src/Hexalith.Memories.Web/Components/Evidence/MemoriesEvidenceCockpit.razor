@@ -4,7 +4,7 @@
 <article class="mem-evidence-cockpit"
          data-testid="mem-evidence-cockpit"
          aria-label="@Localizer[EvidenceResourceKeys.CockpitLabel]">
-    <MemoriesScopeHeader Packet="EffectivePacket" />
+    <MemoriesScopeHeader Packet="ScopePacket" />
     <MemoriesTrustStrip Packet="EffectivePacket"
                         Mode="@StripMode" />
 
@@ -132,6 +132,10 @@
     private bool _isRecoveryExpanded = true;
 
     private EvidencePacket EffectivePacket => Packet ?? GetUnavailablePacket();
+
+    private EvidencePacket ScopePacket => Packet is { } packet && !HasRealPacket
+        ? packet with { Scope = packet.Scope with { PermissionsContext = string.Empty } }
+        : EffectivePacket;
 
     private MemoriesTrustStrip.TrustStripMode StripMode
         => IsLoading

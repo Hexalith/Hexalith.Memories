@@ -991,6 +991,11 @@
   <data name="Evidence_Scope_Label" xml:space="preserve"><value>Evidence scope</value></data>
   <data name="Evidence_Tenant_Label" xml:space="preserve"><value>Tenant</value></data>
   <data name="Evidence_Case_Label" xml:space="preserve"><value>Case</value></data>
+  <data name="Evidence_Permissions_Label" xml:space="preserve"><value>Permission context</value></data>
+  <data name="Evidence_Permissions_Tenant" xml:space="preserve"><value>Tenant-scoped request</value></data>
+  <data name="Evidence_Permissions_Case" xml:space="preserve"><value>Case-scoped request</value></data>
+  <data name="Evidence_Permissions_McpAuth" xml:space="preserve"><value>MCP authorization denied</value></data>
+  <data name="Evidence_Permissions_McpError" xml:space="preserve"><value>MCP scope unavailable</value></data>
   <data name="Evidence_Scope_Column" xml:space="preserve"><value>Scope</value></data>
   <data name="Evidence_Trust_Label" xml:space="preserve"><value>Evidence trust summary</value></data>
   <data name="Evidence_Confidence_Column" xml:space="preserve"><value>Confidence</value></data>
