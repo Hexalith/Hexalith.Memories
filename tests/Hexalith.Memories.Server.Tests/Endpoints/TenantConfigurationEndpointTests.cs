@@ -194,6 +194,7 @@ public class TenantConfigurationEndpointTests
             embeddingConfigProvider,
             summaryCache,
             maxConcurrency: 1,
+            CreateLogger<TenantMetricsService>(),
             CancellationToken.None);
         TenantSummary[] second = await TenantEndpointHandlers.BuildTenantSummariesAsync(
             tenants,
@@ -201,6 +202,7 @@ public class TenantConfigurationEndpointTests
             embeddingConfigProvider,
             summaryCache,
             maxConcurrency: 1,
+            CreateLogger<TenantMetricsService>(),
             CancellationToken.None);
 
         first.Length.ShouldBe(3);
@@ -209,6 +211,36 @@ public class TenantConfigurationEndpointTests
         embeddingConfigProvider.EmbeddingConfigCalls.ShouldBe(3);
     }
 
+
+    [Fact]
+    public async Task BuildTenantSummariesAsync_IsolatesOneTenantMetricFailure()
+    {
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        TenantInfo[] tenants =
+        [
+            new("tenant-a", "Tenant A", TenantStatus.Active, now),
+            new("tenant-b", "Tenant B", TenantStatus.Active, now),
+        ];
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetEndPoints(Arg.Any<bool>()).Returns([]);
+        IDatabase db = Substitute.For<IDatabase>();
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+        db.HashGetAsync("tenant-a:metadata", "lastActivityAt").Returns((RedisValue)now.Ticks);
+        db.HashGetAsync("tenant-b:metadata", "lastActivityAt")
+            .Returns(Task.FromException<RedisValue>(new ObjectDisposedException("backend")));
+        TenantMetricsService metrics = new(redis, Substitute.For<IConnectionMultiplexer>(), CreateLogger<TenantMetricsService>());
+
+        TenantSummary[] summaries = await TenantEndpointHandlers.BuildTenantSummariesAsync(
+            tenants, metrics, CreateEmbeddingConfigProvider(), CreateSummaryCache(),
+            maxConcurrency: 2, CreateLogger<TenantMetricsService>(), CancellationToken.None);
+
+        summaries.Select(static summary => summary.Id).ShouldBe(["tenant-a", "tenant-b"]);
+        summaries[0].LastActivityAt.ShouldBe(now);
+        summaries[1].DisplayName.ShouldBe("Tenant B");
+        summaries[1].LastActivityAt.ShouldBeNull();
+        summaries[1].MemoryUnitCount.ShouldBeNull();
+        summaries[1].IndexStatus.ShouldBe(new TenantIndexStatus(IndexHealth.Unknown, IndexHealth.Unknown, IndexHealth.Unknown));
+    }
 
     [Fact]
     public async Task GetTenantConfigurationAsync_WhenTenantDisappearsAfterExistsCheck_ReturnsNotFound()

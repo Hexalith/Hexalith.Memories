@@ -10,12 +10,13 @@ using Hexalith.Memories.Server.Endpoints;
 using Hexalith.Memories.Server.Ingestion;
 
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 
 /// <summary>
 /// Testable minimal-API handlers for tenant configuration/listing endpoints introduced in Story 5.5.
 /// Extracted from <c>Program.cs</c> so runtime branches can be unit-tested without spinning up a host.
 /// </summary>
-internal static class TenantEndpointHandlers
+internal static partial class TenantEndpointHandlers
 {
     /// <summary>Builds the enriched tenant summary used by <c>GET /api/v1/tenants</c>.</summary>
     /// <param name="tenant">The tenant record from the registry.</param>
@@ -40,6 +41,7 @@ internal static class TenantEndpointHandlers
     /// <param name="embeddingConfigProvider">Cached tenant embedding configuration provider.</param>
     /// <param name="summaryCache">Short-lived tenant summary cache.</param>
     /// <param name="maxConcurrency">Maximum concurrent tenant summary enrichments.</param>
+    /// <param name="logger">Logger for tenant enrichment failures.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The tenant summaries in input order.</returns>
     internal static async Task<TenantSummary[]> BuildTenantSummariesAsync(
@@ -48,6 +50,7 @@ internal static class TenantEndpointHandlers
         ITenantEmbeddingConfigProvider embeddingConfigProvider,
         TenantSummaryCache summaryCache,
         int maxConcurrency,
+        ILogger logger,
         CancellationToken cancellationToken)
     {
         int concurrency = Math.Clamp(maxConcurrency, 1, 32);
@@ -64,6 +67,21 @@ internal static class TenantEndpointHandlers
                     summaryCache,
                     cancellationToken).ConfigureAwait(false);
             }
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                LogTenantEnrichmentFailure(logger, tenant.Id, ex.GetType().Name);
+                return new TenantSummary
+                {
+                    Id = tenant.Id,
+                    DisplayName = tenant.DisplayName,
+                    Status = tenant.Status,
+                    CreatedAt = tenant.CreatedAt,
+                    IndexSizes = new TenantIndexSizes(null, null, null),
+                    IndexStatus = new TenantIndexStatus(IndexHealth.Unknown, IndexHealth.Unknown, IndexHealth.Unknown),
+                    ReindexRequired = false,
+                };
+            }
             finally
             {
                 gate.Release();
@@ -72,6 +90,9 @@ internal static class TenantEndpointHandlers
 
         return await Task.WhenAll(tasks).ConfigureAwait(false);
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Tenant summary enrichment for {TenantId} failed with {ExceptionType}")]
+    private static partial void LogTenantEnrichmentFailure(ILogger logger, string tenantId, string exceptionType);
 
     private static async Task<TenantSummary> BuildTenantSummaryCoreAsync(
         TenantInfo tenant,

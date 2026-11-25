@@ -264,6 +264,7 @@ internal static class TenantLifecycleEndpoints
             ITenantEmbeddingConfigProvider embeddingConfigProvider,
             TenantSummaryCache summaryCache,
             IOptions<TenantReadCacheOptions> tenantReadCacheOptions,
+            ILogger<global::Program> logger,
             HttpContext httpContext,
             [FromQuery] int offset = 0,
             [FromQuery] int? limit = null,
@@ -280,6 +281,7 @@ internal static class TenantLifecycleEndpoints
                 embeddingConfigProvider,
                 summaryCache,
                 tenantReadCacheOptions.Value.GetMaxTenantListConcurrency(),
+                logger,
                 cancellationToken);
             return Results.Ok(summaries);
         });
