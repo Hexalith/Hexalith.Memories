@@ -1010,6 +1010,11 @@
   <data name="Evidence_Graph_Section" xml:space="preserve"><value>Graph context</value></data>
   <data name="Evidence_Result_Label" xml:space="preserve"><value>Evidence result</value></data>
   <data name="Evidence_Query_Label" xml:space="preserve"><value>Query</value></data>
+  <data name="Evidence_Result_Counts" xml:space="preserve"><value>Returned: {0}. Reported matches: {1}.</value></data>
+  <data name="Evidence_Result_CountsUnavailable" xml:space="preserve"><value>Result counts unavailable</value></data>
+  <data name="Evidence_Result_IndexedAvailable" xml:space="preserve"><value>Tenant has indexed memories</value></data>
+  <data name="Evidence_Result_IndexedNone" xml:space="preserve"><value>Tenant has no indexed memories</value></data>
+  <data name="Evidence_Result_IndexedUnknown" xml:space="preserve"><value>Tenant index status unavailable</value></data>
   <data name="Evidence_Loading" xml:space="preserve"><value>Loading evidence</value></data>
   <data name="Evidence_Error" xml:space="preserve"><value>Evidence unavailable. {0}</value></data>
   <data name="Evidence_UnknownTenant" xml:space="preserve"><value>unknown tenant</value></data>

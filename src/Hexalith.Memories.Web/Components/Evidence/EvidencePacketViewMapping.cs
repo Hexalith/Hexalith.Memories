@@ -17,6 +17,8 @@ public static class EvidencePacketViewMapping
     /// </remarks>
     public const string NoContractSource = "(none — no contract source)";
 
+    private const string ResultCountSources = "EvidencePacket.Result.TotalCount / EvidencePacket.Result.ReturnedCount / EvidencePacket.Evidence.AllEnabledAxesUnavailable / EvidencePacket.OmittedDetails.DetailGroups";
+
     /// <summary>Gets the fields rendered by the Evidence Cockpit slice.</summary>
     public static IReadOnlyList<EvidencePacketFieldMapping> RenderedFields { get; } =
     [
@@ -30,6 +32,9 @@ public static class EvidencePacketViewMapping
         new("trust.evidenceHealth", "EvidencePacket.State", EvidenceResourceKeys.State(EvidencePacketState.Empty)),
         new("trust.tokenBudget", "EvidencePacket.OmittedDetails.Reason", EvidenceResourceKeys.TokenBudgetWithin),
         new("result.query", "EvidencePacket.Result.Query", EvidenceResourceKeys.NoQuery),
+        new("result.totalCount", ResultCountSources, EvidenceResourceKeys.ResultCountsUnavailable),
+        new("result.returnedCount", ResultCountSources, EvidenceResourceKeys.ResultCountsUnavailable),
+        new("result.hasIndexedMemoryUnits", "EvidencePacket.Result.HasIndexedMemoryUnits", EvidenceResourceKeys.IndexedMemoriesUnknown),
         new("result.summary", "EvidencePacket.Result.Summary", EvidenceResourceKeys.SummaryUnavailable),
         new("sources.originIdentifier", "EvidencePacket.Sources[].SourceUri", EvidenceResourceKeys.SourceUnavailable),
         new("sources.type", "EvidencePacket.Sources[].SourceType", EvidenceResourceKeys.UnknownSourceType),

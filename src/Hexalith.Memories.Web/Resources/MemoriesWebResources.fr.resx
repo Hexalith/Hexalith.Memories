@@ -1009,6 +1009,11 @@
   <data name="Evidence_Graph_Section" xml:space="preserve"><value>Contexte de graphe</value></data>
   <data name="Evidence_Result_Label" xml:space="preserve"><value>Résultat des preuves</value></data>
   <data name="Evidence_Query_Label" xml:space="preserve"><value>Requête</value></data>
+  <data name="Evidence_Result_Counts" xml:space="preserve"><value>Résultats renvoyés : {0}. Correspondances signalées : {1}.</value></data>
+  <data name="Evidence_Result_CountsUnavailable" xml:space="preserve"><value>Nombre de résultats indisponible</value></data>
+  <data name="Evidence_Result_IndexedAvailable" xml:space="preserve"><value>Le locataire possède des mémoires indexées</value></data>
+  <data name="Evidence_Result_IndexedNone" xml:space="preserve"><value>Le locataire ne possède aucune mémoire indexée</value></data>
+  <data name="Evidence_Result_IndexedUnknown" xml:space="preserve"><value>État de l’index du locataire indisponible</value></data>
   <data name="Evidence_Loading" xml:space="preserve"><value>Chargement des preuves</value></data>
   <data name="Evidence_Error" xml:space="preserve"><value>Preuves indisponibles. {0}</value></data>
   <data name="Evidence_UnknownTenant" xml:space="preserve"><value>locataire inconnu</value></data>

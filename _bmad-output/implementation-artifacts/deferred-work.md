@@ -3234,7 +3234,8 @@ resolution: Citations display localized case identifiers, case names and annotat
 origin: migrated from legacy ledger ("Deferred from: code review of 17-1-evidence-cockpit-and-trust-components (2026-05-20)"), 2026-09-01
 location: EvidencePacketResultSummary.TotalCount/ReturnedCount/HasIndexedMemoryUnits
 reason: - **17.1-CR5. `EvidencePacketResultSummary.TotalCount/ReturnedCount/HasIndexedMemoryUnits` not surfaced** (`MemoriesEvidenceCockpit.razor:20-31`). Rationale: distinguishes empty-tenant from empty-result, but not strictly required by AC1; adds value when an Empty fixture lands.
-status: open
+status: done 2026-11-25
+resolution: The authorized result section distinguishes returned and reported match counts, missing retrieval counts, and the three indexed-memory states. Component tests verify large counts, degraded diagnostics and authorization suppression.
 
 ### DW-463: 17.1-CR6. `EvidencePacketEvidence.Degraded` / `AllEnabledAxesUnavailable` flags not fed into Trust Strip
 
@@ -3356,7 +3357,8 @@ resolution: Duplicate of DW-461. Covered by the source citation metadata and sco
 origin: migrated from legacy ledger ("Triage: Story 17.1 deferred web items and architecture decisions (2026-07-06)"), 2026-09-01
 location: _bmad-output/planning-artifacts/epics.md` (future web story: Evidence Metadata and Trust Semantics Surfacing); `src/Hexalith.Memories.Web/Components/Evidence/MemoriesEvidenceCockpit.razor
 reason: - ID: 17.1-CR5 - Status: carried-forward - Source story: 17-1-evidence-cockpit-and-trust-components - Target artifact: `_bmad-output/planning-artifacts/epics.md` (future web story: Evidence Metadata and Trust Semantics Surfacing); `src/Hexalith.Memories.Web/Components/Evidence/MemoriesEvidenceCockpit.razor` - Re-open trigger: before the web surface ships an empty-tenant, empty-result, or indexed-memory-unit distinction to users. - Rationale: Result-summary counts affect user interpretation of empty and partial states. They belong with the metadata surfacing story so empty-result language, counts, and indexed-unit signals are tested together.
-status: open
+status: done 2026-11-25
+resolution: Duplicate of DW-462. Covered by the cockpit result metadata and authorization tests.
 
 ### DW-481: ID: 17.1-CR6
 

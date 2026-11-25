@@ -314,6 +314,77 @@ public sealed class EvidenceCockpitTests : FrontComposerTestBase
         component.FindAll("[data-testid='mem-source-item']").ShouldBeEmpty();
     }
 
+    [Theory]
+    [InlineData(7_000_000_000L, 1, true, EvidencePacketState.Partial, "Returned: 1. Reported matches: 7000000000.", "Tenant has indexed memories")]
+    [InlineData(0L, 0, false, EvidencePacketState.Empty, "Returned: 0. Reported matches: 0.", "Tenant has no indexed memories")]
+    [InlineData(0L, 0, null, EvidencePacketState.Empty, "Returned: 0. Reported matches: 0.", "Tenant index status unavailable")]
+    [InlineData(0L, 0, null, EvidencePacketState.Degraded, "Returned: 0. Reported matches: 0.", "Tenant index status unavailable")]
+    [InlineData(5L, 1, true, EvidencePacketState.Degraded, "Returned: 1. Reported matches: 5.", "Tenant has indexed memories")]
+    [InlineData(-1L, 0, null, EvidencePacketState.Empty, "Result counts unavailable", "Tenant index status unavailable")]
+    public void MemoriesEvidenceCockpit_ShouldDistinguishReportedCountsAndIndexStatus(
+        long total,
+        int returned,
+        bool? indexed,
+        EvidencePacketState state,
+        string countsText,
+        string indexText)
+    {
+        EvidencePacket packet = EvidencePacketFixtures.CompletePacket();
+        packet = packet with
+        {
+            State = state,
+            Result = packet.Result with { TotalCount = total, ReturnedCount = returned, HasIndexedMemoryUnits = indexed },
+            Evidence = packet.Evidence with
+            {
+                Degraded = state == EvidencePacketState.Degraded,
+                AllEnabledAxesUnavailable = state == EvidencePacketState.Degraded ? false : null,
+            },
+        };
+
+        IRenderedComponent<MemoriesEvidenceCockpit> component =
+            Render<MemoriesEvidenceCockpit>(parameters => parameters.Add(p => p.Packet, packet));
+        component.Find("[data-testid='mem-evidence-result-counts']").TextContent.ShouldBe(countsText);
+        component.Find("[data-testid='mem-evidence-index-status']").TextContent.ShouldBe(indexText);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void MemoriesEvidenceCockpit_UnavailableRetrieval_ShouldNotPresentDefaultCounts(bool allAxesUnavailable)
+    {
+        EvidencePacket packet = EvidencePacketFixtures.CompletePacket();
+        packet = allAxesUnavailable
+            ? packet with { Evidence = packet.Evidence with { AllEnabledAxesUnavailable = true } }
+            : EvidencePacketMapper.FromError(new ErrorResponse("DAPR_UNAVAILABLE", "Backend unavailable", "Retry"), packet.Scope);
+
+        Render<MemoriesEvidenceCockpit>(parameters => parameters.Add(p => p.Packet, packet))
+            .Find("[data-testid='mem-evidence-result-counts']").TextContent.ShouldBe("Result counts unavailable");
+    }
+
+    [Theory]
+    [InlineData(EvidencePacketIsolationStatus.Unknown, EvidencePacketState.Complete, EvidencePacketOmissionReason.None)]
+    [InlineData(EvidencePacketIsolationStatus.Unauthorized, EvidencePacketState.Complete, EvidencePacketOmissionReason.None)]
+    [InlineData(EvidencePacketIsolationStatus.Authorized, EvidencePacketState.Unauthorized, EvidencePacketOmissionReason.None)]
+    [InlineData(EvidencePacketIsolationStatus.Authorized, EvidencePacketState.Complete, EvidencePacketOmissionReason.Authorization)]
+    public void MemoriesEvidenceCockpit_RestrictedPacket_ShouldSuppressResultMetadata(
+        EvidencePacketIsolationStatus isolation,
+        EvidencePacketState state,
+        EvidencePacketOmissionReason reason)
+    {
+        EvidencePacket packet = EvidencePacketFixtures.CompletePacket();
+        packet = packet with
+        {
+            Scope = packet.Scope with { IsolationStatus = isolation },
+            State = state,
+            OmittedDetails = packet.OmittedDetails with { Reason = reason },
+        };
+
+        IRenderedComponent<MemoriesEvidenceCockpit> component =
+            Render<MemoriesEvidenceCockpit>(parameters => parameters.Add(p => p.Packet, packet));
+        component.FindAll("[data-testid='mem-evidence-result-counts']").ShouldBeEmpty();
+        component.FindAll("[data-testid='mem-evidence-index-status']").ShouldBeEmpty();
+    }
+
     [Fact]
     public void MemoriesSourceCitationStack_AuthorizationOmission_ShouldSuppressCitationMetadata()
     {
@@ -349,7 +420,7 @@ public sealed class EvidenceCockpitTests : FrontComposerTestBase
         [
             "scope.tenant", "scope.case", "scope.isolation", "scope.permissionsContext",
             "trust.confidence", "trust.freshness", "trust.sourceCount", "trust.evidenceHealth", "trust.tokenBudget",
-            "result.query", "result.summary",
+            "result.query", "result.summary", "result.totalCount", "result.returnedCount", "result.hasIndexedMemoryUnits",
             "sources.originIdentifier", "sources.type", "sources.snippet", "sources.memoryUnit", "sources.rank", "sources.score",
             "sources.timestamp", "sources.freshness", "sources.caseId", "sources.caseName", "sources.annotations",
             "axes.axis", "axes.normalizedScore", "axes.rankingReason", "axes.normalizationMethod", "axes.unavailableAxes", "axes.caveat",
@@ -457,6 +528,7 @@ public sealed class EvidenceCockpitTests : FrontComposerTestBase
             complete.ShouldContain("Cockpit de preuves");
             complete.ShouldContain("Locataire");
             complete.ShouldContain("Demande limitée au dossier");
+            complete.ShouldContain("Le locataire possède des mémoires indexées");
             complete.ShouldContain("Confiance");
             complete.ShouldContain("Preuves");
             complete.ShouldContain("Axes de recherche");

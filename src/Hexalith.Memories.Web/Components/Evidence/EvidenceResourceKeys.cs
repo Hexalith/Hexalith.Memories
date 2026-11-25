@@ -32,6 +32,11 @@ internal static class EvidenceResourceKeys
     public const string GraphSection = "Evidence_Graph_Section";
     public const string ResultLabel = "Evidence_Result_Label";
     public const string QueryLabel = "Evidence_Query_Label";
+    public const string ResultCounts = "Evidence_Result_Counts";
+    public const string ResultCountsUnavailable = "Evidence_Result_CountsUnavailable";
+    public const string IndexedMemoriesAvailable = "Evidence_Result_IndexedAvailable";
+    public const string NoIndexedMemories = "Evidence_Result_IndexedNone";
+    public const string IndexedMemoriesUnknown = "Evidence_Result_IndexedUnknown";
     public const string Loading = "Evidence_Loading";
     public const string Error = "Evidence_Error";
     public const string UnknownTenant = "Evidence_UnknownTenant";

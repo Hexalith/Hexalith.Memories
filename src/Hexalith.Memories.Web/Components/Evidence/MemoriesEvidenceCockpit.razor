@@ -66,6 +66,13 @@
                     <FluentText data-testid="mem-evidence-summary">
                         @EvidenceDisplay.SafeText(EffectivePacket.Result.Summary, Localizer[EvidenceResourceKeys.SummaryUnavailable])
                     </FluentText>
+                    @if (EffectivePacket.Scope.IsolationStatus == EvidencePacketIsolationStatus.Authorized
+                        && EffectivePacket.State != EvidencePacketState.Unauthorized
+                        && EffectivePacket.OmittedDetails.Reason != EvidencePacketOmissionReason.Authorization)
+                    {
+                        <FluentText data-testid="mem-evidence-result-counts">@ResultCountsText</FluentText>
+                        <FluentText data-testid="mem-evidence-index-status">@IndexedMemoriesText</FluentText>
+                    }
                 </section>
             </FluentAccordionItem>
 
@@ -151,6 +158,27 @@
     private bool ShouldComposeEvidenceChildren => HasRealPacket
         && !EvidenceDisplay.IsRestrictiveScope(EffectivePacket.Scope.IsolationStatus)
         && EffectivePacket.State is not EvidencePacketState.Unauthorized;
+
+    private string ResultCountsText
+    {
+        get
+        {
+            EvidencePacket packet = EffectivePacket;
+            EvidencePacketResultSummary result = packet.Result;
+            bool retrievalUnavailable = packet.Evidence.AllEnabledAxesUnavailable == true
+                || packet.OmittedDetails.DetailGroups.Contains("diagnostics", StringComparer.Ordinal);
+            return retrievalUnavailable || result.TotalCount < 0 || result.ReturnedCount < 0
+                ? Localizer[EvidenceResourceKeys.ResultCountsUnavailable]
+                : Localizer[EvidenceResourceKeys.ResultCounts, result.ReturnedCount, result.TotalCount];
+        }
+    }
+
+    private string IndexedMemoriesText => Localizer[EffectivePacket.Result.HasIndexedMemoryUnits switch
+    {
+        true => EvidenceResourceKeys.IndexedMemoriesAvailable,
+        false => EvidenceResourceKeys.NoIndexedMemories,
+        null => EvidenceResourceKeys.IndexedMemoriesUnknown,
+    }];
 
     private RestrictiveBannerView? RestrictiveBanner => HasRealPacket
         ? ResolveRestrictiveBanner(EffectivePacket)
