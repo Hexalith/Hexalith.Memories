@@ -41,7 +41,7 @@ HISTORICAL_HASHES = {
     "phase-verification.json": "3226cbb95442b6d6fb0dc45fa08bf4a006b0c0e9e69116cc145c0c9cd143a561",
     "complete-set-dry-run.json": "0dfbb0eb92da1b10a11b711c8f9016f53a1f09ec8363ee44440ad7cc34052cd2",
 }
-PINNED_SHA = "b80f3e85fc803f71bf7b2809965db0aceafdc3c5"
+PINNED_SHA = "62876129eaa035e78bd0324419231f07d43a07b8"
 HISTORICAL_BUILDS_SHA = "f0feeb234cbc16f88c2886a6ffae7122e05dd64b"
 # Epic 30 Story 30.4 names exactly these five mappings under one set identity.
 EXPECTED_MAPPINGS = [
@@ -232,8 +232,15 @@ class RepositoryQualificationTests(unittest.TestCase):
         steps = document["observations"]["buildsUploadSteps"]
         self.assertEqual(2, len(steps))
         for step in steps:
-            self.assertEqual(("warn", ".hexalith/release-evidence/**", "true", "30"),
-                             (step["if-no-files-found"], step["path"], step["include-hidden-files"], step["retention-days"]))
+            self.assertEqual(
+                (
+                    "${{ steps.semantic-release.outputs.oci-release-version != '' && 'error' || 'warn' }}",
+                    ".hexalith/release-evidence/**",
+                    "true",
+                    "30",
+                ),
+                (step["if-no-files-found"], step["path"], step["include-hidden-files"], step["retention-days"]),
+            )
             self.assertEqual("pass", check(document, f"builds-upload-covers-hidden-evidence-root:line-{step['line']}")["result"])
         self.assertEqual("pass", check(document, "no-stray-builds-output-outside-the-expected-evidence")["result"])
         manifest = document["observations"]["callerHashManifest"]

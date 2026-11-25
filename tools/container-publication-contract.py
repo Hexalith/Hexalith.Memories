@@ -24,12 +24,13 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 
-APPROVED_BUILDS_SHA = "b80f3e85fc803f71bf7b2809965db0aceafdc3c5"
+APPROVED_BUILDS_SHA = "62876129eaa035e78bd0324419231f07d43a07b8"
 # Keep previous release revisions available for recovery of their retained artifacts.
 RECOVERY_BUILDS_SHAS = {
     "81c88b34d09d34260b92d7f0928dbbc1c7446baa",
     "ae77d5690a9411a2154fa4ed5231edc373942573",
     "38e038d1179b1c829ba47a45bfa0a4683ea5e2a5",
+    "b80f3e85fc803f71bf7b2809965db0aceafdc3c5",
     APPROVED_BUILDS_SHA,
 }
 PLATFORMS = ["linux/amd64", "linux/arm64"]
@@ -40,7 +41,24 @@ CANONICAL_IMAGES = [
     {"name": "access-telemetry-clock", "project": "src/Hexalith.Memories.AccessTelemetry.Clock/Hexalith.Memories.AccessTelemetry.Clock.csproj", "repository": "memories-access-telemetry-clock", "health": "signed-readiness"},
     {"name": "domain-service", "project": "src/Hexalith.Memories.DomainService/Hexalith.Memories.DomainService.csproj", "repository": "memories-domain-service", "health": "liveness"},
 ]
-SHARED_FILES = ("publication_preflight.py", "oci_registry_validator.py", "smoke_container_platforms.py", "smoke-container-platforms.sh", "publish-containers.sh", "action.yml")
+SHARED_FILES = (
+    "publication_preflight.py",
+    "oci_registry_validator.py",
+    "oci_attestation.py",
+    "smoke_container_platforms.py",
+    "smoke-container-platforms.sh",
+    "publish-containers.sh",
+    "action.yml",
+)
+
+
+def shared_files_for(sha):
+    """Current pin records the attestation helper; earlier recovery SHAs do not."""
+    if sha == APPROVED_BUILDS_SHA:
+        return SHARED_FILES
+    return tuple(name for name in SHARED_FILES if name != "oci_attestation.py")
+
+
 # Every OCI child must start exactly like the verified single-RID deployment archive.
 RUNTIME_CONFIG_FIELDS = ("Env", "Entrypoint", "Cmd", "WorkingDir", "User", "ExposedPorts")
 COMMAND_TIMEOUT_SECONDS = 1800
@@ -137,7 +155,7 @@ def load_shared(directory, recovery_identity=None):
     if checkout != expected_sha:
         raise ValueError("Publication helpers are not the approved Builds revision.")
     files = {}
-    for name in (*SHARED_FILES, "../../Props/ContainerProvenance.targets"):
+    for name in (*shared_files_for(expected_sha), "../../Props/ContainerProvenance.targets"):
         path = (directory / name).resolve()
         relative = path.relative_to(root).as_posix()
         approved = subprocess.run(["git", "-C", str(root), "show", f"{expected_sha}:{relative}"], capture_output=True, check=True).stdout
@@ -482,7 +500,7 @@ def verify_frozen_identity(identity):
             or not re.fullmatch(r"[a-z0-9]+(?:[a-z0-9.-]*[a-z0-9])?(?::[0-9]+)?", str(identity.get("registry")))
             or any(not re.fullmatch(r"[1-9][0-9]*", str(identity.get("run", {}).get(name))) for name in ("GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT"))):
         raise ValueError("Frozen version, registry or failed-run identity is invalid.")
-    expected_helpers = {f"Github/publish-containers/{name}" for name in SHARED_FILES} | {"Props/ContainerProvenance.targets"}
+    expected_helpers = {f"Github/publish-containers/{name}" for name in shared_files_for(identity.get("buildsSha"))} | {"Props/ContainerProvenance.targets"}
     if (set(identity.get("helpers", {})) != expected_helpers
             or any(not re.fullmatch(r"[0-9a-f]{64}", str(value)) for value in identity["helpers"].values())):
         raise ValueError("Frozen identity does not record the complete helper hashes.")

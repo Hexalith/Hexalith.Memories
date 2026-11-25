@@ -1,6 +1,6 @@
 {
   "schemaVersion": "hexalith.memories.container-publication.v1",
-  "buildsSha": "b80f3e85fc803f71bf7b2809965db0aceafdc3c5",
+  "buildsSha": "62876129eaa035e78bd0324419231f07d43a07b8",
   "platforms": ["linux/amd64", "linux/arm64"],
   "images": [
     {"name": "server", "project": "src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj", "repository": "memories", "health": "liveness"},

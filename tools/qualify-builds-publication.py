@@ -63,9 +63,10 @@ PROFILE_LABEL = "tools/builds-publication-qualification.json"
 BUILDS_REPOSITORY = "Hexalith/Hexalith.Builds"
 BUILDS_PATH = PurePosixPath("references/Hexalith.Builds")
 HELPER_DIRECTORY = PurePosixPath("Github/publish-containers")
-# The five files action.yml installs into .hexalith/release and the publisher executes.
+# The files action.yml installs into .hexalith/release and the publisher executes.
 EXECUTED_HELPERS = (
     "publish-containers.sh",
+    "oci_attestation.py",
     "oci_registry_validator.py",
     "publication_preflight.py",
     "smoke-container-platforms.sh",
@@ -196,7 +197,7 @@ EXCEPTION_CATALOG = {
         "handedTo": ["30-4-five-image-publication-contract"],
     },
     "warn-upload-without-hash-manifest": {
-        "gap": "The reference upload step uses if-no-files-found: warn and uploads no hash manifest of the evidence set.",
+        "gap": "The reference upload step uses if-no-files-found: warn when no OCI version was produced, error otherwise, and uploads no hash manifest of the evidence set.",
         "callerControl": "The caller writes a SHA-256 manifest of the complete evidence set, and the caller upload must fail on missing files.",
         "handedTo": [
             "30-3-guarded-release-dispatch-and-shared-caller-adoption",
@@ -1325,7 +1326,7 @@ class Sandbox:
         for directory in (self.release_directory, self.world.bin_directory, self.world.seam_directory,
                           self.world.registry_directory, self.root / "home", self.root / "tmp"):
             directory.mkdir(parents=True, exist_ok=True)
-        # Mirror action.yml: copy exactly the five approved helper files and mark them executable.
+        # Mirror action.yml: copy exactly the approved helper files and mark them executable.
         for name_, data in context.builds.helper_bytes.items():
             target = self.release_directory / name_
             target.write_bytes(data)
@@ -2335,7 +2336,12 @@ def run_evidence_upload(context: Context, scratch: Path, state: dict, result: Ch
     locations = ", ".join(f"{DOMAIN_RELEASE_WORKFLOW}:{step['line']}" for step in steps)
     result.exception(
         "warn-upload-without-hash-manifest",
-        all(step.get("if-no-files-found") == "warn" for step in steps) and builds_covered < listed,
+        all(
+            step.get("if-no-files-found")
+            == "${{ steps.semantic-release.outputs.oci-release-version != '' && 'error' || 'warn' }}"
+            for step in steps
+        )
+        and builds_covered < listed,
         f"Every upload step ({locations}) uses if-no-files-found: "
         f"{', '.join(sorted({str(step.get('if-no-files-found')) for step in steps}))}; "
         f"Builds hash lists cover {len(builds_covered & listed)} of {len(listed)} evidence files.",

@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 
-APPROVED_BUILDS_SHA = "b80f3e85fc803f71bf7b2809965db0aceafdc3c5"
+APPROVED_BUILDS_SHA = "62876129eaa035e78bd0324419231f07d43a07b8"
 SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$", re.ASCII)
 
 
