@@ -37,3 +37,8 @@ Continue the priority-ordered deferred work after DW-518. Complete six items, ad
 - Medium, patched. The retry race test checks sorted-set entries, payloads, completion lineage, and tenant backlog membership for every mutation outcome.
 - Medium, patched. Replay-safety documentation specifies the existing intake quiescence rule and how to invalidate the marker during rollback to an untracked writer. Tests cover the shared drain confirmation across replicas and the startup timeout separately.
 - Medium, deferred. Annotation projection starts ingestion as a child workflow outside the scheduler that populates the registry. Track the replay-safety coverage gap as DW-740.
+
+## Verification
+
+- The Release solution build completed with zero warnings and errors.
+- The full suite exposed an outdated case-status test fixture that supplied stream data to a summary-hash read. The fixture now supplies the persisted summary and the focused regression passes.

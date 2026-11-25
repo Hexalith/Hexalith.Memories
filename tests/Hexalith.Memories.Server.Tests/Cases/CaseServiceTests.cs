@@ -451,48 +451,14 @@ public class CaseServiceTests
         IGraphQueryBuilder builder = CreateMockBuilder();
         ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
 
-        // Create activity service with mocked Redis that returns activity data
         (IConnectionMultiplexer activityRedis, IDatabase activityDb) = CreateMockRedis();
-        activityDb.StreamRangeAsync(
-            Arg.Any<RedisKey>(),
-            Arg.Any<RedisValue?>(),
-            Arg.Any<RedisValue?>(),
-            Arg.Is<int?>(c => c == 1),
-            Arg.Is<Order>(o => o == Order.Descending),
-            Arg.Any<CommandFlags>())
-            .Returns(_ => new StreamEntry[]
-            {
-                new("1712345678901-0",
-                [
-                    new NameValueEntry("type", "memoryUnitIngested"),
-                    new NameValueEntry("actor", "system"),
-                    new NameValueEntry("description", "Ingested"),
-                ]),
-            });
-
-        // For GetFailedCountAsync: return mix of events
-        activityDb.StreamRangeAsync(
-            Arg.Any<RedisKey>(),
-            Arg.Any<RedisValue?>(),
-            Arg.Any<RedisValue?>(),
-            Arg.Is<int?>(c => c == null || c > 1),
-            Arg.Any<Order>(),
-            Arg.Any<CommandFlags>())
-            .Returns(_ => new StreamEntry[]
-            {
-                new("1-0",
-                [
-                    new NameValueEntry("type", "ingestionFailed"),
-                    new NameValueEntry("actor", "system"),
-                    new NameValueEntry("description", "Failed"),
-                ]),
-                new("2-0",
-                [
-                    new NameValueEntry("type", "memoryUnitIngested"),
-                    new NameValueEntry("actor", "system"),
-                    new NameValueEntry("description", "OK"),
-                ]),
-            });
+        const string SummaryKey = "tenant-1:case:case-123:activity:summary";
+        activityDb.HashGetAsync(SummaryKey,
+                Arg.Is<RedisValue[]>(fields => fields.SequenceEqual(new RedisValue[] { "failedCount", "failedCountReconciled" })),
+                Arg.Any<CommandFlags>())
+            .Returns([(RedisValue)1, (RedisValue)"1"]);
+        activityDb.HashGetAsync(SummaryKey, "lastActivityUnixMilliseconds", Arg.Any<CommandFlags>())
+            .Returns((RedisValue)1712345678901L);
 
         CaseActivityService activityService = new(activityRedis, NullLogger<CaseActivityService>.Instance);
         CaseService service = new(redis, falkorDb, builder, activityService, CreateMockWorkflowClient(), CreateMockActorProxyFactory(), logger);
