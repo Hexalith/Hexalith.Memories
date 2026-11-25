@@ -35,6 +35,19 @@
                         <dd>@EvidenceDisplay.ScoreLabel(source.Score, Localizer)</dd>
                         <dt>@Localizer[EvidenceResourceKeys.MemoryUnitField]</dt>
                         <dd>@EvidenceDisplay.SafeText(source.MemoryUnitId, Localizer[EvidenceResourceKeys.MemoryUnitUnavailable])</dd>
+                        @if (CanShowSourceMetadata(source))
+                        {
+                            <dt>@Localizer[EvidenceResourceKeys.SourceCaseIdField]</dt>
+                            <dd data-testid="mem-source-case-id">@SafeCaseText(source.CaseId)</dd>
+                            <dt>@Localizer[EvidenceResourceKeys.SourceCaseNameField]</dt>
+                            <dd data-testid="mem-source-case-name">@SafeCaseText(ScopedCaseName(source))</dd>
+                            <dt>@Localizer[EvidenceResourceKeys.SourceAnnotationsField]</dt>
+                            <dd data-testid="mem-source-annotations">
+                                @(source.AnnotationsCount >= 0
+                                    ? source.AnnotationsCount.ToString(System.Globalization.CultureInfo.CurrentCulture)
+                                    : Localizer[EvidenceResourceKeys.Unavailable].Value)
+                            </dd>
+                        }
                     </dl>
                 </li>
             }
@@ -51,6 +64,24 @@
 
     private bool IsRestricted => EvidenceDisplay.IsRestrictiveScope(Packet.Scope.IsolationStatus)
         || Packet.State == EvidencePacketState.Unauthorized;
+
+    private bool CanShowSourceMetadata(EvidencePacketSource source)
+        => Packet.Scope.IsolationStatus == EvidencePacketIsolationStatus.Authorized
+            && Packet.OmittedDetails.Reason != EvidencePacketOmissionReason.Authorization
+            && (string.IsNullOrWhiteSpace(Packet.Scope.CaseId)
+                || string.IsNullOrWhiteSpace(source.CaseId)
+                || string.Equals(Packet.Scope.CaseId, source.CaseId, StringComparison.Ordinal));
+
+    private string? ScopedCaseName(EvidencePacketSource source)
+        => string.IsNullOrWhiteSpace(source.CaseId) && !string.IsNullOrWhiteSpace(Packet.Scope.CaseId)
+            ? null
+            : source.CaseName;
+
+    private string SafeCaseText(string? value)
+    {
+        string fallback = Localizer[EvidenceResourceKeys.Unavailable];
+        return EvidenceDisplay.SafeText(EvidencePacketMapper.SanitizeFreeText(value, fallback), fallback);
+    }
 
     // Advanced Elicitation #4: contract has no ordering signal — preserve packet order
     // and surface that explicitly. When the contract starts emitting an order basis,

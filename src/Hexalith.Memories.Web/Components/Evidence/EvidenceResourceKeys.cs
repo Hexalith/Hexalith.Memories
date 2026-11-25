@@ -66,6 +66,9 @@ internal static class EvidenceResourceKeys
     public const string TimestampField = "Evidence_Timestamp_Field";
     public const string ScoreField = "Evidence_Score_Field";
     public const string MemoryUnitField = "Evidence_MemoryUnit_Field";
+    public const string SourceCaseIdField = "Evidence_SourceCaseId_Field";
+    public const string SourceCaseNameField = "Evidence_SourceCaseName_Field";
+    public const string SourceAnnotationsField = "Evidence_SourceAnnotations_Field";
     public const string NormalizedScoreField = "Evidence_NormalizedScore_Field";
     public const string RankingReasonField = "Evidence_RankingReason_Field";
     public const string NormalizationField = "Evidence_Normalization_Field";

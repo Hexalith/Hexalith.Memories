@@ -1043,6 +1043,9 @@
   <data name="Evidence_Timestamp_Field" xml:space="preserve"><value>Horodatage</value></data>
   <data name="Evidence_Score_Field" xml:space="preserve"><value>Score</value></data>
   <data name="Evidence_MemoryUnit_Field" xml:space="preserve"><value>Unité de mémoire</value></data>
+  <data name="Evidence_SourceCaseId_Field" xml:space="preserve"><value>Identifiant du dossier</value></data>
+  <data name="Evidence_SourceCaseName_Field" xml:space="preserve"><value>Nom du dossier</value></data>
+  <data name="Evidence_SourceAnnotations_Field" xml:space="preserve"><value>Annotations</value></data>
   <data name="Evidence_NormalizedScore_Field" xml:space="preserve"><value>Score normalisé</value></data>
   <data name="Evidence_RankingReason_Field" xml:space="preserve"><value>Raison du classement</value></data>
   <data name="Evidence_Normalization_Field" xml:space="preserve"><value>Normalisation</value></data>

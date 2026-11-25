@@ -1044,6 +1044,9 @@
   <data name="Evidence_Timestamp_Field" xml:space="preserve"><value>Timestamp</value></data>
   <data name="Evidence_Score_Field" xml:space="preserve"><value>Score</value></data>
   <data name="Evidence_MemoryUnit_Field" xml:space="preserve"><value>Memory unit</value></data>
+  <data name="Evidence_SourceCaseId_Field" xml:space="preserve"><value>Case ID</value></data>
+  <data name="Evidence_SourceCaseName_Field" xml:space="preserve"><value>Case name</value></data>
+  <data name="Evidence_SourceAnnotations_Field" xml:space="preserve"><value>Annotations</value></data>
   <data name="Evidence_NormalizedScore_Field" xml:space="preserve"><value>Normalized score</value></data>
   <data name="Evidence_RankingReason_Field" xml:space="preserve"><value>Ranking reason</value></data>
   <data name="Evidence_Normalization_Field" xml:space="preserve"><value>Normalization</value></data>

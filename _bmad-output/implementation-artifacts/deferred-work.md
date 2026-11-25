@@ -3219,13 +3219,15 @@ origin: migrated from legacy ledger ("Deferred from: code review of 17-1-evidenc
 location: OmittedCount/FieldNames/DetailGroups/ExpansionHandles
 reason: - **17.1-CR3. `EvidencePacketOmittedDetails` body fields (`OmittedCount/FieldNames/DetailGroups/ExpansionHandles`) silently dropped beyond the binary token-budget indicator** (`MemoriesTrustStrip.razor`, `MemoriesEvidenceCockpit.razor`). Rationale: requires an "expand omitted details" UX (drawer? inline disclosure?) that is itself a separate story.
 status: open
+note: 2026-11-25 — Skipped. The recovery panel already shows safe omissions and guidance. Exposing the remaining details and acting on expansion handles requires the approved disclosure design and a handle resolver tracked by DW-478.
 
 ### DW-461: 17.1-CR4. `EvidencePacketSource.AnnotationsCount/CaseId/CaseName` not rendered in Source Citation Stack
 
 origin: migrated from legacy ledger ("Deferred from: code review of 17-1-evidence-cockpit-and-trust-components (2026-05-20)"), 2026-09-01
 location: EvidencePacketSource.AnnotationsCount/CaseId/CaseName
 reason: - **17.1-CR4. `EvidencePacketSource.AnnotationsCount/CaseId/CaseName` not rendered in Source Citation Stack** (`MemoriesSourceCitationStack.razor`). Rationale: deemed not load-bearing for AC3 inspection workflow; revisit when annotations or cross-case visibility surfaces are designed.
-status: open
+status: done 2026-11-25
+resolution: Citations display localized case identifiers, case names and annotation counts from authorized packets. Component tests verify optional fields, safe text, case mismatch and restrictive scopes.
 
 ### DW-462: 17.1-CR5. `EvidencePacketResultSummary.TotalCount/ReturnedCount/HasIndexedMemoryUnits` not surfaced
 
@@ -3339,13 +3341,15 @@ origin: migrated from legacy ledger ("Triage: Story 17.1 deferred web items and 
 location: _bmad-output/planning-artifacts/epics.md` (future web story: Omitted Details Expansion UX); `src/Hexalith.Memories.Web/Components/Evidence/MemoriesTrustStrip.razor`; `src/Hexalith.Memories.Web/Components/Evidence/MemoriesEvidenceCockpit.razor
 reason: - ID: 17.1-CR3 - Status: carried-forward - Source story: 17-1-evidence-cockpit-and-trust-components - Target artifact: `_bmad-output/planning-artifacts/epics.md` (future web story: Omitted Details Expansion UX); `src/Hexalith.Memories.Web/Components/Evidence/MemoriesTrustStrip.razor`; `src/Hexalith.Memories.Web/Components/Evidence/MemoriesEvidenceCockpit.razor` - Re-open trigger: before omitted detail groups or expansion handles are exposed in any web cockpit, lens, copy/export, or command surface. - Rationale: Omitted detail expansion needs a deliberate disclosure pattern with token-budget, authorization, and backend-degradation semantics; adding ad hoc fields to the Trust Strip would make the state grammar harder to reason about.
 status: open
+note: 2026-11-25 — Skipped. Duplicate of DW-460. The web recovery panel has safe re-run guidance, and the expansion handles are opaque without an authorized resolver.
 
 ### DW-479: ID: 17.1-CR4
 
 origin: migrated from legacy ledger ("Triage: Story 17.1 deferred web items and architecture decisions (2026-07-06)"), 2026-09-01
 location: _bmad-output/planning-artifacts/epics.md` (future web story: Evidence Metadata and Trust Semantics Surfacing); `src/Hexalith.Memories.Web/Components/Evidence/MemoriesSourceCitationStack.razor
 reason: - ID: 17.1-CR4 - Status: carried-forward - Source story: 17-1-evidence-cockpit-and-trust-components - Target artifact: `_bmad-output/planning-artifacts/epics.md` (future web story: Evidence Metadata and Trust Semantics Surfacing); `src/Hexalith.Memories.Web/Components/Evidence/MemoriesSourceCitationStack.razor` - Re-open trigger: when annotations, cross-case source visibility, or case-name inspection becomes part of a selected web workflow. - Rationale: Source annotation and case metadata are valuable only when their placement is designed with trust marks and cross-case visibility; keep them in the metadata surfacing story rather than broadening Story 25.7.
-status: open
+status: done 2026-11-25
+resolution: Duplicate of DW-461. Covered by the source citation metadata and scope tests.
 
 ### DW-480: ID: 17.1-CR5
 

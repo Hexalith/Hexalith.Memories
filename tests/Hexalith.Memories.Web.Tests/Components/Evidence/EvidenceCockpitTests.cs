@@ -267,6 +267,70 @@ public sealed class EvidenceCockpitTests : FrontComposerTestBase
         EvidenceDisplay.Label(SampleAcronymEnum.Strong).ShouldBe("Strong");
     }
 
+    [Theory]
+    [InlineData("case-a", "Review dossier", 3, "case-a", "Review dossier", "3")]
+    [InlineData("case-a", "Bearer secret-token", 0, "case-a", "Unavailable", "0")]
+    [InlineData("case-a", "postgres://synthetic:secret-token@localhost/database", 0, "case-a", "Unavailable", "0")]
+    [InlineData("foreign-case", "Restricted case", 8, null, null, null)]
+    [InlineData(null, "Unbound case", 0, "Unavailable", "Unavailable", "0")]
+    [InlineData("case-a", null, -1, "case-a", "Unavailable", "Unavailable")]
+    public void MemoriesSourceCitationStack_ShouldRenderAvailableInScopeMetadata(
+        string? caseId,
+        string? caseName,
+        int annotationCount,
+        string? expectedCaseId,
+        string? expectedCaseName,
+        string? expectedAnnotations)
+    {
+        EvidencePacket packet = EvidencePacketFixtures.CompletePacket();
+        EvidencePacketSource source = packet.Sources[0] with { CaseId = caseId, CaseName = caseName, AnnotationsCount = annotationCount };
+
+        IRenderedComponent<MemoriesSourceCitationStack> component =
+            Render<MemoriesSourceCitationStack>(parameters => parameters.Add(p => p.Packet, packet with { Sources = [source] }));
+
+        component.FindAll("[data-testid='mem-source-case-id']").Select(static x => x.TextContent)
+            .ShouldBe(expectedCaseId is null ? [] : [expectedCaseId]);
+        component.FindAll("[data-testid='mem-source-case-name']").Select(static x => x.TextContent)
+            .ShouldBe(expectedCaseName is null ? [] : [expectedCaseName]);
+        component.FindAll("[data-testid='mem-source-annotations']").Select(static x => x.TextContent.Trim())
+            .ShouldBe(expectedAnnotations is null ? [] : [expectedAnnotations]);
+        component.Markup.ShouldNotContain("secret-token");
+    }
+
+    [Theory]
+    [InlineData(EvidencePacketIsolationStatus.Unknown, EvidencePacketState.Complete)]
+    [InlineData(EvidencePacketIsolationStatus.Unauthorized, EvidencePacketState.Complete)]
+    [InlineData(EvidencePacketIsolationStatus.Authorized, EvidencePacketState.Unauthorized)]
+    public void MemoriesSourceCitationStack_ShouldSuppressCitationMetadataForRestrictivePackets(
+        EvidencePacketIsolationStatus isolation,
+        EvidencePacketState state)
+    {
+        EvidencePacket packet = EvidencePacketFixtures.CompletePacket();
+        packet = packet with { Scope = packet.Scope with { IsolationStatus = isolation }, State = state };
+
+        IRenderedComponent<MemoriesSourceCitationStack> component =
+            Render<MemoriesSourceCitationStack>(parameters => parameters.Add(p => p.Packet, packet));
+
+        component.FindAll("[data-testid='mem-source-item']").ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void MemoriesSourceCitationStack_AuthorizationOmission_ShouldSuppressCitationMetadata()
+    {
+        EvidencePacket packet = EvidencePacketFixtures.CompletePacket();
+        EvidencePacketSource source = packet.Sources[0] with { CaseId = "case-a", CaseName = "Restricted case", AnnotationsCount = 9 };
+        packet = packet with
+        {
+            Sources = [source],
+            OmittedDetails = packet.OmittedDetails with { Reason = EvidencePacketOmissionReason.Authorization },
+        };
+
+        IRenderedComponent<MemoriesSourceCitationStack> component =
+            Render<MemoriesSourceCitationStack>(parameters => parameters.Add(p => p.Packet, packet));
+        component.FindAll("[data-testid='mem-source-case-id'], [data-testid='mem-source-case-name'], [data-testid='mem-source-annotations']")
+            .ShouldBeEmpty();
+    }
+
     [Fact]
     public void EvidencePacketViewMapping_RenderedFields_ShouldHaveNamedContractSourcesOrExplicitNoSource()
     {
@@ -287,7 +351,7 @@ public sealed class EvidenceCockpitTests : FrontComposerTestBase
             "trust.confidence", "trust.freshness", "trust.sourceCount", "trust.evidenceHealth", "trust.tokenBudget",
             "result.query", "result.summary",
             "sources.originIdentifier", "sources.type", "sources.snippet", "sources.memoryUnit", "sources.rank", "sources.score",
-            "sources.timestamp", "sources.freshness",
+            "sources.timestamp", "sources.freshness", "sources.caseId", "sources.caseName", "sources.annotations",
             "axes.axis", "axes.normalizedScore", "axes.rankingReason", "axes.normalizationMethod", "axes.unavailableAxes", "axes.caveat",
             "graph.path", "graph.edgeTypes", "graph.gapMarkers",
             "recovery.label", "recovery.guidance",
