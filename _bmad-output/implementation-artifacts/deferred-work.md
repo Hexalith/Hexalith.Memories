@@ -3242,7 +3242,8 @@ resolution: The authorized result section distinguishes returned and reported ma
 origin: migrated from legacy ledger ("Deferred from: code review of 17-1-evidence-cockpit-and-trust-components (2026-05-20)"), 2026-09-01
 location: n/a
 reason: - **17.1-CR6. `EvidencePacketEvidence.Degraded` / `AllEnabledAxesUnavailable` flags not fed into Trust Strip** (`MemoriesTrustStrip.razor`). Rationale: overlapping signal with `State`; defer until the precedence ladder is implemented and these flags can layer cleanly.
-status: open
+status: done 2026-11-25
+resolution: The trust-strip health badge applies authorization and isolation before either backend degradation flag, then uses the packet state. Component tests verify both flags, scope precedence and the ordinary complete state.
 
 ### DW-464: 17.1-CR7. Task 6 accessibility checkboxes marked `[x]` despite no automated forced-colors / focus-return / touch-target / no-text-overlap check
 
@@ -3365,7 +3366,8 @@ resolution: Duplicate of DW-462. Covered by the cockpit result metadata and auth
 origin: migrated from legacy ledger ("Triage: Story 17.1 deferred web items and architecture decisions (2026-07-06)"), 2026-09-01
 location: _bmad-output/planning-artifacts/epics.md` (future web story: Evidence Metadata and Trust Semantics Surfacing); `src/Hexalith.Memories.Web/Components/Evidence/MemoriesTrustStrip.razor
 reason: - ID: 17.1-CR6 - Status: carried-forward - Source story: 17-1-evidence-cockpit-and-trust-components - Target artifact: `_bmad-output/planning-artifacts/epics.md` (future web story: Evidence Metadata and Trust Semantics Surfacing); `src/Hexalith.Memories.Web/Components/Evidence/MemoriesTrustStrip.razor` - Re-open trigger: before the Trust Strip adds a precedence ladder for `Degraded` or `AllEnabledAxesUnavailable`, or any new surface claims all-axis availability status. - Rationale: These flags overlap with `State` and recovery semantics. They should be layered only after UX approves precedence and display rules.
-status: open
+status: done 2026-11-25
+resolution: Duplicate of DW-463. Covered by the trust-strip health and precedence tests.
 
 ### DW-482: ID: 17.1-CR7
 

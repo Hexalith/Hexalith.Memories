@@ -63,11 +63,11 @@
     private IReadOnlyList<EvidencePacketSource> Sources => Packet.Sources;
 
     private bool IsRestricted => EvidenceDisplay.IsRestrictiveScope(Packet.Scope.IsolationStatus)
-        || Packet.State == EvidencePacketState.Unauthorized;
+        || Packet.State == EvidencePacketState.Unauthorized
+        || Packet.OmittedDetails.Reason == EvidencePacketOmissionReason.Authorization;
 
     private bool CanShowSourceMetadata(EvidencePacketSource source)
         => Packet.Scope.IsolationStatus == EvidencePacketIsolationStatus.Authorized
-            && Packet.OmittedDetails.Reason != EvidencePacketOmissionReason.Authorization
             && (string.IsNullOrWhiteSpace(Packet.Scope.CaseId)
                 || string.IsNullOrWhiteSpace(source.CaseId)
                 || string.Equals(Packet.Scope.CaseId, source.CaseId, StringComparison.Ordinal));

@@ -258,6 +258,59 @@ public sealed class EvidenceCockpitTests : FrontComposerTestBase
         component.Find("[data-testid='mem-trust-source-count']").TextContent.ShouldContain("1 source");
     }
 
+    [Theory]
+    [InlineData(false, null, EvidencePacketIsolationStatus.Authorized, EvidencePacketState.Complete, EvidencePacketOmissionReason.None, "Complete")]
+    [InlineData(true, false, EvidencePacketIsolationStatus.Authorized, EvidencePacketState.Complete, EvidencePacketOmissionReason.None, "Degraded")]
+    [InlineData(false, true, EvidencePacketIsolationStatus.Authorized, EvidencePacketState.PendingExpansion, EvidencePacketOmissionReason.TokenBudget, "Degraded")]
+    [InlineData(true, true, EvidencePacketIsolationStatus.Unauthorized, EvidencePacketState.Complete, EvidencePacketOmissionReason.None, "Unauthorized")]
+    [InlineData(true, true, EvidencePacketIsolationStatus.Unknown, EvidencePacketState.Complete, EvidencePacketOmissionReason.None, "Unavailable")]
+    [InlineData(true, true, EvidencePacketIsolationStatus.Authorized, EvidencePacketState.Unauthorized, EvidencePacketOmissionReason.None, "Unauthorized")]
+    [InlineData(true, true, EvidencePacketIsolationStatus.Authorized, EvidencePacketState.Complete, EvidencePacketOmissionReason.Authorization, "Unauthorized")]
+    public void MemoriesTrustStrip_ShouldApplyScopeAndDegradationPrecedence(
+        bool degraded,
+        bool? allAxesUnavailable,
+        EvidencePacketIsolationStatus isolation,
+        EvidencePacketState state,
+        EvidencePacketOmissionReason omissionReason,
+        string expected)
+    {
+        EvidencePacket packet = EvidencePacketFixtures.CompletePacket();
+        packet = packet with
+        {
+            Evidence = packet.Evidence with { Degraded = degraded, AllEnabledAxesUnavailable = allAxesUnavailable },
+            Scope = packet.Scope with { IsolationStatus = isolation },
+            State = state,
+            OmittedDetails = packet.OmittedDetails with { Reason = omissionReason },
+        };
+
+        IRenderedComponent<MemoriesTrustStrip> component =
+            Render<MemoriesTrustStrip>(parameters => parameters.Add(p => p.Packet, packet));
+        IElement badge = component.Find($"[aria-label='Evidence health: {expected}']");
+        string expectedSlot = expected switch
+        {
+            "Degraded" => "Warning",
+            "Unauthorized" => "Danger",
+            "Complete" => "Success",
+            _ => "Neutral",
+        };
+        badge.GetAttribute("data-fc-badge-slot").ShouldBe(expectedSlot);
+    }
+
+    [Fact]
+    public void MemoriesEvidenceCockpit_AuthorizationOmission_ShouldSuppressEvidenceDetails()
+    {
+        EvidencePacket packet = EvidencePacketFixtures.CompletePacket();
+        packet = packet with { OmittedDetails = packet.OmittedDetails with { Reason = EvidencePacketOmissionReason.Authorization } };
+
+        IRenderedComponent<MemoriesEvidenceCockpit> component =
+            Render<MemoriesEvidenceCockpit>(parameters => parameters.Add(p => p.Packet, packet));
+        component.Find("[data-testid='mem-evidence-restrictive-state']")
+            .GetAttribute("data-restrictive-kind").ShouldBe("unauthorized");
+        component.Find("[data-testid='mem-trust-source-count']").TextContent.ShouldContain("sources unavailable");
+        component.FindAll("[data-testid='mem-source-stack'], [data-testid='mem-axis-breakdown'], [data-testid='mem-graph-summary']")
+            .ShouldBeEmpty();
+    }
+
     [Fact]
     public void MemoriesTrustStrip_AcronymEnumValues_ShouldPreserveAcronyms()
     {

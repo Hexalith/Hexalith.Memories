@@ -48,14 +48,41 @@
         ? EvidenceDisplay.SlotForEvidenceStrength(Packet.Evidence.EvidenceStrength)
         : BadgeSlot.Neutral;
 
-    private string HealthLabel => ShowPacketValues
-        ? EvidenceDisplay.Label(Packet.State, Localizer)
+    private EvidencePacketState? HealthState
+    {
+        get
+        {
+            if (!ShowPacketValues)
+            {
+                return null;
+            }
+
+            if (Packet.State == EvidencePacketState.Unauthorized
+                || Packet.Scope.IsolationStatus == EvidencePacketIsolationStatus.Unauthorized
+                || Packet.OmittedDetails.Reason == EvidencePacketOmissionReason.Authorization)
+            {
+                return EvidencePacketState.Unauthorized;
+            }
+
+            if (Packet.Scope.IsolationStatus != EvidencePacketIsolationStatus.Authorized)
+            {
+                return null;
+            }
+
+            return Packet.Evidence.Degraded || Packet.Evidence.AllEnabledAxesUnavailable == true
+                ? EvidencePacketState.Degraded
+                : Packet.State;
+        }
+    }
+
+    private string HealthLabel => HealthState is { } state
+        ? EvidenceDisplay.Label(state, Localizer)
         : Mode == TrustStripMode.Loading
             ? Localizer[EvidenceResourceKeys.LoadingState]
             : Localizer[EvidenceResourceKeys.Unavailable];
 
-    private BadgeSlot HealthSlot => ShowPacketValues
-        ? EvidenceDisplay.SlotForState(Packet.State)
+    private BadgeSlot HealthSlot => HealthState is { } state
+        ? EvidenceDisplay.SlotForState(state)
         : BadgeSlot.Neutral;
 
     private string SourceCountText
@@ -64,7 +91,7 @@
         {
             if (!ShowPacketValues
                 || EvidenceDisplay.IsRestrictiveScope(Packet.Scope.IsolationStatus)
-                || Packet.State == EvidencePacketState.Unauthorized)
+                || HealthState == EvidencePacketState.Unauthorized)
             {
                 return EvidenceDisplay.SourceCountLabel(0, sourcesAvailable: false, Localizer);
             }

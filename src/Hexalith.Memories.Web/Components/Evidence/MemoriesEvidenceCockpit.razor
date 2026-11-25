@@ -157,7 +157,8 @@
 
     private bool ShouldComposeEvidenceChildren => HasRealPacket
         && !EvidenceDisplay.IsRestrictiveScope(EffectivePacket.Scope.IsolationStatus)
-        && EffectivePacket.State is not EvidencePacketState.Unauthorized;
+        && EffectivePacket.State != EvidencePacketState.Unauthorized
+        && EffectivePacket.OmittedDetails.Reason != EvidencePacketOmissionReason.Authorization;
 
     private string ResultCountsText
     {
@@ -210,7 +211,9 @@
     {
         // Restrictive precedence ladder (Advanced Elicitation #3): unauthorized > schema-mismatch / missing-source
         // > redacted/compressed > degraded/partial > supported. Only the most restrictive banner renders.
-        if (EvidenceDisplay.IsRestrictiveScope(packet.Scope.IsolationStatus) || packet.State == EvidencePacketState.Unauthorized)
+        if (EvidenceDisplay.IsRestrictiveScope(packet.Scope.IsolationStatus)
+            || packet.State == EvidencePacketState.Unauthorized
+            || packet.OmittedDetails.Reason == EvidencePacketOmissionReason.Authorization)
         {
             return new RestrictiveBannerView("unauthorized", Localizer[EvidenceResourceKeys.UnauthorizedBanner], MessageBarIntent.Error);
         }

@@ -29,7 +29,7 @@ public static class EvidencePacketViewMapping
         new("trust.confidence", "EvidencePacket.Evidence.EvidenceStrength", EvidenceResourceKeys.Strength(EvidencePacketEvidenceStrength.None)),
         new("trust.freshness", "EvidencePacket.Metadata.Freshness / EvidencePacket.Sources[].Freshness", EvidenceResourceKeys.FreshnessUnavailable),
         new("trust.sourceCount", "EvidencePacket.Sources.Count", EvidenceResourceKeys.SourceCountUnavailable),
-        new("trust.evidenceHealth", "EvidencePacket.State", EvidenceResourceKeys.State(EvidencePacketState.Empty)),
+        new("trust.evidenceHealth", "EvidencePacket.State / EvidencePacket.Scope.IsolationStatus / EvidencePacket.OmittedDetails.Reason / EvidencePacket.Evidence.Degraded / EvidencePacket.Evidence.AllEnabledAxesUnavailable", EvidenceResourceKeys.Unavailable),
         new("trust.tokenBudget", "EvidencePacket.OmittedDetails.Reason", EvidenceResourceKeys.TokenBudgetWithin),
         new("result.query", "EvidencePacket.Result.Query", EvidenceResourceKeys.NoQuery),
         new("result.totalCount", ResultCountSources, EvidenceResourceKeys.ResultCountsUnavailable),
