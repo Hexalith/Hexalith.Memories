@@ -142,12 +142,10 @@ public partial class SyntacticSearchIntegrationTests
             new HashEntry("sourceType", "file"),
         ]);
 
-    private async Task<ConnectionMultiplexer> ConnectAsync(bool resp3, string? connectionString = null)
-    {
-        ConfigurationOptions options = ConfigurationOptions.Parse(connectionString ?? _redis.ConnectionString);
-        options.Protocol = resp3 ? RedisProtocol.Resp3 : RedisProtocol.Resp2;
-        return await ConnectionMultiplexer.ConnectAsync(options);
-    }
+    private Task<ConnectionMultiplexer> ConnectAsync(bool resp3, string? connectionString = null)
+        => RedisStackFixture.ConnectWhenReadyAsync(
+            connectionString ?? _redis.ConnectionString,
+            resp3 ? RedisProtocol.Resp3 : RedisProtocol.Resp2);
 
     private static string RankedContent(int index)
         => string.Join(' ', Enumerable.Repeat("boundaryrank", index % 3 + 1)

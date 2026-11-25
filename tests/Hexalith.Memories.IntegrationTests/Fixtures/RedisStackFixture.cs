@@ -3,6 +3,8 @@ namespace Hexalith.Memories.IntegrationTests.Fixtures;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 
+using Hexalith.Memories.AppHost;
+
 using StackExchange.Redis;
 
 /// <summary>
@@ -25,6 +27,61 @@ public sealed class RedisStackFixture : IAsyncLifetime
 
     internal static string OwnedLoopbackConnectionString(ushort port) => $"127.0.0.1:{port}";
 
+    /// <summary>
+    /// Connects once Redis accepts a client handshake. A mapped TCP port is not enough: redis-stack
+    /// can listen before AUTH/PING succeed, and a single aborted ConnectAsync fails the collection.
+    /// </summary>
+    /// <param name="connectionString">The loopback Redis endpoint.</param>
+    /// <param name="protocol">Optional RESP protocol. Leave unset to use the client default.</param>
+    /// <param name="timeout">How long to retry the handshake. Defaults to 30 seconds.</param>
+    /// <returns>An open multiplexer.</returns>
+    internal static async Task<ConnectionMultiplexer> ConnectWhenReadyAsync(
+        string connectionString,
+        RedisProtocol? protocol = null,
+        TimeSpan? timeout = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
+        TimeSpan limit = timeout ?? TimeSpan.FromSeconds(30);
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + limit;
+        int failedAttempts = 0;
+        RedisConnectionException? last = null;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            ConfigurationOptions options = ConfigurationOptions.Parse(connectionString);
+            if (protocol is { } selected)
+            {
+                options.Protocol = selected;
+            }
+
+            options.AbortOnConnectFail = true;
+            options.ConnectRetry = 1;
+            options.ConnectTimeout = 2000;
+            try
+            {
+                return await ConnectionMultiplexer.ConnectAsync(options);
+            }
+            catch (RedisConnectionException ex)
+            {
+                last = ex;
+                failedAttempts++;
+                TimeSpan remaining = deadline - DateTimeOffset.UtcNow;
+                if (remaining <= TimeSpan.Zero)
+                {
+                    break;
+                }
+
+                await Task.Delay(RedisReadinessBackoff.GetDelay(
+                    failedAttempts,
+                    Random.Shared.NextDouble(),
+                    remaining));
+            }
+        }
+
+        throw last ?? new RedisConnectionException(
+            ConnectionFailureType.UnableToConnect,
+            "Redis did not accept a client handshake before the readiness deadline.");
+    }
+
     public async ValueTask InitializeAsync()
     {
         if (Environment.GetEnvironmentVariable("MEMORIES_TEST_OWNED_NATIVE") == "1"
@@ -34,7 +91,7 @@ public sealed class RedisStackFixture : IAsyncLifetime
             if (options.EndPoints.Count != 1 || options.EndPoints[0] is not System.Net.IPEndPoint { Address: var address, Port: > 1024 } || !address.Equals(System.Net.IPAddress.Loopback))
                 throw new InvalidOperationException("Owned native test fixture requires one unprivileged loopback endpoint.");
             _nativeConnectionString = native;
-            Connection = await ConnectionMultiplexer.ConnectAsync(native);
+            Connection = await ConnectWhenReadyAsync(native);
             return;
         }
         _container = new ContainerBuilder(RedisStackImage)
@@ -45,7 +102,7 @@ public sealed class RedisStackFixture : IAsyncLifetime
 
         await _container.StartAsync();
 
-        Connection = await ConnectionMultiplexer.ConnectAsync(ConnectionString);
+        Connection = await ConnectWhenReadyAsync(ConnectionString);
         // The Redis client handshake and CONFIG call verify the service after the port is mapped.
         // This fixture owns its container. Legacy completeness requires errors on timeout,
         // because RETURN can otherwise report a self-consistent partial result set.

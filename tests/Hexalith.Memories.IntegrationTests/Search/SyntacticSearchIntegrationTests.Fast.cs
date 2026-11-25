@@ -608,9 +608,9 @@ public sealed partial class SyntacticSearchIntegrationTests
             .WithWaitStrategy(Wait.ForUnixContainer().UntilExternalTcpPortIsAvailable(6379))
             .Build();
         await container.StartAsync();
-        ConfigurationOptions options = ConfigurationOptions.Parse(RedisStackFixture.OwnedLoopbackConnectionString(container.GetMappedPublicPort(6379)));
-        options.Protocol = resp3 ? RedisProtocol.Resp3 : RedisProtocol.Resp2;
-        using ConnectionMultiplexer connection = await ConnectionMultiplexer.ConnectAsync(options);
+        using ConnectionMultiplexer connection = await RedisStackFixture.ConnectWhenReadyAsync(
+            RedisStackFixture.OwnedLoopbackConnectionString(container.GetMappedPublicPort(6379)),
+            resp3 ? RedisProtocol.Resp3 : RedisProtocol.Resp2);
         IDatabase db = connection.GetDatabase();
         string tenantId = $"tenant-{Guid.NewGuid():N}";
         const int documentCount = 23;

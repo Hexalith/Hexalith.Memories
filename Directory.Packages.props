@@ -2,6 +2,8 @@
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <HexalithFrontComposerVersion Condition="'$(HexalithFrontComposerVersion)' == ''">6.1.0</HexalithFrontComposerVersion>
+    <HexalithCommonsVersion Condition="'$(HexalithCommonsVersion)' == ''">3.0.4</HexalithCommonsVersion>
+    <HexalithPolymorphicSerializationsVersion Condition="'$(HexalithPolymorphicSerializationsVersion)' == ''">2.0.2</HexalithPolymorphicSerializationsVersion>
     <!-- Define paths of the Hexalith packages props. -->
     <Hexalith1BuildPackageProps>$(MSBuildThisFileDirectory)references/Hexalith.Builds/Props/Directory.Packages.props</Hexalith1BuildPackageProps>
     <Hexalith2BuildPackageProps>$(MSBuildThisFileDirectory)../Hexalith.Builds/Props/Directory.Packages.props</Hexalith2BuildPackageProps>
@@ -18,7 +20,7 @@
   </ItemGroup>
   <!-- Owner release prerequisite: keep newer central selections while requiring the delivered catalog SDK. -->
   <PropertyGroup>
-    <MemoriesEventStoreMinimumVersion>5.4.0</MemoriesEventStoreMinimumVersion>
+    <MemoriesEventStoreMinimumVersion>5.6.0</MemoriesEventStoreMinimumVersion>
     <HexalithEventStoreVersion Condition="('$(HexalithEventStoreFromSource)' != 'true' or '$(MemoriesPublishedHostedTestProfile)' == 'true') and ('$(HexalithEventStoreVersion)' == '' or $([MSBuild]::VersionLessThan('$(HexalithEventStoreVersion)', '$(MemoriesEventStoreMinimumVersion)')))">$(MemoriesEventStoreMinimumVersion)</HexalithEventStoreVersion>
     <HexalithAspireAppHostSdkVersion>17.0.0</HexalithAspireAppHostSdkVersion>
   </PropertyGroup>
