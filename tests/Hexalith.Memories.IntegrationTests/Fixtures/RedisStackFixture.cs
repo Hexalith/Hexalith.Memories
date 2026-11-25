@@ -40,14 +40,13 @@ public sealed class RedisStackFixture : IAsyncLifetime
         _container = new ContainerBuilder(RedisStackImage)
             .WithPortBinding(0, 6379) // Random host port → container 6379
             .WithWaitStrategy(
-                Wait.ForUnixContainer()
-                    .UntilInternalTcpPortIsAvailable(6379)
-                    .UntilCommandIsCompleted("redis-cli", "PING"))
+                Wait.ForUnixContainer().UntilExternalTcpPortIsAvailable(6379))
             .Build();
 
         await _container.StartAsync();
 
         Connection = await ConnectionMultiplexer.ConnectAsync(ConnectionString);
+        // The Redis client handshake and CONFIG call verify the service after the port is mapped.
         // This fixture owns its container. Legacy completeness requires errors on timeout,
         // because RETURN can otherwise report a self-consistent partial result set.
         await Connection.GetDatabase().ExecuteAsync("FT.CONFIG", "SET", "ON_TIMEOUT", "FAIL");

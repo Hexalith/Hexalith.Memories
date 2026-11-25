@@ -140,6 +140,7 @@ class IntegrationTestRunnerTests(unittest.TestCase):
         return [line for line in map(str.strip, contents.splitlines()) if line and not line.startswith("#")]
 
     def run_wrapper(self, command):
+        # This fixture checks routing. Allow the PowerShell runtime to start on a busy build host.
         return subprocess.run(
-            command, cwd=self.root, env=self.environment, text=True, capture_output=True, check=False, timeout=30,
+            command, cwd=self.root, env=self.environment, text=True, capture_output=True, check=False, timeout=120,
         )

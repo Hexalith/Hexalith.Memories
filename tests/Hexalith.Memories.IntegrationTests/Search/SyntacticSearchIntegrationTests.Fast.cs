@@ -605,10 +605,7 @@ public sealed partial class SyntacticSearchIntegrationTests
         await using var container = new ContainerBuilder(RedisStackFixture.RedisStackImage)
             .WithEnvironment("REDISEARCH_ARGS", "MAXAGGREGATERESULTS 7 MAXSEARCHRESULTS 1000")
             .WithPortBinding(0, 6379)
-            .WithWaitStrategy(Wait.ForUnixContainer()
-                .UntilInternalTcpPortIsAvailable(6379)
-                .UntilExternalTcpPortIsAvailable(6379)
-                .UntilCommandIsCompleted("redis-cli", "PING"))
+            .WithWaitStrategy(Wait.ForUnixContainer().UntilExternalTcpPortIsAvailable(6379))
             .Build();
         await container.StartAsync();
         ConfigurationOptions options = ConfigurationOptions.Parse(RedisStackFixture.OwnedLoopbackConnectionString(container.GetMappedPublicPort(6379)));
@@ -659,10 +656,7 @@ public sealed partial class SyntacticSearchIntegrationTests
         // server keeps Redis's default RETURN policy independently of native fixture settings.
         await using var container = new ContainerBuilder(RedisStackFixture.RedisStackImage)
             .WithPortBinding(0, 6379)
-            .WithWaitStrategy(Wait.ForUnixContainer()
-                .UntilInternalTcpPortIsAvailable(6379)
-                .UntilExternalTcpPortIsAvailable(6379)
-                .UntilCommandIsCompleted("redis-cli", "PING"))
+            .WithWaitStrategy(Wait.ForUnixContainer().UntilExternalTcpPortIsAvailable(6379))
             .Build();
         await container.StartAsync();
         using ConnectionMultiplexer connection = await ConnectAsync(resp3,

@@ -42,3 +42,6 @@ Continue the priority-ordered deferred work after DW-518. Complete six items, ad
 
 - The Release solution build completed with zero warnings and errors.
 - The full suite exposed an outdated case-status test fixture that supplied stream data to a summary-hash read. The fixture now supplies the persisted summary and the focused regression passes.
+- Redis fixture startup now waits for the port published to the test host. The Redis handshake and subsequent commands verify readiness at that endpoint. All twelve new Redis regressions and the six affected search cases passed.
+- The PowerShell selector fixture now allows up to two minutes for its subprocess under host load. All thirteen integration coverage tooling tests passed after the change.
+- The integration run encountered an OpenBao generation recovery timeout after Aspire could no longer find live fixture containers. The same shared topology caused subsequent connection failures.
