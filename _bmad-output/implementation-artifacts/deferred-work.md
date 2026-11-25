@@ -3277,13 +3277,15 @@ origin: migrated from legacy ledger ("Deferred from: code review of 17-1-evidenc
 location: n/a
 reason: - **17.1-CR11. `<article>` + nested `<section aria-label>` creates a verbose landmark list under assistive tech** (`MemoriesEvidenceCockpit.razor:1-2` and children). Rationale: a11y refinement after primary leakage / precedence findings settle; not blocking AC2.
 status: open
+note: 2026-11-25 — Skipped. The current cockpit has named sections inside its accordion. Changing their shared semantics requires the screen-reader landmark audit tracked by DW-486.
 
 ### DW-469: 17.1-CR12. Source citation order test asserts `data-source-rank` attribute values rather than DOM iteration order
 
 origin: migrated from legacy ledger ("Deferred from: code review of 17-1-evidence-cockpit-and-trust-components (2026-05-20)"), 2026-09-01
 location: n/a
 reason: - **17.1-CR12. Source citation order test asserts `data-source-rank` attribute values rather than DOM iteration order** (`EvidenceCockpitTests.cs:104-106`). Rationale: acceptable proxy with the current rank-stable contract; tighten when contract permits rank duplication or absent ranks.
-status: open
+status: done 2026-11-25
+resolution: The bUnit test reverses the source identities, uses nonconsecutive ranks, and checks the rendered citation text in DOM order alongside the order-basis message.
 
 ### DW-470: 17.1-CR13. `SourceCountLabel` does not handle negative or `int.MaxValue` counts
 
@@ -3405,13 +3407,15 @@ origin: migrated from legacy ledger ("Triage: Story 17.1 deferred web items and 
 location: _bmad-output/planning-artifacts/epics.md` (Story 17.7 Runnable Web Specimen and Browser/AT Accessibility Gap Closure); `src/Hexalith.Memories.Web/Components/Evidence/MemoriesEvidenceCockpit.razor
 reason: - ID: 17.1-CR11 - Status: carried-forward - Source story: 17-1-evidence-cockpit-and-trust-components - Target artifact: `_bmad-output/planning-artifacts/epics.md` (Story 17.7 Runnable Web Specimen and Browser/AT Accessibility Gap Closure); `src/Hexalith.Memories.Web/Components/Evidence/MemoriesEvidenceCockpit.razor` - Re-open trigger: during the first screen-reader pass or host-level landmark/heading audit for the web cockpit. - Rationale: Landmark verbosity is a real browser/assistive-technology concern. It should be fixed with screen-reader evidence rather than guessed from host-less markup.
 status: open
+note: 2026-11-25 — Skipped. Duplicate of DW-468. Story 17.7 used a checklist and did not run an OS screen reader.
 
 ### DW-487: ID: 17.1-CR12
 
 origin: migrated from legacy ledger ("Triage: Story 17.1 deferred web items and architecture decisions (2026-07-06)"), 2026-09-01
 location: tests/Hexalith.Memories.Web.Tests/Components/Evidence/EvidenceCockpitTests.cs
 reason: - ID: 17.1-CR12 - Status: accepted - Source story: 17-1-evidence-cockpit-and-trust-components - Target artifact: `tests/Hexalith.Memories.Web.Tests/Components/Evidence/EvidenceCockpitTests.cs` - Re-open trigger: the Evidence Packet source-ranking contract allows duplicate ranks, absent ranks, or a separate user-visible order that can diverge from `data-source-rank`. - Rationale: The current rank-stable contract makes the attribute assertion an adequate proxy. Tightening to DOM-iteration assertions is defensive polish until the ordering contract changes.
-status: open
+status: done 2026-11-25
+resolution: Duplicate of DW-469. The packet-order test now verifies the sequence of visible source identities.
 
 ### DW-488: ID: 17.1-CR13
 

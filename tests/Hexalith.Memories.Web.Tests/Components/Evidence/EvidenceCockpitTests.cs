@@ -696,10 +696,15 @@ public sealed class EvidenceCockpitTests : FrontComposerTestBase
     [Fact]
     public void MemoriesEvidenceCockpit_MultiSourcePacket_ShouldPreservePacketOrderingAndOrderBasis()
     {
+        EvidencePacket packet = EvidencePacketFixtures.MultiSourcePacket();
+        packet = packet with { Sources = [packet.Sources[1] with { Rank = 7 }, packet.Sources[0]] };
         IRenderedComponent<MemoriesEvidenceCockpit> component = Render<MemoriesEvidenceCockpit>(parameters => parameters
-            .Add(p => p.Packet, EvidencePacketFixtures.MultiSourcePacket()));
+            .Add(p => p.Packet, packet));
 
-        component.FindAll("[data-testid='mem-source-item']").Select(x => x.GetAttribute("data-source-rank")).ShouldBe(["1", "2"]);
+        IEnumerable<IElement> citations = component.FindAll("[data-testid='mem-source-item']");
+        citations.Select(static item => item.QuerySelector("strong")?.TextContent)
+            .ShouldBe(["https://docs.example/source-b", "https://docs.example/source-a"]);
+        citations.Select(static item => item.GetAttribute("data-source-rank")).ShouldBe(["7", "1"]);
         component.FindAll("[data-testid='mem-axis-item']").Select(x => x.GetAttribute("data-axis")).ShouldBe(["semantic", "syntactic"]);
         component.FindAll("[data-testid='mem-graph-node']").Select(x => x.TextContent.Trim()).ShouldBe(["memory-a", "memory-b"]);
         component.Find("[data-testid='mem-source-order-basis']").TextContent.ShouldContain("packet order");
