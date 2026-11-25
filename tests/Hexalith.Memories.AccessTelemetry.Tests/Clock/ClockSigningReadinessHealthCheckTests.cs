@@ -14,6 +14,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Http;
+using Microsoft.Extensions.Time.Testing;
 
 using NSubstitute;
 
@@ -38,7 +39,8 @@ public sealed class ClockSigningReadinessHealthCheckTests
     public async Task Ready_ProductionConfiguredAuthenticatedHttpSources_ReturnsOk()
     {
         using ECDsa key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        var sourceHandler = new ConfiguredUtcSourceHandler();
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 7, 18, 10, 0, 0, TimeSpan.Zero));
+        var sourceHandler = new ConfiguredUtcSourceHandler(clock);
         await using var factory = new ClockFactory(
             KeyClient(Convert.ToBase64String(key.ExportPkcs8PrivateKey())),
             hasSources: false,
@@ -164,6 +166,10 @@ public sealed class ClockSigningReadinessHealthCheckTests
                 services.AddSingleton(daprClient);
                 if (productionSourceHandler is not null)
                 {
+                    // Keep the three simulated authorities on one instant even when HTTP handlers start at different times.
+                    services.RemoveAll<TimeProvider>();
+                    services.AddSingleton(productionSourceHandler.Clock);
+
                     // The readiness test exercises Production source registration without process-wide token mutation.
                     foreach (ServiceDescriptor validator in services.Where(static service =>
                         service.ServiceType == typeof(IHostedService) &&

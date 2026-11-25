@@ -10,9 +10,13 @@ using Hexalith.Memories.AccessTelemetry.Clock;
 using Shouldly;
 
 /// <summary>Returns authenticated UTC responses for the three configured production sources.</summary>
-internal sealed class ConfiguredUtcSourceHandler : HttpMessageHandler
+/// <param name="clock">The clock shared by the fake sources and the readiness check.</param>
+internal sealed class ConfiguredUtcSourceHandler(TimeProvider clock) : HttpMessageHandler
 {
     private readonly ConcurrentBag<string> _requestedSourceIds = [];
+
+    /// <summary>Gets the clock used to timestamp every fake UTC response.</summary>
+    public TimeProvider Clock { get; } = clock;
 
     /// <summary>Gets the source IDs reached by the configured HTTP clients.</summary>
     public IReadOnlyCollection<string> RequestedSourceIds => _requestedSourceIds;
@@ -36,7 +40,7 @@ internal sealed class ConfiguredUtcSourceHandler : HttpMessageHandler
         {
             Content = JsonContent.Create(new AuthenticatedUtcResponse
             {
-                UnixMilliseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                UnixMilliseconds = Clock.GetUtcNow().ToUnixTimeMilliseconds(),
                 UncertaintyMilliseconds = 50,
             }),
         });
