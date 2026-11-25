@@ -70,7 +70,7 @@ internal static partial class EvidenceDisplay
 
     public static string SourceCountLabel(int count, bool sourcesAvailable)
     {
-        if (!sourcesAvailable)
+        if (!sourcesAvailable || count < 0)
         {
             return "sources unavailable";
         }
@@ -84,7 +84,7 @@ internal static partial class EvidenceDisplay
         IStringLocalizer<MemoriesWebResources> localizer)
     {
         ArgumentNullException.ThrowIfNull(localizer);
-        return !sourcesAvailable
+        return !sourcesAvailable || count < 0
             ? localizer[EvidenceResourceKeys.SourceCountUnavailable]
             : count == 1
                 ? localizer[EvidenceResourceKeys.SourceCountOne]

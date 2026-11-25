@@ -3292,7 +3292,8 @@ resolution: The bUnit test reverses the source identities, uses nonconsecutive r
 origin: migrated from legacy ledger ("Deferred from: code review of 17-1-evidence-cockpit-and-trust-components (2026-05-20)"), 2026-09-01
 location: n/a
 reason: - **17.1-CR13. `SourceCountLabel` does not handle negative or `int.MaxValue` counts** (`EvidenceDisplay.cs:14-15`). Rationale: contract precludes negative counts; defensive-only.
-status: open
+status: done 2026-11-25
+resolution: Both source count formatters use the unavailable label for negative or unavailable counts and display the full int.MaxValue value. Boundary tests cover both overloads and both locale catalogs.
 
 ### DW-471: 17.1-CR14. `EvidencePacketSource.SourceType` and `axis.Axis` not wrapped in `SafeText`
 
@@ -3422,7 +3423,8 @@ resolution: Duplicate of DW-469. The packet-order test now verifies the sequence
 origin: migrated from legacy ledger ("Triage: Story 17.1 deferred web items and architecture decisions (2026-07-06)"), 2026-09-01
 location: src/Hexalith.Memories.Web/Components/Evidence/EvidenceDisplay.cs
 reason: - ID: 17.1-CR13 - Status: accepted - Source story: 17-1-evidence-cockpit-and-trust-components - Target artifact: `src/Hexalith.Memories.Web/Components/Evidence/EvidenceDisplay.cs` - Re-open trigger: source counts become externally supplied, nullable, unbounded, or otherwise no longer contract-controlled non-negative integers. - Rationale: The contract precludes negative source counts. Adding defensive negative or `int.MaxValue` labels now would spend scope on an unreachable state.
-status: open
+status: done 2026-11-25
+resolution: Duplicate of DW-470. The shared source count formatter now handles invalid and maximum integer counts.
 
 ### DW-489: ID: 17.1-CR14
 

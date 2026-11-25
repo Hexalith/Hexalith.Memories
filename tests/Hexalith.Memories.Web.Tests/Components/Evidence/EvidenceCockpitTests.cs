@@ -167,6 +167,29 @@ public sealed class EvidenceCockpitTests : FrontComposerTestBase
         });
     }
 
+    [Theory]
+    [InlineData(int.MinValue, true, "sources unavailable", "sources indisponibles")]
+    [InlineData(-1, true, "sources unavailable", "sources indisponibles")]
+    [InlineData(0, true, "0 sources", "0 sources")]
+    [InlineData(1, true, "1 source", "1 source")]
+    [InlineData(int.MaxValue, true, "2147483647 sources", "2147483647 sources")]
+    [InlineData(int.MaxValue, false, "sources unavailable", "sources indisponibles")]
+    public void EvidenceDisplay_SourceCountLabel_ShouldHandleBoundaries(
+        int count,
+        bool available,
+        string expectedEnglish,
+        string expectedFrench)
+    {
+        IStringLocalizer<MemoriesWebResources> localizer =
+            Services.GetRequiredService<IStringLocalizer<MemoriesWebResources>>();
+
+        EvidenceDisplay.SourceCountLabel(count, available).ShouldBe(expectedEnglish);
+        WithCulture("en-US", () =>
+            EvidenceDisplay.SourceCountLabel(count, available, localizer).ShouldBe(expectedEnglish));
+        WithCulture("fr-FR", () =>
+            EvidenceDisplay.SourceCountLabel(count, available, localizer).ShouldBe(expectedFrench));
+    }
+
     [Fact]
     public void EvidenceDisplay_FreshnessLabel_ShouldLocalizePositiveAgeWithoutTimestamp()
     {
