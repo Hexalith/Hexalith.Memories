@@ -329,6 +329,18 @@ IResourceBuilder<ProjectResource> server = builder
     .WaitFor(openBao)
     .WaitFor(secretStore)
     .WaitFor(conversationLlm);
+server.OnBeforeResourceStarted(async (_, @event, cancellationToken) =>
+{
+    // Start the probe deadline only after the container starts. Aspire can report Running before
+    // the published FalkorDB port responds, especially after a full topology restart.
+    ResourceNotificationService notifications = @event.Services.GetRequiredService<ResourceNotificationService>();
+    await notifications.WaitForResourceAsync(
+        falkordb.Resource.Name,
+        [KnownResourceStates.Running],
+        cancellationToken).ConfigureAwait(false);
+    (string host, int port) = AllocatedEndpointResolver.Resolve(falkordb.Resource, "falkordb");
+    await WaitForRedisPingAsync(host, port, TimeSpan.FromMinutes(2), cancellationToken).ConfigureAwait(false);
+});
 server = RandomizeProjectHttpEndpointIfRequested(server);
 
 // Story 6.1: dev-only default allow-list for POST /api/v1/ingest/directory so developers can batch-ingest
