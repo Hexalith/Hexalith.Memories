@@ -21,7 +21,7 @@ public sealed class FalkorDbFixture : IAsyncLifetime
     /// <summary>Gets the immutable fixture-owned container identity when the container lane is selected.</summary>
     internal string? ContainerIdentity => _container?.Id;
 
-    public string ConnectionString => _nativeConnectionString ?? $"localhost:{_container!.GetMappedPublicPort(6379)}";
+    public string ConnectionString => _nativeConnectionString ?? $"127.0.0.1:{_container!.GetMappedPublicPort(6379)}";
 
     public async ValueTask InitializeAsync()
     {
@@ -40,6 +40,7 @@ public sealed class FalkorDbFixture : IAsyncLifetime
             .WithWaitStrategy(
                 Wait.ForUnixContainer()
                     .UntilInternalTcpPortIsAvailable(6379)
+                    .UntilExternalTcpPortIsAvailable(6379)
                     .UntilCommandIsCompleted("redis-cli", "PING"))
             .Build();
 
