@@ -10,6 +10,7 @@ else
 {
     <main class="mem-specimen-route"
           data-testid="mem-specimen-route"
+          data-interactive="@RendererInfo.IsInteractive.ToString().ToLowerInvariant()"
           data-surface="@SpecimenRoute.Surface"
           data-slug="@SpecimenRoute.Slug"
           data-component="@SpecimenRoute.ComponentName"
@@ -28,7 +29,23 @@ else
                 @switch (SpecimenRoute.Slug)
                 {
                     case "evidence-cockpit":
-                        <MemoriesEvidenceCockpit Packet="@Packet" />
+                        @if (ExerciseTransitions)
+                        {
+                            <FluentButton Disabled="@(!RendererInfo.IsInteractive)"
+                                          data-testid="mem-specimen-advance-cockpit"
+                                          OnClick="AdvanceCockpit">
+                                @(_transitionPacket is null ? "Complete retrieval" : "Degrade retrieval")
+                            </FluentButton>
+                            <MemoriesEvidenceCockpit Packet="@_transitionPacket"
+                                                     TenantId="tenant-a"
+                                                     CaseId="case-a"
+                                                     IsLoading="@(_transitionPacket is null)"
+                                                     OnRecoveryAction="RecoverCockpitAsync" />
+                        }
+                        else
+                        {
+                            <MemoriesEvidenceCockpit Packet="@Packet" />
+                        }
                         break;
                     case "trust-strip":
                         <MemoriesTrustStrip Packet="@Packet" />
@@ -104,6 +121,10 @@ else
 
 @code {
     private string _callbackLog = "no interaction";
+    private EvidencePacket? _transitionPacket;
+
+    [SupplyParameterFromQuery(Name = "transitions")]
+    public bool ExerciseTransitions { get; set; }
 
     [Parameter]
     public string? SurfaceSlug { get; set; }
@@ -125,6 +146,19 @@ else
         LensKind.CaseActivityTrail,
         LensRole.Developer,
         SpecimenRoute?.Route);
+
+    private void AdvanceCockpit()
+    {
+        _transitionPacket = _transitionPacket is null
+            ? Epic17EvidencePacketFixtures.CompletePacket()
+            : Epic17EvidencePacketFixtures.DegradedPacket();
+    }
+
+    private Task RecoverCockpitAsync(RecoveryActionInvocation invocation)
+    {
+        _transitionPacket = Epic17EvidencePacketFixtures.CompletePacket();
+        return CaptureRecoveryActionAsync(invocation);
+    }
 
     private Task CaptureRecoveryActionAsync(RecoveryActionInvocation invocation)
     {

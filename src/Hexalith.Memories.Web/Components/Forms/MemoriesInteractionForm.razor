@@ -85,6 +85,7 @@
         <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" VerticalAlignment="VerticalAlignment.Center">
             <FluentButton Appearance="ButtonAppearance.Primary"
                           Disabled="@(!_result.CanDispatch)"
+                          aria-disabled="@(!_result.CanDispatch ? "true" : null)"
                           data-testid="mem-form-submit"
                           OnClick="EmitSubmitAsync">
                 @Localizer[FormResourceKeys.SubmitLabel]

@@ -9,6 +9,7 @@ using Microsoft.FluentUI.AspNetCore.Components;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
+builder.WebHost.UseStaticWebAssets();
 builder.Services.AddLocalization();
 builder.Services
     .AddRazorComponents()
@@ -17,6 +18,7 @@ builder.Services.AddFluentUIComponents();
 
 WebApplication app = builder.Build();
 
+app.MapStaticAssets();
 app.UseStaticFiles();
 app.UseAntiforgery();
 

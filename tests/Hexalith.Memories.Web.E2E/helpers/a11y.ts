@@ -20,6 +20,7 @@ export interface AxeEvidence {
 
 export async function scanRouteWithAxe(page: Page, route: SpecimenRoute): Promise<AxeEvidence> {
   await page.goto(route.route);
+  await expect(page.getByTestId('mem-specimen-route')).toHaveAttribute('data-interactive', 'true');
   const surfaceRoot = page.getByTestId('mem-specimen-surface-root');
   await expect(surfaceRoot).toBeVisible();
   const selectorCount = await surfaceRoot.getByTestId(route.selectorAnchor).count();

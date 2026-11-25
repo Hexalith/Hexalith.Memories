@@ -66,6 +66,7 @@
                             <FluentButton Appearance="ButtonAppearance.Subtle"
                                           role="button"
                                           Disabled="@(!check.NextActionAvailable)"
+                                          aria-disabled="@(!check.NextActionAvailable ? "true" : null)"
                                           aria-description="@(check.NextActionAvailable ? null : Localizer[OperatorHealthResourceKeys.NextActionDisabled].Value)"
                                           data-testid="mem-health-action-button"
                                           OnClick="@(() => EmitActionAsync(check))">

@@ -33,3 +33,42 @@ test('specimen routes pass blocking axe checks with nonzero target nodes', async
   expect(scans.every((scan) => scan.incompleteIds.every((id) => id === 'aria-prohibited-attr'))).toBe(true);
   expect(artifactPath).toBe('test-results/evidence/axe-summary.json');
 });
+
+test('cockpit exposes loading, degradation and recovery during keyboard interaction', async ({ page }) => {
+  await page.goto('/__memories/specimens/evidence-cockpit?transitions=true');
+  const cockpit = page.getByTestId('mem-evidence-cockpit');
+  const loading = cockpit.getByRole('status').and(cockpit.getByTestId('mem-evidence-loading'));
+  await expect(loading).toContainText('Loading');
+  await expect(cockpit.getByTestId('mem-source-stack')).toHaveCount(0);
+
+  const advance = page.getByTestId('mem-specimen-advance-cockpit');
+  await expect(advance).toHaveText('Complete retrieval');
+  await expect(advance).toHaveAttribute('tabindex', '0');
+  await page.keyboard.press('Tab');
+  await expect(advance).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(loading).toHaveCount(0);
+  await expect(cockpit.getByRole('status', { name: 'Evidence health: Complete' })).toBeVisible();
+  await expect(cockpit.getByTestId('mem-evidence-result-counts')).toBeVisible();
+  await expect(cockpit.getByTestId('mem-evidence-recovery')).toHaveCount(0);
+
+  await expect(advance).toHaveText('Degrade retrieval');
+  await expect(advance).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(cockpit.getByRole('status', { name: 'Evidence health: Degraded' })).toBeVisible();
+  const recovery = cockpit.getByRole('status').and(cockpit.getByTestId('mem-evidence-recovery'));
+  await expect(recovery).toHaveAttribute('aria-live', 'polite');
+  const action = recovery.getByTestId('mem-recovery-action-button');
+  await expect(action).toHaveText('Inspect backend health');
+  await expect(action).toHaveAttribute('tabindex', '0');
+  for (let step = 0; step < 10 && !await action.evaluate(button => button === document.activeElement); step++) {
+    await page.keyboard.press('Tab');
+  }
+  await expect(action).toBeFocused();
+  await page.keyboard.press('Enter');
+
+  await expect(recovery).toHaveCount(0);
+  await expect(cockpit.getByRole('status', { name: 'Evidence health: Complete' })).toBeVisible();
+  await expect(cockpit.getByTestId('mem-evidence-result-counts')).toBeVisible();
+  await expect(page.getByTestId('mem-specimen-callback-log')).toContainText('recovery:InspectBackendHealth:health');
+});

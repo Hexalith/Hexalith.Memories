@@ -72,6 +72,7 @@
                         {
                             <FluentButton Appearance="ButtonAppearance.Subtle"
                                           Disabled="@(!unit.RecoveryAvailable)"
+                                          aria-disabled="@(!unit.RecoveryAvailable ? "true" : null)"
                                           Title="@(unit.RecoveryAvailable ? null : Localizer[IngestionLifecycleResourceKeys.RecoveryDisabledReason].Value)"
                                           data-testid="mem-ingestion-recovery-button"
                                           OnClick="@(() => EmitRecoveryAsync(unit))">

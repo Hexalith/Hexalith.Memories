@@ -30,6 +30,7 @@
     <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8">
         <FluentButton Appearance="ButtonAppearance.Primary"
                       Disabled="@(!_validation.IsValid)"
+                      aria-disabled="@(!_validation.IsValid ? "true" : null)"
                       data-testid="mem-navigation-open"
                       OnClick="EmitOpenAsync">
             @Localizer[InteractionResourceKeys.NavigationOpenLabel]

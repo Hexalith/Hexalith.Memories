@@ -99,9 +99,10 @@ test('specimen routes keep required trust anchors reachable across viewports and
 });
 
 async function requiredAnchorReachability(page: Page, route: SpecimenRoute) {
+  await expect(page.getByTestId('mem-specimen-route')).toHaveAttribute('data-interactive', 'true');
   const surfaceRoot = page.getByTestId('mem-specimen-surface-root');
   const target = surfaceRoot.getByTestId(route.selectorAnchor).first();
-  await expect(target).toBeAttached();
+  await expect(target).toBeVisible();
 
   // Reset the scroll offset and measure horizontal reachability WITHOUT an auto
   // horizontal scroll, so trust content that is only reachable by scrolling
@@ -148,6 +149,7 @@ async function reflowEvidence(page: Page, route: SpecimenRoute) {
 async function touchTargetEvidence(page: Page, route: SpecimenRoute) {
   await page.setViewportSize({ width: 360, height: 800 });
   await page.goto(route.route);
+  await expect(page.getByTestId('mem-specimen-route')).toHaveAttribute('data-interactive', 'true');
 
   const interactiveSelector = [
     'button',

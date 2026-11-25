@@ -199,6 +199,7 @@
               data-availability="@action.Availability">
             <FluentButton Appearance="@(action.IsPrimary ? ButtonAppearance.Primary : ButtonAppearance.Subtle)"
                           Disabled="@(action.Availability == RecoveryActionAvailability.Unavailable)"
+                          aria-disabled="@(action.Availability == RecoveryActionAvailability.Unavailable ? "true" : null)"
                           Title="@DisabledReason(action)"
                           data-testid="mem-recovery-action-button"
                           OnClick="@(() => EmitAsync(action))">

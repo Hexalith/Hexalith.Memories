@@ -31,7 +31,9 @@ test('browser artifacts and manual checklist evidence stay bounded and redacted'
   await mkdir(evidenceDirectory, { recursive: true });
   await page.goto(cockpit!.route);
   const screenshotPath = path.join(evidenceDirectory, 'evidence-cockpit.png');
-  await page.getByTestId('mem-specimen-route').screenshot({ path: screenshotPath });
+  const specimen = page.getByTestId('mem-specimen-route');
+  await expect(specimen).toHaveAttribute('data-interactive', 'true');
+  await specimen.screenshot({ path: screenshotPath });
 
   await page.goto(agentPacket!.route);
   const copyText = await page.getByTestId('mem-packet-json').textContent();
