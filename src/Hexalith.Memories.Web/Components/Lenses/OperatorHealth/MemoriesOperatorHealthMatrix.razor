@@ -127,8 +127,8 @@
     protected override void OnParametersSet()
     {
         ArgumentNullException.ThrowIfNull(Packet);
-        _shell = LensShellMapper.Map(Packet, LensKind.OperatorHealthMatrix, Role, ReturnRoute);
-        _view = OperatorHealthMatrixMapper.Map(Packet, Role);
+        _shell = LensShellMapper.Map(Packet, LensKind.OperatorHealthMatrix, Role, ReturnRoute, Localizer);
+        _view = OperatorHealthMatrixMapper.Map(Packet, Role, Localizer);
     }
 
     private async Task EmitActionAsync(OperatorHealthCheckRow check)

@@ -10,6 +10,9 @@ using System.Globalization;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Web.Components.Evidence;
 using Hexalith.Memories.Web.Components.Recovery;
+using Hexalith.Memories.Web.Resources;
+
+using Microsoft.Extensions.Localization;
 
 /// <summary>
 /// Pure, deterministic projection of a canonical Evidence Packet into the Operator Health Matrix (AC3).
@@ -28,6 +31,12 @@ public static class OperatorHealthMatrixMapper
     /// <param name="role">The active role-density profile (ordering only).</param>
     /// <returns>The typed, sanitized health matrix.</returns>
     public static OperatorHealthViewModel Map(EvidencePacket packet, LensRole role)
+        => Map(packet, role, localizer: null);
+
+    internal static OperatorHealthViewModel Map(
+        EvidencePacket packet,
+        LensRole role,
+        IStringLocalizer<MemoriesWebResources>? localizer)
     {
         ArgumentNullException.ThrowIfNull(packet);
 
@@ -57,7 +66,9 @@ public static class OperatorHealthMatrixMapper
         return new OperatorHealthViewModel(
             ordered,
             LastCheckedAvailable: lastChecked.HasValue,
-            SafeLastChecked: EvidenceDisplay.TimestampLabel(lastChecked, "last-checked unavailable"),
+            SafeLastChecked: localizer is null
+                ? EvidenceDisplay.TimestampLabel(lastChecked, "last-checked unavailable")
+                : EvidenceDisplay.TimestampLabel(lastChecked, localizer),
             LastCheckedNoteKey: OperatorHealthResourceKeys.LastCheckedNote,
             HighestSeverity: checks.Max(c => c.Severity),
             HasTrustBlocking: checks.Any(c => c.TrustBlocking));

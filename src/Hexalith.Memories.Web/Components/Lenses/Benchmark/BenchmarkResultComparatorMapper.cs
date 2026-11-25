@@ -8,6 +8,9 @@ namespace Hexalith.Memories.Web.Components.Lenses.Benchmark;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Web.Components.Evidence;
 using Hexalith.Memories.Web.Components.Lenses;
+using Hexalith.Memories.Web.Resources;
+
+using Microsoft.Extensions.Localization;
 
 /// <summary>
 /// Pure, deterministic projection of a canonical Evidence Packet into the Benchmark Result Comparator (AC4).
@@ -24,6 +27,12 @@ public static class BenchmarkResultComparatorMapper
     /// <param name="role">The active role-density profile (affects the shared shell only).</param>
     /// <returns>The typed, sanitized benchmark comparator.</returns>
     public static BenchmarkResultComparatorViewModel Map(EvidencePacket packet, LensRole role)
+        => Map(packet, role, localizer: null);
+
+    internal static BenchmarkResultComparatorViewModel Map(
+        EvidencePacket packet,
+        LensRole role,
+        IStringLocalizer<MemoriesWebResources>? localizer)
     {
         ArgumentNullException.ThrowIfNull(packet);
         _ = role;
@@ -60,7 +69,7 @@ public static class BenchmarkResultComparatorMapper
                 : 0;
             rows.Add(new BenchmarkAxisRow(
                 Axis: EvidenceDisplay.SafeText(axis.Axis, "axis unavailable"),
-                SafeScore: EvidenceDisplay.ScoreLabel(axis.Score),
+                SafeScore: EvidenceDisplay.ScoreLabel(axis.Score, localizer),
                 ScorePercent: percent,
                 HasScore: hasScore,
                 SafeNormalization: EvidenceDisplay.SafeText(axis.NormalizationMethod, "normalization unavailable"),
@@ -82,11 +91,11 @@ public static class BenchmarkResultComparatorMapper
             AxisRows: rows,
             UnavailableAxes: unavailableAxes,
             NdcgAvailability: HasNdcg(benchmark) ? LensFieldAvailability.Available : LensFieldAvailability.Unavailable,
-            SafeNdcg: FormatNdcg(benchmark),
+            SafeNdcg: FormatNdcg(benchmark, localizer),
             ThresholdAvailability: HasThreshold(benchmark) ? LensFieldAvailability.Available : LensFieldAvailability.Unavailable,
-            SafeThreshold: FormatThreshold(benchmark),
+            SafeThreshold: FormatThreshold(benchmark, localizer),
             PerQueryAvailability: benchmark?.PerQuery is { Count: > 0 } ? LensFieldAvailability.Available : LensFieldAvailability.Unavailable,
-            SafePerQuery: FormatPerQuery(benchmark),
+            SafePerQuery: FormatPerQuery(benchmark, localizer),
             EvidenceLinkAvailability: string.IsNullOrWhiteSpace(benchmark?.EvidenceUri)
                 ? LensFieldAvailability.Unavailable
                 : LensFieldAvailability.Available,
@@ -130,7 +139,9 @@ public static class BenchmarkResultComparatorMapper
     private static bool HasThreshold(EvidencePacketBenchmarkEvidence? benchmark)
         => benchmark?.Threshold.HasValue == true || benchmark?.ThresholdPassed.HasValue == true;
 
-    private static string FormatNdcg(EvidencePacketBenchmarkEvidence? benchmark)
+    private static string FormatNdcg(
+        EvidencePacketBenchmarkEvidence? benchmark,
+        IStringLocalizer<MemoriesWebResources>? localizer)
     {
         if (!HasNdcg(benchmark))
         {
@@ -138,14 +149,16 @@ public static class BenchmarkResultComparatorMapper
         }
 
         List<string> parts = [];
-        AddScore(parts, "hybrid", benchmark!.HybridNdcg10);
-        AddScore(parts, "syntactic", benchmark.SyntacticNdcg10);
-        AddScore(parts, "semantic", benchmark.SemanticNdcg10);
-        AddScore(parts, "graph", benchmark.GraphNdcg10);
+        AddScore(parts, "hybrid", benchmark!.HybridNdcg10, localizer);
+        AddScore(parts, "syntactic", benchmark.SyntacticNdcg10, localizer);
+        AddScore(parts, "semantic", benchmark.SemanticNdcg10, localizer);
+        AddScore(parts, "graph", benchmark.GraphNdcg10, localizer);
         return EvidenceDisplay.SafeText(string.Join("; ", parts), "NDCG@10 unavailable");
     }
 
-    private static string FormatThreshold(EvidencePacketBenchmarkEvidence? benchmark)
+    private static string FormatThreshold(
+        EvidencePacketBenchmarkEvidence? benchmark,
+        IStringLocalizer<MemoriesWebResources>? localizer)
     {
         if (!HasThreshold(benchmark))
         {
@@ -159,12 +172,26 @@ public static class BenchmarkResultComparatorMapper
             _ => "inconclusive",
         };
 
+        if (localizer is null)
+        {
+            return benchmark.Threshold.HasValue ? $"{status} at {Score(benchmark.Threshold, localizer)}" : status;
+        }
+
+        BenchmarkResultState thresholdState = benchmark.ThresholdPassed switch
+        {
+            true => BenchmarkResultState.Passed,
+            false => BenchmarkResultState.Regression,
+            _ => BenchmarkResultState.Inconclusive,
+        };
+        string localizedStatus = localizer[BenchmarkResourceKeys.ResultState(thresholdState)];
         return benchmark.Threshold.HasValue
-            ? string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{status} at {benchmark.Threshold.Value:0.###}")
-            : status;
+            ? localizer[BenchmarkResourceKeys.ThresholdStatusAt, localizedStatus, Score(benchmark.Threshold, localizer)]
+            : localizedStatus;
     }
 
-    private static string FormatPerQuery(EvidencePacketBenchmarkEvidence? benchmark)
+    private static string FormatPerQuery(
+        EvidencePacketBenchmarkEvidence? benchmark,
+        IStringLocalizer<MemoriesWebResources>? localizer)
     {
         if (benchmark?.PerQuery is not { Count: > 0 } perQuery)
         {
@@ -172,20 +199,23 @@ public static class BenchmarkResultComparatorMapper
         }
 
         return EvidenceDisplay.SafeText(
-            string.Join(", ", perQuery.Select(static query => $"{query.QueryId}:{Score(query.HybridNdcg10)}")),
+            string.Join(", ", perQuery.Select(query => $"{query.QueryId}:{Score(query.HybridNdcg10, localizer)}")),
             "per-query evidence unavailable");
     }
 
-    private static void AddScore(List<string> parts, string label, double? value)
+    private static void AddScore(
+        List<string> parts, string label, double? value, IStringLocalizer<MemoriesWebResources>? localizer)
     {
         if (value.HasValue && double.IsFinite(value.Value))
         {
-            parts.Add($"{label} {Score(value)}");
+            parts.Add($"{label} {Score(value, localizer)}");
         }
     }
 
-    private static string Score(double? value)
-        => value.HasValue && double.IsFinite(value.Value)
-            ? value.Value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)
-            : "n/a";
+    private static string Score(double? value, IStringLocalizer<MemoriesWebResources>? localizer)
+        => localizer is not null
+            ? EvidenceDisplay.ScoreLabel(value, localizer)
+            : value.HasValue && double.IsFinite(value.Value)
+                ? value.Value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)
+                : "n/a";
 }

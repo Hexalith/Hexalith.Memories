@@ -95,8 +95,8 @@
     protected override void OnParametersSet()
     {
         ArgumentNullException.ThrowIfNull(Packet);
-        _shell = LensShellMapper.Map(Packet, LensKind.CaseActivityTrail, Role, ReturnRoute);
-        _view = CaseActivityTrailMapper.Map(Packet, Role);
+        _shell = LensShellMapper.Map(Packet, LensKind.CaseActivityTrail, Role, ReturnRoute, Localizer);
+        _view = CaseActivityTrailMapper.Map(Packet, Role, Localizer);
     }
 
     private static BadgeSlot SeveritySlot(RecoverySeverity severity) => RecoveryDisplay.SeveritySlot(severity);

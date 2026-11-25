@@ -17,6 +17,9 @@ public static class BenchmarkResourceKeys
     /// <summary>Label preceding the 80% thesis threshold status.</summary>
     public const string ThresholdLabel = "Benchmark_Threshold_Label";
 
+    /// <summary>Resource key for a threshold status with its score.</summary>
+    public const string ThresholdStatusAt = "Benchmark_ThresholdStatusAt";
+
     /// <summary>Label preceding the per-query breakdown.</summary>
     public const string PerQueryLabel = "Benchmark_PerQuery_Label";
 

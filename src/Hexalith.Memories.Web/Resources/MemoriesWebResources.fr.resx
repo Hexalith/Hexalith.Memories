@@ -1104,4 +1104,24 @@
   <data name="Evidence_SourceType_Projection" xml:space="preserve"><value>Projection</value></data>
   <data name="Evidence_SourceType_Discussion" xml:space="preserve"><value>Discussion</value></data>
   <data name="Evidence_SourceType_Annotation" xml:space="preserve"><value>Annotation</value></data>
+  <data name="Evidence_IngestionStage_Unknown" xml:space="preserve"><value>Inconnue</value></data>
+  <data name="Evidence_IngestionStage_Received" xml:space="preserve"><value>Reçu</value></data>
+  <data name="Evidence_IngestionStage_Fetching" xml:space="preserve"><value>Récupération</value></data>
+  <data name="Evidence_IngestionStage_Extracting" xml:space="preserve"><value>Extraction</value></data>
+  <data name="Evidence_IngestionStage_Chunking" xml:space="preserve"><value>Découpage</value></data>
+  <data name="Evidence_IngestionStage_Embedding" xml:space="preserve"><value>Vectorisation</value></data>
+  <data name="Evidence_IngestionStage_Indexing" xml:space="preserve"><value>Indexation</value></data>
+  <data name="Evidence_IngestionStage_Completed" xml:space="preserve"><value>Terminé</value></data>
+  <data name="Evidence_IngestionStage_Failed" xml:space="preserve"><value>Échec</value></data>
+  <data name="Evidence_IngestionStage_Retrying" xml:space="preserve"><value>Nouvelle tentative</value></data>
+  <data name="Evidence_Omission_None" xml:space="preserve"><value>Aucune</value></data>
+  <data name="Evidence_Omission_TokenBudget" xml:space="preserve"><value>Budget de jetons</value></data>
+  <data name="Evidence_Omission_Density" xml:space="preserve"><value>Densité</value></data>
+  <data name="Evidence_Omission_Redaction" xml:space="preserve"><value>Masquage</value></data>
+  <data name="Evidence_Omission_Policy" xml:space="preserve"><value>Politique</value></data>
+  <data name="Evidence_Omission_Authorization" xml:space="preserve"><value>Autorisation</value></data>
+  <data name="Evidence_Omission_BackendUnavailable" xml:space="preserve"><value>Service indisponible</value></data>
+  <data name="Evidence_Omission_TrueAbsence" xml:space="preserve"><value>Absence confirmée</value></data>
+  <data name="Evidence_Omission_Combined" xml:space="preserve"><value>Motifs combinés</value></data>
+  <data name="Benchmark_ThresholdStatusAt" xml:space="preserve"><value>{0} à {1}</value></data>
 </root>

@@ -10,6 +10,9 @@ using System.Globalization;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Web.Components.Evidence;
 using Hexalith.Memories.Web.Components.Recovery;
+using Hexalith.Memories.Web.Resources;
+
+using Microsoft.Extensions.Localization;
 
 /// <summary>
 /// Pure, deterministic projection of a canonical Evidence Packet into the Case Activity Trail lens (AC1).
@@ -27,6 +30,12 @@ public static class CaseActivityTrailMapper
     /// <param name="role">The active role-density profile (ordering/grouping only).</param>
     /// <returns>The typed, sanitized activity trail.</returns>
     public static CaseActivityTrailViewModel Map(EvidencePacket packet, LensRole role)
+        => Map(packet, role, localizer: null);
+
+    internal static CaseActivityTrailViewModel Map(
+        EvidencePacket packet,
+        LensRole role,
+        IStringLocalizer<MemoriesWebResources>? localizer)
     {
         ArgumentNullException.ThrowIfNull(packet);
 
@@ -44,7 +53,7 @@ public static class CaseActivityTrailMapper
             foreach (EvidencePacketSource source in packet.Sources)
             {
                 (LensFieldAvailability availability, string safeLink) = ClassifyLink(source.SourceUri, source.MemoryUnitId);
-                (LensFieldAvailability timestampAvailability, string safeTimestamp) = ClassifyTimestamp(source.Timestamp);
+                (LensFieldAvailability timestampAvailability, string safeTimestamp) = ClassifyTimestamp(source.Timestamp, localizer);
                 rows.Add(new CaseActivityRow(
                     order++,
                     CaseActivityKind.SourceCitation,
@@ -195,9 +204,11 @@ public static class CaseActivityTrailMapper
             RecoveryResourceKeys.Action(action.Kind),
             RecoverySeverity.Info);
 
-    private static (LensFieldAvailability Availability, string SafeTimestamp) ClassifyTimestamp(DateTimeOffset? timestamp)
+    private static (LensFieldAvailability Availability, string SafeTimestamp) ClassifyTimestamp(
+        DateTimeOffset? timestamp,
+        IStringLocalizer<MemoriesWebResources>? localizer)
         => timestamp.HasValue
-            ? (LensFieldAvailability.Available, EvidenceDisplay.TimestampLabel(timestamp))
+            ? (LensFieldAvailability.Available, EvidenceDisplay.TimestampLabel(timestamp, localizer))
             : (LensFieldAvailability.Unavailable, "timestamp unavailable");
 
     private static (LensFieldAvailability Availability, string SafeLink) ClassifyLink(string? primary, string? fallback)

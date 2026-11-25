@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Web.Tests.Components.Grid;
 
+using System.Globalization;
+
 using AngleSharp.Dom;
 
 using Bunit;
@@ -65,6 +67,28 @@ public sealed class MemoriesEvidenceGridTests : FrontComposerTestBase
             .Where(static c => c.GetAttribute("data-trust-critical") == "true")
             .ShouldAllBe(static c => c.GetAttribute("data-collapsed") == "false");
         component.FindAll("[data-testid='mem-grid-more']").ShouldNotBeEmpty();
+    }
+
+    [Fact]
+    public void Grid_ScoreUsesFrenchDecimalSeparator()
+    {
+        CultureInfo previous = CultureInfo.CurrentCulture;
+        CultureInfo previousUi = CultureInfo.CurrentUICulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("fr-FR");
+
+            var component = Render<MemoriesEvidenceGrid>(parameters => parameters
+                .Add(p => p.Packet, EvidencePacketFixtures.CompletePacket()));
+
+            component.Find("[data-testid='mem-grid-cell'][data-column-key='confidence']").TextContent
+                .ShouldContain("0,91");
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previous;
+            CultureInfo.CurrentUICulture = previousUi;
+        }
     }
 
     [Fact]

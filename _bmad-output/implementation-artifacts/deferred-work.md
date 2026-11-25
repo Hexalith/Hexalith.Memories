@@ -3437,6 +3437,7 @@ origin: migrated from legacy ledger ("Triage: Story 17.1 deferred web items and 
 location: src/Hexalith.Memories.Web/Components/Evidence/MemoriesSourceCitationStack.razor`; `src/Hexalith.Memories.Web/Components/Evidence/MemoriesRetrievalAxisBreakdown.razor
 reason: - ID: 17.1-CR14 - Status: accepted - Source story: 17-1-evidence-cockpit-and-trust-components - Target artifact: `src/Hexalith.Memories.Web/Components/Evidence/MemoriesSourceCitationStack.razor`; `src/Hexalith.Memories.Web/Components/Evidence/MemoriesRetrievalAxisBreakdown.razor` - Re-open trigger: `SourceType` or axis values become provider-authored, user-authored, localized free text, or otherwise leave the controlled-vocabulary contract. - Rationale: Current values are enum-like controlled contract terms. Applying `SafeText` everywhere is acceptable future hardening, but not needed until the contract loosens.
 status: open
+note: 2026-11-25 — Skipped. Story 25.7 already localizes the controlled SourceType enum and sanitizes both rendered axis lists. The recorded trigger for a free-text source type has not occurred.
 
 ### DW-490: ID: 17.1-CR15
 
@@ -3456,6 +3457,7 @@ origin: migrated from legacy ledger ("Triage: Story 17.1 deferred web items and 
 location: _bmad-output/planning-artifacts/epics.md` (future web story: Evidence Metadata and Trust Semantics Surfacing); `src/Hexalith.Memories.Web/Components/Evidence/MemoriesSourceCitationStack.razor
 reason: - ID: 17.1-CR17 - Status: carried-forward - Source story: 17-1-evidence-cockpit-and-trust-components - Target artifact: `_bmad-output/planning-artifacts/epics.md` (future web story: Evidence Metadata and Trust Semantics Surfacing); `src/Hexalith.Memories.Web/Components/Evidence/MemoriesSourceCitationStack.razor` - Re-open trigger: before source trust marks, external/local source distinction, or cross-case source cues are productized. - Rationale: Trust-mark badging needs a UX decision alongside source metadata and case visibility. Implementing it alone would risk adding a visual security claim without a shared legend.
 status: open
+note: 2026-11-25 — Skipped. Duplicates DW-474. The shared source trust legend and classification contract are still undefined.
 
 ### DW-493: ID: 17.1-CR18
 
@@ -3463,13 +3465,15 @@ origin: migrated from legacy ledger ("Triage: Story 17.1 deferred web items and 
 location: _bmad-output/planning-artifacts/epics.md` (Story 25.7 Evidence Cockpit UX Conformance); `src/Hexalith.Memories.Web/Components/Evidence/MemoriesGraphPathSummary.razor
 reason: - ID: 17.1-CR18 - Status: accepted - Source story: 17-1-evidence-cockpit-and-trust-components - Target artifact: `_bmad-output/planning-artifacts/epics.md` (Story 25.7 Evidence Cockpit UX Conformance); `src/Hexalith.Memories.Web/Components/Evidence/MemoriesGraphPathSummary.razor` - Re-open trigger: the pinned Fluent UI package or FrontComposer adds a description-list primitive. - Rationale: Story 25.7 verified that the pinned Fluent V5 assembly has no `FluentDescriptionList`; the semantic `<dl>/<dt>/<dd>` fallback remains explicitly allowlisted under owner Story 25.7. - Evidence: `Epic17ConformanceAllowlist` description-list entries and `Epic17ConformanceRemediationTests.GraphSummary_PinnedFluentPackageHasNoDescriptionListPrimitive`.
 status: open
+note: 2026-11-25 — Skipped. Duplicates DW-475. The semantic description list remains the accepted fallback until the component libraries provide a primitive.
 
 ### DW-494: Non-cockpit grid and lens callers still consume locale-insensitive `EvidenceDisplay` overloads.
 
 origin: migrated from legacy ledger ("Triage: Story 17.1 deferred web items and architecture decisions (2026-07-06)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-25-7-evidence-cockpit-ux-conformance.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-25-7-evidence-cockpit-ux-conformance.md` summary: Non-cockpit grid and lens callers still consume locale-insensitive `EvidenceDisplay` overloads. evidence: The reviewed cockpit and its Evidence child components use localized overloads, but `Components/Grid` and `Components/Lenses` retain pre-existing calls to the invariant enum, timestamp, freshness, and score formatters; localizing those mapper-driven surfaces requires a separate cross-RCL design rather than widening Story 25.7.
-status: open
+status: done 2026-11-25
+resolution: Grid and lens components now use the evidence localizer for score, timestamp, freshness, and enum presentation. French rendering tests and all 551 Web.Tests passed.
 
 ### DW-495: ID: 17-WEB-AD1-COMMAND-PALETTE-SCOPE
 

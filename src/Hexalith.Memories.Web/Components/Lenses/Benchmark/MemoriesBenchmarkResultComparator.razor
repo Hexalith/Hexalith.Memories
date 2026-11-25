@@ -130,7 +130,7 @@
     protected override void OnParametersSet()
     {
         ArgumentNullException.ThrowIfNull(Packet);
-        _shell = LensShellMapper.Map(Packet, LensKind.BenchmarkResultComparator, Role, ReturnRoute);
-        _view = BenchmarkResultComparatorMapper.Map(Packet, Role);
+        _shell = LensShellMapper.Map(Packet, LensKind.BenchmarkResultComparator, Role, ReturnRoute, Localizer);
+        _view = BenchmarkResultComparatorMapper.Map(Packet, Role, Localizer);
     }
 }

@@ -12,6 +12,9 @@ using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Web.Components.Evidence;
 using Hexalith.Memories.Web.Components.Lenses;
 using Hexalith.Memories.Web.Components.Recovery;
+using Hexalith.Memories.Web.Resources;
+
+using Microsoft.Extensions.Localization;
 
 /// <summary>
 /// Pure, deterministic projection of a canonical Evidence Packet into the Agent Packet Inspector (AC5).
@@ -34,6 +37,12 @@ public static class AgentPacketInspectorMapper
     /// <param name="role">The active role-density profile (affects the shared shell only).</param>
     /// <returns>The typed, sanitized agent packet inspector.</returns>
     public static AgentPacketInspectorViewModel Map(EvidencePacket packet, LensRole role)
+        => Map(packet, role, localizer: null);
+
+    internal static AgentPacketInspectorViewModel Map(
+        EvidencePacket packet,
+        LensRole role,
+        IStringLocalizer<MemoriesWebResources>? localizer)
     {
         ArgumentNullException.ThrowIfNull(packet);
         _ = role;
@@ -61,7 +70,7 @@ public static class AgentPacketInspectorMapper
                 ? LensFieldAvailability.Unavailable
                 : LensFieldAvailability.Available;
 
-        IReadOnlyList<PacketSchemaField> fields = BuildSchemaFields(packet, safeQuery, safeCounts, safeTokenBudget, restrictive);
+        IReadOnlyList<PacketSchemaField> fields = BuildSchemaFields(packet, safeQuery, safeCounts, safeTokenBudget, restrictive, localizer);
         string copyText = BuildCopyText(fields, recovery);
 
         return new AgentPacketInspectorViewModel(
@@ -90,7 +99,8 @@ public static class AgentPacketInspectorMapper
         string safeQuery,
         string safeCounts,
         string safeTokenBudget,
-        bool restrictive)
+        bool restrictive,
+        IStringLocalizer<MemoriesWebResources>? localizer)
     {
         // Fields that could reveal evidence existence are suppressed to an unauthorized boundary under a
         // restrictive scope; scope/isolation/state stay visible because they are the point of the inspection.
@@ -115,13 +125,13 @@ public static class AgentPacketInspectorMapper
                 PacketSchemaFieldKind.ScopeCase,
                 string.IsNullOrWhiteSpace(packet.Scope.CaseId) ? LensFieldAvailability.Unavailable : LensFieldAvailability.Available,
                 string.IsNullOrWhiteSpace(packet.Scope.CaseId) ? "tenant scope" : EvidenceDisplay.SafeText(packet.Scope.CaseId, "tenant scope")),
-            Field(PacketSchemaFieldKind.ScopeIsolation, LensFieldAvailability.Available, EvidenceDisplay.Label(packet.Scope.IsolationStatus)),
+            Field(PacketSchemaFieldKind.ScopeIsolation, LensFieldAvailability.Available, EvidenceDisplay.Label(packet.Scope.IsolationStatus, localizer)),
             Field(PacketSchemaFieldKind.ResultQuery, LensFieldAvailability.Available, safeQuery),
             Field(PacketSchemaFieldKind.ResultCounts, gated, restrictive ? Unavailable : safeCounts),
-            Field(PacketSchemaFieldKind.EvidenceStrength, gated, restrictive ? Unavailable : EvidenceDisplay.Label(packet.Evidence.EvidenceStrength)),
+            Field(PacketSchemaFieldKind.EvidenceStrength, gated, restrictive ? Unavailable : EvidenceDisplay.Label(packet.Evidence.EvidenceStrength, localizer)),
             Field(PacketSchemaFieldKind.EvidenceAxes, gated, restrictive ? Unavailable : string.Create(CultureInfo.InvariantCulture, $"{packet.Evidence.AxesUsed.Count}")),
-            Field(PacketSchemaFieldKind.State, LensFieldAvailability.Available, EvidenceDisplay.Label(restrictive ? EvidencePacketState.Unauthorized : packet.State)),
-            Field(PacketSchemaFieldKind.OmissionReason, LensFieldAvailability.Available, EvidenceDisplay.Label(packet.OmittedDetails.Reason)),
+            Field(PacketSchemaFieldKind.State, LensFieldAvailability.Available, EvidenceDisplay.Label(restrictive ? EvidencePacketState.Unauthorized : packet.State, localizer)),
+            Field(PacketSchemaFieldKind.OmissionReason, LensFieldAvailability.Available, EvidenceDisplay.Label(packet.OmittedDetails.Reason, localizer)),
             Field(PacketSchemaFieldKind.TokenBudget, gated, restrictive ? Unavailable : safeTokenBudget),
 
             Field(

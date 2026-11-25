@@ -159,8 +159,8 @@
     protected override void OnParametersSet()
     {
         ArgumentNullException.ThrowIfNull(Packet);
-        _shell = LensShellMapper.Map(Packet, LensKind.AgentPacketInspector, Role, ReturnRoute);
-        _view = AgentPacketInspectorMapper.Map(Packet, Role);
+        _shell = LensShellMapper.Map(Packet, LensKind.AgentPacketInspector, Role, ReturnRoute, Localizer);
+        _view = AgentPacketInspectorMapper.Map(Packet, Role, Localizer);
     }
 
     private async Task EmitCopyAsync() => await OnCopy.InvokeAsync(_view.SafeCopyText).ConfigureAwait(true);

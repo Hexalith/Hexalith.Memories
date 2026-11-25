@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Web.Tests.Components.Lenses;
 
+using System.Globalization;
+
 using AngleSharp.Dom;
 
 using Bunit;
@@ -115,6 +117,38 @@ public sealed class MemoriesLensComponentsTests : FrontComposerTestBase
         invocation.Kind.ShouldBe(EvidencePacketRecoveryKind.IncreaseTokenBudget);
         invocation.TenantId.ShouldBe("tenant-a");
         invocation.CaseId.ShouldBe("case-a");
+    }
+
+    [Fact]
+    public void EvidenceLenses_UseFrenchLabelsAndScores()
+    {
+        CultureInfo previous = CultureInfo.CurrentCulture;
+        CultureInfo previousUi = CultureInfo.CurrentUICulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("fr-FR");
+
+            var benchmark = Render<MemoriesBenchmarkResultComparator>(parameters => parameters
+                .Add(p => p.Packet, LensPacketFixtures.Happy()));
+            benchmark.Find("[data-testid='mem-benchmark-axis-score']").TextContent.ShouldContain("0,91");
+            benchmark.Find("[data-testid='mem-benchmark-ndcg']").TextContent.ShouldContain("hybrid 0,875");
+            benchmark.Find("[data-testid='mem-benchmark-threshold']").TextContent.ShouldContain("à 0,8");
+            benchmark.Find("[data-testid='mem-lens-scope']").TextContent.ShouldContain("Autorisé");
+
+            var ingestion = Render<MemoriesIngestionLifecycleTracker>(parameters => parameters
+                .Add(p => p.Packet, LensPacketFixtures.Happy()));
+            ingestion.Find("[data-testid='mem-ingestion-stage']").TextContent.ShouldContain("Terminé");
+
+            var inspector = Render<MemoriesAgentPacketInspector>(parameters => parameters
+                .Add(p => p.Packet, LensPacketFixtures.Compressed()));
+            inspector.Find("[data-testid='mem-packet-field'][data-field='OmissionReason']").TextContent
+                .ShouldContain("Budget de jetons");
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previous;
+            CultureInfo.CurrentUICulture = previousUi;
+        }
     }
 
     [Fact]

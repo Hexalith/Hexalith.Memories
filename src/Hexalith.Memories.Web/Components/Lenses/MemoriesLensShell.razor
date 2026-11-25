@@ -37,7 +37,7 @@
                 @Localizer[LensResourceKeys.CaseLabel]: <strong>@(Shell.CaseId ?? Localizer[LensResourceKeys.TenantScope].Value)</strong>
             </FluentLabel>
             <FcStatusBadge Slot="@EvidenceDisplay.SlotForIsolation(Shell.IsolationStatus)"
-                           Label="@EvidenceDisplay.Label(Shell.IsolationStatus)"
+                           Label="@EvidenceDisplay.Label(Shell.IsolationStatus, Localizer)"
                            ColumnHeader="@Localizer[LensResourceKeys.TenantLabel]" />
         </FluentStack>
     </header>

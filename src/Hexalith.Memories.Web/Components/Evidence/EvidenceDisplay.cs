@@ -48,10 +48,13 @@ internal static partial class EvidenceDisplay
         return buffer.ToString();
     }
 
-    public static string Label(Enum value, IStringLocalizer<MemoriesWebResources> localizer)
+    public static string Label(Enum value, IStringLocalizer<MemoriesWebResources>? localizer)
     {
         ArgumentNullException.ThrowIfNull(value);
-        ArgumentNullException.ThrowIfNull(localizer);
+        if (localizer is null)
+        {
+            return Label(value);
+        }
 
         string key = value switch
         {
@@ -60,6 +63,8 @@ internal static partial class EvidenceDisplay
             EvidencePacketIsolationStatus isolation => EvidenceResourceKeys.Isolation(isolation),
             EvidencePacketFreshnessState freshness => EvidenceResourceKeys.Freshness(freshness),
             SourceType sourceType => EvidenceResourceKeys.SourceType(sourceType),
+            EvidencePacketIngestionStage stage => EvidenceResourceKeys.IngestionStage(stage),
+            EvidencePacketOmissionReason omission => EvidenceResourceKeys.Omission(omission),
             _ => EvidenceResourceKeys.Unavailable,
         };
         LocalizedString localized = localizer[key];
@@ -124,7 +129,7 @@ internal static partial class EvidenceDisplay
 
     public static string FreshnessLabel(
         EvidencePacket packet,
-        IStringLocalizer<MemoriesWebResources> localizer)
+        IStringLocalizer<MemoriesWebResources>? localizer)
     {
         ArgumentNullException.ThrowIfNull(packet);
 
@@ -155,9 +160,13 @@ internal static partial class EvidenceDisplay
 
     public static string FreshnessLabel(
         EvidencePacketFreshness? freshness,
-        IStringLocalizer<MemoriesWebResources> localizer)
+        IStringLocalizer<MemoriesWebResources>? localizer)
     {
-        ArgumentNullException.ThrowIfNull(localizer);
+        if (localizer is null)
+        {
+            return FreshnessLabel(freshness);
+        }
+
         if (freshness is null)
         {
             return localizer[EvidenceResourceKeys.FreshnessUnavailable];
@@ -189,9 +198,13 @@ internal static partial class EvidenceDisplay
 
     public static string TimestampLabel(
         DateTimeOffset? timestamp,
-        IStringLocalizer<MemoriesWebResources> localizer)
+        IStringLocalizer<MemoriesWebResources>? localizer)
     {
-        ArgumentNullException.ThrowIfNull(localizer);
+        if (localizer is null)
+        {
+            return TimestampLabel(timestamp);
+        }
+
         return timestamp.HasValue
             ? localizer[
                 EvidenceResourceKeys.TimestampValue,
@@ -249,9 +262,13 @@ internal static partial class EvidenceDisplay
 
     public static string ScoreLabel(
         double? score,
-        IStringLocalizer<MemoriesWebResources> localizer)
+        IStringLocalizer<MemoriesWebResources>? localizer)
     {
-        ArgumentNullException.ThrowIfNull(localizer);
+        if (localizer is null)
+        {
+            return ScoreLabel(score);
+        }
+
         return !score.HasValue || !double.IsFinite(score.Value)
             ? localizer[EvidenceResourceKeys.ScoreUnavailable]
             : localizer[

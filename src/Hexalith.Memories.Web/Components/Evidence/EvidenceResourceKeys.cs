@@ -109,4 +109,8 @@ internal static class EvidenceResourceKeys
     public static string Freshness(EvidencePacketFreshnessState freshness) => $"Evidence_Freshness_{freshness}";
 
     public static string SourceType(SourceType sourceType) => $"Evidence_SourceType_{sourceType}";
+
+    public static string IngestionStage(EvidencePacketIngestionStage stage) => $"Evidence_IngestionStage_{stage}";
+
+    public static string Omission(EvidencePacketOmissionReason reason) => $"Evidence_Omission_{reason}";
 }

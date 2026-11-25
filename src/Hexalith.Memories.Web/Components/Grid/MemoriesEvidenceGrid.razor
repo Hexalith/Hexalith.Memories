@@ -63,7 +63,7 @@
                 <TemplateColumn Title="@Localizer[GridResourceKeys.ConfidenceColumn].Value">
                     <span data-testid="mem-grid-cell" data-column-key="@ConfidenceKey" data-trust-critical="true" data-collapsed="false">
                         <FcStatusBadge Slot="@ScoreSlot(context.Score)"
-                                       Label="@EvidenceDisplay.ScoreLabel(context.Score)"
+                                       Label="@EvidenceDisplay.ScoreLabel(context.Score, Localizer)"
                                        ColumnHeader="@Localizer[GridResourceKeys.ConfidenceColumn]" />
                     </span>
                 </TemplateColumn>

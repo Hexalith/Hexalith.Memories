@@ -9,6 +9,9 @@ using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Web.Components.Evidence;
 using Hexalith.Memories.Web.Components.Interaction;
 using Hexalith.Memories.Web.Components.Recovery;
+using Hexalith.Memories.Web.Resources;
+
+using Microsoft.Extensions.Localization;
 
 /// <summary>
 /// Pure, deterministic mapping from a canonical Evidence Packet to the shared <see cref="LensShellViewModel"/>.
@@ -31,6 +34,14 @@ public static class LensShellMapper
         LensKind lens,
         LensRole role,
         string? returnRoute)
+        => Map(packet, lens, role, returnRoute, localizer: null);
+
+    internal static LensShellViewModel Map(
+        EvidencePacket packet,
+        LensKind lens,
+        LensRole role,
+        string? returnRoute,
+        IStringLocalizer<MemoriesWebResources>? localizer)
     {
         ArgumentNullException.ThrowIfNull(packet);
 
@@ -41,8 +52,8 @@ public static class LensShellMapper
         // Confidence is a trust signal: suppress it under a restrictive scope so the shell never reveals
         // evidence strength (and therefore evidence existence) past an authorization boundary.
         string confidence = restrictive
-            ? LensResourceKeys.ConfidenceUnavailableText
-            : EvidenceDisplay.Label(packet.Evidence.EvidenceStrength);
+            ? localizer?[EvidenceResourceKeys.Unavailable].Value ?? LensResourceKeys.ConfidenceUnavailableText
+            : EvidenceDisplay.Label(packet.Evidence.EvidenceStrength, localizer);
 
         return new LensShellViewModel(
             Lens: lens,
@@ -60,8 +71,8 @@ public static class LensShellMapper
             AffectedCapabilityKey: recovery.AffectedCapabilityKey,
             ConfidenceLabel: confidence,
             FreshnessLabel: restrictive
-                ? EvidenceDisplay.FreshnessLabel((EvidencePacketFreshness?)null)
-                : EvidenceDisplay.FreshnessLabel(packet),
+                ? EvidenceDisplay.FreshnessLabel((EvidencePacketFreshness?)null, localizer)
+                : EvidenceDisplay.FreshnessLabel(packet, localizer),
             ContractVersion: InteractionContextSnapshot.SupportedContractVersion,
             ReturnRoute: EvidenceDisplay.SafeText(returnRoute, "return unavailable"),
             Restrictive: restrictive,

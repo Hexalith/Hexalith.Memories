@@ -8,6 +8,9 @@ namespace Hexalith.Memories.Web.Components.Lenses.Ingestion;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Web.Components.Evidence;
 using Hexalith.Memories.Web.Components.Recovery;
+using Hexalith.Memories.Web.Resources;
+
+using Microsoft.Extensions.Localization;
 
 /// <summary>
 /// Pure, deterministic projection of a canonical Evidence Packet into the Ingestion Lifecycle Tracker (AC2).
@@ -25,6 +28,12 @@ public static class IngestionLifecycleMapper
     /// <param name="role">The active role-density profile (ordering only).</param>
     /// <returns>The typed, sanitized ingestion tracker.</returns>
     public static IngestionLifecycleViewModel Map(EvidencePacket packet, LensRole role)
+        => Map(packet, role, localizer: null);
+
+    internal static IngestionLifecycleViewModel Map(
+        EvidencePacket packet,
+        LensRole role,
+        IStringLocalizer<MemoriesWebResources>? localizer)
     {
         ArgumentNullException.ThrowIfNull(packet);
 
@@ -68,7 +77,7 @@ public static class IngestionLifecycleMapper
                     : packet.Result.HasIndexedMemoryUnits == true
                         ? IngestionOutcome.Indexed
                         : IngestionOutcome.Unknown;
-            units.Add(BuildUnit(EvidenceDisplay.SafeText(source.MemoryUnitId, "memory unit unavailable"), outcome, recovery, source.Ingestion));
+            units.Add(BuildUnit(EvidenceDisplay.SafeText(source.MemoryUnitId, "memory unit unavailable"), outcome, recovery, source.Ingestion, localizer));
         }
 
         if (units.Count == 0)
@@ -85,7 +94,7 @@ public static class IngestionLifecycleMapper
             // a search that simply matched nothing leaves the tracker empty rather than inventing a unit.
             if (aggregate is IngestionOutcome.NotIngestedYet or IngestionOutcome.BackendUnavailable or IngestionOutcome.Degraded)
             {
-                units.Add(BuildUnit("tenant scope", aggregate, recovery, ingestion: null));
+                units.Add(BuildUnit("tenant scope", aggregate, recovery, ingestion: null, localizer));
             }
         }
 
@@ -111,7 +120,8 @@ public static class IngestionLifecycleMapper
         string unitId,
         IngestionOutcome outcome,
         RecoveryStateViewModel recovery,
-        EvidencePacketIngestionMetadata? ingestion)
+        EvidencePacketIngestionMetadata? ingestion,
+        IStringLocalizer<MemoriesWebResources>? localizer)
     {
         bool recoverable = outcome is IngestionOutcome.Degraded
             or IngestionOutcome.BackendUnavailable
@@ -128,7 +138,7 @@ public static class IngestionLifecycleMapper
             StageAvailability: ingestion is null ? LensFieldAvailability.Unavailable : LensFieldAvailability.Available,
             SafeStage: ingestion is null
                 ? "stage unavailable"
-                : EvidenceDisplay.SafeText(EvidenceDisplay.Label(ingestion.Stage), "stage unavailable"),
+                : EvidenceDisplay.SafeText(EvidenceDisplay.Label(ingestion.Stage, localizer), "stage unavailable"),
             Outcome: outcome,
             OutcomeLabelKey: IngestionLifecycleResourceKeys.Outcome(outcome),
             SafeFailureSummary: failure,

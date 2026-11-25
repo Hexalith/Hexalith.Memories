@@ -136,8 +136,8 @@
     protected override void OnParametersSet()
     {
         ArgumentNullException.ThrowIfNull(Packet);
-        _shell = LensShellMapper.Map(Packet, LensKind.IngestionLifecycleTracker, Role, ReturnRoute);
-        _view = IngestionLifecycleMapper.Map(Packet, Role);
+        _shell = LensShellMapper.Map(Packet, LensKind.IngestionLifecycleTracker, Role, ReturnRoute, Localizer);
+        _view = IngestionLifecycleMapper.Map(Packet, Role, Localizer);
     }
 
     private async Task EmitRecoveryAsync(IngestionUnitRow unit)
