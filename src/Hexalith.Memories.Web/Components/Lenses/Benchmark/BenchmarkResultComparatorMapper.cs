@@ -28,8 +28,7 @@ public static class BenchmarkResultComparatorMapper
         ArgumentNullException.ThrowIfNull(packet);
         _ = role;
 
-        bool restrictive = EvidenceDisplay.IsRestrictiveScope(packet.Scope.IsolationStatus)
-            || packet.State == EvidencePacketState.Unauthorized;
+        bool restrictive = EvidenceDisplay.IsRestrictiveScope(packet);
 
         if (restrictive)
         {

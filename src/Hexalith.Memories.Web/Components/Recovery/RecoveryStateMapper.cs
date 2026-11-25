@@ -33,7 +33,7 @@ public static class RecoveryStateMapper
 
         RecoveryStateKind kind = ResolveStateKind(packet);
         RecoveryStateTrace trace = RecoveryStateTraceability.For(kind);
-        bool restrictive = IsRestrictive(packet);
+        bool restrictive = EvidenceDisplay.IsRestrictiveScope(packet);
 
         IReadOnlyList<RecoveryActionView> actions = BuildActions(packet, restrictive);
         (RecoveryActionView? primary, IReadOnlyList<RecoveryActionView> secondary) = SplitPrimary(actions);
@@ -77,7 +77,7 @@ public static class RecoveryStateMapper
 
         // 1. Authorization / inaccessible scope outranks everything. Side-channel safe: result counts
         //    are deliberately ignored so the UI never reveals whether matching evidence exists.
-        if (IsRestrictive(packet) || omitted.Reason == EvidencePacketOmissionReason.Authorization)
+        if (EvidenceDisplay.IsRestrictiveScope(packet))
         {
             return RecoveryStateKind.Unauthorized;
         }
@@ -160,10 +160,6 @@ public static class RecoveryStateMapper
             _ => RecoveryStateKind.Supported,
         };
     }
-
-    private static bool IsRestrictive(EvidencePacket packet)
-        => EvidenceDisplay.IsRestrictiveScope(packet.Scope.IsolationStatus)
-            || packet.State == EvidencePacketState.Unauthorized;
 
     private static bool IsCompressed(EvidencePacketOmissionReason reason)
         => reason is EvidencePacketOmissionReason.TokenBudget or EvidencePacketOmissionReason.Combined;
@@ -347,9 +343,9 @@ public static class RecoveryStateMapper
 
         if (kind == RecoveryStateKind.Unauthorized)
         {
-            // Side-channel safe: omit counts so the clue cannot signal whether restricted evidence exists.
+            // Report the resolved restriction without clues about the original result.
             parts.Add($"isolation={Token(packet.Scope.IsolationStatus)}");
-            parts.Add($"state={Token(packet.State)}");
+            parts.Add($"state={Token(kind)}");
         }
         else
         {

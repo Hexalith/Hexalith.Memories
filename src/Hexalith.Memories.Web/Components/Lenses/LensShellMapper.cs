@@ -35,8 +35,7 @@ public static class LensShellMapper
         ArgumentNullException.ThrowIfNull(packet);
 
         RecoveryStateViewModel recovery = RecoveryStateMapper.Map(packet);
-        bool restrictive = EvidenceDisplay.IsRestrictiveScope(packet.Scope.IsolationStatus)
-            || packet.State == EvidencePacketState.Unauthorized;
+        bool restrictive = recovery.StateKind == RecoveryStateKind.Unauthorized;
         LensRoleDensityProfile density = LensRoleDensity.For(role);
 
         // Confidence is a trust signal: suppress it under a restrictive scope so the shell never reveals
@@ -60,7 +59,9 @@ public static class LensShellMapper
             Severity: recovery.Severity,
             AffectedCapabilityKey: recovery.AffectedCapabilityKey,
             ConfidenceLabel: confidence,
-            FreshnessLabel: EvidenceDisplay.FreshnessLabel(packet),
+            FreshnessLabel: restrictive
+                ? EvidenceDisplay.FreshnessLabel((EvidencePacketFreshness?)null)
+                : EvidenceDisplay.FreshnessLabel(packet),
             ContractVersion: InteractionContextSnapshot.SupportedContractVersion,
             ReturnRoute: EvidenceDisplay.SafeText(returnRoute, "return unavailable"),
             Restrictive: restrictive,

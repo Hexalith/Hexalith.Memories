@@ -265,6 +265,11 @@ internal static partial class EvidenceDisplay
     public static bool IsRestrictiveScope(EvidencePacketIsolationStatus status)
         => status is EvidencePacketIsolationStatus.Unauthorized or EvidencePacketIsolationStatus.Unknown;
 
+    public static bool IsRestrictiveScope(EvidencePacket packet)
+        => IsRestrictiveScope(packet.Scope.IsolationStatus)
+            || packet.State == EvidencePacketState.Unauthorized
+            || packet.OmittedDetails.Reason == EvidencePacketOmissionReason.Authorization;
+
     private static bool IsContinuingAcronym(string text, int index)
     {
         // Returns true when the uppercase char at `index` continues an acronym run that

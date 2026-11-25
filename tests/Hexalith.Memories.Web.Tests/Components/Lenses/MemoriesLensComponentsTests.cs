@@ -150,6 +150,38 @@ public sealed class MemoriesLensComponentsTests : FrontComposerTestBase
     }
 
     [Fact]
+    public void AgentPacketInspector_AuthorizationOmission_HidesEvidenceInPreviewAndCopy()
+    {
+        EvidencePacket packet = LensPacketFixtures.TenantCaseSensitive();
+        packet = packet with
+        {
+            Result = packet.Result with { ReturnedCount = 179, TotalCount = 234 },
+            OmittedDetails = packet.OmittedDetails with
+            {
+                Reason = EvidencePacketOmissionReason.Authorization,
+                EstimatedTokensTotal = 6429,
+            },
+        };
+        string? copied = null;
+        IRenderedComponent<MemoriesAgentPacketInspector> component = Render<MemoriesAgentPacketInspector>(parameters => parameters
+            .Add(p => p.Packet, packet)
+            .Add(p => p.OnCopy, (string text) => copied = text));
+
+        component.Find("[data-testid='mem-packet-copy']").Click();
+
+        copied.ShouldBe(component.Find("[data-testid='mem-packet-json']").TextContent);
+        copied.ShouldNotBeNull();
+        copied.ShouldContain("ResultCounts=unavailable");
+        copied.ShouldContain("EvidenceStrength=unavailable");
+        copied.ShouldContain("State=Unauthorized");
+        copied.ShouldNotContain("State=Complete");
+        copied.ShouldNotContain("179/234");
+        copied.ShouldNotContain("6429");
+        copied.ShouldNotContain("Bearer ");
+        component.Find("[data-testid='mem-packet-counts']").GetAttribute("data-availability").ShouldBe("Unauthorized");
+    }
+
+    [Fact]
     public void CaseActivityTrail_CrossTenantPacket_RendersForeignTenantAndCaseScope()
     {
         IRenderedComponent<MemoriesCaseActivityTrail> component = Render<MemoriesCaseActivityTrail>(parameters => parameters

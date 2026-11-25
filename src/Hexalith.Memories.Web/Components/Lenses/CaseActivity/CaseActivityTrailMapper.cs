@@ -31,8 +31,7 @@ public static class CaseActivityTrailMapper
         ArgumentNullException.ThrowIfNull(packet);
 
         RecoveryStateViewModel recovery = RecoveryStateMapper.Map(packet);
-        bool restrictive = EvidenceDisplay.IsRestrictiveScope(packet.Scope.IsolationStatus)
-            || packet.State == EvidencePacketState.Unauthorized;
+        bool restrictive = EvidenceDisplay.IsRestrictiveScope(packet);
         LensRoleDensityProfile density = LensRoleDensity.For(role);
 
         List<CaseActivityRow> rows = [];

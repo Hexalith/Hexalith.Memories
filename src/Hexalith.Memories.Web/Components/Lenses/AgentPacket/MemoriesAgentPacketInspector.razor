@@ -50,7 +50,10 @@
                 @(_view.TokenBudgetAvailability == LensFieldAvailability.Available
                     ? _view.SafeTokenBudget
                     : Localizer[LensResourceKeys.Availability(_view.TokenBudgetAvailability)].Value)
-                (@Localizer[_view.TokenBudgetStateKey])
+                @if (_view.TokenBudgetAvailability == LensFieldAvailability.Available)
+                {
+                    <text>(@Localizer[_view.TokenBudgetStateKey])</text>
+                }
             </FluentLabel>
         </section>
 

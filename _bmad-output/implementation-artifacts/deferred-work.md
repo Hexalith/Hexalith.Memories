@@ -3396,7 +3396,8 @@ resolution: Inspect Source resolves the selected row to its scoped memory-unit I
 origin: migrated from legacy ledger ("Triage: Story 17.1 deferred web items and architecture decisions (2026-07-06)"), 2026-09-01
 location: _bmad-output/planning-artifacts/epics.md` (future web story: Command Surface Scope and Redaction Safety); `tests/Hexalith.Memories.Web.Tests/Components/Evidence/EvidenceCockpitTests.cs
 reason: - ID: 17.1-CR9 - Status: carried-forward - Source story: 17-1-evidence-cockpit-and-trust-components - Target artifact: `_bmad-output/planning-artifacts/epics.md` (future web story: Command Surface Scope and Redaction Safety); `tests/Hexalith.Memories.Web.Tests/Components/Evidence/EvidenceCockpitTests.cs` - Re-open trigger: before copy, export, or MCP-inspect commands are exposed from the web cockpit or command palette. - Rationale: Redaction parity tests are vacuous until the relevant command primitives exist. They become mandatory acceptance evidence for the command-surface story.
-status: open
+status: done 2026-11-25
+resolution: Authorization omissions suppress evidence in the Agent Packet preview and copy payload and disable export and MCP inspection callbacks. All 21 focused command and lens tests passed.
 
 ### DW-485: ID: 17.1-CR10
 

@@ -29,8 +29,7 @@ public static class IngestionLifecycleMapper
         ArgumentNullException.ThrowIfNull(packet);
 
         RecoveryStateViewModel recovery = RecoveryStateMapper.Map(packet);
-        bool restrictive = EvidenceDisplay.IsRestrictiveScope(packet.Scope.IsolationStatus)
-            || packet.State == EvidencePacketState.Unauthorized;
+        bool restrictive = EvidenceDisplay.IsRestrictiveScope(packet);
 
         if (restrictive)
         {

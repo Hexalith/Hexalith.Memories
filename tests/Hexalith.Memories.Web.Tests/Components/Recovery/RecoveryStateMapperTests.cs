@@ -45,6 +45,27 @@ public sealed partial class RecoveryStateMapperTests
     }
 
     [Fact]
+    public void Map_AuthorizationOmission_BlocksOtherRecoveryActions()
+    {
+        EvidencePacket packet = RecoveryPacketFixtures.NoMatch();
+        packet = packet with
+        {
+            OmittedDetails = packet.OmittedDetails with { Reason = EvidencePacketOmissionReason.Authorization },
+            Recovery =
+            [
+                new(EvidencePacketRecoveryKind.FetchMemoryUnit, "fetch", "Fetch the memory", "private-unit"),
+                new(EvidencePacketRecoveryKind.CheckAuthorization, "verify", "Verify scope", "scope"),
+            ],
+        };
+
+        RecoveryStateViewModel view = RecoveryStateMapper.Map(packet);
+
+        view.StateKind.ShouldBe(RecoveryStateKind.Unauthorized);
+        view.PrimaryAction.ShouldNotBeNull().Kind.ShouldBe(EvidencePacketRecoveryKind.CheckAuthorization);
+        view.SecondaryActions.ShouldHaveSingleItem().Availability.ShouldBe(RecoveryActionAvailability.Unavailable);
+    }
+
+    [Fact]
     public void Map_NullPacket_Throws()
         => Should.Throw<ArgumentNullException>(() => RecoveryStateMapper.Map(null!));
 

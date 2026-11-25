@@ -50,9 +50,7 @@ public static class InteractionContextValidator
             return Invalid(InteractionContextValidationReason.CaseChanged);
         }
 
-        if (!allowTenantVerification
-            && (EvidenceDisplay.IsRestrictiveScope(packet.Scope.IsolationStatus)
-                || packet.State == EvidencePacketState.Unauthorized))
+        if (!allowTenantVerification && EvidenceDisplay.IsRestrictiveScope(packet))
         {
             return Invalid(InteractionContextValidationReason.UnauthorizedScope);
         }

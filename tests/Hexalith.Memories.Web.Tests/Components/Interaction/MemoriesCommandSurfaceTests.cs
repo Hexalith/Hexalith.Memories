@@ -131,6 +131,32 @@ public sealed class MemoriesCommandSurfaceTests : FrontComposerTestBase
     }
 
     [Fact]
+    public void Surface_AuthorizationOmission_DisablesExportAndMcpInspection()
+    {
+        EvidencePacket packet = EvidencePacketFixtures.CompletePacket();
+        packet = packet with
+        {
+            OmittedDetails = packet.OmittedDetails with { Reason = EvidencePacketOmissionReason.Authorization },
+        };
+        List<MemoriesCommandInvocation> commands = [];
+        IRenderedComponent<MemoriesCommandSurface> component = Render<MemoriesCommandSurface>(parameters => parameters
+            .Add(p => p.Packet, packet)
+            .Add(p => p.Snapshot, InteractionContextTests.Snapshot())
+            .Add(p => p.ActiveTenantId, "tenant-a")
+            .Add(p => p.ActiveCaseId, "case-a")
+            .Add(p => p.OnCommand, (MemoriesCommandInvocation value) => commands.Add(value)));
+
+        foreach (string kind in new[] { "ExportPacket", "InspectMcpPayload", "InspectSource" })
+        {
+            var button = component.Find($"[data-command-kind='{kind}']");
+            button.HasAttribute("disabled").ShouldBeTrue();
+            button.Click();
+        }
+
+        commands.ShouldBeEmpty();
+    }
+
+    [Fact]
     public void Surface_DisabledCommand_DoesNotEmit()
     {
         MemoriesCommandInvocation? invocation = null;

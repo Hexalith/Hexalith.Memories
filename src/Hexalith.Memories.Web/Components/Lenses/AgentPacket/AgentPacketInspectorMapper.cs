@@ -39,8 +39,7 @@ public static class AgentPacketInspectorMapper
         _ = role;
 
         RecoveryStateViewModel recovery = RecoveryStateMapper.Map(packet);
-        bool restrictive = EvidenceDisplay.IsRestrictiveScope(packet.Scope.IsolationStatus)
-            || packet.State == EvidencePacketState.Unauthorized;
+        bool restrictive = recovery.StateKind == RecoveryStateKind.Unauthorized;
 
         string safeQuery = EvidenceDisplay.SafeText(packet.Result.Query, "no query");
 
@@ -121,7 +120,7 @@ public static class AgentPacketInspectorMapper
             Field(PacketSchemaFieldKind.ResultCounts, gated, restrictive ? Unavailable : safeCounts),
             Field(PacketSchemaFieldKind.EvidenceStrength, gated, restrictive ? Unavailable : EvidenceDisplay.Label(packet.Evidence.EvidenceStrength)),
             Field(PacketSchemaFieldKind.EvidenceAxes, gated, restrictive ? Unavailable : string.Create(CultureInfo.InvariantCulture, $"{packet.Evidence.AxesUsed.Count}")),
-            Field(PacketSchemaFieldKind.State, LensFieldAvailability.Available, EvidenceDisplay.Label(packet.State)),
+            Field(PacketSchemaFieldKind.State, LensFieldAvailability.Available, EvidenceDisplay.Label(restrictive ? EvidencePacketState.Unauthorized : packet.State)),
             Field(PacketSchemaFieldKind.OmissionReason, LensFieldAvailability.Available, EvidenceDisplay.Label(packet.OmittedDetails.Reason)),
             Field(PacketSchemaFieldKind.TokenBudget, gated, restrictive ? Unavailable : safeTokenBudget),
 

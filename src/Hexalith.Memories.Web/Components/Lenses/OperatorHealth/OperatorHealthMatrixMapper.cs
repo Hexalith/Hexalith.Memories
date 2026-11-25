@@ -32,8 +32,7 @@ public static class OperatorHealthMatrixMapper
         ArgumentNullException.ThrowIfNull(packet);
 
         RecoveryStateViewModel recovery = RecoveryStateMapper.Map(packet);
-        bool restrictive = EvidenceDisplay.IsRestrictiveScope(packet.Scope.IsolationStatus)
-            || packet.State == EvidencePacketState.Unauthorized;
+        bool restrictive = EvidenceDisplay.IsRestrictiveScope(packet);
         Dictionary<EvidencePacketRecoveryKind, RecoveryActionView> actions = CollectActions(recovery);
 
         List<OperatorHealthCheckRow> checks =
