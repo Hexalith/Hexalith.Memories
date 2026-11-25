@@ -129,6 +129,7 @@ public class WorkflowReplaySafetyHostedServiceTests
     {
         IDaprWorkflowClient workflowClient = Substitute.For<IDaprWorkflowClient>();
         IIngestionWorkflowInFlightRegistry registry = Substitute.For<IIngestionWorkflowInFlightRegistry>();
+        registry.IsInitializedAsync(Arg.Any<CancellationToken>()).Returns(true);
         registry.ListAsync(Arg.Any<CancellationToken>())
             .Returns([new IngestionWorkflowInFlightEntry("tenant-a", "missing-instance", DateTimeOffset.UtcNow)]);
         workflowClient.GetWorkflowStateAsync("missing-instance", false, Arg.Any<CancellationToken>())
@@ -141,12 +142,16 @@ public class WorkflowReplaySafetyHostedServiceTests
         await registry.Received(1).RemoveAsync("missing-instance", Arg.Any<CancellationToken>());
     }
 
-    [Fact]
-    public async Task TryCountInFlightAsync_WhenRegistryUninitialized_UsesEnumerationFallback()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TryCountInFlightAsync_WhenRegistryUninitialized_UsesEnumerationFallback(bool hasTrackedCompletedInstance)
     {
         IDaprWorkflowClient workflowClient = Substitute.For<IDaprWorkflowClient>();
         IIngestionWorkflowInFlightRegistry registry = Substitute.For<IIngestionWorkflowInFlightRegistry>();
-        registry.ListAsync(Arg.Any<CancellationToken>()).Returns([]);
+        registry.ListAsync(Arg.Any<CancellationToken>()).Returns(hasTrackedCompletedInstance
+            ? [new IngestionWorkflowInFlightEntry("tenant-a", "completed-instance", DateTimeOffset.UtcNow)]
+            : []);
         registry.IsInitializedAsync(Arg.Any<CancellationToken>()).Returns(false);
         workflowClient.ListInstanceIdsAsync(null, 100, Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new WorkflowInstancePage(["active-instance", "other-instance", "completed-instance"], null)));
@@ -162,23 +167,48 @@ public class WorkflowReplaySafetyHostedServiceTests
 
         count.ShouldBe(1);
         await registry.DidNotReceiveWithAnyArgs().MarkInitializedAsync(default);
+        await registry.Received(hasTrackedCompletedInstance ? 1 : 0)
+            .RemoveAsync("completed-instance", Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task TryCountInFlightAsync_WhenUninitializedFallbackFindsNoActiveInstances_MarksInitialized()
+    public async Task TryCountInFlightAsync_RecordsConfirmationOnlyAfterSharedLegacyDrain()
     {
         IDaprWorkflowClient workflowClient = Substitute.For<IDaprWorkflowClient>();
         IIngestionWorkflowInFlightRegistry registry = Substitute.For<IIngestionWorkflowInFlightRegistry>();
-        registry.ListAsync(Arg.Any<CancellationToken>()).Returns([]);
-        registry.IsInitializedAsync(Arg.Any<CancellationToken>()).Returns(false);
+        bool trackedCompleted = false;
+        bool drainConfirmed = false;
+        registry.ListAsync(Arg.Any<CancellationToken>()).Returns(_ => trackedCompleted
+            ? new[] { new IngestionWorkflowInFlightEntry("tenant-a", "tracked-instance", DateTimeOffset.UnixEpoch) }
+            : []);
+        registry.IsInitializedAsync(Arg.Any<CancellationToken>()).Returns(_ => drainConfirmed);
+        registry.MarkInitializedAsync(Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            drainConfirmed = true;
+            return Task.CompletedTask;
+        });
         workflowClient.ListInstanceIdsAsync(null, 100, Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(new WorkflowInstancePage([], null)));
-        WorkflowReplaySafetyHostedService service = CreateService(workflowClient, registry);
+            .Returns(new WorkflowInstancePage(["legacy-instance"], null));
+        workflowClient.GetWorkflowStateAsync("legacy-instance", false, Arg.Any<CancellationToken>())
+            .Returns(CreateState("legacy-instance", WorkflowRuntimeStatus.Running),
+                CreateState("legacy-instance", WorkflowRuntimeStatus.Running),
+                CreateState("legacy-instance", WorkflowRuntimeStatus.Completed));
+        workflowClient.GetWorkflowStateAsync("tracked-instance", false, Arg.Any<CancellationToken>())
+            .Returns(CreateState("tracked-instance", WorkflowRuntimeStatus.Completed));
 
-        (int? count, _, _) = await service.TryCountInFlightAsync(CancellationToken.None);
+        (await CreateService(workflowClient, registry).TryCountInFlightAsync(CancellationToken.None)).Count.ShouldBe(1);
+        drainConfirmed.ShouldBeFalse();
+        trackedCompleted = true;
 
-        count.ShouldBe(0);
+        WorkflowReplaySafetyHostedService secondReplica = CreateService(workflowClient, registry);
+        (await secondReplica.TryCountInFlightAsync(CancellationToken.None)).Count.ShouldBe(1);
+        drainConfirmed.ShouldBeFalse();
+        (await secondReplica.TryCountInFlightAsync(CancellationToken.None)).Count.ShouldBe(0);
+        drainConfirmed.ShouldBeTrue();
+        (await CreateService(workflowClient, registry).TryCountInFlightAsync(CancellationToken.None)).Count.ShouldBe(0);
+
         await registry.Received(1).MarkInitializedAsync(Arg.Any<CancellationToken>());
+        await workflowClient.Received(3).ListInstanceIdsAsync(null, 100, Arg.Any<CancellationToken>());
     }
 
     [Fact]

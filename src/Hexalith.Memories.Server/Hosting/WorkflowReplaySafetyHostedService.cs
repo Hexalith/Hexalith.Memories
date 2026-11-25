@@ -20,8 +20,8 @@ using Microsoft.Extensions.Logging;
 ///
 /// Story 24.5 replaced recurring broad workflow enumeration with an app-owned in-flight registry. The
 /// gate reads instance ids that the ingestion scheduler tracked, prunes terminal or missing entries, and
-/// delays startup while any tracked workflow remains active. During first rollout, an uninitialized empty
-/// registry uses a one-time public SDK enumeration fallback before marking the registry initialized.
+/// delays startup while any tracked workflow remains active. Once tracked work drains, public SDK
+/// enumeration checks for older untracked workflows until the gate records a confirmed legacy drain.
 /// Spike 0.4 chose <see cref="IHostedLifecycleService"/> over
 /// <c>IStartupFilter</c> so the gate does NOT depend on DAPR's own hosted-service registration
 /// order.</summary>
@@ -123,21 +123,6 @@ internal sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecyc
                 .ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (entries.Count == 0
-                && !await _inFlightRegistry.IsInitializedAsync(cancellationToken)
-                    .WaitAsync(cancellationToken).ConfigureAwait(false))
-            {
-                int fallbackCount = await CountInFlightByEnumerationFallbackAsync(cancellationToken).ConfigureAwait(false);
-                if (fallbackCount == 0)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    await _inFlightRegistry.MarkInitializedAsync(cancellationToken)
-                        .WaitAsync(cancellationToken).ConfigureAwait(false);
-                }
-
-                return (fallbackCount, null, null);
-            }
-
             foreach (IngestionWorkflowInFlightEntry entry in entries)
             {
                 WorkflowState? state = await QuerySidecarAsync(
@@ -153,6 +138,22 @@ internal sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecyc
                 }
 
                 count++;
+            }
+
+            if (count == 0
+                && !await _inFlightRegistry.IsInitializedAsync(cancellationToken)
+                    .WaitAsync(cancellationToken).ConfigureAwait(false))
+            {
+                int fallbackCount = await CountInFlightByEnumerationFallbackAsync(cancellationToken).ConfigureAwait(false);
+                if (fallbackCount == 0)
+                {
+                    // Upgrades must keep intake quiesced until legacy writers are retired.
+                    cancellationToken.ThrowIfCancellationRequested();
+                    await _inFlightRegistry.MarkInitializedAsync(cancellationToken)
+                        .WaitAsync(cancellationToken).ConfigureAwait(false);
+                }
+
+                return (fallbackCount, null, null);
             }
 
             return (count, null, null);

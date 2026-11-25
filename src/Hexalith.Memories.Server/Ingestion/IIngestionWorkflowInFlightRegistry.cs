@@ -19,12 +19,12 @@ internal interface IIngestionWorkflowInFlightRegistry
     /// <returns>The tracked entries ordered from oldest to newest.</returns>
     Task<IReadOnlyList<IngestionWorkflowInFlightEntry>> ListAsync(CancellationToken cancellationToken);
 
-    /// <summary>Gets a value indicating whether the registry has been initialized by this application version.</summary>
+    /// <summary>Gets a value indicating whether startup confirmed a complete legacy workflow drain.</summary>
     /// <param name="cancellationToken">A cancellation token.</param>
     /// <returns><see langword="true"/> when the registry can be trusted as the replay-safety source.</returns>
     Task<bool> IsInitializedAsync(CancellationToken cancellationToken);
 
-    /// <summary>Marks the registry as initialized for subsequent replay-safety checks.</summary>
+    /// <summary>Records a confirmed legacy workflow drain for subsequent replay-safety checks.</summary>
     /// <param name="cancellationToken">A cancellation token.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
     Task MarkInitializedAsync(CancellationToken cancellationToken);

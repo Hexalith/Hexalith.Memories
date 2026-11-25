@@ -93,6 +93,8 @@ approval plus retained history/evidence.
 The local `WorkflowReplaySafetyHostedService` delays for active ingestion workflows but proceeds after
 five minutes and fails open on Dapr/state-registry query timeout or exception. Events 9172/9173 mean the
 rollout gate did not prove drain. Operator-side quiescence and direct workflow evidence remain mandatory.
+On the first upgrade with the drain-confirmation marker, the gate disregards the old marker set during
+workflow tracking. Keep ingestion paused until legacy writers are retired and the rollout is verified.
 
 ## Procedure
 
@@ -249,7 +251,10 @@ Dapr/RBAC/namespace resources, and other configuration outside the failed Deploy
 rollback, verify sidecar/runtime compatibility and all canary/control checks.
 
 A scoped Deployment rollback does not reverse CRDs, workflow history, index/schema changes,
-Redis/FalkorDB data layouts, configuration written to durable state, or PVC contents.
+Redis/FalkorDB data layouts, configuration written to durable state, or PVC contents. If the rollback
+restores a binary that can schedule untracked ingestion, invalidate only the Redis
+`ingestion-workflow:in-flight:drain-confirmed` key while intake is paused. A subsequent upgrade will
+then enumerate Dapr workflows before recording a new confirmation.
 
 Durable-data recovery uses retained logical exports and paired snapshots through
 [Backup and Restore](./backup-restore.md) and [Disaster Recovery](./disaster-recovery.md). Never delete

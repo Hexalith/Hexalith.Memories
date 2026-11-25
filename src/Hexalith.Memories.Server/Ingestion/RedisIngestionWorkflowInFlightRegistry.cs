@@ -12,7 +12,8 @@ internal sealed class RedisIngestionWorkflowInFlightRegistry : IIngestionWorkflo
 {
     internal const string RegistryKey = "ingestion-workflow:in-flight";
     internal const string InstanceMemberLookupKey = "ingestion-workflow:in-flight:members";
-    internal const string InitializedKey = "ingestion-workflow:in-flight:initialized";
+    // Old writers set :initialized when tracking work. Only a confirmed replay drain may set this key.
+    internal const string InitializedKey = "ingestion-workflow:in-flight:drain-confirmed";
     internal const char MemberSeparator = '\u001f';
 
     private readonly IConnectionMultiplexer _redis;
@@ -42,7 +43,6 @@ internal sealed class RedisIngestionWorkflowInFlightRegistry : IIngestionWorkflo
         double score = entry.TrackedAt.ToUnixTimeMilliseconds();
         _ = await db.SortedSetAddAsync(RegistryKey, member, score).ConfigureAwait(false);
         _ = await db.HashSetAsync(InstanceMemberLookupKey, entry.InstanceId, member).ConfigureAwait(false);
-        _ = await db.StringSetAsync(InitializedKey, "1").ConfigureAwait(false);
     }
 
     /// <inheritdoc />

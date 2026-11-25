@@ -587,10 +587,10 @@ replay is deterministic — an in-flight 9.1-shape `IngestionWorkflow` history w
    implementation — runs before any other hosted service) reads the app-owned
    `ingestion-workflow:in-flight` registry populated by the ingestion scheduler. It checks only
    those tracked DAPR instance ids, prunes missing or terminal entries after a DAPR status read, and
-   delays startup by 5s polls until count reaches 0, with a 5-min total timeout. On first rollout
-   after the registry is introduced, an uninitialized empty registry uses a one-time public DAPR
-   instance-id enumeration fallback; once no active ingestion workflows are found, the registry is
-   marked initialized and later startups avoid broad enumeration. Events `9171` (per-poll Warning),
+   delays startup by 5s polls until count reaches 0, with a 5-min total timeout. Once tracked work
+   drains, the gate enumerates DAPR instances if no legacy drain has been confirmed. It records
+   confirmation only after a complete scan finds no active ingestion workflows. The older marker
+   written by the ingestion scheduler is ignored. Events `9171` (per-poll Warning),
    `9172` (single-shot Critical on timeout), `9173` (registry/sidecar unreachable — fail open per
    Improvement Z).
 

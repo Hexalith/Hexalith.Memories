@@ -48,8 +48,7 @@ public sealed class IngestionWorkflowInFlightRegistryTests
             member,
             Arg.Any<When>(),
             Arg.Any<CommandFlags>());
-        CountStringSetCalls(db, RedisIngestionWorkflowInFlightRegistry.InitializedKey, "1")
-            .ShouldBe(1);
+        db.ReceivedCalls().ShouldNotContain(call => call.GetMethodInfo().Name == nameof(IDatabase.StringSetAsync));
     }
 
     [Fact]
@@ -211,6 +210,17 @@ public sealed class IngestionWorkflowInFlightRegistryTests
             RedisIngestionWorkflowInFlightRegistry.InstanceMemberLookupKey,
             Arg.Any<RedisValue[]>(),
             Arg.Any<CommandFlags>());
+    }
+
+    [Fact]
+    public async Task IsInitializedAsync_IgnoresLegacyMarkerWrittenByTracking()
+    {
+        (IConnectionMultiplexer redis, IDatabase db) = CreateRedis();
+        db.KeyExistsAsync("ingestion-workflow:in-flight:initialized", Arg.Any<CommandFlags>()).Returns(true);
+        RedisIngestionWorkflowInFlightRegistry registry = CreateRegistry(redis);
+
+        (await registry.IsInitializedAsync(CancellationToken.None)).ShouldBeFalse();
+        await db.Received(1).KeyExistsAsync("ingestion-workflow:in-flight:drain-confirmed", Arg.Any<CommandFlags>());
     }
 
     [Fact]
