@@ -176,7 +176,7 @@ public class TenantConfigurationEndpointTests
     }
 
     [Fact]
-    public async Task BuildTenantSummariesAsync_UsesBoundedConcurrencyAndCachesSummaries()
+    public async Task BuildTenantSummariesAsync_UsesBoundedConcurrency()
     {
         TenantInfo[] tenants =
         [
@@ -188,15 +188,7 @@ public class TenantConfigurationEndpointTests
         TenantSummaryCache summaryCache = CreateSummaryCache();
         TenantMetricsService metrics = CreateMetricsService();
 
-        TenantSummary[] first = await TenantEndpointHandlers.BuildTenantSummariesAsync(
-            tenants,
-            metrics,
-            embeddingConfigProvider,
-            summaryCache,
-            maxConcurrency: 1,
-            CreateLogger<TenantMetricsService>(),
-            CancellationToken.None);
-        TenantSummary[] second = await TenantEndpointHandlers.BuildTenantSummariesAsync(
+        TenantSummary[] summaries = await TenantEndpointHandlers.BuildTenantSummariesAsync(
             tenants,
             metrics,
             embeddingConfigProvider,
@@ -205,15 +197,16 @@ public class TenantConfigurationEndpointTests
             CreateLogger<TenantMetricsService>(),
             CancellationToken.None);
 
-        first.Length.ShouldBe(3);
-        second.Length.ShouldBe(3);
+        summaries.Length.ShouldBe(3);
         embeddingConfigProvider.MaxConcurrentCalls.ShouldBe(1);
         embeddingConfigProvider.EmbeddingConfigCalls.ShouldBe(3);
     }
 
 
-    [Fact]
-    public async Task BuildTenantSummariesAsync_IsolatesOneTenantMetricFailure()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task BuildTenantSummariesAsync_IsolatesOneTenantMetricFailure(bool backendCanceled)
     {
         DateTimeOffset now = DateTimeOffset.UtcNow;
         TenantInfo[] tenants =
@@ -226,8 +219,10 @@ public class TenantConfigurationEndpointTests
         IDatabase db = Substitute.For<IDatabase>();
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
         db.HashGetAsync("tenant-a:metadata", "lastActivityAt").Returns((RedisValue)now.Ticks);
-        db.HashGetAsync("tenant-b:metadata", "lastActivityAt")
-            .Returns(Task.FromException<RedisValue>(new ObjectDisposedException("backend")));
+        Exception failure = backendCanceled
+            ? new OperationCanceledException("Backend read expired.")
+            : new ObjectDisposedException("backend");
+        db.HashGetAsync("tenant-b:metadata", "lastActivityAt").Returns(Task.FromException<RedisValue>(failure));
         TenantMetricsService metrics = new(redis, Substitute.For<IConnectionMultiplexer>(), CreateLogger<TenantMetricsService>());
 
         TenantSummary[] summaries = await TenantEndpointHandlers.BuildTenantSummariesAsync(

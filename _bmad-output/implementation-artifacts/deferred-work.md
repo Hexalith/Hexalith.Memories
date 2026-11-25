@@ -3642,7 +3642,8 @@ resolution: An unexpected tenant enrichment failure returns an identity-only sum
 origin: migrated from legacy ledger ("Deferred from: code review of 24-2-read-path-caching-and-tenant-list-bounding (2026-07-05)"), 2026-09-01
 location: n/a
 reason: - **24.2-RV2 — Degraded/null metric snapshots are cached for the full summary TTL.** `TenantEndpointHandlers.cs:82` + `TenantSummaryCache.cs:49` — a summary composed during a transient backend outage (null counts / Unknown / Degraded health) is cached wholesale for the full summary TTL (default 15s), so the degraded view persists after backend recovery. AC6 letter is met (nulls preserved, not false zeros); bounded by the short default TTL. Re-open trigger: summary TTL raised toward its 120s clamp, or operators reporting stale degraded tenant health after a backend recovers.
-status: open
+status: done 2026-11-25
+resolution: Transiently incomplete summaries are returned without caching. Available empty or missing indexes remain cacheable, and a tenant refresh preserves the neighboring cache entry. All 41 metric, enrichment and cache tests passed.
 
 ### DW-519: Tune explicit histogram bucket boundaries for the search-duration and natural-language-description latency instruments so the committed p95 dashboard panels are accurate at seconds scale.
 

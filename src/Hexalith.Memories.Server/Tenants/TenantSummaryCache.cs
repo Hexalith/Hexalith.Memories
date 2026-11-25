@@ -31,11 +31,22 @@ public sealed class TenantSummaryCache
         _timeProvider = timeProvider;
     }
 
-    /// <summary>Gets a cached summary or creates and stores a fresh summary.</summary>
+    /// <summary>Gets a cached summary or creates a fresh summary. Transiently incomplete summaries are returned without caching.</summary>
     /// <param name="tenantId">The tenant identifier.</param>
     /// <param name="factory">Factory used on cache miss or expiry.</param>
     /// <returns>The cached or fresh tenant summary.</returns>
-    public async Task<TenantSummary> GetOrCreateAsync(string tenantId, Func<Task<TenantSummary>> factory)
+    public Task<TenantSummary> GetOrCreateAsync(string tenantId, Func<Task<TenantSummary>> factory)
+    {
+        ArgumentNullException.ThrowIfNull(factory);
+        return GetOrCreateAsync(tenantId, async () => (await factory().ConfigureAwait(false), true));
+    }
+
+    /// <summary>Gets the tenant summary and retains it only when all enrichment reads were reliable.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="factory">The factory for the summary and its enrichment availability.</param>
+    /// <returns>The cached or fresh tenant summary.</returns>
+    internal async Task<TenantSummary> GetOrCreateAsync(
+        string tenantId, Func<Task<(TenantSummary Summary, bool EnrichmentAvailable)>> factory)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
         ArgumentNullException.ThrowIfNull(factory);
@@ -50,8 +61,8 @@ public sealed class TenantSummaryCache
         // Capture the invalidation generation before the (awaited) build so a write that invalidates
         // while the factory runs is not silently re-cached as a stale value (Story 24.2 review P2).
         long generation = GetGeneration(tenantId);
-        TenantSummary summary = await factory().ConfigureAwait(false);
-        if (GetGeneration(tenantId) == generation)
+        (TenantSummary summary, bool enrichmentAvailable) = await factory().ConfigureAwait(false);
+        if (enrichmentAvailable && IsCacheable(summary) && GetGeneration(tenantId) == generation)
         {
             // Stamp expiry from now (after the build), not from before it, so a slow build does not
             // produce an already-near-expired entry (Story 24.2 review P6).
@@ -73,6 +84,15 @@ public sealed class TenantSummaryCache
             _cache.TryRemove(tenantId, out _);
         }
     }
+
+    private static bool IsCacheable(TenantSummary summary)
+        => summary.MemoryUnitCount.HasValue
+            && IsAvailable(summary.IndexStatus.Syntactic)
+            && IsAvailable(summary.IndexStatus.Semantic)
+            && IsAvailable(summary.IndexStatus.Graph);
+
+    // A missing index is a valid observation from a responding backend.
+    private static bool IsAvailable(IndexHealth health) => health is IndexHealth.Ready or IndexHealth.Missing;
 
     private long GetGeneration(string tenantId)
         => _generations.TryGetValue(tenantId, out long generation) ? generation : 0L;

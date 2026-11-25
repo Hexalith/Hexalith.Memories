@@ -271,6 +271,25 @@ public class TenantMetricsServiceTests
         (await service.GetMemoryUnitCountAsync(TenantId, CancellationToken.None)).ShouldBeNull();
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ReadLastActivityAsync_DistinguishesMissingActivityAndBackendFailure(bool unavailable)
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        db.HashGetAsync($"{TenantId}:metadata", "lastActivityAt")
+            .Returns(unavailable
+                ? Task.FromException<RedisValue>(new RedisConnectionException(
+                    ConnectionFailureType.UnableToConnect, CommandFlags.None, "Redis down"))
+                : Task.FromResult(RedisValue.Null));
+        TenantMetricsService metrics = new(CreateRedis(db), CreateFalkorDown(), NullLogger());
+
+        (DateTimeOffset? timestamp, bool available) = await metrics.ReadLastActivityAsync(TenantId, CancellationToken.None);
+
+        timestamp.ShouldBeNull();
+        available.ShouldBe(!unavailable);
+    }
+
     // Helpers
 
     private static void ConfigureRediSearchInfo(IDatabase db, string indexName, bool up, long docs)

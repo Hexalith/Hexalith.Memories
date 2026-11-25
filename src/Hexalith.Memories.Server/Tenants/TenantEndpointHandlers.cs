@@ -94,7 +94,7 @@ internal static partial class TenantEndpointHandlers
     [LoggerMessage(Level = LogLevel.Warning, Message = "Tenant summary enrichment for {TenantId} failed with {ExceptionType}")]
     private static partial void LogTenantEnrichmentFailure(ILogger logger, string tenantId, string exceptionType);
 
-    private static async Task<TenantSummary> BuildTenantSummaryCoreAsync(
+    private static async Task<(TenantSummary Summary, bool EnrichmentAvailable)> BuildTenantSummaryCoreAsync(
         TenantInfo tenant,
         TenantMetricsService metrics,
         ITenantEmbeddingConfigProvider embeddingConfigProvider,
@@ -102,24 +102,13 @@ internal static partial class TenantEndpointHandlers
     {
         Task<(TenantIndexSizes Sizes, TenantIndexStatus Status)> sizesTask = metrics.GetIndexSizesAsync(tenant.Id, cancellationToken);
         Task<long?> countTask = metrics.GetMemoryUnitCountAsync(tenant.Id, cancellationToken);
-        Task<DateTimeOffset?> activityTask = metrics.GetLastActivityAtAsync(tenant.Id, cancellationToken);
+        Task<(DateTimeOffset? Timestamp, bool Available)> activityTask = metrics.ReadLastActivityAsync(tenant.Id, cancellationToken);
+        Task<(bool Required, bool Available)> reindexTask = ReadReindexRequiredAsync(tenant.Id, embeddingConfigProvider, cancellationToken);
 
-        // Metrics have no reliable local write signal for all ingestion/indexing changes yet; the short TTL
-        // bounds staleness while preserving degraded/null metric semantics on backend failures.
-        bool reindexRequired = false;
-        try
-        {
-            TenantEmbeddingConfig config = await embeddingConfigProvider.GetAsync(tenant.Id, cancellationToken).ConfigureAwait(false);
-            reindexRequired = config.ReindexRequired;
-        }
-        catch (Exception)
-        {
-            // Tolerate: tenant remains in the list with reindexRequired=false.
-        }
+        await Task.WhenAll(sizesTask, countTask, activityTask, reindexTask).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
 
-        await Task.WhenAll(sizesTask, countTask, activityTask).ConfigureAwait(false);
-
-        return new TenantSummary
+        TenantSummary summary = new()
         {
             Id = tenant.Id,
             DisplayName = tenant.DisplayName,
@@ -128,9 +117,26 @@ internal static partial class TenantEndpointHandlers
             MemoryUnitCount = countTask.Result,
             IndexSizes = sizesTask.Result.Sizes,
             IndexStatus = sizesTask.Result.Status,
-            ReindexRequired = reindexRequired,
-            LastActivityAt = activityTask.Result,
+            ReindexRequired = reindexTask.Result.Required,
+            LastActivityAt = activityTask.Result.Timestamp,
         };
+        return (summary, activityTask.Result.Available && reindexTask.Result.Available);
+    }
+
+    private static async Task<(bool Required, bool Available)> ReadReindexRequiredAsync(
+        string tenantId,
+        ITenantEmbeddingConfigProvider provider,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            TenantEmbeddingConfig config = await provider.GetAsync(tenantId, cancellationToken).ConfigureAwait(false);
+            return (config.ReindexRequired, true);
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            return (false, false);
+        }
     }
 
     /// <summary>Handles <c>GET /api/v1/tenants/{tenantId}/configuration</c>.</summary>

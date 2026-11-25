@@ -116,31 +116,39 @@ public sealed partial class TenantMetricsService
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The timestamp, or null.</returns>
     public async Task<DateTimeOffset?> GetLastActivityAtAsync(string tenantId, CancellationToken ct)
+        => (await ReadLastActivityAsync(tenantId, ct).ConfigureAwait(false)).Timestamp;
+
+    /// <summary>Reads the activity timestamp and distinguishes a fresh tenant from an unavailable read.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The optional timestamp and the availability of the observation.</returns>
+    internal async Task<(DateTimeOffset? Timestamp, bool Available)> ReadLastActivityAsync(string tenantId, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
         try
         {
+            ct.ThrowIfCancellationRequested();
             IDatabase db = _redis.GetDatabase();
             RedisValue raw = await db.HashGetAsync($"{tenantId}:metadata", "lastActivityAt").ConfigureAwait(false);
             if (raw.IsNullOrEmpty)
             {
-                return null;
+                return (null, true);
             }
 
             if (long.TryParse((string?)raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out long ticks)
                 && ticks >= 0
                 && ticks <= DateTime.MaxValue.Ticks)
             {
-                return new DateTimeOffset(ticks, TimeSpan.Zero);
+                return (new DateTimeOffset(ticks, TimeSpan.Zero), true);
             }
 
             LogInvalidActivityValue(_logger, tenantId, (string?)raw ?? "<null>");
-            return null;
+            return (null, false);
         }
         catch (RedisException ex)
         {
             LogBackendUnavailable(_logger, "Redis HGET {tenantId}:metadata", tenantId, ex.Message);
-            return null;
+            return (null, false);
         }
     }
 
