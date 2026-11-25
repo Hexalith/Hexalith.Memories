@@ -77,6 +77,13 @@ Single meter: **`Hexalith.Memories`** (declared by `MemoriesMeter.Name`).
 | `memories.handlers.mismatches`                          | Counter&lt;long&gt;         | `{mismatches}`   | `tenant_id`, `severity`     | Detected event-handler mismatches                            |
 | `memories.handlers.observations.dropped`                | Counter&lt;long&gt;         | `{observations}` | `reason`                    | Dropped observation-store writes                             |
 
+The search and natural-language description histograms define explicit
+millisecond buckets, spaced 250 ms apart from 1 to 3 seconds. The search
+histogram also includes the 200, 500, 1,000, and 2,000 ms search targets.
+During a rolling upgrade from the default buckets, wait until every replica
+exports the new buckets and the dashboard's five-minute rate window has passed
+before using the aggregated percentiles.
+
 The isolated lifecycle path registers meters
 `Hexalith.Memories.AccessTelemetry.Server` and
 `Hexalith.Memories.AccessTelemetry`. Its primary counter is

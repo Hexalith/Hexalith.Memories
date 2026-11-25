@@ -115,6 +115,45 @@ public sealed class OpenTelemetryRegistrationTests
             $"Expected '{MemoriesMeter.Name}' meter to be registered on the MeterProvider built by AddServiceDefaults.");
     }
 
+    [Theory]
+    [InlineData(MemoriesMeter.SearchDurationName)]
+    [InlineData(MemoriesMeter.NaturalLanguageDescriptionDurationName)]
+    public void ConfigureOpenTelemetry_ExportsLatencyWithFineGrainedSecondsBuckets(string name)
+    {
+        HostApplicationBuilder builder = BuildHostBuilder();
+        List<Metric> exportedMetrics = [];
+        _ = builder.Services.AddOpenTelemetry()
+            .WithMetrics(metrics => metrics.AddInMemoryExporter(exportedMetrics));
+
+        using ServiceProvider provider = builder.Services.BuildServiceProvider();
+        MeterProvider meterProvider = provider.GetRequiredService<MeterProvider>();
+        Histogram<double> histogram = name == MemoriesMeter.SearchDurationName
+            ? MemoriesMeter.SearchDuration
+            : MemoriesMeter.NaturalLanguageDescriptionDuration;
+
+        var tenant = new KeyValuePair<string, object?>("tenant_id", "bucket-probe");
+        histogram.Record(2_450, tenant);
+        histogram.Record(2_600, tenant);
+        histogram.Record(2_900, tenant);
+        meterProvider.ForceFlush().ShouldBeTrue();
+
+        Metric metric = exportedMetrics.Single(m => m.MeterName == MemoriesMeter.Name && m.Name == name);
+        metric.Unit.ShouldBe("ms");
+        Dictionary<double, long> buckets = [];
+        foreach (ref readonly MetricPoint point in metric.GetMetricPoints())
+        {
+            foreach (HistogramBucket bucket in point.GetHistogramBuckets())
+            {
+                buckets.Add(bucket.ExplicitBound, bucket.BucketCount);
+            }
+        }
+
+        buckets[2_250].ShouldBe(0);
+        buckets[2_500].ShouldBe(1);
+        buckets[2_750].ShouldBe(1);
+        buckets[3_000].ShouldBe(1);
+    }
+
     [Fact]
     public void ShouldTraceHttpRequest_ExcludesHealthEndpoints()
     {

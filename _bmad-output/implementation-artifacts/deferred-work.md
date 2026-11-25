@@ -3650,7 +3650,8 @@ resolution: Transiently incomplete summaries are returned without caching. Avail
 origin: migrated from legacy ledger ("Deferred from: bmad-dev-auto review of spec-24-4-metric-naming-and-committed-dashboards (2026-07-05)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-24-4-metric-naming-and-committed-dashboards.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-24-4-metric-naming-and-committed-dashboards.md` summary: Tune explicit histogram bucket boundaries for the search-duration and natural-language-description latency instruments so the committed p95 dashboard panels are accurate at seconds scale. evidence: Neither `memories.search.duration` nor `memories.natural.language.description.duration` configures bucket boundaries (no `AddView` in the metrics pipeline), so both use the SDK default buckets (...1000, 2500, 5000, 7500, 10000 ms). Natural-language description latency is documented at ~1-3s p95, so `histogram_quantile(0.95, ...)` over those coarse buckets can misreport a true 2.6s p95 by seconds. Pre-existing emission config surfaced by the new p95 panels; Story 24.4's "Never" boundary forbids changing emission behavior, so bucket tuning is separate work.
-status: open
+status: done 2026-11-25
+resolution: The OpenTelemetry pipeline exports explicit millisecond buckets for search and natural-language description latency, with 250 ms steps in the 1–3 second range. Runtime exporter tests cover both instruments.
 
 ### DW-520: Decide whether historical BMAD implementation-artifact records (stories 9.2/9.3/20.5) should be forward-referenced or updated so they stop citing pre-rename metric names.
 

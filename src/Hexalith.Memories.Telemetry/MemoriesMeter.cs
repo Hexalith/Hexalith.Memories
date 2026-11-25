@@ -103,7 +103,15 @@ public static class MemoriesMeter
 
     /// <summary>Histogram: search request latency in milliseconds. Tags: <c>tenant_id</c>, <c>axis</c>.</summary>
     public static Histogram<double> SearchDuration { get; } =
-        Instance.CreateHistogram<double>(SearchDurationName, unit: "ms", description: "Search request latency per tenant and resolved axis.");
+        Instance.CreateHistogram<double>(
+            SearchDurationName,
+            unit: "ms",
+            description: "Search request latency per tenant and resolved axis.",
+            advice: new InstrumentAdvice<double>
+            {
+                HistogramBucketBoundaries = [5, 10, 25, 50, 75, 100, 150, 200, 300, 400, 500, 750, 1_000, 1_250,
+                    1_500, 1_750, 2_000, 2_250, 2_500, 2_750, 3_000, 3_500, 4_000, 5_000, 7_500, 10_000, 15_000, 30_000],
+            });
 
     /// <summary>Counter: total inbound request rejections. Tags: <c>tenant_id</c>, <c>error_code</c>.</summary>
     public static Counter<long> RateLimitRejections { get; } =
@@ -117,7 +125,12 @@ public static class MemoriesMeter
         Instance.CreateHistogram<double>(
             NaturalLanguageDescriptionDurationName,
             unit: "ms",
-            description: "Natural-language description latency per tenant.");
+            description: "Natural-language description latency per tenant.",
+            advice: new InstrumentAdvice<double>
+            {
+                HistogramBucketBoundaries = [50, 100, 250, 500, 750, 1_000, 1_250, 1_500, 1_750, 2_000, 2_250,
+                    2_500, 2_750, 3_000, 3_500, 4_000, 5_000, 7_500, 10_000, 12_500, 15_000, 20_000, 30_000],
+            });
 
     /// <summary>Story 9.2 / Risk #6 — counter: total embedding API calls. Tags:
     /// <c>tenant_id</c>, <c>content_kind</c> (payload | naturalLanguageDescription).</summary>
