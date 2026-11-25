@@ -3250,7 +3250,8 @@ resolution: The trust-strip health badge applies authorization and isolation bef
 origin: migrated from legacy ledger ("Deferred from: code review of 17-1-evidence-cockpit-and-trust-components (2026-05-20)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/17-1-evidence-cockpit-and-trust-components.md:90-95
 reason: - **17.1-CR7. Task 6 accessibility checkboxes marked `[x]` despite no automated forced-colors / focus-return / touch-target / no-text-overlap check** (`_bmad-output/implementation-artifacts/17-1-evidence-cockpit-and-trust-components.md:90-95`). Rationale: Completion Notes correctly call out Playwright/axe deferred because no runnable web host was added in this RCL-only slice; refile a hardening story when a host (e.g., 17.5) lands.
-status: open
+status: done 2026-11-25
+resolution: Story 17.1 now identifies the component checks it ran and links the later Story 17.7 Chromium specimen evidence. Outstanding product-route and assistive-technology validation stays tracked in DW-482.
 
 ### DW-465: 17.1-CR8. `aria-label="Inspect source N"` exposes raw Rank including 0
 
@@ -3375,6 +3376,7 @@ origin: migrated from legacy ledger ("Triage: Story 17.1 deferred web items and 
 location: _bmad-output/planning-artifacts/epics.md` (Story 17.7 Runnable Web Specimen and Browser/AT Accessibility Gap Closure); `tests/Hexalith.Memories.Web.Tests/Components/Validation/*
 reason: - ID: 17.1-CR7 - Status: carried-forward - Source story: 17-1-evidence-cockpit-and-trust-components - Target artifact: `_bmad-output/planning-artifacts/epics.md` (Story 17.7 Runnable Web Specimen and Browser/AT Accessibility Gap Closure); `tests/Hexalith.Memories.Web.Tests/Components/Validation/*` - Re-open trigger: before any product-route accessibility claim, release note, or stakeholder acceptance says the web surface is validated beyond component-specimen bUnit evidence. - Rationale: Forced-colors, focus return, touch target, and no-overlap checks need a runnable host or specimen app. Component tests alone cannot close browser/AT validation.
 status: open
+note: 2026-11-25 — Skipped. Story 17.7 supplied Chromium specimen evidence. Live assistive-technology and focus return, target-device touch, data-heavy overflow and product-route checks remain open.
 
 ### DW-483: ID: 17.1-CR8
 

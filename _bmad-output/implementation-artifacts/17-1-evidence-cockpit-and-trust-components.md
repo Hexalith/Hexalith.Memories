@@ -87,12 +87,13 @@ so that I can verify answers, sources, retrieval reasons, scope, and graph conte
   - [x] If copy, export, graph context, or MCP inspection commands are visible, add negative tests that their payloads follow the same redaction and scope rules as the visible Evidence Cockpit.
   - [x] Use role, accessible-label, and `data-testid` selectors for UI tests. Do not use CSS class selectors, arbitrary sleeps, or selectors coupled only to visual text.
 
-- [x] Task 6 - Validate responsive and visual behavior (AC: 1-4)
+- [ ] Task 6 - Validate responsive and visual behavior (AC: 1-4, component checks completed here)
   - [x] Run focused unit/bUnit tests for any Memories web project and changed FrontComposer component tests.
-  - [x] If a runnable web surface is added, run Playwright or equivalent browser checks at 360px, 768px, 1024px, and 1440px. Capture evidence that scope, confidence, freshness, source count, evidence health, and recovery remain reachable.
-  - [x] Run automated accessibility checks where the repo already supports them. For FrontComposer E2E, use the existing `tests/e2e` axe helper pattern.
-  - [x] Validate keyboard-only operation, focus order, focus visibility, focus return from dialogs/drawers, screen-reader names, touch target sizing, forced-colors/high-contrast behavior, and no text overlap at narrow mobile, tablet, desktop, and wide desktop widths.
+  - [ ] Run browser viewport and axe checks against a runnable surface. Story 17.1 shipped the component library and ran the component checks above.
+  - [ ] Validate keyboard-only operation, focus order, focus visibility, focus return from dialogs/drawers, screen-reader names, touch target sizing, forced-colors/high-contrast behavior, and no text overlap at narrow mobile, tablet, desktop, and wide desktop widths.
   - [x] Run `git diff --check`.
+
+  [Story 17.7's browser evidence](tests/test-summary-17-7-browser-at-gap-closure.md) records later Chromium specimen checks for axe, viewport reachability, forced colors, reduced motion, reflow, and touch-target measurements. [Story 17.7's accessibility inventory](17-7-runnable-web-specimen-and-browser-at-accessibility-gap-closure.md) and DW-482 track the remaining product-route, non-Chromium, axe manual-review, live assistive-technology and focus-return checks. They also track under-44-pixel touch targets, target-device confirmation, and data-heavy layout remediation.
 
 ## Dev Notes
 
