@@ -31,6 +31,8 @@ public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNatu
     internal const string TenantBacklogKey = "nl-embedding-retry-tenants";
 
     private readonly IConnectionMultiplexer _redis;
+    private readonly SemaphoreSlim _legacyDiscoveryGate = new(1, 1);
+    private volatile bool _legacyDiscoveryComplete;
 
     /// <summary>Gets the registered retry database used for durable scheduling authority.</summary>
     internal IDatabase Database => _redis.GetDatabase();
@@ -243,16 +245,8 @@ public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNatu
         cancellationToken.ThrowIfCancellationRequested();
 
         IDatabase db = _redis.GetDatabase();
-        RedisValue[] tenantIds = await db.SetMembersAsync(TenantBacklogKey).ConfigureAwait(false);
-        if (tenantIds.Length == 0)
-        {
-            await foreach (string tenantId in ListLegacyTenantsWithBacklogAsync(db, cancellationToken).ConfigureAwait(false))
-            {
-                yield return tenantId;
-            }
-
-            yield break;
-        }
+        await ReconcileLegacyTenantBacklogAsync(db, cancellationToken).ConfigureAwait(false);
+        RedisValue[] tenantIds = await db.SetMembersAsync(TenantBacklogKey).WaitAsync(cancellationToken).ConfigureAwait(false);
 
         foreach (RedisValue tenantId in tenantIds)
         {
@@ -400,43 +394,67 @@ public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNatu
             [(RedisKey)LiveKey(tenantId), (RedisKey)TenantBacklogKey], [(RedisValue)tenantId]).ConfigureAwait(false);
     }
 
-    private async IAsyncEnumerable<string> ListLegacyTenantsWithBacklogAsync(
-        IDatabase db,
-        [EnumeratorCancellation] CancellationToken cancellationToken)
+    private async Task ReconcileLegacyTenantBacklogAsync(IDatabase db, CancellationToken cancellationToken)
     {
-        IServer? server = GetFirstConnectedServer();
-        if (server is null)
+        if (_legacyDiscoveryComplete)
         {
-            yield break;
+            return;
         }
 
-        await foreach (RedisKey key in server
-            .KeysAsync(database: db.Database, pattern: LiveKeyPrefix + "*", pageSize: 100)
-            .WithCancellation(cancellationToken))
+        await _legacyDiscoveryGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            string value = key.ToString();
-            if (value.Length <= LiveKeyPrefix.Length)
+            if (_legacyDiscoveryComplete || GetConnectedPrimary() is not { } server)
             {
-                continue;
+                return;
             }
 
-            string tenantId = value[LiveKeyPrefix.Length..];
-            if (await db.SortedSetLengthAsync(LiveKey(tenantId)).ConfigureAwait(false) <= 0)
+            // Check the queue, the purge fence and its index membership in one Redis operation.
+            const string register = """
+                if redis.call('TYPE', KEYS[1]).ok == 'zset'
+                    and redis.call('ZCARD', KEYS[1]) > 0
+                    and redis.call('EXISTS', KEYS[3]) == 0 then
+                    return redis.call('SADD', KEYS[2], ARGV[1])
+                end
+                return 0
+                """;
+            await foreach (RedisKey key in server
+                .KeysAsync(database: db.Database, pattern: LiveKeyPrefix + "*", pageSize: 100)
+                .WithCancellation(cancellationToken).ConfigureAwait(false))
             {
-                continue;
+                string value = key.ToString();
+                if (value.Length <= LiveKeyPrefix.Length)
+                {
+                    continue;
+                }
+
+                string tenantId = value[LiveKeyPrefix.Length..];
+                _ = await db.ScriptEvaluateAsync(
+                    register,
+                    [key, (RedisKey)TenantBacklogKey, (RedisKey)TenantIngestionOwnership.Fence(tenantId)],
+                    [(RedisValue)tenantId]).WaitAsync(cancellationToken).ConfigureAwait(false);
             }
 
-            _ = await db.SetAddAsync(TenantBacklogKey, tenantId).ConfigureAwait(false);
-            yield return tenantId;
+            cancellationToken.ThrowIfCancellationRequested();
+            _legacyDiscoveryComplete = true;
+        }
+        catch (RedisException exception)
+        {
+            // Continue polling already indexed queues and retry reconciliation on the next poll.
+            LogLegacyDiscoveryDeferred(_logger, exception);
+        }
+        finally
+        {
+            _legacyDiscoveryGate.Release();
         }
     }
 
-    private IServer? GetFirstConnectedServer()
+    private IServer? GetConnectedPrimary()
     {
         foreach (EndPoint endpoint in _redis.GetEndPoints())
         {
             IServer server = _redis.GetServer(endpoint);
-            if (server.IsConnected)
+            if (server.IsConnected && !server.IsReplica)
             {
                 return server;
             }
@@ -668,6 +686,9 @@ public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNatu
 
     [LoggerMessage(Level = LogLevel.Error, Message = "NL retry queue: {MemoryUnitId} reached dead-letter after {Attempts} attempts for tenant {TenantId} (event 9180).")]
     private static partial void LogDeadLettered(ILogger logger, string tenantId, string memoryUnitId, int attempts);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "NL retry queue: legacy backlog discovery will retry. Indexed queues remain available.")]
+    private static partial void LogLegacyDiscoveryDeferred(ILogger logger, Exception exception);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "NL retry queue: MEMORY USAGE unavailable for tenant {TenantId} — returning 0.")]
     private static partial void LogMemoryUsageUnavailable(ILogger logger, Exception exception, string tenantId);

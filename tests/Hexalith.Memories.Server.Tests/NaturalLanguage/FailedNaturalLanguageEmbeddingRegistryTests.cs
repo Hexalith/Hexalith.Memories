@@ -232,8 +232,10 @@ public class FailedNaturalLanguageEmbeddingRegistryTests
         db.DidNotReceiveWithAnyArgs().CreateTransaction(default);
     }
 
-    [Fact]
-    public async Task ListTenantsWithBacklogAsync_UsesTenantBacklogSetWithoutKeyScan()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ListTenantsWithBacklogAsync_WhenLegacyDiscoveryIsUnavailable_StillUsesTenantBacklogSet(bool primaryConnected)
     {
         IDatabase db = CreateDatabase();
         db.SetMembersAsync(FailedNaturalLanguageEmbeddingRegistry.TenantBacklogKey, Arg.Any<CommandFlags>())
@@ -254,6 +256,13 @@ public class FailedNaturalLanguageEmbeddingRegistryTests
             .Returns(0);
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object?>()).Returns(db);
+        EndPoint endpoint = new DnsEndPoint("localhost", 6379);
+        IServer server = Substitute.For<IServer>();
+        server.IsConnected.Returns(primaryConnected);
+        server.KeysAsync(Arg.Any<int>(), Arg.Any<RedisValue>(), Arg.Any<int>(), Arg.Any<long>(), Arg.Any<int>(), Arg.Any<CommandFlags>())
+            .Returns(_ => throw new RedisServerException("SCAN unavailable"));
+        redis.GetEndPoints(Arg.Any<bool>()).Returns([endpoint]);
+        redis.GetServer(endpoint, Arg.Any<object?>()).Returns(server);
         FailedNaturalLanguageEmbeddingRegistry registry = new(
             redis,
             Substitute.For<ILogger<FailedNaturalLanguageEmbeddingRegistry>>(),
@@ -266,17 +275,16 @@ public class FailedNaturalLanguageEmbeddingRegistryTests
         }
 
         tenants.ShouldBe(["tenant-a"]);
-        redis.DidNotReceiveWithAnyArgs().GetEndPoints(default);
         await db.Received(1).ScriptEvaluateAsync(Arg.Is<string>(script => script.Contains("SREM", StringComparison.Ordinal)),
             Arg.Any<RedisKey[]>(), Arg.Is<RedisValue[]>(values => values[0] == "tenant-empty"), Arg.Any<CommandFlags>());
     }
 
     [Fact]
-    public async Task ListTenantsWithBacklogAsync_WhenTenantSetMissing_ScansLegacyRetryKeys()
+    public async Task ListTenantsWithBacklogAsync_ScansLegacyKeysOnceAcrossConcurrentPolls()
     {
         IDatabase db = CreateDatabase();
         db.SetMembersAsync(FailedNaturalLanguageEmbeddingRegistry.TenantBacklogKey, Arg.Any<CommandFlags>())
-            .Returns([]);
+            .Returns([(RedisValue)"tenant-legacy"]);
         db.SortedSetLengthAsync(
             FailedNaturalLanguageEmbeddingRegistry.LiveKey("tenant-legacy"),
             Arg.Any<double>(),
@@ -304,17 +312,24 @@ public class FailedNaturalLanguageEmbeddingRegistryTests
             Substitute.For<ILogger<FailedNaturalLanguageEmbeddingRegistry>>(),
             Options.Create(new NaturalLanguageDescriptionOptions()));
 
-        List<string> tenants = [];
-        await foreach (string tenant in registry.ListTenantsWithBacklogAsync(CancellationToken.None))
-        {
-            tenants.Add(tenant);
-        }
+        string[][] tenants = await Task.WhenAll(ReadTenantsAsync(), ReadTenantsAsync());
 
-        tenants.ShouldBe(["tenant-legacy"]);
-        await db.Received(1).SetAddAsync(
-            FailedNaturalLanguageEmbeddingRegistry.TenantBacklogKey,
-            "tenant-legacy",
-            Arg.Any<CommandFlags>());
+        tenants.ShouldAllBe(result => result.SequenceEqual(new[] { "tenant-legacy" }));
+        _ = server.Received(1).KeysAsync(Arg.Any<int>(), FailedNaturalLanguageEmbeddingRegistry.LiveKeyPrefix + "*",
+            100, Arg.Any<long>(), Arg.Any<int>(), Arg.Any<CommandFlags>());
+        await db.Received(1).ScriptEvaluateAsync(Arg.Is<string>(script => script.Contains("SADD", StringComparison.Ordinal)),
+            Arg.Any<RedisKey[]>(), Arg.Is<RedisValue[]>(values => values[0] == "tenant-legacy"), Arg.Any<CommandFlags>());
+
+        async Task<string[]> ReadTenantsAsync()
+        {
+            List<string> result = [];
+            await foreach (string tenant in registry.ListTenantsWithBacklogAsync(CancellationToken.None))
+            {
+                result.Add(tenant);
+            }
+
+            return [.. result];
+        }
     }
 
     [Fact]
