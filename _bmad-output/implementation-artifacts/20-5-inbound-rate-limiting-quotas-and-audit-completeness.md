@@ -6,6 +6,8 @@ baseline_commit: e444331
 
 Status: done
 
+> 2026-11-25 update. See the [current telemetry metric catalog](../../docs/dev/telemetry.md#meter-name--metric-catalog) for instrument names and Prometheus query conventions after Story 24.4.
+
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
 ## Story

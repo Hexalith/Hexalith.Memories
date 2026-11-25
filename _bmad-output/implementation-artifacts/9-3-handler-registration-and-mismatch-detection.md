@@ -2,6 +2,8 @@
 
 Status: done
 
+> 2026-11-25 update. See the [current telemetry metric catalog](../../docs/dev/telemetry.md#meter-name--metric-catalog) for instrument names and Prometheus query conventions after Story 24.4.
+
 **Revision history:**
 
 - 2026-04-23 (round 1) — Advanced Elicitation Review (pre-mortem + devil's-advocate + ADR + red-team + critique passes). 16 deltas applied: estimate revised 7→9-11d (Δ15); added AC #20-#25 covering NFR latency, kill switch, bounded FAF, SDK-server contract, experimental header, authZ (Δ13, Δ14, Δ3, Δ5, Δ12); new Spike 0.5 for authZ policy (Δ12); new Task 10.0 fixture-smoke spike reordered to run FIRST (critique); new Task 1.5a aggregates-set cardinality cap at 1024 + log event 9142 (Δ10); Task 3.4 hardened with SemaphoreSlim(256) + 2s timeout + whitespace-strict gate (Δ3, Δ11); new `memories.handlers.observations.dropped` counter + cardinality smoke test (Δ4); new `EventStoreObservationOptions` kill switch + 9143 log event (Δ14); 5 ADR deliverables in Task 11.7-11.11 (Δ9); projection-registry cross-check gap surfaced in "What does NOT ship" (Δ1); 7 new deferred-work tracking references in Task 11.6 (Δ1, Δ2, Δ4, Δ7, Δ8); Dev Notes add sections on Redis-Streams-rejected, stale-phrasing-unification, regex-vs-attribute, 3-vs-4-state, --since-flag, experimental-header convention. Unified "stale handler" phrasing to `observedTypes.Count == 0` across Risk #2, AC #4, §10 StaleHandler detection (Δ16). No prior AC / risk wording was deleted — only extended.

@@ -3658,7 +3658,8 @@ resolution: The OpenTelemetry pipeline exports explicit millisecond buckets for 
 origin: migrated from legacy ledger ("Deferred from: bmad-dev-auto review of spec-24-4-metric-naming-and-committed-dashboards (2026-07-05)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-24-4-metric-naming-and-committed-dashboards.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-24-4-metric-naming-and-committed-dashboards.md` summary: Decide whether historical BMAD implementation-artifact records (stories 9.2/9.3/20.5) should be forward-referenced or updated so they stop citing pre-rename metric names. evidence: Story 24.4 renamed instruments (e.g. `memories_conversation_cache_hit_total` -> `memories.conversation.cache.hits`, `memories.rate_limit.rejections` -> `memories.rate.limit.rejections`), but `_bmad-output/implementation-artifacts/9-2-*.md`, `20-5-*.md`, and `7-5-*.md` still name the old instruments. These are point-in-time story records outside the spec's "source, tests, or docs" scope, so whether to rewrite history or add forward-reference notes is a judgment call the orchestrator owns.
-status: open
+status: done 2026-11-25
+resolution: Dated links in Stories 7.5, 9.2, 9.3 and 20.5 point to the current telemetry catalog and preserve the original evidence.
 decision: 2026-09-01 Add forward references — Add concise dated pointers to current architecture without rewriting historical assertions.
 decision: 2026-09-01 Add forward references — Add concise dated pointers to current architecture without rewriting historical assertions.
 
