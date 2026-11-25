@@ -13,8 +13,6 @@ using CommunityToolkit.Aspire.Hosting.Dapr;
 
 using Hexalith.Memories.TestHelpers.Process;
 
-using Microsoft.Extensions.DependencyInjection;
-
 using Shouldly;
 
 /// <summary>
@@ -44,10 +42,10 @@ public sealed class AppHostDaprComponentReferenceTests
 
         await using IDistributedApplicationTestingBuilder builder = await DistributedApplicationTestingBuilder
             .CreateAsync<Projects.Hexalith_Memories_AppHost>();
-        await using DistributedApplication app = await builder.BuildAsync();
-        DistributedApplicationModel model = app.Services.GetRequiredService<DistributedApplicationModel>();
 
-        IResource[] sidecarOwners = [.. model.Resources.Where(static r => r.Annotations.OfType<DaprSidecarAnnotation>().Any())];
+        // Inspect the declarations before Aspire's build lifecycle can add generated resources.
+        IResource[] resources = [.. builder.Resources];
+        IResource[] sidecarOwners = [.. resources.Where(static r => r.Annotations.OfType<DaprSidecarAnnotation>().Any())];
         sidecarOwners.Select(static r => r.Name).Order(StringComparer.Ordinal)
             .ShouldBe(_expectedSidecarComponents.Keys.Order(StringComparer.Ordinal));
 
@@ -63,10 +61,12 @@ public sealed class AppHostDaprComponentReferenceTests
                 $"Dapr sidecar of '{owner.Name}' must reference exactly its owned components.");
         }
 
-        model.Resources
+        resources
             .Where(static r => r is not IDaprSidecarResource)
             .Where(static r => r.Annotations.OfType<DaprComponentReferenceAnnotation>().Any())
             .Select(static r => r.Name)
             .ShouldBeEmpty("Only sidecar resources may carry Dapr component references.");
+
+        await using DistributedApplication app = await builder.BuildAsync();
     }
 }
