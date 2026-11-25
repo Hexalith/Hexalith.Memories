@@ -3319,6 +3319,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 17-1-evidenc
 location: n/a
 reason: - **17.1-CR17. `Sources[].SourceUri` rendered without trust-mark badging (external URL vs local memory reference)** (`MemoriesSourceCitationStack.razor`). Rationale: not in AC3; needs a UX call on visual trust marks before implementing.
 status: open
+note: 2026-11-25 — Skipped. The external-versus-local trust label has no approved legend or source classification contract. DW-492 tracks the same UX decision.
 
 ### DW-475: 17.1-CR18. Graph path summary uses raw `<dl>/<dt>/<dd>` rather than `FluentDescriptionList`
 
@@ -3326,6 +3327,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 17-1-evidenc
 location: n/a
 reason: - **17.1-CR18. Graph path summary uses raw `<dl>/<dt>/<dd>` rather than `FluentDescriptionList`** (`MemoriesGraphPathSummary.razor`). Rationale: FrontComposer primitive preference; current markup is semantically correct.
 status: open
+note: 2026-11-25 — Skipped. The pinned Fluent UI and FrontComposer packages lack a description-list primitive. Story 25.7 explicitly allows the semantic HTML fallback under DW-493.
 
 ### DW-476: ID: 17.1-CR1
 
@@ -3386,7 +3388,8 @@ note: 2026-11-25 — Skipped. Story 17.7 supplied Chromium specimen evidence. Li
 origin: migrated from legacy ledger ("Triage: Story 17.1 deferred web items and architecture decisions (2026-07-06)"), 2026-09-01
 location: _bmad-output/planning-artifacts/epics.md` (future web story: Command Surface Scope and Redaction Safety); `src/Hexalith.Memories.Web/Components/Evidence/MemoriesSourceCitationStack.razor
 reason: - ID: 17.1-CR8 - Status: carried-forward - Source story: 17-1-evidence-cockpit-and-trust-components - Target artifact: `_bmad-output/planning-artifacts/epics.md` (future web story: Command Surface Scope and Redaction Safety); `src/Hexalith.Memories.Web/Components/Evidence/MemoriesSourceCitationStack.razor` - Re-open trigger: before an Inspect Source command/button is reintroduced or wired to command-palette activation. - Rationale: The dead-button removal closed the immediate path, but command wiring can reintroduce rank-label leakage. Keep the fix coupled to the command-surface story.
-status: open
+status: done 2026-11-25
+resolution: Inspect Source resolves the selected row to its scoped memory-unit ID and suppresses invalid targets and rank labels. All 13 command surface tests passed.
 
 ### DW-484: ID: 17.1-CR9
 

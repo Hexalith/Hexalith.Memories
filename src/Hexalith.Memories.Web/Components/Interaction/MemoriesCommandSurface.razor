@@ -6,6 +6,8 @@
 
 @inject IStringLocalizer<MemoriesWebResources> Localizer
 
+@{ InteractionContextSnapshot renderedSnapshot = Snapshot; }
+
 <FluentStack Orientation="Orientation.Vertical"
              VerticalGap="6"
              data-testid="mem-command-surface"
@@ -14,11 +16,12 @@
     {
         <FluentButton Appearance="ButtonAppearance.Subtle"
                       Disabled="@(!command.IsAvailable)"
+                      aria-disabled="@(!command.IsAvailable ? "true" : null)"
                       data-testid="mem-command-action"
                       data-command-kind="@command.Kind"
                       data-requires-confirmation="@command.RequiresConfirmation.ToString().ToLowerInvariant()"
                       Title="@DisabledReason(command)"
-                      OnClick="@(() => EmitCommandAsync(command))">
+                      OnClick="@(() => EmitCommandAsync(command, renderedSnapshot))">
             @Localizer[command.LabelKey]
         </FluentButton>
         @if (!command.IsAvailable && command.DisabledReasonKey is not null)
@@ -67,18 +70,25 @@
     private string? DisabledReason(MemoriesCommandView command)
         => command.DisabledReasonKey is null ? null : Localizer[command.DisabledReasonKey].Value;
 
-    private async Task EmitCommandAsync(MemoriesCommandView command)
+    private async Task EmitCommandAsync(MemoriesCommandView renderedCommand, InteractionContextSnapshot renderedSnapshot)
     {
-        if (!command.IsAvailable)
+        if (!renderedCommand.IsAvailable || renderedSnapshot != Snapshot)
+        {
+            return;
+        }
+
+        MemoriesCommandView currentCommand = MemoriesCommandSurfaceMapper.Map(Packet, Snapshot, ActiveTenantId, ActiveCaseId)
+            .Single(command => command.Kind == renderedCommand.Kind);
+        if (!currentCommand.IsAvailable || !string.Equals(currentCommand.Target, renderedCommand.Target, StringComparison.Ordinal))
         {
             return;
         }
 
         await OnCommand.InvokeAsync(new MemoriesCommandInvocation(
-            command.Kind,
-            Snapshot.TenantId,
-            Snapshot.CaseId,
-            command.Target,
-            Snapshot.ReturnRoute)).ConfigureAwait(true);
+            currentCommand.Kind,
+            renderedSnapshot.TenantId,
+            renderedSnapshot.CaseId,
+            currentCommand.Target,
+            renderedSnapshot.ReturnRoute)).ConfigureAwait(true);
     }
 }

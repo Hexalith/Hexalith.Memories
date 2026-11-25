@@ -38,10 +38,9 @@ public static class MemoriesCommandSurfaceMapper
             activeCaseId,
             allowTenantVerification: true);
 
-        string firstSource = packet.Sources.FirstOrDefault()?.MemoryUnitId
-            ?? packet.Sources.FirstOrDefault()?.SourceUri
-            ?? snapshot.TargetId
-            ?? "packet";
+        string? sourceTarget = FindSourceTarget(packet, snapshot);
+        InteractionContextValidationResult source = ValidateTarget(
+            packet, snapshot, activeTenantId, activeCaseId, InteractionTargetKind.Source, sourceTarget);
         string graphTarget = packet.Graph.RelatedPath.FirstOrDefault()
             ?? packet.Graph.EdgeTypes.FirstOrDefault()
             ?? "graph";
@@ -50,7 +49,7 @@ public static class MemoriesCommandSurfaceMapper
         [
             Command(MemoriesCommandKind.Search, snapshot.Query, normal),
             Command(MemoriesCommandKind.Ingest, packet.Scope.TenantId, normal),
-            Command(MemoriesCommandKind.InspectSource, firstSource, ValidateTarget(packet, snapshot, activeTenantId, activeCaseId, InteractionTargetKind.Source, firstSource)),
+            Command(MemoriesCommandKind.InspectSource, source.IsValid ? sourceTarget : null, source),
             Command(MemoriesCommandKind.VerifyTenant, packet.Scope.TenantId, tenantCheck),
             Command(MemoriesCommandKind.OpenGraph, graphTarget, ValidateTarget(packet, snapshot, activeTenantId, activeCaseId, InteractionTargetKind.Graph, graphTarget)),
             Command(MemoriesCommandKind.RetryIngestion, packet.Scope.TenantId, normal, requiresConfirmation: true),
@@ -59,13 +58,40 @@ public static class MemoriesCommandSurfaceMapper
         ];
     }
 
+    private static string? FindSourceTarget(EvidencePacket packet, InteractionContextSnapshot snapshot)
+    {
+        if (snapshot.TargetKind != InteractionTargetKind.Source || string.IsNullOrWhiteSpace(snapshot.TargetId))
+        {
+            return null;
+        }
+
+        IEnumerable<EvidencePacketSource> eligibleSources = packet.Sources.Where(source =>
+            string.IsNullOrWhiteSpace(packet.Scope.CaseId)
+            || string.IsNullOrWhiteSpace(source.CaseId)
+            || string.Equals(source.CaseId, packet.Scope.CaseId, StringComparison.Ordinal));
+        EvidencePacketSource? source = eligibleSources.FirstOrDefault(candidate =>
+            string.Equals(candidate.MemoryUnitId, snapshot.TargetId, StringComparison.Ordinal));
+        if (source is null)
+        {
+            EvidencePacketSource[] uriMatches = eligibleSources.Where(candidate =>
+                string.Equals(candidate.SourceUri, snapshot.TargetId, StringComparison.Ordinal)).Take(2).ToArray();
+            source = uriMatches.Length == 1 ? uriMatches[0] : null;
+        }
+
+        string? memoryUnitId = source?.MemoryUnitId;
+        return !string.IsNullOrWhiteSpace(memoryUnitId)
+            && string.Equals(memoryUnitId, InteractionDisplay.SafeText(memoryUnitId), StringComparison.Ordinal)
+            ? memoryUnitId
+            : null;
+    }
+
     private static InteractionContextValidationResult ValidateTarget(
         EvidencePacket packet,
         InteractionContextSnapshot snapshot,
         string activeTenantId,
         string? activeCaseId,
         InteractionTargetKind kind,
-        string target)
+        string? target)
         => InteractionContextValidator.Validate(
             packet,
             snapshot with { TargetKind = kind, TargetId = target },
@@ -74,7 +100,7 @@ public static class MemoriesCommandSurfaceMapper
 
     private static MemoriesCommandView Command(
         MemoriesCommandKind kind,
-        string target,
+        string? target,
         InteractionContextValidationResult validation,
         bool requiresConfirmation = false)
     {

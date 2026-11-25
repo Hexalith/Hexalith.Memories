@@ -57,6 +57,36 @@ public sealed class MemoriesCommandSurfaceGapTests : FrontComposerTestBase
         commands.Single(c => c.Kind == MemoriesCommandKind.InspectSource).IsAvailable.ShouldBeTrue();
     }
 
+    [Theory]
+    [InlineData(InteractionTargetKind.Packet, null, false)]
+    [InlineData(InteractionTargetKind.Source, "duplicate-uri", false)]
+    [InlineData(InteractionTargetKind.Source, "second-unit", true)]
+    public void InspectSource_RequiresAnUnambiguousSelection(
+        InteractionTargetKind kind, string? target, bool expectedAvailable)
+    {
+        EvidencePacket packet = EvidencePacketFixtures.CompletePacket();
+        EvidencePacketSource first = packet.Sources[0] with { SourceUri = "second-unit" };
+        packet = packet with
+        {
+            Sources =
+            [
+                first,
+                first with { MemoryUnitId = "second-unit", SourceUri = "duplicate-uri" },
+                first with { MemoryUnitId = "third-unit", SourceUri = "duplicate-uri" },
+            ],
+        };
+
+        MemoriesCommandView inspect = MemoriesCommandSurfaceMapper.Map(
+            packet, InteractionContextTests.Snapshot() with { TargetKind = kind, TargetId = target }, "tenant-a", "case-a")
+            .Single(command => command.Kind == MemoriesCommandKind.InspectSource);
+
+        inspect.IsAvailable.ShouldBe(expectedAvailable);
+        if (expectedAvailable)
+        {
+            inspect.Target.ShouldBe("second-unit");
+        }
+    }
+
     [Fact]
     public void Surface_ContractVersionMismatch_RendersAllDisabledWithReasons()
     {

@@ -8,6 +8,7 @@ namespace Hexalith.Memories.Web.Tests.Components.Interaction;
 using Bunit;
 
 using Hexalith.FrontComposer.Testing;
+using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Web.Components.Interaction;
 using Hexalith.Memories.Web.Tests.Components.Evidence;
 
@@ -65,6 +66,68 @@ public sealed class MemoriesCommandSurfaceTests : FrontComposerTestBase
         invocation!.TenantId.ShouldBe("tenant-a");
         invocation.Target.ShouldBe("memory-a");
         invocation.ReturnRoute.ShouldBe("memories/evidence?packet=memory-a");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void InspectSource_EmitsSelectedMemoryUnitWithoutRankOrUri(bool selectByUri)
+    {
+        EvidencePacket packet = EvidencePacketFixtures.CompletePacket();
+        EvidencePacketSource first = packet.Sources[0];
+        EvidencePacketSource selected = first with
+        {
+            Rank = 97,
+            MemoryUnitId = "chosen-unit",
+            SourceUri = "https://user:credential@example.test/chosen",
+        };
+        packet = packet with { Sources = [first, selected] };
+        InteractionContextSnapshot snapshot = InteractionContextTests.Snapshot() with
+        {
+            TargetId = selectByUri ? selected.SourceUri : selected.MemoryUnitId,
+        };
+        MemoriesCommandInvocation? invocation = null;
+        IRenderedComponent<MemoriesCommandSurface> component = Render<MemoriesCommandSurface>(parameters => parameters
+            .Add(p => p.Packet, packet)
+            .Add(p => p.Snapshot, snapshot)
+            .Add(p => p.ActiveTenantId, "tenant-a")
+            .Add(p => p.ActiveCaseId, "case-a")
+            .Add(p => p.OnCommand, (MemoriesCommandInvocation value) => invocation = value));
+
+        component.Find("[data-command-kind='InspectSource']").Click();
+
+        invocation.ShouldBe(new MemoriesCommandInvocation(
+            MemoriesCommandKind.InspectSource, "tenant-a", "case-a", "chosen-unit", snapshot.ReturnRoute));
+        component.Markup.ShouldNotContain("credential");
+        component.Markup.ShouldNotContain("chosen-unit");
+        component.Find("[data-command-kind='InspectSource']").TextContent.Trim().ShouldBe("Inspect source");
+        component.FindAll("[data-source-rank]").ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData("tenant-b", "case-a", "case-a", "memory-a")]
+    [InlineData("tenant-a", "case-b", "case-a", "memory-a")]
+    [InlineData("tenant-a", "case-a", "case-b", "memory-a")]
+    [InlineData("tenant-a", "case-a", "case-a", "missing-unit")]
+    public void InspectSource_InvalidScopeOrStaleSelection_HasNoActionableTarget(
+        string activeTenant,
+        string activeCase,
+        string sourceCase,
+        string selectedId)
+    {
+        EvidencePacket packet = EvidencePacketFixtures.CompletePacket();
+        packet = packet with { Sources = [packet.Sources[0] with { CaseId = sourceCase }] };
+        MemoriesCommandInvocation? invocation = null;
+        IRenderedComponent<MemoriesCommandSurface> component = Render<MemoriesCommandSurface>(parameters => parameters
+            .Add(p => p.Packet, packet)
+            .Add(p => p.Snapshot, InteractionContextTests.Snapshot() with { TargetId = selectedId })
+            .Add(p => p.ActiveTenantId, activeTenant)
+            .Add(p => p.ActiveCaseId, activeCase)
+            .Add(p => p.OnCommand, (MemoriesCommandInvocation value) => invocation = value));
+
+        component.Find("[data-command-kind='InspectSource']").HasAttribute("disabled").ShouldBeTrue();
+        component.Find("[data-command-kind='InspectSource']").Click();
+        invocation.ShouldBeNull();
     }
 
     [Fact]
