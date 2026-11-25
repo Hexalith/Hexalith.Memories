@@ -2680,10 +2680,20 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                 StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             foreach (string containerId in fixtureContainerIds)
             {
-                _ = await RunProcessCommandAsync(
-                    "docker",
-                    $"container rm --force --volumes {containerId}",
-                    cleanupCts.Token).ConfigureAwait(false);
+                try
+                {
+                    _ = await RunProcessCommandAsync(
+                        "docker",
+                        $"container rm --force --volumes {containerId}",
+                        cleanupCts.Token).ConfigureAwait(false);
+                }
+                catch (InvalidOperationException ex) when (
+                    ex.Message.Contains("No such container", StringComparison.OrdinalIgnoreCase) ||
+                    (ex.Message.Contains("removal of container", StringComparison.OrdinalIgnoreCase) &&
+                        ex.Message.Contains("is already in progress", StringComparison.OrdinalIgnoreCase)))
+                {
+                    // DCP can remove the same owned container after enumeration. Volume cleanup still waits for release.
+                }
             }
         }
     }
