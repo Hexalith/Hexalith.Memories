@@ -51,3 +51,11 @@ Resume the priority-ordered deferred register after DW-331 and complete seven el
 - Rejected, low. The pure AppHost helper tests carry Category=Integration like the existing OpenBao tests in the only friend assembly, and they run in the fast integration lane on every pull request.
 - False. Concurrent model builds cannot share the component directory: both model tests hold the same EnvVarScope gates for their whole run, which serializes them. The duplicated eventstore row is negligible.
 - Rejected, low. The Redis substitute helpers now appear in three test files; moving them to TestHelpers is broader than this batch.
+
+## Verification
+
+- Debug and Release builds of Hexalith.Memories.slnx had zero warnings and errors.
+- The nine unit and contract projects passed 5,641 cases with one existing skip. IntegrationTests passed all 699 cases with nine existing skips, including the 48 new cases. Benchmarks passed 17 cases.
+- The complete nightly run passed 47 of 55 cases. After a topology restart the Redis readiness probe timed out against the restarted host port. That failed PipelinePersistencePerformanceTests, and the seven PipelinePersistenceIntegrationTests cases inherited the broken fixture.
+- The restart class failed in five of ten runs, four of them among nine isolated runs. Symptoms were a restarted server that could not open its FalkorDB connection at startup and a five-minute /alive timeout. Unmodified HEAD then passed the class twice in a row (161 s and 167 s) and the performance class once (34 s). The baseline sources passed twice, and the previous batch recorded the same restart host-port timeout on its baseline. Partial reverts of DW-400, DW-414, DW-419 and DW-421 did not isolate a cause. Host load averaged 26 to 33 from other workloads. The flake is recorded in the deferred-work ledger.
+- The CI-run Python tooling suites passed. Three suites outside CI did not: access_telemetry_lifecycle (78 failures from the parked PG-ONPREM-2 overlay drift and missing private owner packets) and runtime_secret_store (busybox not installed) both failed, and access_telemetry_c1 timed out after 30 minutes. This batch changed nothing under deploy, tools or references.

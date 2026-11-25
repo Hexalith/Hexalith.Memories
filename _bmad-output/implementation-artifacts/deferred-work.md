@@ -6074,3 +6074,7 @@ status: open
 - source_spec: `_bmad-output/implementation-artifacts/spec-seven-ordered-deferred-items.md`
   summary: Remove the IndexGraphActivity compatibility constructor that skips the tenant-ownership write check without the keyed Redis connection.
   evidence: IndexGraphActivity keeps a public constructor without the keyed "redis" connection and then skips TenantIngestionOwnership.BeginOperationAsync. The server host always registers that connection, so the guard runs today, but a host without it would silently create the unguarded activity, the pattern DW-400 removed from the embedding activities.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-seven-ordered-deferred-items.md`
+  summary: Make the nightly PipelinePersistenceIntegrationTests topology restart reliable when restarted container host ports are slow to become reachable.
+  evidence: On 2026-11-24 the restart class failed in five of ten runs (four of nine isolated runs) on a host with load average 26 to 33. The AppHost Redis probe timed out against the restarted host port, or the restarted server failed its startup FalkorDB connection in ServiceDefaults ConnectRequiredMultiplexer and /alive never became ready. The same cases passed on unchanged sources in other runs, and the previous batch recorded the same restart timeout. Capture the DCP proxy and container port state at the restart boundary to separate a host-port forwarding delay from a fixture ordering defect.
