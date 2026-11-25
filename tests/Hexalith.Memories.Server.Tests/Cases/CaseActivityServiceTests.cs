@@ -248,8 +248,8 @@ public class CaseActivityServiceTests
     {
         // Arrange
         (IConnectionMultiplexer redis, IDatabase db) = CreateMockRedis();
-        db.HashGetAsync("tenant-1:case:case-001:activity:summary", "failedCount", Arg.Any<CommandFlags>())
-            .Returns(new RedisValue("2"));
+        db.HashGetAsync("tenant-1:case:case-001:activity:summary", Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>())
+            .Returns([(RedisValue)"2", (RedisValue)"1"]);
 
         CaseActivityService service = new(redis, NullLogger<CaseActivityService>.Instance);
 
@@ -314,11 +314,10 @@ public class CaseActivityServiceTests
 
         // Assert
         count.ShouldBe(2);
-        await db.Received(1).HashSetAsync(
+        await db.CreateTransaction().Received(1).HashSetAsync(
             "tenant-1:case:case-001:activity:summary",
-            "failedCount",
-            "2",
-            Arg.Any<When>(),
+            Arg.Is<HashEntry[]>(fields => fields.Contains(new HashEntry("failedCount", 2))
+                && fields.Contains(new HashEntry("failedCountReconciled", "1"))),
             Arg.Any<CommandFlags>());
         await db.Received(1).HashSetAsync(
             "tenant-1:case:case-001:activity:summary",
@@ -333,7 +332,7 @@ public class CaseActivityServiceTests
     {
         // Arrange
         (IConnectionMultiplexer redis, IDatabase db) = CreateMockRedis();
-        db.HashGetAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<CommandFlags>())
+        db.HashGetAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>())
             .ThrowsAsync(new RedisTimeoutException(StackExchange.Redis.CommandFlags.None, "Timed out", CommandStatus.Unknown));
 
         CaseActivityService service = new(redis, NullLogger<CaseActivityService>.Instance);
@@ -425,11 +424,10 @@ public class CaseActivityServiceTests
 
         // Assert
         timestamp.ShouldBe(DateTimeOffset.FromUnixTimeMilliseconds(1712345678905));
-        await db.Received(1).HashSetAsync(
+        await db.CreateTransaction().Received(1).HashSetAsync(
             "tenant-1:case:case-001:activity:summary",
-            "failedCount",
-            "0",
-            Arg.Any<When>(),
+            Arg.Is<HashEntry[]>(fields => fields.Contains(new HashEntry("failedCount", 0))
+                && fields.Contains(new HashEntry("failedCountReconciled", "1"))),
             Arg.Any<CommandFlags>());
         await db.Received(1).HashSetAsync(
             "tenant-1:case:case-001:activity:summary",
@@ -495,6 +493,11 @@ public class CaseActivityServiceTests
     private static (IConnectionMultiplexer, IDatabase) CreateMockRedis()
     {
         IDatabase db = Substitute.For<IDatabase>();
+        var transaction = Substitute.For<ITransaction>();
+        transaction.ExecuteAsync(Arg.Any<CommandFlags>()).Returns(true);
+        db.CreateTransaction(Arg.Any<object>()).Returns(transaction);
+        db.HashGetAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>())
+            .Returns([RedisValue.Null, RedisValue.Null]);
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
         return (redis, db);

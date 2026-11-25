@@ -19,6 +19,7 @@ using StackExchange.Redis;
 internal sealed class CaseActivityService
 {
     private const string FailedCountField = "failedCount";
+    private const string FailedCountReconciledField = "failedCountReconciled";
     private const string LastActivityUnixMillisecondsField = "lastActivityUnixMilliseconds";
 
     private readonly IConnectionMultiplexer _redis;
@@ -49,6 +50,13 @@ internal sealed class CaseActivityService
         {
             IDatabase db = _redis.GetDatabase();
             string key = ActivityKey(tenantId, caseId);
+            RedisKey summaryKey = SummaryKey(tenantId, caseId);
+            if (eventType == CaseActivityEventType.IngestionFailed)
+            {
+                // Establish the legacy baseline before appending the failure we will increment below.
+                _ = await GetSummaryAsync(db, key, summaryKey, backfillTimestamp: false, cancellationToken)
+                    .ConfigureAwait(false);
+            }
 
             List<NameValueEntry> fields =
             [
@@ -73,7 +81,7 @@ internal sealed class CaseActivityService
 
             await UpdateSummaryAsync(
                     db,
-                    SummaryKey(tenantId, caseId),
+                    summaryKey,
                     eventType,
                     ParseTimestampFromStreamId(streamId.ToString()))
                 .ConfigureAwait(false);
@@ -134,16 +142,9 @@ internal sealed class CaseActivityService
         try
         {
             IDatabase db = _redis.GetDatabase();
-            RedisValue value = await db
-                .HashGetAsync(SummaryKey(tenantId, caseId), FailedCountField)
+            (int failedCount, _) = await GetSummaryAsync(
+                db, ActivityKey(tenantId, caseId), SummaryKey(tenantId, caseId), backfillTimestamp: false, cancellationToken)
                 .ConfigureAwait(false);
-
-            if (value.HasValue && int.TryParse(value.ToString(), out int count))
-            {
-                return Math.Max(0, count);
-            }
-
-            (int failedCount, _) = await BackfillSummaryFromStreamAsync(db, tenantId, caseId).ConfigureAwait(false);
             return failedCount;
         }
         catch (Exception ex)
@@ -172,7 +173,9 @@ internal sealed class CaseActivityService
                     : null;
             }
 
-            (_, DateTimeOffset? lastActivity) = await BackfillSummaryFromStreamAsync(db, tenantId, caseId).ConfigureAwait(false);
+            (_, DateTimeOffset? lastActivity) = await GetSummaryAsync(
+                db, ActivityKey(tenantId, caseId), SummaryKey(tenantId, caseId), backfillTimestamp: true, cancellationToken)
+                .ConfigureAwait(false);
             return lastActivity;
         }
         catch (Exception ex)
@@ -182,18 +185,72 @@ internal sealed class CaseActivityService
         }
     }
 
-    private static async Task<(int FailedCount, DateTimeOffset? LastActivity)> BackfillSummaryFromStreamAsync(
+    private static async Task<(int FailedCount, DateTimeOffset? LastActivity)> GetSummaryAsync(
         IDatabase db,
-        string tenantId,
-        string caseId)
+        RedisKey activityKey,
+        RedisKey summaryKey,
+        bool backfillTimestamp,
+        CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            RedisValue[] observed = await db.HashGetAsync(summaryKey, [FailedCountField, FailedCountReconciledField])
+                .ConfigureAwait(false);
+            string storedCount = observed[0].ToString();
+            _ = int.TryParse(storedCount, NumberStyles.Integer, CultureInfo.InvariantCulture, out int existingCount);
+            bool reconciled = observed[1] == "1" && existingCount >= 0
+                && storedCount == existingCount.ToString(CultureInfo.InvariantCulture);
+            if (reconciled && !backfillTimestamp)
+            {
+                return (existingCount, null);
+            }
+
+            (int retainedFailures, DateTimeOffset? lastActivity) = await ReadRetainedSummaryAsync(db, activityKey)
+                .ConfigureAwait(false);
+            int failedCount = existingCount;
+            if (!reconciled)
+            {
+                // An older writer may have undercounted retained failures. Never discard an existing
+                // lifetime count that also includes failures trimmed from the stream.
+                failedCount = Math.Max(existingCount, retainedFailures);
+                ITransaction transaction = db.CreateTransaction();
+                _ = transaction.AddCondition(ObservedField(summaryKey, FailedCountField, observed[0]));
+                _ = transaction.AddCondition(ObservedField(summaryKey, FailedCountReconciledField, observed[1]));
+                _ = transaction.HashSetAsync(summaryKey,
+                    [new(FailedCountField, failedCount), new(FailedCountReconciledField, "1")]);
+                if (!await transaction.ExecuteAsync().ConfigureAwait(false))
+                {
+                    continue;
+                }
+            }
+
+            bool timestampStored = await db.HashSetAsync(
+                summaryKey, LastActivityUnixMillisecondsField, lastActivity?.ToUnixTimeMilliseconds() ?? -1, When.NotExists)
+                .ConfigureAwait(false);
+            if (!timestampStored && backfillTimestamp)
+            {
+                RedisValue current = await db.HashGetAsync(summaryKey, LastActivityUnixMillisecondsField).ConfigureAwait(false);
+                if (long.TryParse(current.ToString(), out long milliseconds))
+                {
+                    lastActivity = milliseconds >= 0 ? DateTimeOffset.FromUnixTimeMilliseconds(milliseconds) : null;
+                }
+            }
+
+            return (failedCount, lastActivity);
+        }
+    }
+
+    private static Condition ObservedField(RedisKey key, RedisValue field, RedisValue observed) => observed.IsNull
+        ? Condition.HashNotExists(key, field)
+        : Condition.HashEqual(key, field, observed);
+
+    private static async Task<(int FailedCount, DateTimeOffset? LastActivity)> ReadRetainedSummaryAsync(
+        IDatabase db,
+        RedisKey activityKey)
     {
         StreamEntry[] entries = await db
-            .StreamRangeAsync(
-                ActivityKey(tenantId, caseId),
-                minId: null,
-                maxId: null,
-                count: null,
-                messageOrder: Order.Ascending)
+            .StreamRangeAsync(activityKey, minId: null, maxId: null, count: null, messageOrder: Order.Ascending)
             .ConfigureAwait(false) ?? [];
 
         int failedCount = 0;
@@ -216,17 +273,6 @@ internal sealed class CaseActivityService
                 lastActivity = parsed.Timestamp;
             }
         }
-
-        RedisKey summaryKey = SummaryKey(tenantId, caseId);
-        _ = await db
-            .HashSetAsync(summaryKey, FailedCountField, failedCount.ToString(CultureInfo.InvariantCulture))
-            .ConfigureAwait(false);
-        _ = await db
-            .HashSetAsync(
-                summaryKey,
-                LastActivityUnixMillisecondsField,
-                (lastActivity?.ToUnixTimeMilliseconds() ?? -1).ToString(CultureInfo.InvariantCulture))
-            .ConfigureAwait(false);
 
         return (failedCount, lastActivity);
     }
