@@ -131,7 +131,7 @@ public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNatu
         IDatabase db = _redis.GetDatabase();
         RedisKey payloadKey = LivePayloadKey(record.TenantId);
         string expectedPayload = SerializeRecord(record);
-        RedisValue currentPayload = await db.HashGetAsync(payloadKey, record.MemoryUnitId).ConfigureAwait(false);
+        RedisValue currentPayload = await db.HashGetAsync(payloadKey, record.MemoryUnitId).WaitAsync(cancellationToken).ConfigureAwait(false);
         if (currentPayload.HasValue && TryDeserialize(currentPayload.ToString()) != record)
         {
             LogStaleRecordIgnored(_logger, record.TenantId, record.MemoryUnitId, "complete");
@@ -156,7 +156,8 @@ public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNatu
                 aliases.AddRange([entry.Element, (RedisValue)entry.Score, payload.HasValue ? "1" : "0", payload.HasValue ? payload : RedisValue.EmptyString]);
             }
         }
-        if (!await MutateAsync(db, record, "complete", expectedPayload, aliases: [.. aliases], expectedPayload: expectedPayload).ConfigureAwait(false))
+        if (!await MutateAsync(db, record, "complete", expectedPayload, observedPayload: currentPayload,
+            aliases: [.. aliases], expectedPayload: expectedPayload).ConfigureAwait(false))
         {
             LogStaleRecordIgnored(_logger, record.TenantId, record.MemoryUnitId, "complete");
             return;
@@ -179,7 +180,8 @@ public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNatu
         bool dead = next.Attempts >= maxAttempts;
         RedisValue current = await db.HashGetAsync(LivePayloadKey(record.TenantId), record.MemoryUnitId).WaitAsync(cancellationToken).ConfigureAwait(false);
         if (current.HasValue && (TryDeserialize(current.ToString()) != record || !HasQualifiedShape(current.ToString()))) return false;
-        if (!await MutateAsync(db, record, dead ? "dead" : "requeue", SerializeRecord(next), expectedPayload: current.HasValue ? current.ToString() : null).ConfigureAwait(false))
+        if (!await MutateAsync(db, record, dead ? "dead" : "requeue", SerializeRecord(next), observedPayload: current,
+            expectedPayload: current.HasValue ? current.ToString() : null).ConfigureAwait(false))
         {
             LogStaleRecordIgnored(_logger, record.TenantId, record.MemoryUnitId, "attempt-increment");
             return false;
@@ -566,7 +568,12 @@ public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNatu
                 end
                 if redis.call('EXISTS',KEYS[8])==1 then return redis.error_reply('nl-retry-legacy-lineage-reconciliation-required') end
             elseif mode~='enqueue' then
-                if current and current~=ARGV[4] then return 0 end
+                if mode=='overflow' then
+                    if current and current~=ARGV[4] then return 0 end
+                elseif (ARGV[9]=='1' and current~=ARGV[10]) or (ARGV[9]=='0' and current) then
+                    -- The hash must still be absent even if a new enqueue would have identical bytes.
+                    return 0
+                end
                 if not current and not redis.call('ZSCORE',KEYS[1],ARGV[4]) and not redis.call('ZSCORE',KEYS[1],legacy) then return 0 end
             end
             if mode=='dead' or mode=='overflow' then

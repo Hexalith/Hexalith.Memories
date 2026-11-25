@@ -29,6 +29,79 @@ using NRedisStack.RedisStackCommands;
 [Trait("Category", "Integration")]
 public sealed class NaturalLanguageErasureIntegrationTests(RedisStackFixture redis, FalkorDbFixture graph) : IClassFixture<FalkorDbFixture>
 {
+    [Theory]
+    [InlineData("complete", false)]
+    [InlineData("complete", true)]
+    [InlineData("requeue", false)]
+    [InlineData("requeue", true)]
+    [InlineData("dead", false)]
+    [InlineData("dead", true)]
+    public async Task LegacyRetryMutationRequiresTheObservedHashToRemainAbsent(string operation, bool enqueueConcurrently)
+    {
+        var token = TestContext.Current.CancellationToken;
+        string tenant = $"legacy-retry-hash-race-{Guid.NewGuid():N}";
+        const string Unit = "unit";
+        var record = Record(tenant, Unit);
+        string original = FailedNaturalLanguageEmbeddingRegistry.SerializeRecord(record);
+        string live = FailedNaturalLanguageEmbeddingRegistry.LiveKey(tenant);
+        string livePayloads = FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant);
+        string dead = FailedNaturalLanguageEmbeddingRegistry.DeadKey(tenant);
+        string deadPayloads = FailedNaturalLanguageEmbeddingRegistry.DeadPayloadKey(tenant);
+        IDatabase db = redis.Connection.GetDatabase();
+        _ = await db.SortedSetAddAsync(live, original, record.QueuedAtTicks);
+        var concurrent = new FailedNaturalLanguageEmbeddingRegistry(redis.Connection, NullLogger<FailedNaturalLanguageEmbeddingRegistry>.Instance);
+        bool reachedMutation = false;
+        IDatabase intercepted = RetryDatabaseInterception.Create(db,
+            (script, values) => script.Contains("nl-retry-atomic-move-v3", StringComparison.Ordinal) && values[2] == operation,
+            async () =>
+            {
+                reachedMutation = true;
+                (await db.HashGetAsync(livePayloads, Unit)).HasValue.ShouldBeFalse();
+                if (enqueueConcurrently)
+                {
+                    await concurrent.EnqueueAsync(record, token);
+                }
+            });
+        var connection = Substitute.For<IConnectionMultiplexer>();
+        connection.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(intercepted);
+        var registry = new FailedNaturalLanguageEmbeddingRegistry(connection, NullLogger<FailedNaturalLanguageEmbeddingRegistry>.Instance);
+
+        if (operation == "complete")
+        {
+            await registry.CompleteAsync(record, token);
+        }
+        else
+        {
+            bool deadLettered = await registry.IncrementAttemptsAsync(record, operation == "dead" ? 1 : 5, token);
+            deadLettered.ShouldBe(operation == "dead" && !enqueueConcurrently);
+        }
+
+        reachedMutation.ShouldBeTrue();
+        bool queued = enqueueConcurrently || operation == "requeue";
+        bool deadLetteredSuccessfully = !enqueueConcurrently && operation == "dead";
+        (await db.SortedSetScoreAsync(live, original)).HasValue.ShouldBe(enqueueConcurrently);
+        (await db.SortedSetScoreAsync(live, Unit)).ShouldBe(queued ? record.QueuedAtTicks : null);
+        (await db.SortedSetScoreAsync(dead, Unit)).ShouldBe(deadLetteredSuccessfully ? record.QueuedAtTicks : null);
+        (await db.SetContainsAsync(FailedNaturalLanguageEmbeddingRegistry.TenantBacklogKey, tenant)).ShouldBe(queued);
+        (await db.KeyExistsAsync(FailedNaturalLanguageEmbeddingRegistry.LineageKey(tenant, Unit)))
+            .ShouldBe(!enqueueConcurrently && operation == "complete");
+        if (enqueueConcurrently)
+        {
+            (await db.HashGetAsync(livePayloads, Unit)).ToString().ShouldBe(original);
+            (await db.HashGetAsync(deadPayloads, Unit)).HasValue.ShouldBeFalse();
+        }
+        else
+        {
+            var incremented = record with { Attempts = 1 };
+            RedisValue livePayload = await db.HashGetAsync(livePayloads, Unit);
+            RedisValue deadPayload = await db.HashGetAsync(deadPayloads, Unit);
+            FailedNaturalLanguageEmbeddingRegistry.TryDeserialize(livePayload.ToString())
+                .ShouldBe(operation == "requeue" ? incremented : null);
+            FailedNaturalLanguageEmbeddingRegistry.TryDeserialize(deadPayload.ToString())
+                .ShouldBe(operation == "dead" ? incremented : null);
+        }
+    }
+
     [Fact]
     public async Task LargeAccumulatedDeadQueueTrimUsesBoundedLuaExpansionAndPreservesNewestPayloads()
     {
