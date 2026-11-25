@@ -93,16 +93,16 @@ public static class RecoveryStateMapper
         // 3. No-result family: nothing was returned. Distinguish only what the contract safely allows.
         if (!hasSources)
         {
-            if (result.HasIndexedMemoryUnits == false)
-            {
-                return RecoveryStateKind.NotIngestedYet;
-            }
-
             if (evidence.Degraded
                 || evidence.AllEnabledAxesUnavailable == true
                 || omitted.Reason == EvidencePacketOmissionReason.BackendUnavailable)
             {
                 return RecoveryStateKind.DegradedBackend;
+            }
+
+            if (result.HasIndexedMemoryUnits == false)
+            {
+                return RecoveryStateKind.NotIngestedYet;
             }
 
             if (packet.Graph.GapMarkers.Count > 0 || HasGraphAxisUnavailable(evidence))

@@ -3481,6 +3481,7 @@ origin: migrated from legacy ledger ("Triage: Story 17.1 deferred web items and 
 location: _bmad-output/planning-artifacts/epics.md` (future web story: Command Surface Scope and Redaction Safety); `src/Hexalith.Memories.Web/Components/Interaction/*
 reason: - ID: 17-WEB-AD1-COMMAND-PALETTE-SCOPE - Status: carried-forward - Source story: epic-17-retro-2026-06-24 - Target artifact: `_bmad-output/planning-artifacts/epics.md` (future web story: Command Surface Scope and Redaction Safety); `src/Hexalith.Memories.Web/Components/Interaction/*` - Re-open trigger: before the Memories web command palette becomes user-facing or a web action needs global, page-local, or role-density-scoped discovery. - Rationale: Command-palette scope changes user reachability, disabled reasons, tenant/case reset behavior, and redaction obligations. It is bounded with the command-surface story instead of patched inside a display component.
 status: open
+note: 2026-11-25 — Skipped. The command surface is a component and specimen callback. Product placement and role-based discovery still need a shared policy.
 
 ### DW-496: ID: 17-WEB-AD2-REFRESH-PERSISTENCE
 
@@ -3488,6 +3489,7 @@ origin: migrated from legacy ledger ("Triage: Story 17.1 deferred web items and 
 location: _bmad-output/planning-artifacts/epics.md` (future web story: Tenant-Scoped Refresh Persistence Policy); `src/Hexalith.Memories.Web/Components/Interaction/*
 reason: - ID: 17-WEB-AD2-REFRESH-PERSISTENCE - Status: carried-forward - Source story: epic-17-retro-2026-06-24 - Target artifact: `_bmad-output/planning-artifacts/epics.md` (future web story: Tenant-Scoped Refresh Persistence Policy); `src/Hexalith.Memories.Web/Components/Interaction/*` - Re-open trigger: before preserving tenant, case, filter, selected packet/source, grid sort/page, or expanded evidence across browser refresh is claimed or implemented. - Rationale: Refresh persistence is not just convenience state; it can leak stale tenant/case context if it is not tenant-scoped and invalidated. It needs an explicit state-policy story before implementation; Story 17.7 can validate browser behavior but does not decide persistence semantics.
 status: open
+note: 2026-11-25 — Skipped. There is no approved tenant-scoped persistence and invalidation policy for restoring browser context.
 
 ### DW-497: ID: 17-WEB-AD3-MOBILE-GRID-STRATEGY
 
@@ -3495,6 +3497,7 @@ origin: migrated from legacy ledger ("Triage: Story 17.1 deferred web items and 
 location: _bmad-output/planning-artifacts/epics.md` (Story 17.7 Runnable Web Specimen and Browser/AT Accessibility Gap Closure); `src/Hexalith.Memories.Web/Components/Lenses/*`; `src/Hexalith.Memories.Web/Components/Evidence/*
 reason: - ID: 17-WEB-AD3-MOBILE-GRID-STRATEGY - Status: carried-forward - Source story: epic-17-retro-2026-06-24 - Target artifact: `_bmad-output/planning-artifacts/epics.md` (Story 17.7 Runnable Web Specimen and Browser/AT Accessibility Gap Closure); `src/Hexalith.Memories.Web/Components/Lenses/*`; `src/Hexalith.Memories.Web/Components/Evidence/*` - Re-open trigger: before a mobile product surface claims data grids, timelines, or source lists remain usable without horizontal scrolling at phone/tablet widths. - Rationale: Mobile grid/card/timeline behavior needs real viewport evidence and trust-field preservation checks. Keep it tied to the runnable host validation story.
 status: open
+note: 2026-11-25 — Skipped. The specimen has bounded Chromium viewport evidence. A product mobile grid strategy and target-device validation are still required before making the compatibility claim.
 
 ### DW-498: ID: 17-WEB-AD4-ROLE-AUTHORIZATION-MODEL
 
@@ -3502,6 +3505,7 @@ origin: migrated from legacy ledger ("Triage: Story 17.1 deferred web items and 
 location: _bmad-output/implementation-artifacts/17-4-role-specific-web-inspection-lenses.md`; `docs/dev/adr-10.2-004-auth-granularity.md`; `_bmad-output/planning-artifacts/epics.md` (Epic 20 authorization evidence)
 reason: - ID: 17-WEB-AD4-ROLE-AUTHORIZATION-MODEL - Status: accepted - Source story: epic-17-retro-2026-06-24 - Target artifact: `_bmad-output/implementation-artifacts/17-4-role-specific-web-inspection-lenses.md`; `docs/dev/adr-10.2-004-auth-granularity.md`; `_bmad-output/planning-artifacts/epics.md` (Epic 20 authorization evidence) - Re-open trigger: a product/security requirement introduces role-scoped web permissions, per-tool scopes, read-only agent access, or separate ingestion delegation. - Rationale: Current role-specific web lenses are evidence-density profiles over the same canonical Evidence Packet, not a permission model. The accepted auth model is authenticated caller plus matching tenant claim, with per-tool/role scopes deferred until a real consumer requires them. Adding role authorization now would invent policy outside the current product requirement.
 status: open
+note: 2026-11-25 — Skipped. The approved authorization model remains tenant-based. No current product requirement adds role-scoped commands or read-only agent privileges.
 
 ### DW-499: ID: MEM-1
 
@@ -3521,6 +3525,7 @@ origin: migrated from legacy ledger ("Parties Consumer Integration Intake (2026-
 location: docs/operations/deployment-configuration.md (maintained deploy-config contract) guarded by tests/Hexalith.Memories.Server.Tests/Deployment/DeploymentConfigurationContractTests.cs; a future aspirate/Aspir8 manifest-emission story stays unassigned until the re-open trigger fires.
 reason: - ID: MEM-2-ASPIRATE - Status: accepted - Source story: 18-2-deployment-configuration-contract-publication - Target artifact: docs/operations/deployment-configuration.md (maintained deploy-config contract) guarded by tests/Hexalith.Memories.Server.Tests/Deployment/DeploymentConfigurationContractTests.cs; a future aspirate/Aspir8 manifest-emission story stays unassigned until the re-open trigger fires. - Re-open trigger: a downstream consumer needs ready-to-apply Kubernetes/Dapr manifests emitted from the AppHost topology rather than a hand-filled documented contract. - Rationale: Story 19.2 (2026-06-30) accepts the documented-contract approach as sufficient for current consumers and declines to schedule aspirate emission. The maintained deploy-config contract publishes every env/port/OTLP/pub-sub literal an operator must supply, and DeploymentConfigurationContractTests fails the build on doc<->code drift, so consumers fill kustomization placeholders today without generated manifests; no current consumer requires emitted manifests, and no aspirate tooling exists in src/** or tools/**. Per the 2026-05-27 "document now, defer aspirate" locked decision this is accept-until-trigger. Owner: AppHost / release maintainer.
 status: open
+note: 2026-11-25 — Skipped. The maintained deployment contract still serves current consumers. No downstream need for generated apply-ready manifests is recorded.
 
 ### DW-502: ID: MEM-3
 
@@ -3534,6 +3539,7 @@ origin: migrated from legacy ledger ("Parties Consumer Integration Intake (2026-
 location: docs/operations/route-surface.md (maintained route/operation-surface contract) guarded by tests/Hexalith.Memories.Server.Tests/Deployment/RouteSurfaceContractTests.cs; a future OpenAPI/Swagger document-generation story stays unassigned until the re-open trigger fires.
 reason: - ID: MEM-3-OPENAPI - Status: accepted - Source story: 18-3-invocable-route-and-operation-surface-publication - Target artifact: docs/operations/route-surface.md (maintained route/operation-surface contract) guarded by tests/Hexalith.Memories.Server.Tests/Deployment/RouteSurfaceContractTests.cs; a future OpenAPI/Swagger document-generation story stays unassigned until the re-open trigger fires. - Re-open trigger: a downstream consumer needs a generated OpenAPI/Swagger document (machine-consumable schema for client/ACL generation) rather than the maintained route-surface contract. - Rationale: Story 19.2 (2026-06-30) accepts the maintained route-surface contract as sufficient for current consumers and declines to schedule OpenAPI/Swagger generation. Story 18.3 AC2 explicitly permitted "an OpenAPI document OR a maintained route-surface doc"; route-surface.md publishes the full 46-route ACL-verifiable surface and RouteSurfaceContractTests ties it to Program.cs so it cannot drift. The repo has no AddOpenApi/MapOpenApi/Swashbuckle today and no consumer needs a generated schema; standing up OpenAPI for 46 minimal-API endpoints plus the pub/sub controller is accept-until-trigger. Owner: Server / API maintainer.
 status: open
+note: 2026-11-25 — Skipped. The maintained route-surface contract still serves current consumers. No downstream client or ACL generator requires OpenAPI in the recorded intake.
 
 ### DW-504: ID: MEM-4
 
@@ -3564,7 +3570,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of story-2.7-evidence-packet-contract-mapping (2026-06-30)"), 2026-09-01
 location: src/Hexalith.Memories.Contracts/V1/EvidencePacketMapper.cs:61
 reason: - **`HasIndexedMemoryUnits` captured but never consulted** [src/Hexalith.Memories.Contracts/V1/EvidencePacketMapper.cs:61] — true-empty (no index for the tenant) is not distinguished from query-empty; both yield `state: empty` + `broadenScope`, which is misleading for an unindexed tenant. Needs a recovery/state design choice (e.g. an "ingest first" recovery when `HasIndexedMemoryUnits==false`).
-status: open
+status: done 2026-11-25
+resolution: Authorized empty search with no indexed units now gives ingest-first retry guidance. All 50 mapper tests passed, and a real tenant moved from an empty index to a persisted, searchable unit through the URL ingestion workflow.
 decision: 2026-09-06 Build ingest-first proof — Create an unindexed tenant through ingestion and prove its first index.
 decision: 2026-09-06 Build ingest-first proof — Create an unindexed tenant through ingestion and prove its first index.
 

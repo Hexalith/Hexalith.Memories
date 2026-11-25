@@ -131,7 +131,10 @@ public static partial class EvidencePacketMapper
             new EvidencePacketGraphSummary(false, [], [], []),
             state,
             omitted,
-            BuildRecovery(state, omitted));
+            BuildRecovery(
+                state,
+                omitted,
+                unindexed: scope.IsolationStatus == EvidencePacketIsolationStatus.Authorized && !result.HasIndexedMemoryUnits));
     }
 
     /// <summary>Maps a hybrid search result into an evidence packet.</summary>
@@ -444,7 +447,8 @@ public static partial class EvidencePacketMapper
 
     private static IReadOnlyList<EvidencePacketRecoveryAction> BuildRecovery(
         EvidencePacketState state,
-        EvidencePacketOmittedDetails omitted)
+        EvidencePacketOmittedDetails omitted,
+        bool unindexed = false)
     {
         return state switch
         {
@@ -466,6 +470,14 @@ public static partial class EvidencePacketMapper
                     "increaseMaxResults",
                     "Re-run the authorized request with a larger maxResults to retrieve omitted detail groups.",
                     "rankedResults"),
+            ],
+            EvidencePacketState.Empty when unindexed =>
+            [
+                new EvidencePacketRecoveryAction(
+                    EvidencePacketRecoveryKind.Retry,
+                    "retry",
+                    "Ingest and index content for this tenant, then retry the search.",
+                    "search"),
             ],
             EvidencePacketState.Empty =>
             [

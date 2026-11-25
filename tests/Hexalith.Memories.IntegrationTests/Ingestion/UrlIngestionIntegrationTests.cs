@@ -35,6 +35,18 @@ public sealed class UrlIngestionIntegrationTests
         string unique = Guid.NewGuid().ToString("N");
         string tenantId = $"tenant-url-ok-{unique[..10]}";
         string caseId = await driver.CreateTenantAndCaseAsync(tenantId);
+        string searchUri = $"/api/v1/search?tenantId={tenantId}&caseId={caseId}&axis=syntactic&query={unique}";
+        EvidencePacketScope scope = new(tenantId, caseId, EvidencePacketIsolationStatus.Authorized, "tenant-case");
+        using (HttpResponseMessage beforeIngest = await _fixture.MemoriesClient.GetAsync(searchUri))
+        {
+            beforeIngest.StatusCode.ShouldBe(HttpStatusCode.OK);
+            SearchResult empty = (await beforeIngest.Content.ReadFromJsonAsync<SearchResult>(MemoriesJsonContext.Options)).ShouldNotBeNull();
+            empty.HasIndexedMemoryUnits.ShouldBeFalse();
+            empty.Results.ShouldBeEmpty();
+            EvidencePacket evidence = EvidencePacketMapper.FromSearchResult(empty, scope);
+            evidence.Recovery.ShouldHaveSingleItem().Guidance.ShouldContain("Ingest and index content");
+        }
+
         int logStart = _fixture.LogEntryCount;
         ConcurrentQueue<string> requests = new();
         await using ScriptedHttpServer source = await ScriptedHttpServer.StartAsync((request, _) =>
@@ -74,8 +86,7 @@ public sealed class UrlIngestionIntegrationTests
             (await dedup.RunAsync(null!, distinct)).IsDuplicate.ShouldBeFalse();
         }
 
-        using HttpResponseMessage searchResponse = await _fixture.MemoriesClient.GetAsync(
-            $"/api/v1/search?tenantId={tenantId}&caseId={caseId}&axis=syntactic&query={unique}");
+        using HttpResponseMessage searchResponse = await _fixture.MemoriesClient.GetAsync(searchUri);
         searchResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
         SearchResult? search = await searchResponse.Content.ReadFromJsonAsync<SearchResult>(MemoriesJsonContext.Options);
 
@@ -86,6 +97,9 @@ public sealed class UrlIngestionIntegrationTests
         indexed.Content.ShouldContain(unique);
         search.ShouldNotBeNull().Results.ShouldContain(result =>
             result.MemoryUnitId == memoryUnitId && result.SourceUri == sourceUri);
+        search.HasIndexedMemoryUnits.ShouldBeTrue();
+        EvidencePacketMapper.FromSearchResult(search, scope).Recovery
+            .ShouldNotContain(action => action.Guidance.StartsWith("Ingest and index", StringComparison.Ordinal));
         await AssertActivityAsync(tenantId, caseId, memoryUnitId, CaseActivityEventType.MemoryUnitIngested);
         AssertWorkflowLogs(logStart, $"Duplicate detected in tenant {tenantId}, existing unit {memoryUnitId}");
     }

@@ -45,6 +45,15 @@ public sealed partial class RecoveryStateMapperTests
     }
 
     [Fact]
+    public void ResolveStateKind_DegradedEmptyIndex_PrefersBackendRecovery()
+    {
+        EvidencePacket packet = RecoveryPacketFixtures.NotIngestedYet();
+        packet = packet with { Evidence = packet.Evidence with { Degraded = true } };
+
+        RecoveryStateMapper.ResolveStateKind(packet).ShouldBe(RecoveryStateKind.DegradedBackend);
+    }
+
+    [Fact]
     public void Map_AuthorizationOmission_BlocksOtherRecoveryActions()
     {
         EvidencePacket packet = RecoveryPacketFixtures.NoMatch();

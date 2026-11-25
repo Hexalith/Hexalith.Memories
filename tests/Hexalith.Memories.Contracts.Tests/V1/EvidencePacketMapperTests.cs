@@ -64,6 +64,38 @@ public sealed class EvidencePacketMapperTests
         packet.Recovery.ShouldBeEmpty();
     }
 
+    [Theory]
+    [InlineData(false, false, EvidencePacketIsolationStatus.Authorized, EvidencePacketState.Empty, EvidencePacketRecoveryKind.Retry)]
+    [InlineData(true, false, EvidencePacketIsolationStatus.Authorized, EvidencePacketState.Empty, EvidencePacketRecoveryKind.BroadenScope)]
+    [InlineData(false, false, EvidencePacketIsolationStatus.Unknown, EvidencePacketState.Empty, EvidencePacketRecoveryKind.BroadenScope)]
+    [InlineData(false, false, EvidencePacketIsolationStatus.Unauthorized, EvidencePacketState.Unauthorized, EvidencePacketRecoveryKind.CheckAuthorization)]
+    [InlineData(false, true, EvidencePacketIsolationStatus.Authorized, EvidencePacketState.Degraded, EvidencePacketRecoveryKind.Retry)]
+    public void SingleAxisEmptySearch_UsesIngestFirstGuidanceOnlyForAuthorizedAvailableUnindexedScope(
+        bool hasIndexedUnits,
+        bool degraded,
+        EvidencePacketIsolationStatus isolation,
+        EvidencePacketState expectedState,
+        EvidencePacketRecoveryKind expectedAction)
+    {
+        SearchResult result = new()
+        {
+            Query = "missing terms",
+            Results = [],
+            TotalCount = 0,
+            HasIndexedMemoryUnits = hasIndexedUnits,
+            Degraded = degraded,
+        };
+        EvidencePacketScope scope = new("tenant-a", null, isolation, "tenant");
+
+        EvidencePacket packet = EvidencePacketMapper.FromSearchResult(result, scope);
+
+        packet.State.ShouldBe(expectedState);
+        EvidencePacketRecoveryAction first = packet.Recovery[0];
+        first.Kind.ShouldBe(expectedAction);
+        first.Guidance.StartsWith("Ingest and index", StringComparison.Ordinal)
+            .ShouldBe(!hasIndexedUnits && !degraded && isolation == EvidencePacketIsolationStatus.Authorized);
+    }
+
     [Fact]
     public void FromSearchResult_ShouldMapScopeSourcesEvidenceAndTokenBudgetOmissions()
     {
