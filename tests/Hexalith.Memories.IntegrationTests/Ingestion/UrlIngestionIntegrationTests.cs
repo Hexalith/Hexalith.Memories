@@ -101,7 +101,7 @@ public sealed class UrlIngestionIntegrationTests
         EvidencePacketMapper.FromSearchResult(search, scope).Recovery
             .ShouldNotContain(action => action.Guidance.StartsWith("Ingest and index", StringComparison.Ordinal));
         await AssertActivityAsync(tenantId, caseId, memoryUnitId, CaseActivityEventType.MemoryUnitIngested);
-        AssertWorkflowLogs(logStart, $"Duplicate detected in tenant {tenantId}, existing unit {memoryUnitId}");
+        await AssertWorkflowLogsAsync(logStart, $"Duplicate detected in tenant {tenantId}, existing unit {memoryUnitId}");
     }
 
     [Fact]
@@ -145,12 +145,35 @@ public sealed class UrlIngestionIntegrationTests
         source.RequestCount.ShouldBeGreaterThanOrEqualTo(2);
         source.RequestCount.ShouldBeLessThanOrEqualTo(10);
         await AssertActivityAsync(tenantId, caseId, failed.MemoryUnitId, CaseActivityEventType.IngestionFailed);
-        AssertWorkflowLogs(logStart, $"Ingestion failed for {failed.MemoryUnitId}.");
+        await AssertWorkflowLogsAsync(logStart, $"Ingestion failed for {failed.MemoryUnitId}.");
     }
 
-    private void AssertWorkflowLogs(int start, string expected)
+    private async Task AssertWorkflowLogsAsync(int start, string expected)
     {
-        string logs = string.Join("\n", _fixture.GetLogEntriesSince(start).Select(log => log.Message));
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(10));
+        string logs = string.Empty;
+        try
+        {
+            while (true)
+            {
+                logs = string.Join("\n", _fixture.GetLogEntriesSince(start).Select(log => log.Message));
+                if (logs.Contains(expected, StringComparison.Ordinal))
+                {
+                    break;
+                }
+
+                await Task.Delay(TimeSpan.FromMilliseconds(100), timeout.Token).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Aspire forwards child-process stdout asynchronously. After the wait budget,
+            // assert a fresh snapshot so a missing duplicate/failure line still fails closed.
+            logs = string.Join("\n", _fixture.GetLogEntriesSince(start).Select(log => log.Message));
+        }
+
         logs.ShouldContain(expected);
         AssertNoSecrets(logs);
     }
