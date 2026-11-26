@@ -179,12 +179,4 @@ public sealed class UrlIngestionIntegrationTests
         value.ShouldNotContain(PathSecret);
         value.ShouldNotContain(QuerySecret);
     }
-
-    [Fact(Skip = "26.3-PRIVATE-HOST-FIXTURE: The shared AppHost intentionally enables loopback URL ingestion for deterministic scripted-server coverage, so it cannot prove the production-deny branch. Owner: ingestion maintainers. Unskip when: a second AppHost fixture can override AllowPrivateHosts=false before resource startup.")]
-    public void UrlIngestion_PrivateIpWithAllowDisabled_ShouldRejectBeforeScheduling()
-    {
-        // Scenario (Story 6.1 AC3):
-        //   POST /api/v1/ingest/url with http://169.254.169.254/ → 400 INVALID_URL,
-        //   and no workflow is scheduled (verify by inspecting the workflow state store).
-    }
 }

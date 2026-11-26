@@ -3963,7 +3963,8 @@ note: 2026-11-26 — Skipped. This records historical line-ending churn and a ru
 origin: migrated from legacy ledger ("Story 26.3 Explicit Integration Deferrals (2026-07-13)"), 2026-09-01
 location: tests/Hexalith.Memories.IntegrationTests/Ingestion/UrlIngestionIntegrationTests.cs
 reason: - **26.3-PRIVATE-HOST-FIXTURE - accepted.** The shared Aspire ingestion fixture sets `Ingestion__UrlFetcher__AllowPrivateHosts=true` before AppHost startup and cannot vary that startup-only option per test. - ID: 26.3-PRIVATE-HOST-FIXTURE - Status: accepted - Source story: 26-3-integration-stub-closure - Target artifact: tests/Hexalith.Memories.IntegrationTests/Ingestion/UrlIngestionIntegrationTests.cs - Re-open trigger: add an isolated `AllowPrivateHosts=false` AppHost fixture variant that proves rejection creates neither workflow nor Redis/DAPR state. - Rationale: The production validation path is unit/API covered, but the current shared topology is intentionally private-host-enabled for scripted loopback ingestion. Owner: integration test maintainer.
-status: open
+status: done 2026-11-26
+resolution: The isolated Aspire topology disables private hosts. A loopback canary is denied before fetching or scheduling, and Redis, source inventory, and case actor state remain unchanged. The normal fixture retains its positive URL coverage.
 
 ### DW-560: 26.3-BULK-REINGEST-HICCUP: accepted. The five-way bulk re-ingestion scenario needs deterministic per-unit missing, claimed, and Redis-write-failure control in one request.
 

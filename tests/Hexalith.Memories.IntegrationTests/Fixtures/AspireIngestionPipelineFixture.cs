@@ -80,7 +80,6 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     private EnvVarScope? _dotNetEnvironmentScope;
     private EnvVarScope? _fakeEmbeddingScope;
     private EnvVarScope? _inMemoryCommandStoreScope;
-    private EnvVarScope? _allowPrivateHostsScope;
     private EnvVarScope? _daprAppIdScope;
     private EnvVarScope? _daprConfigPathScope;
     private EnvVarScope? _redisVolumeNameScope;
@@ -92,6 +91,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     private EnvVarScope? _randomizeProjectPortsScope;
     private readonly EmbeddingProviderTestMode _providerMode;
     private readonly EmbeddingProviderSecret? _embeddingProviderSecret;
+    private readonly bool _allowPrivateHosts;
     private readonly string _openBaoRuntimeSeedJson;
     private readonly string _openBaoRuntimeCanary = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
     private byte[]? _accessTelemetryMarkerFingerprint;
@@ -132,12 +132,15 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     /// <summary>Initializes a new instance of the <see cref="AspireIngestionPipelineFixture"/> class.</summary>
     /// <param name="providerMode">The embedding provider mode to use for this topology.</param>
     /// <param name="embeddingProviderSecret">Optional DAPR secret-store entry for provider-specific tests.</param>
+    /// <param name="allowPrivateHosts">Whether URL ingestion may reach test-owned private hosts.</param>
     internal AspireIngestionPipelineFixture(
         EmbeddingProviderTestMode providerMode,
-        EmbeddingProviderSecret? embeddingProviderSecret)
+        EmbeddingProviderSecret? embeddingProviderSecret,
+        bool allowPrivateHosts = true)
     {
         _providerMode = providerMode;
         _embeddingProviderSecret = embeddingProviderSecret;
+        _allowPrivateHosts = allowPrivateHosts;
         var runtimeSeeds = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             [OpenBaoRuntimeCanarySecretName] = _openBaoRuntimeCanary,
@@ -1252,8 +1255,14 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         => SHA256.HashData(Encoding.UTF8.GetBytes(value));
 
     /// <inheritdoc/>
-    public async ValueTask InitializeAsync()
+    public ValueTask InitializeAsync() => InitializeAsync(CancellationToken.None);
+
+    /// <summary>Starts the fixture-owned topology with cancellation.</summary>
+    /// <param name="cancellationToken">Cancellation token for topology startup.</param>
+    /// <returns>A task that completes when the topology is ready.</returns>
+    internal async ValueTask InitializeAsync(CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         _daprAppId = $"memories-it-{Guid.NewGuid():N}";
         _redisVolumeName = $"hexalith-memories-it-{Guid.NewGuid():N}";
         _falkorVolumeName = $"hexalith-memories-falkor-it-{Guid.NewGuid():N}";
@@ -1274,7 +1283,6 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                 "Memories__Testing__UseFakeEmbedding",
                 _providerMode == EmbeddingProviderTestMode.GoogleFake ? "true" : "false");
             _inMemoryCommandStoreScope = EnvVarScope.Set("Memories__Testing__UseInMemoryCommandStore", "true");
-            _allowPrivateHostsScope = EnvVarScope.Set("Ingestion__UrlFetcher__AllowPrivateHosts", "true");
             _daprAppIdScope = EnvVarScope.Set("MEMORIES_DAPR_APP_ID", _daprAppId);
             _redisVolumeNameScope = EnvVarScope.Set("MEMORIES_REDIS_VOLUME_NAME", _redisVolumeName);
             _falkorVolumeNameScope = EnvVarScope.Set("MEMORIES_FALKOR_VOLUME_NAME", _falkorVolumeName);
@@ -1287,7 +1295,8 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
             _daprConfigPathScope = CreateDaprConfigOverrideIfNeeded();
 
-            using var cts = new CancellationTokenSource(TopologyStartupTimeout);
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(TopologyStartupTimeout);
             await StartTopologyAsync(cts.Token).ConfigureAwait(false);
         }
         catch (Exception startupException)
@@ -1426,8 +1435,6 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         _daprAppIdScope = null;
         _daprConfigPathScope?.Dispose();
         _daprConfigPathScope = null;
-        _allowPrivateHostsScope?.Dispose();
-        _allowPrivateHostsScope = null;
         _inMemoryCommandStoreScope?.Dispose();
         _inMemoryCommandStoreScope = null;
         _fakeEmbeddingScope?.Dispose();
@@ -1977,6 +1984,11 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                 cancellationToken)
             .ConfigureAwait(false);
         ConfigureGatewayTestAuthentication(_builder.Resources.Single(resource => resource.Name == "eventstore"));
+        IResource memories = _builder.Resources.Single(resource => resource.Name == "memories");
+        memories.Annotations.Add(new EnvironmentCallbackAnnotation(context =>
+        {
+            context.EnvironmentVariables["Ingestion__UrlFetcher__AllowPrivateHosts"] = _allowPrivateHosts ? "true" : "false";
+        }));
         ConfigureOwnedDaprPorts(_builder.Resources);
         ParameterResource accessSeedParameter = _builder.Resources
             .OfType<ParameterResource>()
