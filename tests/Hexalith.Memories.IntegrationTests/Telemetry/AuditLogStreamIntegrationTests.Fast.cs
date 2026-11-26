@@ -174,6 +174,10 @@ public sealed partial class AuditLogStreamIntegrationTests
         await Task.Delay(TimeSpan.FromMilliseconds(500));
         int probeLogStart = _fixture.LogEntryCount;
 
+        // The search sentinel can succeed while lifecycle bootstrap still makes aggregate health return 503.
+        // Keep the readiness probes inside the audited window and require healthy responses below.
+        await _fixture.WaitForAggregateHealthAsync(TestContext.Current.CancellationToken);
+
         for (int i = 0; i < 5; i++)
         {
             using HttpResponseMessage health = await _fixture.MemoriesClient.GetAsync("/health");

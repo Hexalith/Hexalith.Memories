@@ -33,3 +33,4 @@ Complete the next six actionable entries in ledger order. Verify and close each 
 - DW-575 review prompted explicit Production route inventory with only the Dapr token startup validator substituted out of the test host.
 - DW-576 review prompted Roslyn constant resolution across files and a regression for a composed route alias.
 - DW-578 review caught tenant-delete validation reading the raw operation key after projection. The lifecycle uses the projected target kind and now has a tenant-delete emitter-to-queue regression.
+- DW-578 live verification found a startup race in the zero-audit health probe test. It now uses the fixture readiness wait and includes those readiness probes in the zero-event observation window.

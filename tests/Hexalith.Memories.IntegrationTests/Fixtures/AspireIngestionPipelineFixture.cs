@@ -539,6 +539,12 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             fieldName,
             expectedFingerprint);
 
+    /// <summary>Waits for aggregate health, including the access-telemetry lifecycle bootstrap.</summary>
+    /// <param name="cancellationToken">Cooperative cancellation.</param>
+    internal Task WaitForAggregateHealthAsync(CancellationToken cancellationToken)
+        => WaitForEndpointAsync(MemoriesClient, "/health", [HttpStatusCode.OK],
+            EndpointReadyTimeout, EndpointPollInterval, _topologyLogStartIndex, cancellationToken);
+
     /// <summary>
     /// Waits for the auxiliary access-telemetry sidecars and their permitted OpenBao reads used by
     /// the full sidecar access matrix. Shared fixture startup already waits for those sidecars'
