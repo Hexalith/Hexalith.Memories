@@ -10,16 +10,19 @@ using System.Net;
 /// <summary>Thread-safe, bounded HTTP failure sequence owned by one fake embedding-provider server.</summary>
 public sealed class EmbeddingProviderFaultPlan
 {
+    private readonly string? _requiredInput;
     private int _remainingFailureCount;
 
     /// <summary>Initializes a new instance of the <see cref="EmbeddingProviderFaultPlan"/> class.</summary>
     /// <param name="statusCode">HTTP 429 or 5xx response emitted while failures remain.</param>
     /// <param name="failureCount">Number of failures to emit before normal success resumes.</param>
     /// <param name="retryAfter">Optional Retry-After delay included with HTTP 429.</param>
+    /// <param name="requiredInput">Optional exact input for a single-input request.</param>
     public EmbeddingProviderFaultPlan(
         HttpStatusCode statusCode,
         int failureCount,
-        TimeSpan? retryAfter = null)
+        TimeSpan? retryAfter = null,
+        string? requiredInput = null)
     {
         if (statusCode != HttpStatusCode.TooManyRequests && (int)statusCode is < 500 or > 599)
         {
@@ -35,9 +38,15 @@ public sealed class EmbeddingProviderFaultPlan
             throw new ArgumentOutOfRangeException(nameof(retryAfter), retryAfter, "Retry-After must be positive.");
         }
 
+        if (requiredInput is not null)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(requiredInput);
+        }
+
         StatusCode = statusCode;
         InitialFailureCount = failureCount;
         RetryAfter = retryAfter;
+        _requiredInput = requiredInput;
         _remainingFailureCount = failureCount;
     }
 
@@ -53,10 +62,17 @@ public sealed class EmbeddingProviderFaultPlan
     /// <summary>Gets the number of failures that have not yet been consumed.</summary>
     public int RemainingFailureCount => Math.Max(0, Volatile.Read(ref _remainingFailureCount));
 
-    /// <summary>Atomically consumes one planned failure when any remain.</summary>
+    /// <summary>Atomically consumes one planned failure for a matching request when any remain.</summary>
+    /// <param name="inputs">The validated embedding inputs for the request.</param>
     /// <returns><see langword="true"/> when the caller should emit a failure.</returns>
-    internal bool TryConsumeFailure()
+    internal bool TryConsumeFailure(IReadOnlyList<string> inputs)
     {
+        if (_requiredInput is not null &&
+            (inputs.Count != 1 || !string.Equals(inputs[0], _requiredInput, StringComparison.Ordinal)))
+        {
+            return false;
+        }
+
         while (true)
         {
             int remaining = Volatile.Read(ref _remainingFailureCount);

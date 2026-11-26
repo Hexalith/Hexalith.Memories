@@ -255,7 +255,7 @@ public sealed class OllamaOidcFakeServer : IAsyncDisposable
             _ = Interlocked.Increment(ref _embedAttemptCount);
 
             EmbeddingProviderFaultPlan? faultPlan = Volatile.Read(ref _embedFaultPlan);
-            if (faultPlan?.TryConsumeFailure() == true)
+            if (faultPlan?.TryConsumeFailure(inputs) == true)
             {
                 IReadOnlyDictionary<string, string> headers = faultPlan.RetryAfter is { } retryAfter
                     ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)

@@ -36,9 +36,9 @@ public sealed partial class DegradationIntegrationTests
             caseId,
             sourceUri);
 
-        IReadOnlyDictionary<string, string> syntacticBefore = await ReadHashSnapshotAsync(syntacticKey);
-        IReadOnlyDictionary<string, string> semanticBefore = await ReadHashSnapshotAsync(semanticKey);
-        HybridSearchResult before = await GetHybridSearchAsync(tenantId, caseId, memoryUnitId, unique);
+        HashEntry[] syntacticBefore = await driver.ReadHashSnapshotAsync(syntacticKey);
+        HashEntry[] semanticBefore = await driver.ReadHashSnapshotAsync(semanticKey);
+        HybridSearchResult before = await driver.GetHybridSearchAsync(tenantId, caseId, memoryUnitId, unique);
         before.Degraded.ShouldBeFalse();
         before.UnavailableAxes.ShouldBeEmpty();
         before.Results.ShouldContain(result => result.MemoryUnitId == memoryUnitId && result.ContentSnippet.Contains(unique, StringComparison.Ordinal));
@@ -50,7 +50,7 @@ public sealed partial class DegradationIntegrationTests
             await _fixture.StopFalkorDbContainerAsync();
             stopped = true;
 
-            HybridSearchResult degraded = await GetHybridSearchAsync(tenantId, caseId, memoryUnitId, unique);
+            HybridSearchResult degraded = await driver.GetHybridSearchAsync(tenantId, caseId, memoryUnitId, unique);
             degraded.Degraded.ShouldBeTrue();
             degraded.UnavailableAxes.ShouldBe(["graph"]);
             degraded.Results.ShouldContain(result =>
@@ -73,8 +73,8 @@ public sealed partial class DegradationIntegrationTests
             tenant.IndexStatus.Syntactic.ShouldBe(IndexHealth.Ready);
             tenant.IndexStatus.Semantic.ShouldBe(IndexHealth.Ready);
 
-            AssertHashSnapshot(syntacticBefore, await ReadHashSnapshotAsync(syntacticKey));
-            AssertHashSnapshot(semanticBefore, await ReadHashSnapshotAsync(semanticKey));
+            (await driver.ReadHashSnapshotAsync(syntacticKey)).ShouldBe(syntacticBefore);
+            (await driver.ReadHashSnapshotAsync(semanticKey)).ShouldBe(semanticBefore);
         }
         finally
         {
@@ -85,9 +85,9 @@ public sealed partial class DegradationIntegrationTests
         }
 
         (await driver.CountGraphNodesAsync(tenantId, caseId, sourceUri)).ShouldBe(1);
-        AssertHashSnapshot(syntacticBefore, await ReadHashSnapshotAsync(syntacticKey));
-        AssertHashSnapshot(semanticBefore, await ReadHashSnapshotAsync(semanticKey));
-        HybridSearchResult recovered = await GetHybridSearchAsync(tenantId, caseId, memoryUnitId, unique);
+        (await driver.ReadHashSnapshotAsync(syntacticKey)).ShouldBe(syntacticBefore);
+        (await driver.ReadHashSnapshotAsync(semanticKey)).ShouldBe(semanticBefore);
+        HybridSearchResult recovered = await driver.GetHybridSearchAsync(tenantId, caseId, memoryUnitId, unique);
         recovered.Degraded.ShouldBeFalse();
         recovered.UnavailableAxes.ShouldBeEmpty();
         recovered.Results.ShouldContain(result => result.MemoryUnitId == memoryUnitId);

@@ -24,6 +24,8 @@ Complete the next six actionable deferred items in ledger order. Implement and v
 - DW-559 starts a dedicated Aspire topology with private URL hosts disabled at the server resource. The existing shared topology retains the loopback option for positive ingestion scenarios.
 - DW-556 review caught actual gRPC scheduling exceptions and a possible lost Redis acknowledgment. The endpoint independently verifies status after failed submission, releases staging after confirmed pre-acceptance rejection, and retains it when submission is ambiguous. The pre-scheduling path cleans up staging on cancellation during scan, lease acquisition, or target verification.
 - DW-560 exercises five ordered outcomes against the live Aspire API, with a source-admission fence for the hosted ownership conflict. The route test controls the exact competing claim and per-unit write failure. The Redis claim script validates/removes the sorted-set entry before deleting the failed-unit hash and dedup record, preserving both if the index write errors.
+- DW-561 needs a worker that can hold real workflows at requested transitions. DW-562 and DW-563 need an isolated performance lane with a stable baseline.
+- DW-564 scopes a failure to an exact query embedding input in the test-owned provider. The live API and Redis/FalkorDB remain active. The control query and healthy retry verify that other work and subsequent semantic retrieval still succeed.
 
 ## File Scope
 
@@ -45,6 +47,12 @@ Allowed files for this story:
 - `tests/Hexalith.Memories.IntegrationTests/Ingestion/FailedUnitClaimIntegrationTests.cs` - live Redis race and failed-write proof
 - `tests/Hexalith.Memories.IntegrationTests/Ingestion/RetryFailureIntegrationTests.cs` - live five-outcome request and tenant/case isolation
 - `tests/Hexalith.Memories.Server.Tests/Endpoints/ReIngestionEndpointE2ETests.cs` - exact competing claim and registry write failure
+- `tests/Hexalith.Memories.IntegrationTests/Fixtures/EmbeddingProviderFaultPlan.cs` - exact query fault selection
+- `tests/Hexalith.Memories.IntegrationTests/Fixtures/OllamaOidcFakeServer.cs` - test-owned provider fault wiring
+- `tests/Hexalith.Memories.IntegrationTests/Fixtures/IngestionIntegrationTestDriver.cs` - shared hybrid request and persisted hash snapshots
+- `tests/Hexalith.Memories.IntegrationTests/Ingestion/EmbeddingProviderFailureIntegrationTests.cs` - semantic-isolated degradation
+- `tests/Hexalith.Memories.IntegrationTests/Search/DegradationIntegrationTests.cs` - share search test helpers
+- `tests/Hexalith.Memories.Integration.NightlyTests/Search/DegradationIntegrationTests.Nightly.cs` - use shared search test helpers
 
 ## Verification
 
@@ -55,6 +63,7 @@ Allowed files for this story:
 - DW-556 review verification ran all seven cases in `RestoreImportRetryTests`, including definite gRPC rejection, ambiguous submission, and server-confirmed acceptance. The live Redis reuse and isolation case also passed on the reviewed code.
 - DW-559 review verification also compared native Dapr workflow keys and checked the persisted reverse lookup for unexpected ingestion admission. The isolated final run of `UrlIngestion_PrivateIpWithAllowDisabled_ShouldRejectBeforeScheduling` passed.
 - DW-560 `ReIngestBulk_MixedOutcomes_EnumeratedInResponse`, `PostBulkReIngest_WithLostClaimAndRegistryError_ReturnsFiveOrderedOutcomes`, and `ClaimWriteFailurePreservesTheFailedUnitAndOnlyOneRetryCanClaimAfterRepair` passed.
+- DW-564 `HybridSearch_WhenQueryEmbeddingFails_DegradesOnlySemanticAndRecoversAsync` and the existing `OllamaOidcFakeServerTests` passed.
 
 ## Cross-Tenant Negative Evidence
 

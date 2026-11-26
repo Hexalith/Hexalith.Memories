@@ -3980,6 +3980,7 @@ origin: migrated from legacy ledger ("Story 26.3 Explicit Integration Deferrals 
 location: tests/Hexalith.Memories.IntegrationTests/Ingestion/RetryFailureIntegrationTests.cs
 reason: - **26.3-COUNTER-STAGE-BARRIER - accepted.** Exact simultaneous queued/extracting/embedding counts require deterministic workflow stage barriers. - ID: 26.3-COUNTER-STAGE-BARRIER - Status: accepted - Source story: 26-3-integration-stub-closure - Target artifact: tests/Hexalith.Memories.IntegrationTests/Ingestion/RetryFailureIntegrationTests.cs - Re-open trigger: add fixture-scoped extraction and embedding barriers that hold six real workflows at requested stages while the public case-status API and actor state are sampled. - Rationale: Direct actor transitions would not prove concurrent workflow integration, and timing-only delays would be flaky. Owner: workflow test maintainer.
 status: open
+note: 2026-11-26 — Skipped. The out-of-process fixture cannot inject deterministic barriers at the three real workflow transitions. The shared test topology has no independently controlled worker to provide the required simultaneous-stage proof.
 
 ### DW-562: 26.3-DIRECTORY-CROSS-TENANT-PERF: accepted. The cross-tenant directory latency claim needs a recorded baseline and bounded load harness.
 
@@ -3987,6 +3988,7 @@ origin: migrated from legacy ledger ("Story 26.3 Explicit Integration Deferrals 
 location: tests/Hexalith.Memories.IntegrationTests/Ingestion/DirectoryIngestionIntegrationTests.cs
 reason: - **26.3-DIRECTORY-CROSS-TENANT-PERF - accepted.** The cross-tenant directory latency claim needs a recorded baseline and bounded load harness. - ID: 26.3-DIRECTORY-CROSS-TENANT-PERF - Status: accepted - Source story: 26-3-integration-stub-closure - Target artifact: tests/Hexalith.Memories.IntegrationTests/Ingestion/DirectoryIngestionIntegrationTests.cs - Re-open trigger: an `IntegrationSlow` performance harness can create a bounded 100-file batch, record the single-tenant baseline, and assert persisted outcomes plus the two-times latency bound without CI noise. - Rationale: The ordinary integration lane has no stable performance baseline or load-isolated runner. Owner: performance test maintainer.
 status: open
+note: 2026-11-26 — Skipped. The two-times latency claim requires a load-isolated runner and a recorded single-tenant baseline. No supported baseline or runner was available for this batch.
 
 ### DW-563: 26.3-BATCH-STARVATION-PERF: accepted. The 500-file batch-versus-single-ingest starvation claim requires the same missing load harness and latency baseline.
 
@@ -3994,13 +3996,15 @@ origin: migrated from legacy ledger ("Story 26.3 Explicit Integration Deferrals 
 location: tests/Hexalith.Memories.IntegrationTests/Ingestion/RateLimitingIntegrationTests.cs
 reason: - **26.3-BATCH-STARVATION-PERF - accepted.** The 500-file batch-versus-single-ingest starvation claim requires the same missing load harness and latency baseline. - ID: 26.3-BATCH-STARVATION-PERF - Status: accepted - Source story: 26-3-integration-stub-closure - Target artifact: tests/Hexalith.Memories.IntegrationTests/Ingestion/RateLimitingIntegrationTests.cs - Re-open trigger: an isolated performance lane can run the bounded 500-file workload, capture a control baseline, and retain per-unit Redis/actor evidence. - Rationale: A timing assertion in `integration-fast` would be environment-sensitive and would not prove persisted outcomes. Owner: performance test maintainer.
 status: open
+note: 2026-11-26 — Skipped. The 500-file starvation claim requires the same isolated load baseline as DW-562 before a stable timing bound can be asserted.
 
 ### DW-564: 26.3-SEMANTIC-CAPABILITY-FAULT: accepted. Semantic search shares the single `memories-vectors` Redis Stack resource with syntactic search, DAPR state, actors, workflows, and pub/sub.
 
 origin: migrated from legacy ledger ("Story 26.3 Explicit Integration Deferrals (2026-07-13)"), 2026-09-01
 location: tests/Hexalith.Memories.IntegrationTests/Search/DegradationIntegrationTests.cs
 reason: - **26.3-SEMANTIC-CAPABILITY-FAULT - accepted.** Semantic search shares the single `memories-vectors` Redis Stack resource with syntactic search, DAPR state, actors, workflows, and pub/sub. - ID: 26.3-SEMANTIC-CAPABILITY-FAULT - Status: accepted - Source story: 26-3-integration-stub-closure - Target artifact: tests/Hexalith.Memories.IntegrationTests/Search/DegradationIntegrationTests.cs - Re-open trigger: add a Development-only, request-scoped semantic capability fault that leaves RediSearch and DAPR state available and matches production exception behavior. - Rationale: Stopping `memories-vectors` cannot truthfully represent a semantic-only outage. Owner: search reliability maintainer.
-status: open
+status: done 2026-11-26
+resolution: A test-owned provider injects one failure for the exact query in the live Aspire topology. Only semantic search degrades, both surviving axes contribute, persisted state is preserved, and healthy control/retry requests recover all axes.
 
 ### DW-565: 26.3-ALL-BACKENDS-STATESTORE: accepted. Stopping Redis Stack and FalkorDB also removes workflow, actor, pub/sub, and state-store availability.
 

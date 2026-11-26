@@ -7,17 +7,20 @@ namespace Hexalith.Memories.IntegrationTests.Ingestion;
 
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.IntegrationTests.Fixtures;
 using Hexalith.Memories.Server.Actors;
 using Hexalith.Memories.Server.Ingestion;
 
+using NFalkorDB;
+
 using Shouldly;
 
 using StackExchange.Redis;
 
-/// <summary>Story 26.3 real-provider boundary proofs for embedding 429 and 5xx failure behavior.</summary>
+/// <summary>Story 26.3 and DW-564 provider boundary tests for ingestion retries and hybrid search degradation.</summary>
 [Collection("OllamaAspireIngestionPipeline")]
 [Trait("Category", "Integration")]
 public sealed class EmbeddingProviderFailureIntegrationTests : IAsyncLifetime
@@ -238,6 +241,123 @@ public sealed class EmbeddingProviderFailureIntegrationTests : IAsyncLifetime
         {
             fake.ClearEmbedFaultPlan();
         }
+    }
+
+    [Fact]
+    public async Task HybridSearch_WhenQueryEmbeddingFails_DegradesOnlySemanticAndRecoversAsync()
+    {
+        AspireIngestionPipelineFixture fixture = _fixture!;
+        OllamaOidcFakeServer fake = _fakeServer!;
+        IngestionIntegrationTestDriver driver = new(fixture);
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        string unique = Guid.NewGuid().ToString("N");
+        string tenantId = $"tenant-search-fault-{unique[..10]}";
+        string sourceUri = $"file:///{unique}-semantic-fault.txt";
+        string faultQuery = $"semanticfault{unique}";
+        string controlQuery = $"{faultQuery}control";
+        string caseId = await driver.CreateTenantAndCaseAsync(
+            tenantId,
+            OllamaOidcFakeServer.OllamaDimensions,
+            cancellationToken);
+        await ConfigureOllamaTenantAsync(fixture, fake, tenantId);
+        string instanceId = await driver.PostInlineIngestionAsync(
+            tenantId, caseId, sourceUri, $"{faultQuery} {controlQuery}", cancellationToken);
+        string workflow = await driver.WaitForWorkflowRuntimeStatusAsync(
+            tenantId, instanceId, "Completed", cancellationToken: cancellationToken);
+        string memoryUnitId = JsonSerializer.Deserialize<IngestionWorkflowStatus>(workflow, MemoriesJsonContext.Options)
+            .ShouldNotBeNull().MemoryUnitId.ShouldNotBeNull();
+        (string syntacticKey, string semanticKey) = await driver.WaitForSingleBackendWriteAsync(
+            tenantId, caseId, sourceUri, cancellationToken: cancellationToken);
+
+        HashEntry[] syntacticBefore = await driver.ReadHashSnapshotAsync(syntacticKey);
+        HashEntry[] semanticBefore = await driver.ReadHashSnapshotAsync(semanticKey);
+        string graphContentBefore = await ReadStoredGraphContentAsync(fixture, tenantId, caseId, memoryUnitId, sourceUri);
+        graphContentBefore.ShouldContain(faultQuery);
+        AssertHealthyHybridSearch(
+            await driver.GetHybridSearchAsync(tenantId, caseId, memoryUnitId, faultQuery, cancellationToken),
+            memoryUnitId);
+
+        EmbeddingProviderFaultPlan faultPlan = new(
+            HttpStatusCode.InternalServerError, failureCount: 1, requiredInput: faultQuery);
+        fake.SetEmbedFaultPlan(faultPlan);
+        try
+        {
+            // The control input contains the fault input and must leave the exact-match fault armed.
+            AssertHealthyHybridSearch(
+                await driver.GetHybridSearchAsync(tenantId, caseId, memoryUnitId, controlQuery, cancellationToken),
+                memoryUnitId);
+            faultPlan.RemainingFailureCount.ShouldBe(1);
+
+            HybridSearchResult degraded = await driver.GetHybridSearchAsync(
+                tenantId, caseId, memoryUnitId, faultQuery, cancellationToken);
+            faultPlan.RemainingFailureCount.ShouldBe(0);
+            degraded.Degraded.ShouldBeTrue();
+            degraded.UnavailableAxes.ShouldBe(["semantic"]);
+            FusedScoredResult hit = degraded.Results.Single();
+            hit.MemoryUnitId.ShouldBe(memoryUnitId);
+            hit.SourceUri.ShouldBe(sourceUri);
+            hit.ContentSnippet.ShouldContain(faultQuery);
+            hit.SyntacticScore.ShouldNotBeNull();
+            hit.GraphScore.ShouldNotBeNull();
+            hit.SemanticScore.ShouldBeNull();
+
+            (await driver.ReadHashSnapshotAsync(syntacticKey)).ShouldBe(syntacticBefore);
+            (await driver.ReadHashSnapshotAsync(semanticKey)).ShouldBe(semanticBefore);
+            (await ReadStoredGraphContentAsync(fixture, tenantId, caseId, memoryUnitId, sourceUri))
+                .ShouldBe(graphContentBefore);
+            using HttpResponseMessage unitResponse = await fixture.MemoriesClient.GetAsync(
+                $"/api/v1/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}", cancellationToken);
+            unitResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
+            MemoryUnit? indexedUnit = await unitResponse.Content.ReadFromJsonAsync<MemoryUnit>(
+                MemoriesJsonContext.Options, cancellationToken);
+            indexedUnit.ShouldNotBeNull();
+            indexedUnit.Status.ShouldBe(MemoryUnitStatus.Indexed);
+            indexedUnit.SourceUri.ShouldBe(sourceUri);
+
+            AssertHealthyHybridSearch(
+                await driver.GetHybridSearchAsync(tenantId, caseId, memoryUnitId, faultQuery, cancellationToken),
+                memoryUnitId);
+        }
+        finally
+        {
+            fake.ClearEmbedFaultPlan();
+        }
+    }
+
+    private static void AssertHealthyHybridSearch(HybridSearchResult response, string memoryUnitId)
+    {
+        response.Degraded.ShouldBeFalse();
+        response.UnavailableAxes.ShouldBeEmpty();
+        FusedScoredResult hit = response.Results.Single();
+        hit.MemoryUnitId.ShouldBe(memoryUnitId);
+        hit.SyntacticScore.ShouldNotBeNull();
+        hit.SemanticScore.ShouldNotBeNull();
+        hit.GraphScore.ShouldNotBeNull();
+    }
+
+    private static async Task<string> ReadStoredGraphContentAsync(
+        AspireIngestionPipelineFixture fixture,
+        string tenantId,
+        string caseId,
+        string memoryUnitId,
+        string sourceUri)
+    {
+        FalkorDB falkor = new(fixture.FalkorDbConnection.GetDatabase());
+        ResultSet result = await falkor.SelectGraph(tenantId).QueryAsync(
+            """
+            MATCH (:Case {id: $caseId})-[:CONTAINS]->(unit:MemoryUnit {id: $memoryUnitId, caseId: $caseId, sourceUri: $sourceUri})
+            RETURN unit.content AS content
+            """,
+            new Dictionary<string, object>
+            {
+                ["caseId"] = caseId,
+                ["memoryUnitId"] = memoryUnitId,
+                ["sourceUri"] = sourceUri,
+            });
+        result.Count.ShouldBe(1);
+        using IEnumerator<Record> rows = result.GetEnumerator();
+        rows.MoveNext().ShouldBeTrue();
+        return rows.Current.GetValue<string>("content");
     }
 
     private static async Task ConfigureOllamaTenantAsync(

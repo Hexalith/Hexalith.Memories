@@ -16,6 +16,8 @@ using Hexalith.Memories.Contracts.V1;
 
 using NFalkorDB;
 
+using Shouldly;
+
 using StackExchange.Redis;
 
 using MemoriesCase = Hexalith.Memories.Contracts.V1.Case;
@@ -243,6 +245,31 @@ public sealed class IngestionIntegrationTestDriver
             timeout,
             cancellationToken).ConfigureAwait(false);
 
+    /// <summary>Runs an authenticated search across the syntactic, semantic, and graph axes.</summary>
+    /// <param name="tenantId">Tenant identifier.</param>
+    /// <param name="caseId">Case identifier.</param>
+    /// <param name="memoryUnitId">Starting graph node identifier.</param>
+    /// <param name="query">Search query text.</param>
+    /// <param name="cancellationToken">Cooperative cancellation.</param>
+    /// <returns>The full or degraded hybrid search response.</returns>
+    internal async Task<HybridSearchResult> GetHybridSearchAsync(
+        string tenantId,
+        string caseId,
+        string memoryUnitId,
+        string query,
+        CancellationToken cancellationToken = default)
+    {
+        string path = $"/api/v1/search?tenantId={tenantId}&caseId={caseId}&query={Uri.EscapeDataString(query)}" +
+            $"&axis=hybrid&axes=syntactic,semantic,graph&graphStartNodeId={memoryUnitId}&depth=1";
+        using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(path, cancellationToken)
+            .ConfigureAwait(false);
+        await EnsureStatusAsync(response, HttpStatusCode.OK, cancellationToken).ConfigureAwait(false);
+        return await response.Content.ReadFromJsonAsync<HybridSearchResult>(
+            MemoriesJsonContext.Options,
+            cancellationToken).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Hybrid search returned no response body.");
+    }
+
     /// <summary>Waits for the most recently registered tenant to appear in the paginated enriched tenant list.</summary>
     /// <param name="tenantId">Expected tail tenant identifier.</param>
     /// <param name="predicate">Required enriched-summary condition.</param>
@@ -306,6 +333,18 @@ public sealed class IngestionIntegrationTestDriver
     {
         IServer server = _fixture.RedisConnection.GetServer(_fixture.RedisConnection.GetEndPoints().Single());
         return Task.FromResult(server.Keys(pattern: pattern).Select(key => key.ToString()).Order().ToArray());
+    }
+
+    /// <summary>Reads a nonempty Redis hash in field order and preserves its binary values.</summary>
+    /// <param name="key">Redis hash key.</param>
+    /// <returns>The ordered hash snapshot.</returns>
+    internal async Task<HashEntry[]> ReadHashSnapshotAsync(string key)
+    {
+        IDatabase database = _fixture.RedisConnection.GetDatabase();
+        (await database.KeyTypeAsync(key).ConfigureAwait(false)).ShouldBe(RedisType.Hash);
+        HashEntry[] entries = await database.HashGetAllAsync(key).ConfigureAwait(false);
+        entries.ShouldNotBeEmpty();
+        return [.. entries.OrderBy(entry => entry.Name.ToString(), StringComparer.Ordinal)];
     }
 
     /// <summary>Counts matching tenant graph nodes.</summary>
