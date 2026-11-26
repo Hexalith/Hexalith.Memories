@@ -48,6 +48,7 @@ Allowed files for this story:
 
 - DW-559 `dotnet tests/Hexalith.Memories.IntegrationTests/bin/Release/net11.0/Hexalith.Memories.IntegrationTests.dll -class '*UrlIngestionPrivateHostDenialIntegrationTests' -class '*UrlIngestionIntegrationTests'` passed all three cases using the owned Dapr placement and scheduler. The denied URL creates no workflow registry record, source-inventory or unit keys, or changes to case counters or activity.
 - DW-556 review verification ran all seven cases in `RestoreImportRetryTests`, including definite gRPC rejection, ambiguous submission, and server-confirmed acceptance. The live Redis reuse and isolation case also passed on the reviewed code.
+- DW-559 review verification also compared native Dapr workflow keys and checked the persisted reverse lookup for unexpected ingestion admission. The isolated final run of `UrlIngestion_PrivateIpWithAllowDisabled_ShouldRejectBeforeScheduling` passed.
 
 ## Cross-Tenant Negative Evidence
 

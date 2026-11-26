@@ -45,6 +45,9 @@ public sealed class UrlIngestionPrivateHostDenialIntegrationTests
             ICaseIngestionCounterActor counter = fixture.CreateCaseIngestionCounterActorProxy(tenantId, caseId);
             string activityKey = $"{tenantId}:case:{caseId}:activity";
             CaseIngestionCounts countsBefore = await counter.GetCountsAsync().WaitAsync(cancellationToken);
+            const string workflowStatePattern = "*dapr.internal.*.workflow*";
+            string[] workflowKeysBefore = await driver.ListRedisKeysAsync(workflowStatePattern);
+            workflowKeysBefore.ShouldNotBeEmpty("Tenant and case setup established workflow state in this topology.");
             StreamEntry[] activityBefore = await redis.StreamRangeAsync(activityKey).WaitAsync(cancellationToken);
 
             using HttpResponseMessage response = await fixture.MemoriesClient.PostAsJsonAsync(
@@ -67,6 +70,11 @@ public sealed class UrlIngestionPrivateHostDenialIntegrationTests
 
             var registry = new RedisIngestionWorkflowInFlightRegistry(fixture.RedisConnection);
             (await registry.ListAsync(cancellationToken)).ShouldNotContain(entry => entry.TenantId == tenantId);
+            HashEntry[] registeredMembers = await redis.HashGetAllAsync(RedisIngestionWorkflowInFlightRegistry.InstanceMemberLookupKey)
+                .WaitAsync(cancellationToken);
+            registeredMembers.ShouldNotContain(member => member.Value.ToString().StartsWith(
+                tenantId + RedisIngestionWorkflowInFlightRegistry.MemberSeparator, StringComparison.Ordinal));
+            (await driver.ListRedisKeysAsync(workflowStatePattern)).ShouldBe(workflowKeysBefore);
             (await redis.KeyExistsAsync(SourceInventoryStore.BuildKey(tenantId, sourceUri)).WaitAsync(cancellationToken)).ShouldBeFalse();
             (await driver.ListRedisKeysAsync($"{tenantId}:mu:*")).ShouldBeEmpty();
             (await driver.ListRedisKeysAsync($"{tenantId}:failed-unit:*")).ShouldBeEmpty();
