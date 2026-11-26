@@ -4095,7 +4095,8 @@ resolution: The contract uses the real Server EndpointDataSource, including rout
 origin: migrated from legacy ledger ("Deferred from: code review of 26-2-backup-and-restore (2026-07-15)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-contract-doc-drift-guard-hardening.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-contract-doc-drift-guard-hardening.md` summary: Generalize the `/process` negative route scan across every production host and controller source so an unexpected route cannot evade the refutation guard by appearing outside the currently enumerated files. evidence: Review confirmed the existing negative check reads Server Program/decomposed endpoint sources plus EventIngestionController only; broader production-source discovery predates and exceeds this contract-document hardening change.
-status: open
+status: done 2026-11-26
+resolution: The guard scans C# and Razor route declarations across production projects, resolves constant composition and aliases, and checks actual native Server endpoints. Dedicated EventStore SDK POST /process remains explicitly documented.
 
 ### DW-577: Align the repository's OpenTelemetry core packages with the versions imported by the current Hexalith.Builds pointer so the exact working tree restores and builds again.
 

@@ -159,15 +159,52 @@ public sealed class RouteSurfaceContractTests
     [Fact]
     public void NoProcessOperation_IsAbsentFromCodeAndRefutedInDoc()
     {
-        // AC1 refutation, code-tied: the negative claim is enforced against source, not just prose.
-        string program = ReadMappedRouteSources();
-        string controller = ReadRepoFile("src", "Hexalith.Memories.EventStore", "EventIngestionController.cs");
+        string sourceRoot = Path.Combine(TestRepository.Root, "src");
+        string[] declarations = Directory.EnumerateDirectories(sourceRoot)
+            .SelectMany(project => ProcessRouteSourceGuard.FindDeclarations(
+                Directory.EnumerateFiles(project, "*", SearchOption.AllDirectories)
+                    .Where(path => Path.GetExtension(path) is ".cs" or ".razor")
+                    .Select(path => Path.GetRelativePath(TestRepository.Root, path))
+                    .Where(path => !path.Split(Path.DirectorySeparatorChar).Any(segment => segment is "bin" or "obj"))
+                    .Select(path => (path, File.ReadAllText(Path.Combine(TestRepository.Root, path))))))
+            .Select(declaration => $"{declaration.Path}:{declaration.Line}")
+            .Order(StringComparer.Ordinal)
+            .ToArray();
 
-        program.ShouldNotContain("/process", Case.Sensitive, "A '/process' route literal appeared in Program.cs or decomposed endpoint files — the route-surface refutation in the doc is now false and must be reconciled.");
-        controller.ShouldNotContain("/process", Case.Sensitive, "A '/process' route literal appeared in EventIngestionController.cs — the route-surface refutation in the doc is now false and must be reconciled.");
+        declarations.ShouldBeEmpty("Production source declares a /process route: " + string.Join(", ", declarations));
+
+        using EventStoreWebAppFactory factory = new();
+        GetServerEndpoints(factory).OfType<RouteEndpoint>()
+            .Select(endpoint => endpoint.RoutePattern.RawText)
+            .Where(ProcessRouteSourceGuard.HasProcessSegment)
+            .ShouldBeEmpty("The native Server must not expose /process through a composed or framework route.");
 
         string section = new MarkdownContractDocument(ReadDoc()).GetSection("No `/process` operation exists");
-        section.ShouldContain("no `/process` operation anywhere", Case.Insensitive, $"{DocRelativePath} must keep the explicit '/process' refutation in its owning section.");
+        section.ShouldContain("no `/process` operation anywhere", Case.Insensitive);
+        section.ShouldContain("`POST /process`", Case.Sensitive, "The separate domain-service SDK exception must remain explicit.");
+    }
+
+    [Fact]
+    public void ProcessSourceGuard_FindsRouteTemplatesInMappingsControllersAndPages()
+    {
+        const string Source = """
+            var message = "/process";
+            // app.MapGet("/process", Handler);
+            routes.MapGroup("/api/v1").MapMethods("/PrOcEsS/{id}", ["POST"], Handler);
+            routes.MapControllerRoute("process", "{controller=Home}/{action=Index}");
+            [Microsoft.AspNetCore.Mvc.HttpPostAttribute(@"process")] void Handler() { }
+            routes.MapGet("/processor", Handler);
+            routes.MapPut(pattern: prefix + "/process", handler: Handler);
+            routes.MapPost(Routes.HandlerPath, Handler);
+            """;
+        const string Registrations = "Nested/Registrations.cs";
+        const string Constants = "Routes.cs";
+        const string Page = "Pages/Example.razor";
+        ProcessRouteSourceGuard.FindDeclarations([
+            (Registrations, Source),
+            (Constants, """class Routes { public const string HandlerPath = "/pro" + "cess"; }"""),
+            (Page, "@page \"/process\""),
+        ]).ShouldBe([(Registrations, 3), (Registrations, 5), (Registrations, 7), (Registrations, 8), (Constants, 1), (Page, 1)]);
     }
 
     [Fact]

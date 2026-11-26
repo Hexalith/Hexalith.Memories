@@ -134,7 +134,7 @@ The Memories MCP host (`src/Hexalith.Memories.Mcp/Program.cs`) exposes a single 
 
 ## No `/process` operation exists
 
-There is **no `/process` operation anywhere on the native Memories Server surface** — not in its `/api/v1/*` REST routes, pub/sub controller or framework routes. Domain-event intake still uses `POST /events/ingest`. The drift guard enforces this boundary against the native Server and `EventIngestionController` sources.
+There is **no `/process` operation anywhere on the native Memories Server surface** — not in its `/api/v1/*` REST routes, pub/sub controller or framework routes. Domain-event intake still uses `POST /events/ingest`. The drift guard checks the native Server endpoints and scans route declarations across production host, controller, and Razor sources.
 
 The separate `Hexalith.Memories.DomainService` executable hosts authoritative commands and replay for `memories-tenants`, `memories-cases` and `memories-memory-units` through the canonical EventStore SDK. Its independently authenticated SDK routes include `POST /process`, `POST /replay-state` and `POST /admin/operational-index-metadata`; they do not become native Server or pub/sub routes. Route the three exact domains to this host with version `v1`, and permit only the authenticated EventStore caller through deny-default Dapr ACLs and app-channel/workload authentication. The host executes the existing six commands and unchanged event contracts. Publishing and configuring this additional workload is an owner deployment prerequisite, independent of native REST route compatibility.
 
@@ -151,7 +151,7 @@ A structure-aware drift-guard test protects this contract:
 - **Count tie:** the number of registered application `/api/v1/*` routes (currently **58**, excluding the separate Dapr health probe) must equal the REST table's data-row count — defending against silent omission, duplicate rows, and phantom rows.
 - **Pub/sub constant tie (bidirectional):** the exact two-row pub/sub table is tied to `MapSubscribeHandler()`, `EventIngestionController.PubSubName`, `TopicEnvVar`, `[Route("events")]`, and `[HttpPost("ingest")]`.
 - **Health constant tie:** the exact three-row health table binds each path cell to its adjacent `HealthEndpointPaths.Health` / `.Alive` / `.Ready` constant cell.
-- **`/process` negative tie (code-tied):** asserts neither `Program.cs` nor `EventIngestionController.cs` contains a `/process` route literal, **and** that this document contains the explicit "no `/process`" statement.
+- **`/process` negative tie:** inspects registered native Server endpoints and recursively scans production C# and Razor route declarations. The owning section also records the dedicated EventStore SDK route.
 - **MCP route tie (source-text):** reads `src/Hexalith.Memories.Mcp/Program.cs` and asserts it contains `MapMcp("/mcp")`, and that this document documents `/mcp` under the `memories-mcp` app-id.
 - **Bounded narrative ties:** Dapr operation mapping, publish-via-DAPR, MCP, and `/process` claims must remain inside their exact owning sections.
 - **Experimental marker tie (`HXL002`, code ↔ doc):** source still stamps the header, the REST section still names it, and exactly two complete `Handlers` rows retain their `Experimental (HXL002)` purpose cells.
