@@ -276,21 +276,23 @@ internal sealed class RedisImportStagingStore : IImportStagingStore
 
         string leaseKey = BuildLeaseKey(tenantId, caseId);
         string leaseValue = instanceId + "|" + hash.ToString();
-        // SET NX GET returns the previous holder even if it releases the lease immediately afterward.
-        RedisValue existing = await db.StringSetAndGetAsync(leaseKey, leaseValue, StagingTtl, when: When.NotExists)
-            .ConfigureAwait(false);
-        if (existing.IsNull)
+        RedisValue existing;
+        try
         {
-            try
+            // SET NX GET returns the previous holder even if it releases the lease immediately afterward.
+            existing = await db.StringSetAndGetAsync(leaseKey, leaseValue, StagingTtl, when: When.NotExists)
+                .ConfigureAwait(false);
+            if (existing.IsNull)
             {
                 await StoreLeaseMetadataAsync(db, stagingKey, leaseKey, leaseValue).ConfigureAwait(false);
                 return new RestoreLeaseResult(true, instanceId, false);
             }
-            catch
-            {
-                await ReleaseLeaseIfOwnedAsync(db, leaseKey, leaseValue).ConfigureAwait(false);
-                throw;
-            }
+        }
+        catch
+        {
+            // The reservation may have committed before a failed exchange returned to the caller.
+            await ReleaseLeaseIfOwnedAsync(db, leaseKey, leaseValue).ConfigureAwait(false);
+            throw;
         }
 
         string existingText = existing.ToString();

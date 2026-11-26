@@ -9,6 +9,8 @@ using System.Diagnostics;
 
 using Dapr.Workflow;
 
+using Grpc.Core;
+
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Authentication;
 using Hexalith.Memories.Server.Cases;
@@ -179,6 +181,11 @@ internal static class ImportEndpoints
             ImportEnvelopeValidator.EnsureManifestTarget(scan.Manifest, tenantId, caseId);
             manifest = scan.Manifest;
         }
+        catch (OperationCanceledException)
+        {
+            await stagingStore.DeleteAsync(stagingKey, CancellationToken.None);
+            throw;
+        }
         catch (ImportEnvelopeException ex)
         {
             await stagingStore.DeleteAsync(stagingKey, CancellationToken.None);
@@ -206,6 +213,11 @@ internal static class ImportEndpoints
                 caseId,
                 instanceId,
                 cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            await stagingStore.DeleteAsync(stagingKey, CancellationToken.None);
+            throw;
         }
         catch (Exception ex) when (ex is StackExchange.Redis.RedisException or InvalidDataException)
         {
@@ -253,6 +265,7 @@ internal static class ImportEndpoints
         try
         {
             await targetGuard.EnsureCleanAsync(tenantId, caseId, cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
         }
         catch (OperationCanceledException)
         {
@@ -282,37 +295,45 @@ internal static class ImportEndpoints
                 instanceId,
                 new RestoreWorkflowInput(tenantId, caseId, stagingKey, requestedBy));
         }
-        catch (Dapr.DaprException ex)
+        catch (Exception ex) when (ex is Dapr.DaprException or RpcException)
         {
+            bool stateConfirmed = false;
             try
             {
+                // A disconnected uploader cannot cancel the check for an already submitted workflow.
+                using CancellationTokenSource statusTimeout = new(TimeSpan.FromSeconds(5));
                 WorkflowState? state = await workflowClient.GetWorkflowStateAsync(
                     instanceId,
                     getInputsAndOutputs: false,
-                    cancellationToken);
-                if (state is not null && state.Exists)
+                    statusTimeout.Token).WaitAsync(statusTimeout.Token);
+                if (state is { Exists: true })
                 {
-                    string ambiguousLocation = MemoriesRoutes.RestoreStatusLocation(tenantId, instanceId);
+                    string existingLocation = MemoriesRoutes.RestoreStatusLocation(tenantId, instanceId);
                     return Results.Accepted(
-                        ambiguousLocation,
-                        new RestoreAcceptedResponse(instanceId, tenantId, caseId, manifest.Scope, ambiguousLocation));
+                        existingLocation,
+                        new RestoreAcceptedResponse(instanceId, tenantId, caseId, manifest.Scope, existingLocation));
                 }
 
-                await stagingStore.DeleteAsync(stagingKey, CancellationToken.None);
+                stateConfirmed = true;
             }
-            catch (Exception stateException) when (stateException is not OperationCanceledException)
+            catch (Exception statusError) when (statusError is Dapr.DaprException or RpcException or OperationCanceledException)
             {
-                // Scheduling may have succeeded before the response was lost. Preserve staging + lease until
-                // their TTLs expire rather than deleting input a live workflow may still need.
-                return Results.Json(
-                    ErrorResults.BackendUnavailable(
-                        $"Restore scheduling outcome is unknown ({ex.Message}); status confirmation also failed ({stateException.Message}). Staging was retained."),
-                    statusCode: StatusCodes.Status503ServiceUnavailable);
+                // Preserve the input when the status lookup cannot confirm the scheduling outcome.
             }
 
+            if (stateConfirmed && ex is RpcException { StatusCode: StatusCode.InvalidArgument
+                or StatusCode.PermissionDenied or StatusCode.Unauthenticated or StatusCode.Unimplemented })
+            {
+                await stagingStore.DeleteAsync(stagingKey, CancellationToken.None);
+                return ErrorResults.DaprUnavailableResult(
+                    "The workflow backend rejected the restore submission.",
+                    "Retry the import after the workflow backend is restored.");
+            }
+
+            // A transient scheduling failure can precede visibility of a successfully submitted workflow.
             return ErrorResults.DaprUnavailableResult(
-                $"Restore workflow could not be scheduled: {ex.Message}",
-                "Retry the import after Dapr connectivity is restored.");
+                "The restore scheduling outcome could not be confirmed. Staging was retained.",
+                "Retry the same import when the workflow backend is available.");
         }
 
         string location = MemoriesRoutes.RestoreStatusLocation(tenantId, instanceId);

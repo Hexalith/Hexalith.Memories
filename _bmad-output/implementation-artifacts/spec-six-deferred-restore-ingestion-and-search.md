@@ -22,6 +22,7 @@ Complete the next six actionable deferred items in ledger order. Implement and v
 - DW-558 remains open as a convention for future bulk line-ending work. There is no current mass normalization to commit.
 
 - DW-559 starts a dedicated Aspire topology with private URL hosts disabled at the server resource. The existing shared topology retains the loopback option for positive ingestion scenarios.
+- DW-556 review caught actual gRPC scheduling exceptions and a possible lost Redis acknowledgment. The endpoint independently verifies status after failed submission, releases staging after confirmed pre-acceptance rejection, and retains it when submission is ambiguous. The pre-scheduling path cleans up staging on cancellation during scan, lease acquisition, or target verification.
 
 ## File Scope
 
@@ -46,6 +47,7 @@ Allowed files for this story:
 - `dotnet tests/Hexalith.Memories.Server.Tests/bin/Release/net11.0/Hexalith.Memories.Server.Tests.dll -class '*RestoreImportRetryTests'` passed all four API cases, including pending ownership, failed state lookup, reuse of a confirmed workflow, and different content.
 
 - DW-559 `dotnet tests/Hexalith.Memories.IntegrationTests/bin/Release/net11.0/Hexalith.Memories.IntegrationTests.dll -class '*UrlIngestionPrivateHostDenialIntegrationTests' -class '*UrlIngestionIntegrationTests'` passed all three cases using the owned Dapr placement and scheduler. The denied URL creates no workflow registry record, source-inventory or unit keys, or changes to case counters or activity.
+- DW-556 review verification ran all seven cases in `RestoreImportRetryTests`, including definite gRPC rejection, ambiguous submission, and server-confirmed acceptance. The live Redis reuse and isolation case also passed on the reviewed code.
 
 ## Cross-Tenant Negative Evidence
 

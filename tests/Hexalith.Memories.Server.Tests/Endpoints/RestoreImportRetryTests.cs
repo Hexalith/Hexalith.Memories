@@ -15,6 +15,8 @@ using Dapr.Client;
 using Dapr.Common.Serialization;
 using Dapr.Workflow;
 
+using Grpc.Core;
+
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Import;
 using Hexalith.Memories.Server.Tenants;
@@ -22,6 +24,7 @@ using Hexalith.Memories.Server.Tests.Authentication;
 using Hexalith.Memories.Server.Tests.EventStoreIntegration;
 using Hexalith.Memories.Server.Workflows;
 
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -57,14 +60,7 @@ public sealed class RestoreImportRetryTests : IDisposable
         string? expectedError)
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
-        TenantRegistryEntry entry = new(new TenantInfo(Tenant, Tenant, TenantStatus.Active, DateTimeOffset.UtcNow), null);
-        _factory.DaprClient.GetStateAsync<StoredTenantRegistryEntry?>(
-            "statestore", $"tenant-registry-{Tenant}", Arg.Any<ConsistencyMode?>(),
-            Arg.Any<IReadOnlyDictionary<string, string>?>(), Arg.Any<CancellationToken>()).Returns(entry);
-        _staging.StageAsync(Tenant, Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<long>(), Arg.Any<CancellationToken>())
-            .Returns(StagingKey);
-        _staging.OpenReadAsync(StagingKey, Arg.Any<CancellationToken>())
-            .Returns(_ => new MemoryStream(Encoding.UTF8.GetBytes(Payload)));
+        StubUpload();
         _staging.AcquireRestoreLeaseAsync(StagingKey, Tenant, Arg.Is<string?>(caseId => caseId == null), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new RestoreLeaseResult(false, Owner, ownerState != "different"));
 
@@ -75,16 +71,8 @@ public sealed class RestoreImportRetryTests : IDisposable
             _ => Task.FromResult<WorkflowState>(null!),
         });
 
-        using var host = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
-        {
-            services.RemoveAll<IImportStagingStore>();
-            services.RemoveAll<IDaprWorkflowClient>();
-            services.AddSingleton(_staging);
-            services.AddSingleton(_workflows);
-        }));
-        using HttpClient client = host.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
-            "Bearer", ServerTestBearerToken.Create(tenants: [Tenant]));
+        using var host = CreateHost();
+        using HttpClient client = CreateAuthorizedClient(host);
         using StringContent content = new(Payload, Encoding.UTF8, "application/json");
         using HttpResponseMessage response = await client.PostAsync($"/api/v1/tenants/{Tenant}/import", content, cancellationToken);
 
@@ -109,7 +97,72 @@ public sealed class RestoreImportRetryTests : IDisposable
         await _workflows.DidNotReceiveWithAnyArgs().ScheduleNewWorkflowAsync(default!, default!, default!, default, default);
     }
 
+    [Theory]
+    [InlineData(StatusCode.InvalidArgument, false, HttpStatusCode.ServiceUnavailable, true)]
+    [InlineData(StatusCode.Unavailable, false, HttpStatusCode.ServiceUnavailable, false)]
+    [InlineData(StatusCode.Unavailable, true, HttpStatusCode.Accepted, false)]
+    public async Task PostImport_ReconcilesSchedulingRpcOutcome(
+        StatusCode statusCode,
+        bool workflowExists,
+        HttpStatusCode expectedStatus,
+        bool releaseStaging)
+    {
+        StubUpload();
+        _staging.AcquireRestoreLeaseAsync(StagingKey, Tenant, Arg.Is<string?>(caseId => caseId == null),
+            Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new RestoreLeaseResult(true, Owner, false));
+        _workflows.ScheduleNewWorkflowAsync(nameof(RestoreWorkflow), Arg.Any<string>(), Arg.Any<RestoreWorkflowInput>())
+            .Returns(Task.FromException<string>(new RpcException(new Status(statusCode, "private backend diagnostic"))));
+        _workflows.GetWorkflowStateAsync(Arg.Any<string>(), false, Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(workflowExists ? CreateRunningWorkflow() : null!));
+
+        using var host = CreateHost();
+        using HttpClient client = CreateAuthorizedClient(host);
+        using StringContent content = new(Payload, Encoding.UTF8, "application/json");
+        using HttpResponseMessage response = await client.PostAsync($"/api/v1/tenants/{Tenant}/import", content, TestContext.Current.CancellationToken);
+
+        response.StatusCode.ShouldBe(expectedStatus);
+        (await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).ShouldNotContain("private backend diagnostic");
+        if (workflowExists)
+        {
+            response.Headers.Location.ShouldNotBeNull();
+        }
+
+        await _workflows.Received(1).GetWorkflowStateAsync(Arg.Any<string>(), false, Arg.Any<CancellationToken>());
+        await _staging.Received(releaseStaging ? 1 : 0).DeleteAsync(StagingKey, CancellationToken.None);
+    }
+
     public void Dispose() => _factory.Dispose();
+
+    private void StubUpload()
+    {
+        TenantRegistryEntry entry = new(new TenantInfo(Tenant, Tenant, TenantStatus.Active, DateTimeOffset.UtcNow), null);
+        _factory.DaprClient.GetStateAsync<StoredTenantRegistryEntry?>(
+            "statestore", $"tenant-registry-{Tenant}", Arg.Any<ConsistencyMode?>(),
+            Arg.Any<IReadOnlyDictionary<string, string>?>(), Arg.Any<CancellationToken>()).Returns(entry);
+        _staging.StageAsync(Tenant, Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .Returns(StagingKey);
+        _staging.OpenReadAsync(StagingKey, Arg.Any<CancellationToken>())
+            .Returns(_ => new MemoryStream(Encoding.UTF8.GetBytes(Payload)));
+    }
+
+    private WebApplicationFactory<Program> CreateHost()
+        => _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        {
+            services.RemoveAll<IImportStagingStore>();
+            services.RemoveAll<IDaprWorkflowClient>();
+            services.RemoveAll<IRestoreTargetGuard>();
+            services.AddSingleton(_staging);
+            services.AddSingleton(_workflows);
+            services.AddSingleton(Substitute.For<IRestoreTargetGuard>());
+        }));
+
+    private static HttpClient CreateAuthorizedClient(WebApplicationFactory<Program> host)
+    {
+        HttpClient client = host.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer", ServerTestBearerToken.Create(tenants: [Tenant]));
+        return client;
+    }
 
     private static WorkflowState CreateRunningWorkflow()
     {
