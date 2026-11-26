@@ -4126,6 +4126,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of spec-infrast
 location: _bmad-output/implementation-artifacts/spec-infrastructure-dependency-abstraction.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-infrastructure-dependency-abstraction.md` summary: Creation-lock release in `DaprAggregateCaseMappingStore.ReleaseCreationLockAsync` deletes unconditionally and can release a rival instance's active lock after the holder's TTL lease expired. evidence: `src/Hexalith.Memories.EventStore/DaprAggregateCaseMappingStore.cs:92-99` calls `DeleteStateAsync` without an owner token or ETag condition. Deferred as pre-existing: the prior Redis implementation used the same unconditional `DEL` after `SET NX`+TTL, so the migration preserved (did not introduce) this semantics; revisit if the F6 store design is reworked under the D1 review decision.
 status: open
+note: 2026-11-26 — Skipped. Dapr Redis reuses the first ETag when an expired key is recreated. Reading the owner and then issuing an ETag delete still permits a stale delete. Safe immediate release with a physical TTL needs an owner-conditional primitive and the recorded F6 design review.
 
 ### DW-581: Remove unreferenced `RedisPlaceholder` port-constant compat surface on the next owned breaking major (F9).
 
@@ -4133,6 +4134,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of spec-infrast
 location: _bmad-output/implementation-artifacts/spec-infrastructure-dependency-abstraction.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-infrastructure-dependency-abstraction.md` summary: Remove unreferenced `RedisPlaceholder` port-constant compat surface on the next owned breaking major (F9). evidence: See structured entry `IDA-F9-REDISPLACEHOLDER-REMOVAL` (appended 2026-08-09).
 status: open
+note: 2026-11-26 — Skipped. The public Redis port constants still require the package's owned compatibility decision and external-consumer audit under IDA-F9-REDISPLACEHOLDER-REMOVAL.
 
 ### DW-582: Reconcile the canonical project context's stale Aspire AppHost SDK version with the repository pin.
 
@@ -4147,7 +4149,8 @@ resolution: The canonical project context records Aspire AppHost SDK and Aspire.
 origin: migrated from legacy ledger ("Deferred from: code review of spec-run-tests-and-fix-failures (2026-07-18)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-run-tests-and-fix-failures.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-run-tests-and-fix-failures.md` summary: Sibling helper `ContractDocumentGuard.cs`'s private `NormalizeLineEndings` has the same repeated-CR mishandling bug just fixed in `MarkdownContractDocument.cs`. evidence: `tests/Hexalith.Memories.TestHelpers/Documentation/ContractDocumentGuard.cs:250-251` still uses the old `markdown.Replace("\r\n", "\n", ...).Replace('\r', '\n')` pattern (used by `FindLeakedToolCallMarkup`), which turns a doubled `\r` (e.g. `"\r\r\n"`) into an extra blank line instead of collapsing to one `\n` — the exact defect just fixed in the sibling file. Out of this spec's Code Map scope (which named only `MarkdownContractDocument.cs`); worth the same fix if the `\r\r\n` corruption risk is judged real for this file's consumers too.
-status: open
+status: done 2026-11-26
+resolution: The document parser and markup guard share one normalizer. Regression coverage confirms repeated CR line endings preserve multiline code spans and the reported line number.
 
 ### DW-584: Reconcile the `20.5-A41-ACCESS-TELEMETRY-RETENTION` entry's now-partially-resolved non-canonical labels with the earlier tracking entry that named them.
 

@@ -21,7 +21,7 @@ public static class ContractDocumentGuard
     {
         ArgumentNullException.ThrowIfNull(markdown);
 
-        string[] lines = NormalizeLineEndings(markdown).Split('\n');
+        string[] lines = MarkdownContractDocument.NormalizeLineEndings(markdown).Split('\n');
         bool[] fencedLines = FindFencedLines(lines);
         var diagnostics = new List<string>();
         int codeSpanDelimiterLength = 0;
@@ -246,7 +246,4 @@ public static class ContractDocumentGuard
 
         return fencedLines;
     }
-
-    private static string NormalizeLineEndings(string markdown)
-        => markdown.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
 }

@@ -363,7 +363,8 @@ public sealed class MarkdownContractDocument
         return (lineIndex + 1, end);
     }
 
-    private static string NormalizeLineEndings(string markdown)
+    /// <summary>Normalizes Markdown line endings, including repeated carriage returns.</summary>
+    internal static string NormalizeLineEndings(string markdown)
     {
         var normalized = new StringBuilder(markdown.Length);
         int index = 0;

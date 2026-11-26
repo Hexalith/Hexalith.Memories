@@ -15,6 +15,17 @@ using Shouldly;
 public sealed class ContractDocumentGuardTests
 {
     [Fact]
+    public void FindLeakedToolCallMarkup_RepeatedCarriageReturnsKeepCodeSpansAndLineNumbers()
+    {
+        const string Markdown = "`start\r\r\n<content>inside code</content>`\r\r\n<invoke>raw</invoke>";
+
+        IReadOnlyList<string> diagnostics = ContractDocumentGuard.FindLeakedToolCallMarkup(Markdown);
+
+        diagnostics.Count.ShouldBe(2);
+        diagnostics.ShouldAllBe(diagnostic => diagnostic.Contains("line 3", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void FindLeakedToolCallMarkup_OrdinaryMarkdownHtmlAndCode_ReturnsNoDiagnostics()
     {
         const string Markdown = """
