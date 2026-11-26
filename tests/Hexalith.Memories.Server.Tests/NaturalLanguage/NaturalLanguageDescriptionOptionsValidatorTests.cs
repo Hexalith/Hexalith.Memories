@@ -7,8 +7,12 @@ namespace Hexalith.Memories.Server.Tests.NaturalLanguage;
 
 using System.IO;
 
+using Hexalith.Memories.Server.Hosting;
+
 using Hexalith.Memories.Server.NaturalLanguage;
 
+using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -60,6 +64,24 @@ public sealed class NaturalLanguageDescriptionOptionsValidatorTests
         result.Failed.ShouldBeTrue();
         result.Failures.ShouldNotBeNull().ShouldContain(
             failure => failure.Contains("9165 ConversationComponentMaterialUnavailable", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ProductionWithDeployedComponentValidation_UsesApiReaderAndFailsClosed()
+    {
+        WebApplicationBuilder builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Production" });
+        builder.Configuration["Memories:Testing:UseInMemoryCommandStore"] = "true";
+        builder.Configuration["NaturalLanguage:ValidateDeployedComponent"] = "true";
+        builder.AddMemoriesServerServices();
+        await using WebApplication app = builder.Build();
+
+        app.Services.GetRequiredService<IComponentYamlReader>().ShouldBeOfType<KubernetesComponentCacheReader>();
+        var validator = app.Services.GetRequiredService<IValidateOptions<NaturalLanguageDescriptionOptions>>();
+        var options = new NaturalLanguageDescriptionOptions { DaprComponentName = "unreadable-test-component" };
+        ValidateOptionsResult result = validator.Validate(null, options);
+
+        result.Failed.ShouldBeTrue();
+        result.Failures.ShouldContain(failure => failure.Contains("9165 ConversationComponentMaterialUnavailable", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -204,6 +226,10 @@ public sealed class NaturalLanguageDescriptionOptionsValidatorTests
         result.Failures.ShouldContain(
             f => f.Contains("9164 ResponseCacheEnabledWithoutAcknowledgment", StringComparison.Ordinal));
     }
+
+    [Fact]
+    public void DaprDuration_WithPositiveSubTickTtl_RemainsPositive()
+        => FileSystemComponentYamlReader.TryParseDuration("1ns").ShouldBe(TimeSpan.FromTicks(1));
 
     [Fact]
     public void FileSystemComponentYamlReader_ParsesCompoundResponseCacheTtl()

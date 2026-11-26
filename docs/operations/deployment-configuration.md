@@ -68,6 +68,16 @@ readable and writable. Confirm your CSI driver's behavior before upgrading an ex
 If the driver leaves ownership unchanged, arrange an offline volume permission update to GID
 1654 with group read/write access and directory traversal before restarting the StatefulSet.
 
+### Conversation cache configuration
+
+The Server reads the applied `llm-openai` Dapr Component in its own namespace at startup.
+Its service account has `get` access to that Component. If an overlay renames the Component,
+update the Server's configured component name and its Role's resource name together. Keep Kubernetes API connectivity
+available from the Server pod. If the read fails or the Component lacks an unambiguous
+cache TTL, Production startup fails. Apply Component changes first, then perform the
+Server rollout described above so startup revalidates the deployed settings.
+Standalone deployments validate their local Dapr component material.
+
 ### Apply and verify
 
 1. Install DAPR 1.18 or later and confirm its control plane and injector are healthy.

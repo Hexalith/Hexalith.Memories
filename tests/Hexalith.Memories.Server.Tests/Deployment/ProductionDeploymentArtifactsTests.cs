@@ -12,6 +12,8 @@ using System.Text.RegularExpressions;
 
 using Shouldly;
 
+using YamlDotNet.RepresentationModel;
+
 /// <summary>Executable contracts for the Story 26.1 production container and Kustomize artifacts.</summary>
 public sealed class ProductionDeploymentArtifactsTests
 {
@@ -53,6 +55,45 @@ public sealed class ProductionDeploymentArtifactsTests
         stager.ShouldContain("7a12a4c460967e769fad9ddae2de4fce6679633b5a1891628e657dad8df57f3d");
         stager.ShouldContain("curl-linux-aarch64-musl-8.20.0.tar.xz");
         stager.ShouldContain("b5dde6790a33f55dee04e965d5b0fcd9c82493b72e1e5608c09ce1483359fb81");
+    }
+
+    [Theory]
+    [InlineData("production")]
+    [InlineData("production-dapr-1.19")]
+    [InlineData("qualification")]
+    public void KubernetesOverlay_ServerCanReadOnlyItsNamedConversationComponent(string overlay)
+    {
+        string root = GetRepoRoot();
+        string rendered = Run(root, "kubectl", "kustomize", $"deploy/kubernetes/overlays/{overlay}");
+        var yaml = new YamlStream();
+        yaml.Load(new StringReader(rendered));
+        YamlMappingNode[] resources = yaml.Documents.Select(document => (YamlMappingNode)document.RootNode).ToArray();
+        YamlMappingNode deployment = resources.Single(resource =>
+            resource["kind"].ToString() == "Deployment" && resource["metadata"]["name"].ToString() == "memories");
+        YamlNode pod = deployment["spec"]["template"]["spec"];
+        YamlNode app = ((YamlSequenceNode)pod["containers"]).Single(container => container["name"].ToString() == "memories");
+        YamlSequenceNode env = (YamlSequenceNode)app["env"];
+
+        env.Single(item => item["name"].ToString() == "NaturalLanguage__ValidateDeployedComponent")["value"]
+            .ToString().ShouldBe("true");
+        string componentName = env.Single(item => item["name"].ToString() == "NaturalLanguage__DaprComponentName")["value"].ToString();
+        YamlMappingNode component = resources.Single(resource =>
+            resource["kind"].ToString() == "Component" && resource["metadata"]["name"].ToString() == componentName);
+        component["metadata"]["namespace"].ShouldBe(deployment["metadata"]["namespace"]);
+
+        YamlMappingNode role = resources.Single(resource =>
+            resource["kind"].ToString() == "Role" && resource["metadata"]["name"].ToString() == "memories-conversation-component-reader");
+        YamlNode rule = ((YamlSequenceNode)role["rules"]).Single(item =>
+            ((YamlSequenceNode)item["apiGroups"]).Any(group => group.ToString() == "dapr.io"));
+        ((YamlSequenceNode)rule["resources"]).Select(item => item.ToString()).ShouldBe(["components"]);
+        ((YamlSequenceNode)rule["resourceNames"]).Select(item => item.ToString()).ShouldBe([componentName]);
+        ((YamlSequenceNode)rule["verbs"]).Select(item => item.ToString()).ShouldBe(["get"]);
+        YamlMappingNode binding = resources.Single(resource =>
+            resource["kind"].ToString() == "RoleBinding" && resource["roleRef"]["name"].Equals(role["metadata"]["name"]));
+        var subject = (YamlMappingNode)((YamlSequenceNode)binding["subjects"]).Single();
+        subject["name"].ShouldBe(pod["serviceAccountName"]);
+        subject["namespace"].ShouldBe(binding["metadata"]["namespace"]);
+        binding["metadata"]["namespace"].ShouldBe(deployment["metadata"]["namespace"]);
     }
 
     [Fact]

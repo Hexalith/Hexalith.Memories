@@ -84,8 +84,8 @@ public sealed partial class NaturalLanguageDescriptionOptionsValidator
             failures.Add(
                 "9165 ConversationComponentMaterialUnavailable: "
                 + $"Production could not verify responseCacheTTL for DAPR Conversation component "
-                + $"'{options.DaprComponentName}'. The canonical component YAML must be present under "
-                + "deploy/dapr/components beside the published Server application.");
+                + $"'{options.DaprComponentName}'. Verify the deployed Component and the Server's permission to read it, "
+                + "or provide the component YAML in deploy/dapr/components for a standalone deployment.");
         }
         else if (ttl.HasValue && ttl.Value > TimeSpan.Zero)
         {
@@ -227,7 +227,8 @@ internal sealed class FileSystemComponentYamlReader : IComponentYamlReader
         return null;
     }
 
-    private static TimeSpan? TryParseDuration(string raw)
+    /// <summary>Parses a Dapr component duration.</summary>
+    internal static TimeSpan? TryParseDuration(string raw)
     {
         if (string.IsNullOrWhiteSpace(raw))
         {
@@ -286,6 +287,12 @@ internal sealed class FileSystemComponentYamlReader : IComponentYamlReader
             totalTicks += unitTicks;
         }
 
-        return TimeSpan.FromTicks((long)Math.Round(totalTicks, MidpointRounding.AwayFromZero));
+        if (totalTicks >= long.MaxValue)
+        {
+            return null;
+        }
+
+        long roundedTicks = (long)Math.Round(totalTicks, MidpointRounding.AwayFromZero);
+        return TimeSpan.FromTicks(totalTicks > 0 ? Math.Max(1, roundedTicks) : 0);
     }
 }

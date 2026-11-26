@@ -121,8 +121,8 @@ def _render(root, source, application_images, *, verify_existing=False):
     apps = {'memories', 'memories-access-telemetry', 'memories-access-telemetry-clock'}
     excluded = {'memories-mcp', 'eventstore', 'memories-mcp-token-reader', 'eventstore-dapr-secret-reader',
                 'memories-mcp-config', 'memories-access-telemetry-physical-evidence-reporter',
-                'access-telemetry-physical-evidence-report', 'llm-openai', 'memories-events'}
-    allowed_components = {'secretstore', 'statestore', 'pubsub', 'access-telemetry-secrets', 'access-telemetry-config', 'access-telemetry-store'}
+                'access-telemetry-physical-evidence-report', 'memories-events'}
+    allowed_components = {'secretstore', 'statestore', 'pubsub', 'access-telemetry-secrets', 'access-telemetry-config', 'access-telemetry-store', 'llm-openai'}
     selected = []
     if verify_existing:
         public_key = (root / 'clock-public.der').read_bytes()
@@ -160,6 +160,8 @@ def _render(root, source, application_images, *, verify_existing=False):
             continue
         if kind == 'Component' and name not in allowed_components:
             continue
+        if kind == 'Component' and name == 'llm-openai':
+            obj['spec']['metadata'].append({'name': 'endpoint', 'value': 'https://unused.example.invalid'})
         if kind in {'ClusterRole', 'ClusterRoleBinding', 'Job'}:
             continue
         if kind == 'ServiceAccount':
@@ -227,7 +229,7 @@ def _render(root, source, application_images, *, verify_existing=False):
     ]
     runtime_values = {
         'redis-secret': {'password': passwords['redis'], 'falkordb-password': passwords['falkor']},
-        'llm-secret': {'key': 'functional-offline-unused', 'endpoint': 'https://unused.example.invalid', 'model': 'unused'},
+        'llm-secret': {'OPENAI_API_KEY': 'functional-offline-unused', 'key': 'functional-offline-unused', 'endpoint': 'https://unused.example.invalid', 'model': 'unused'},
         'google-embedding-api-key': {'google-embedding-api-key': 'functional-offline-unused'},
         'memories-embedding-client-secret': {'memories-embedding-client-secret': 'functional-offline-unused'},
     }

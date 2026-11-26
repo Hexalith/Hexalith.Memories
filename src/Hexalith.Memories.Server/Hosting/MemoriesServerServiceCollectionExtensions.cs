@@ -133,12 +133,14 @@ internal static class MemoriesServerServiceCollectionExtensions
         builder.Services.Configure<CaseActivityOptions>(
             builder.Configuration.GetSection(CaseActivityOptions.SectionName));
 
-        // Options validator (Task 1.7): Production guard against conversation.echo (9161) + cross-tenant cache
-        // acknowledgment gate (9164). The YAML reader discovers responseCacheTTL from deploy/dapr/components/*.yaml.
+        // Kubernetes hosts validate the applied Dapr Component. Standalone hosts use their local material.
         builder.Services.AddSingleton<IComponentYamlReader>(_ =>
         {
-            // Published containers carry the canonical component below the content root. Repository runs
-            // fall back to the root deploy directory so the exact same material is validated in both modes.
+            if (builder.Configuration.GetValue<bool>("NaturalLanguage:ValidateDeployedComponent"))
+            {
+                return new KubernetesComponentCacheReader();
+            }
+
             string publishedCandidate = Path.Combine(
                 builder.Environment.ContentRootPath,
                 "deploy",

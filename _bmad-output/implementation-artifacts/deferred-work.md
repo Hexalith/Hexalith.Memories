@@ -3886,13 +3886,15 @@ origin: migrated from legacy ledger ("Deferred from: code review of spec-26-1-pr
 location: _bmad-output/implementation-artifacts/spec-26-1-production-deployment-artifacts.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-26-1-production-deployment-artifacts.md` summary: [MEDIUM — hardening beyond AC] No NetworkPolicies or Pod Security Standards in the production deployment. evidence: `deploy/kubernetes/base/**` has zero `NetworkPolicy` and no `pod-security` namespace labels; app port 8080 (no Service) is reachable by pod IP cluster-wide and health endpoints are anonymous. Not required by any AC. Re-open trigger: production network-segmentation / PSS requirement.
 status: open
+note: 2026-11-26 — Skipped. Access telemetry already has dedicated policies. A production-wide policy and Pod Security enforcement require platform-owned ingress, CNI, Dapr, and external egress decisions.
 
 ### DW-550: [LOW — drift seam] The cross-tenant cache-safety guard validates a container-bundled copy of the Conversation component, not the deployed one.
 
 origin: migrated from legacy ledger ("Deferred from: code review of spec-26-1-production-deployment-artifacts (2026-07-12)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-26-1-production-deployment-artifacts.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-26-1-production-deployment-artifacts.md` summary: [LOW — drift seam] The cross-tenant cache-safety guard validates a container-bundled copy of the Conversation component, not the deployed one. evidence: `NaturalLanguageDescriptionOptionsValidator` reads `deploy/dapr/components/conversation-llm.yaml` (baked into the Server image); DAPR loads `deploy/kubernetes/base/dapr/conversation-openai.yaml`. Both `responseCacheTTL: 0s` today and the Production no-TTL branch (event 9165) closes the missing-material hole, but a nonzero TTL set on the deployed component is invisible to the guard. Near-best-achievable (an app cannot read a control-plane component). Re-open trigger: any change to `responseCacheTTL` handling or the component material path.
-status: open
+status: done 2026-11-26
+resolution: Kubernetes startup reads the applied Dapr Component through a namespaced, resource-bound service account grant. Startup fails closed when the cache setting cannot be resolved. Tests cover live TTL changes, ambiguity, API denial, and the production and qualification renders.
 
 ### DW-551: [LOW — cleanup] Two divergent DAPR config sources, plus an orphaned in-namespace `eventstore` identity.
 

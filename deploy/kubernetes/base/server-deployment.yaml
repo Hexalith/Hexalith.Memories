@@ -99,6 +99,8 @@ spec:
               value: memories-events
             - name: NaturalLanguage__DaprComponentName
               value: llm-openai
+            - name: NaturalLanguage__ValidateDeployedComponent
+              value: "true"
             - name: AccessTelemetryLifecycle__Enabled
               valueFrom:
                 configMapKeyRef:
