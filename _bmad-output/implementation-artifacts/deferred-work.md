@@ -3744,7 +3744,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: bmad-dev-auto review of spec-25-1-program-cs-decomposition (2026-07-06)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-25-1-program-cs-decomposition.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-25-1-program-cs-decomposition.md` summary: Edge-confidence promotion does not reject undefined `EdgeType` enum values after deserialization. evidence: The review traced `/api/tenants/{tenantId}/edges/confidence`; the payload is deserialized into `ConfidencePromotionRequest` and field presence is validated, but `Enum.IsDefined(request.EdgeType)` is not checked before the graph update. This behavior existed before endpoint extraction.
-status: open
+status: done 2026-11-26
+resolution: Edge confidence promotion rejects undefined and combined edge types before graph access, including mixed-case duplicate properties.
 
 ### DW-532: Tenant provision/deletion status endpoints do not translate Dapr sidecar outages into structured `DAPR_UNAVAILABLE` responses.
 

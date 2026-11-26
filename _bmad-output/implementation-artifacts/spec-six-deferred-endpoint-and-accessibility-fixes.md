@@ -32,15 +32,18 @@ Allowed files for this story:
 - `src/Hexalith.Memories.Server/Endpoints/IngestionEndpoints.cs` - nullable request bodies
 - `src/Hexalith.Memories.Server/Endpoints/EndpointTelemetryHelpers.cs` - missing body audit fields
 - `tests/Hexalith.Memories.Server.Tests/Endpoints/IngestionEndpointE2ETests.cs` - body and audit regressions
+- `src/Hexalith.Memories.Server/Endpoints/GraphEndpoints.cs` - DW-531 implementation or verification
+- `tests/Hexalith.Memories.Server.Tests/Endpoints/EdgeConfidenceEndpointTests.cs` - DW-531 implementation or verification
 
 ## Cross-Tenant Negative Evidence
 
-**Surfaces:** Ingestion body tenant selection and audit context. The ingestion requests preserve the [Story 20.2 authorization boundary](20-2-tenant-authorization-filter-and-principal-derived-audit-identity.md).
-**Tests:** `ServerEndpointAuthorizationTests.TenantScopedIngestSchedulingEndpoint_WithMismatchedBodyTenant_ReturnsTenantForbiddenBeforeSchedulingDependencies`.
-**Command:** `dotnet tests/Hexalith.Memories.Server.Tests/bin/Release/net11.0/Hexalith.Memories.Server.Tests.dll -class "*IngestionEndpointE2ETests" -class "*ServerEndpointAuthorizationTests"`.
-**Result:** The body tenant mismatch cases passed for all three routes. Each returned 403 before tenant storage and scheduling dependencies.
+**Surfaces:** Ingestion body tenant selection and audit context. The ingestion requests preserve the [Story 20.2 authorization boundary](20-2-tenant-authorization-filter-and-principal-derived-audit-identity.md). Edge-confidence PATCH validation before graph selection.
+**Tests:** `ServerEndpointAuthorizationTests.TenantScopedIngestSchedulingEndpoint_WithMismatchedBodyTenant_ReturnsTenantForbiddenBeforeSchedulingDependencies`. `EdgeConfidenceEndpointTests.Patch_InvalidEdgeTypeOrUnauthorizedTenant_StopsBeforeGraphAccess`.
+**Command:** `dotnet tests/Hexalith.Memories.Server.Tests/bin/Release/net11.0/Hexalith.Memories.Server.Tests.dll -class "*IngestionEndpointE2ETests" -class "*ServerEndpointAuthorizationTests"`. The same assembly with `-class "*EdgeConfidenceEndpointTests"`.
+**Result:** The body tenant mismatch cases passed for all three routes. Each returned 403 before tenant storage and scheduling dependencies. All five graph cases passed, including the 403 response before graph access.
 
 ## Review Triage Log
 
 - DW-528, patched. The audit scope retains the rejected-tenant tag and tests verify its error events. Validation checks for a missing URL request before reading fetcher options.
 - DW-528, outside the reported wire shape. A chunked body with no JSON bytes follows the framework’s malformed-JSON path.
+- DW-531, patched. The edge validation checks case-insensitive property matches for compound values that deserialize to another edge. HTTP coverage rejects those inputs and confirms cross-tenant denial. Existing successful promotions are covered by ConfidencePromotionIntegrationTests. Malformed JSON keeps the established error response.

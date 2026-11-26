@@ -283,11 +283,26 @@ internal static class GraphEndpoints
                 "Provide a valid confidence promotion request payload.");
         }
 
-        return request is null
-            ? new ErrorResponse(
+        if (request is null)
+        {
+            return new ErrorResponse(
                 "INVALID_REQUEST_BODY",
                 "Request body could not be deserialized.",
-                "Provide a valid confidence promotion request payload.")
-            : null;
+                "Provide a valid confidence promotion request payload.");
+        }
+
+        if (!Enum.IsDefined(request.EdgeType)
+            || requestBody.EnumerateObject().Any(static property =>
+                string.Equals(property.Name, "edgeType", StringComparison.OrdinalIgnoreCase)
+                && property.Value.ValueKind == JsonValueKind.String
+                && property.Value.GetString()!.Contains(',')))
+        {
+            return new ErrorResponse(
+                "INVALID_REQUEST_BODY",
+                "edgeType must specify a single defined relationship type.",
+                "Provide the relationship type of the edge to promote.");
+        }
+
+        return null;
     }
 }
