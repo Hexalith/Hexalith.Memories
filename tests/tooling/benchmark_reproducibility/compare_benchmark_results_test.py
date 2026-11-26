@@ -54,6 +54,17 @@ class CompareBenchmarkResultsTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("independent benchmark results differ", result.stderr)
 
+    def test_fails_on_matching_results_that_misrepresent_the_quality_gate(self):
+        incorrect_count = dict(RESULT, totalQueries=True)
+        below_threshold = copy.deepcopy(RESULT)
+        below_threshold["hybridWins"] = 0
+        below_threshold["hybridWinRate"] = 0
+        below_threshold["queryResults"][0]["hybridOutperforms"] = False
+        for invalid in (incorrect_count, below_threshold):
+            with self.subTest(invalid=invalid):
+                payload = json.dumps(invalid)
+                self.assertEqual(self.compare(payload, payload).returncode, 1)
+
     def test_fails_on_missing_duplicate_or_partial_data(self):
         incomplete = dict(RESULT, queryResults=[{"queryId": "BQ-01"}])
         duplicate = json.dumps(RESULT).replace('"totalQueries": 1', '"totalQueries": 1, "totalQueries": 1')

@@ -43,7 +43,8 @@ def read_result(path):
         or not timestamp
         or not isinstance(queries, list)
         or not queries
-        or result.get("totalQueries") != len(queries)
+        or type(result.get("totalQueries")) is not int
+        or result["totalQueries"] != len(queries)
         or not all(validate_query(query) for query in queries)
         or len({query["queryId"] for query in queries}) != len(queries)
         or type(result.get("hybridWins")) is not int
@@ -51,6 +52,7 @@ def read_result(path):
         or type(result.get("hybridWinRate")) not in (int, float)
         or not math.isclose(result["hybridWinRate"], result["hybridWins"] / len(queries))
         or not isinstance(result.get("caveat"), str)
+        or result["hybridWins"] / len(queries) < 0.80
         or result.get("thesisValidated") is not True
     ):
         raise ValueError(f"{path}: expected a complete, passing benchmark result")
