@@ -24,7 +24,9 @@ using Hexalith.Memories.Server.Tests.Authentication;
 using Hexalith.Memories.Server.Tests.EventStoreIntegration;
 using Hexalith.Memories.Server.Workflows;
 
+using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -129,6 +131,36 @@ public sealed class RestoreImportRetryTests : IDisposable
 
         await _workflows.Received(1).GetWorkflowStateAsync(Arg.Any<string>(), false, Arg.Any<CancellationToken>());
         await _staging.Received(releaseStaging ? 1 : 0).DeleteAsync(StagingKey, CancellationToken.None);
+    }
+
+    [Theory]
+    [InlineData("/api/v1/tenants/{tenantId}/import")]
+    [InlineData("/api/v1/tenants/{tenantId}/cases/{caseId}/import")]
+    public async Task PostImport_EnforcesTheDocumentedStreamingLimit(string template)
+    {
+        const long MaxBytes = 512L * 1024 * 1024;
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        StubUpload();
+        _staging.StageAsync(Tenant, Arg.Any<string>(), Arg.Any<Stream>(), MaxBytes, Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<string>(new InvalidDataException("Payload exceeded limit")));
+
+        using var host = CreateHost();
+        using HttpClient client = CreateAuthorizedClient(host);
+        RouteEndpoint route = host.Services.GetRequiredService<EndpointDataSource>().Endpoints
+            .OfType<RouteEndpoint>()
+            .Single(endpoint => endpoint.RoutePattern.RawText == template);
+        route.Metadata.GetMetadata<IRequestSizeLimitMetadata>().ShouldNotBeNull().MaxRequestBodySize.ShouldBe(MaxBytes);
+
+        using StringContent content = new(Payload, Encoding.UTF8, "application/json");
+        string path = template.Replace("{tenantId}", Tenant, StringComparison.Ordinal)
+            .Replace("{caseId}", "case-1", StringComparison.Ordinal);
+        using HttpResponseMessage response = await client.PostAsync(path, content, cancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.RequestEntityTooLarge);
+        (await response.Content.ReadFromJsonAsync<ErrorResponse>(MemoriesJsonContext.Options, cancellationToken))
+            .ShouldNotBeNull().Code.ShouldBe("IMPORT_TOO_LARGE");
+        await _staging.Received(1).StageAsync(Tenant, Arg.Any<string>(), Arg.Any<Stream>(), MaxBytes, Arg.Any<CancellationToken>());
+        await _workflows.DidNotReceiveWithAnyArgs().ScheduleNewWorkflowAsync(default!, default!, default!, default, default);
     }
 
     public void Dispose() => _factory.Dispose();

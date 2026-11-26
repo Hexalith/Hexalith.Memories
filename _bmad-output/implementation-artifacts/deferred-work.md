@@ -4037,7 +4037,8 @@ resolution: Historical publication requires authenticated HTTP 404 and the struc
 origin: migrated from legacy ledger ("Deferred from: code review of 26-2-backup-and-restore (2026-07-15)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/26-2-backup-and-restore.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/26-2-backup-and-restore.md` summary: [MEDIUM] Add representative boundary coverage for the documented 512 MiB / approximately 100K-unit restore contract. evidence: The current fidelity integration restores three small units and `RedisChunkReadStreamTests` reads five mocked bytes; neither observes the endpoint ceiling, real multi-chunk staging, retention renewal, or high-cardinality workflow paging. Re-open trigger: restore-size/staging hardening or the first supported large-tenant recovery rehearsal.
-status: open
+status: done 2026-11-26
+resolution: Both HTTP import routes pin 512 MiB and map limit rejection to 413. Live Redis verifies byte-exact staging and all key TTLs at the ceiling, cleanup and one-byte-over rejection. Workflow tests cover 1,001 pages, including the 3-ID tail and cleanup ordering.
 
 ### DW-569: Distinguish "manifest unknown" from transient errors in remote registry inspect so a transient failure cannot bypass the digest-conflict fail-closed guard before push.
 
