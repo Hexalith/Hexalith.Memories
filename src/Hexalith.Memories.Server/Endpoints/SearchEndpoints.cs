@@ -334,8 +334,8 @@ internal static class SearchEndpoints
                         return SearchError("GRAPH_TIMEOUT", SearchEndpointDegradationResponses.BuildGraphTimeoutResponse());
                     }
 
-                    result = await EnrichResultWithCaseAttributionAsync(result, caseService, tenantId, cancellationToken);
-                    result = await EnrichResultWithAnnotationCountsAsync(result, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
+                    result = await SearchResultEnrichment.EnrichResultWithCaseAttributionAsync(result, caseService, tenantId, cancellationToken);
+                    result = await SearchResultEnrichment.EnrichResultWithAnnotationCountsAsync(result, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
                     if (explain)
                     {
                         result = result with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("graph") };
@@ -530,8 +530,8 @@ internal static class SearchEndpoints
                                 enabledAxes.ToArray()));
                     }
 
-                    hybridResult = await EnrichHybridResultWithCaseAttributionAsync(hybridResult, caseService, tenantId, cancellationToken);
-                    hybridResult = await EnrichHybridResultWithAnnotationCountsAsync(hybridResult, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
+                    hybridResult = await SearchResultEnrichment.EnrichHybridResultWithCaseAttributionAsync(hybridResult, caseService, tenantId, cancellationToken);
+                    hybridResult = await SearchResultEnrichment.EnrichHybridResultWithAnnotationCountsAsync(hybridResult, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
                     hybridResult = SearchResponseMetadataApplier.ApplyHybrid(
                         hybridResult,
                         tokenBudget,
@@ -649,8 +649,8 @@ internal static class SearchEndpoints
                             SearchEndpointDegradationResponses.BuildBackendUnavailableResponse(httpContext, logger, "nl", tenantId, ex));
                     }
 
-                    searchResult = await EnrichResultWithCaseAttributionAsync(searchResult, caseService, tenantId, cancellationToken);
-                    searchResult = await EnrichResultWithAnnotationCountsAsync(searchResult, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
+                    searchResult = await SearchResultEnrichment.EnrichResultWithCaseAttributionAsync(searchResult, caseService, tenantId, cancellationToken);
+                    searchResult = await SearchResultEnrichment.EnrichResultWithAnnotationCountsAsync(searchResult, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
                     if (explain)
                     {
                         searchResult = searchResult with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("nl") };
@@ -769,8 +769,8 @@ internal static class SearchEndpoints
                             return SearchError("GRAPH_TIMEOUT", SearchEndpointDegradationResponses.BuildGraphTimeoutResponse());
                         }
 
-                        result = await EnrichResultWithCaseAttributionAsync(result, caseService, tenantId, cancellationToken);
-                        result = await EnrichResultWithAnnotationCountsAsync(result, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
+                        result = await SearchResultEnrichment.EnrichResultWithCaseAttributionAsync(result, caseService, tenantId, cancellationToken);
+                        result = await SearchResultEnrichment.EnrichResultWithAnnotationCountsAsync(result, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
                         if (explain)
                         {
                             result = result with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("semantic") };
@@ -847,8 +847,8 @@ internal static class SearchEndpoints
                         return SearchError("GRAPH_TIMEOUT", SearchEndpointDegradationResponses.BuildGraphTimeoutResponse());
                     }
 
-                    syntacticResult = await EnrichResultWithCaseAttributionAsync(syntacticResult, caseService, tenantId, cancellationToken);
-                    syntacticResult = await EnrichResultWithAnnotationCountsAsync(syntacticResult, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
+                    syntacticResult = await SearchResultEnrichment.EnrichResultWithCaseAttributionAsync(syntacticResult, caseService, tenantId, cancellationToken);
+                    syntacticResult = await SearchResultEnrichment.EnrichResultWithAnnotationCountsAsync(syntacticResult, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
                     if (explain)
                     {
                         syntacticResult = syntacticResult with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("syntactic") };
@@ -927,8 +927,8 @@ internal static class SearchEndpoints
                             SearchEndpointDegradationResponses.BuildBackendUnavailableResponse(httpContext, logger, "semantic", tenantId, ex));
                     }
 
-                    searchResult = await EnrichResultWithCaseAttributionAsync(searchResult, caseService, tenantId, cancellationToken);
-                    searchResult = await EnrichResultWithAnnotationCountsAsync(searchResult, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
+                    searchResult = await SearchResultEnrichment.EnrichResultWithCaseAttributionAsync(searchResult, caseService, tenantId, cancellationToken);
+                    searchResult = await SearchResultEnrichment.EnrichResultWithAnnotationCountsAsync(searchResult, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
                     if (explain)
                     {
                         searchResult = searchResult with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("semantic") };
@@ -964,8 +964,8 @@ internal static class SearchEndpoints
                         SearchEndpointDegradationResponses.BuildBackendUnavailableResponse(httpContext, logger, "syntactic", tenantId, ex));
                 }
 
-                syntacticDefault = await EnrichResultWithCaseAttributionAsync(syntacticDefault, caseService, tenantId, cancellationToken);
-                syntacticDefault = await EnrichResultWithAnnotationCountsAsync(syntacticDefault, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
+                syntacticDefault = await SearchResultEnrichment.EnrichResultWithCaseAttributionAsync(syntacticDefault, caseService, tenantId, cancellationToken);
+                syntacticDefault = await SearchResultEnrichment.EnrichResultWithAnnotationCountsAsync(syntacticDefault, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
                 if (explain)
                 {
                     syntacticDefault = syntacticDefault with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("syntactic") };
@@ -1052,226 +1052,6 @@ internal static class SearchEndpoints
         };
     }
 
-    private static async Task<SearchResult> EnrichResultWithCaseAttributionAsync(
-        SearchResult result,
-        CaseService caseService,
-        string tenantId,
-        CancellationToken cancellationToken)
-    {
-        if (result.Results.Count == 0)
-        {
-            return result;
-        }
-
-        List<string> caseIds = result.Results
-            .Where(r => r.CaseId is not null)
-            .Select(r => r.CaseId!)
-            .Distinct()
-            .ToList();
-
-        if (caseIds.Count == 0)
-        {
-            return result;
-        }
-
-        Dictionary<string, string> caseNames = await caseService.ResolveNamesAsync(tenantId, caseIds, cancellationToken).ConfigureAwait(false);
-
-        List<ScoredResult> enrichedResults = result.Results
-            .Select(r => r.CaseId is not null && caseNames.TryGetValue(r.CaseId, out string? name)
-                ? r with { CaseName = name }
-                : r)
-            .ToList();
-
-        List<CaseGroupSummary> caseGroups = BuildCaseGroups(enrichedResults, caseNames);
-
-        return result with
-        {
-            Results = enrichedResults,
-            CaseGroups = caseGroups.Count > 0 ? caseGroups : null,
-        };
-    }
-
-    private static async Task<HybridSearchResult> EnrichHybridResultWithCaseAttributionAsync(
-        HybridSearchResult result,
-        CaseService caseService,
-        string tenantId,
-        CancellationToken cancellationToken)
-    {
-        if (result.Results.Count == 0)
-        {
-            return result;
-        }
-
-        List<string> caseIds = result.Results
-            .Where(r => r.CaseId is not null)
-            .Select(r => r.CaseId!)
-            .Distinct()
-            .ToList();
-
-        if (caseIds.Count == 0)
-        {
-            return result;
-        }
-
-        Dictionary<string, string> caseNames = await caseService.ResolveNamesAsync(tenantId, caseIds, cancellationToken).ConfigureAwait(false);
-
-        List<FusedScoredResult> enrichedResults = result.Results
-            .Select(r => r.CaseId is not null && caseNames.TryGetValue(r.CaseId, out string? name)
-                ? r with { CaseName = name }
-                : r)
-            .ToList();
-
-        List<CaseGroupSummary> caseGroups = enrichedResults
-            .Where(r => r.CaseId is not null)
-            .GroupBy(r => r.CaseId!)
-            .Select(g => new CaseGroupSummary(g.Key, caseNames.GetValueOrDefault(g.Key, g.Key), g.Count()))
-            .OrderByDescending(c => c.ResultCount)
-            .ToList();
-
-        return result with
-        {
-            Results = enrichedResults,
-            CaseGroups = caseGroups.Count > 0 ? caseGroups : null,
-        };
-    }
-
-    private static async Task<SearchResult> EnrichResultWithAnnotationCountsAsync(
-        SearchResult result,
-        IGraphQueryBuilder graphQueryBuilder,
-        IConnectionMultiplexer falkorDb,
-        string tenantId,
-        CancellationToken cancellationToken)
-    {
-        if (result.Results.Count == 0)
-        {
-            return result;
-        }
-
-        List<string> muIds = result.Results.Select(r => r.MemoryUnitId).Distinct().ToList();
-        if (muIds.Count == 0)
-        {
-            return result;
-        }
-
-        Dictionary<string, int> counts = await LoadAnnotationCountsAsync(
-            graphQueryBuilder,
-            falkorDb,
-            tenantId,
-            muIds,
-            cancellationToken).ConfigureAwait(false);
-
-        if (counts.Count == 0)
-        {
-            return result;
-        }
-
-        List<ScoredResult> enriched = result.Results
-            .Select(r => counts.TryGetValue(r.MemoryUnitId, out int count) ? r with { AnnotationsCount = count } : r)
-            .ToList();
-
-        return result with { Results = enriched };
-    }
-
-    private static async Task<HybridSearchResult> EnrichHybridResultWithAnnotationCountsAsync(
-        HybridSearchResult result,
-        IGraphQueryBuilder graphQueryBuilder,
-        IConnectionMultiplexer falkorDb,
-        string tenantId,
-        CancellationToken cancellationToken)
-    {
-        if (result.Results.Count == 0)
-        {
-            return result;
-        }
-
-        List<string> muIds = result.Results.Select(r => r.MemoryUnitId).Distinct().ToList();
-        if (muIds.Count == 0)
-        {
-            return result;
-        }
-
-        Dictionary<string, int> counts = await LoadAnnotationCountsAsync(
-            graphQueryBuilder,
-            falkorDb,
-            tenantId,
-            muIds,
-            cancellationToken).ConfigureAwait(false);
-
-        if (counts.Count == 0)
-        {
-            return result;
-        }
-
-        List<FusedScoredResult> enriched = result.Results
-            .Select(r => counts.TryGetValue(r.MemoryUnitId, out int count) ? r with { AnnotationsCount = count } : r)
-            .ToList();
-
-        return result with { Results = enriched };
-    }
-
-    private static async Task<Dictionary<string, int>> LoadAnnotationCountsAsync(
-        IGraphQueryBuilder graphQueryBuilder,
-        IConnectionMultiplexer falkorDb,
-        string tenantId,
-        IReadOnlyList<string> memoryUnitIds,
-        CancellationToken cancellationToken)
-    {
-        if (memoryUnitIds.Count == 0)
-        {
-            return [];
-        }
-
-        try
-        {
-            (string query, IDictionary<string, object> parameters) = graphQueryBuilder.BuildBatchCountAnnotations(memoryUnitIds);
-            NFalkorDB.FalkorDB falkor = new(falkorDb.GetDatabase());
-            NFalkorDB.ResultSet countResult = await falkor.SelectGraph(tenantId).QueryAsync(query, parameters)
-                .WaitAsync(TimeSpan.FromSeconds(10), cancellationToken)
-                .ConfigureAwait(false);
-
-            Dictionary<string, int> counts = [];
-            foreach (NFalkorDB.Record record in countResult)
-            {
-                if (!TryReadAnnotationCount(record, out string? memoryUnitId, out int count) ||
-                    string.IsNullOrWhiteSpace(memoryUnitId) ||
-                    count <= 0)
-                {
-                    continue;
-                }
-
-                counts[memoryUnitId] = count;
-            }
-
-            return counts;
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch
-        {
-            return [];
-        }
-    }
-
-    private static bool TryReadAnnotationCount(NFalkorDB.Record record, out string? memoryUnitId, out int count)
-    {
-        memoryUnitId = null;
-        count = 0;
-
-        try
-        {
-            memoryUnitId = record.GetValue<string>("muId");
-            long parsedCount = record.GetValue<long>("count");
-            count = checked((int)parsedCount);
-            return !string.IsNullOrWhiteSpace(memoryUnitId);
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
     private static IReadOnlyDictionary<string, string>? ReadAttributeFilters(IQueryCollection query)
     {
         const string Prefix = "attribute.";
@@ -1294,17 +1074,6 @@ internal static class SearchEndpoints
         }
 
         return filters.Count == 0 ? null : filters;
-    }
-
-    private static List<CaseGroupSummary> BuildCaseGroups(
-        IReadOnlyList<ScoredResult> results, Dictionary<string, string> caseNames)
-    {
-        return results
-            .Where(r => r.CaseId is not null)
-            .GroupBy(r => r.CaseId!)
-            .Select(g => new CaseGroupSummary(g.Key, caseNames.GetValueOrDefault(g.Key, g.Key), g.Count()))
-            .OrderByDescending(c => c.ResultCount)
-            .ToList();
     }
 
     // Story 7.5 Rev 1.3 (Task 11.1/11.2): partial Program sentinel enables

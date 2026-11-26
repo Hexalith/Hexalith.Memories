@@ -75,6 +75,7 @@ public sealed class ServerEndpointAuthorizationTests : IDisposable
     [Theory]
     [InlineData("/api/v1/tenants/tenant-b/handlers/mismatches")]
     [InlineData("/api/v1/tenants/tenant-b/telemetry/summary")]
+    [InlineData("/api/v1/tenants/tenant-b/cases/case-1/members")]
     [InlineData("/api/v1/tenants/tenant-b/cases/case-1/memory-units/memory-1")]
     [InlineData("/api/v1/tenants/tenant-b/traverse?startNodeId=memory-1")]
 
@@ -288,6 +289,23 @@ public sealed class ServerEndpointAuthorizationTests : IDisposable
         using HttpResponseMessage response = await client.PostAsync("/events/ingest", content, TestContext.Current.CancellationToken);
 
         response.StatusCode.ShouldNotBe(HttpStatusCode.Unauthorized);
+    }
+
+    [Theory]
+    [InlineData(MemoriesRoutes.CaseMembers, "GET")]
+    [InlineData(MemoriesRoutes.CaseMember, "PUT")]
+    [InlineData(MemoriesRoutes.CaseMember, "DELETE")]
+    [InlineData(MemoriesRoutes.TenantVerify, "POST")]
+    [InlineData(MemoriesRoutes.TenantTelemetrySummary, "GET")]
+    [InlineData(MemoriesRoutes.Handlers, "GET")]
+    [InlineData(MemoriesRoutes.TenantHandlerMismatches, "GET")]
+    public void DecomposedRoutes_AreRegisteredOnceAndRequireAuthorization(string route, string method)
+    {
+        RouteEndpoint endpoint = GetRouteEndpoints().Single(candidate =>
+            string.Equals(candidate.RoutePattern.RawText, route, StringComparison.Ordinal)
+            && candidate.Metadata.GetMetadata<HttpMethodMetadata>()?.HttpMethods.Contains(method) == true);
+
+        endpoint.Metadata.GetMetadata<IAllowAnonymous>().ShouldBeNull();
     }
 
     [Fact]

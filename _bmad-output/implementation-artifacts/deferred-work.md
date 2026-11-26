@@ -3768,7 +3768,8 @@ resolution: Deletion preserves the structured 503 when rollback fails and logs a
 origin: migrated from legacy ledger ("Deferred from: bmad-dev-auto review of spec-25-1-program-cs-decomposition (2026-07-06)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-25-1-program-cs-decomposition.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-25-1-program-cs-decomposition.md` summary: Large extracted endpoint and service-registration files remain candidates for further focused decomposition. evidence: The review noted that behavior was moved into per-resource files, but `SearchEndpoints`, `CasesEndpoints`, `TenantLifecycleEndpoints`, and `MemoriesServerServiceCollectionExtensions` remain large. Story 25.1 intentionally stopped at per-resource mechanical extraction to preserve behavior; finer-grained slices should be a follow-up once the route surface is stable.
-status: open
+status: done 2026-11-26
+resolution: Case membership, tenant diagnostics, search result enrichment, and workflow registration are now separate units. Runtime tests verify the moved route templates, verbs, and authorization metadata.
 
 ### DW-535: The existing benchmark comparator happy-state progress indicator needs source-owned browser accessibility remediation before that state can be claimed axe-clean.
 
