@@ -26,6 +26,7 @@ Complete the next six actionable deferred items in ledger order. Implement and v
 - DW-560 exercises five ordered outcomes against the live Aspire API, with a source-admission fence for the hosted ownership conflict. The route test controls the exact competing claim and per-unit write failure. The Redis claim script validates/removes the sorted-set entry before deleting the failed-unit hash and dedup record, preserving both if the index write errors.
 - DW-561 needs a worker that can hold real workflows at requested transitions. DW-562 and DW-563 need an isolated performance lane with a stable baseline.
 - DW-564 scopes a failure to an exact query embedding input in the test-owned provider. The live API and Redis/FalkorDB remain active. The control query and healthy retry verify that other work and subsequent semantic retrieval still succeed.
+- DW-565 bounds tenant and case verification to five seconds. Case verification reads the stored case record and preserves its tenant check independently of optional graph enrichment. A valid cached tenant status can allow tenant-wide search to proceed to the existing axis-specific responses. The outage test verifies each axis actually contributes after both storage resources restart.
 
 ## File Scope
 
@@ -53,6 +54,11 @@ Allowed files for this story:
 - `tests/Hexalith.Memories.IntegrationTests/Ingestion/EmbeddingProviderFailureIntegrationTests.cs` - semantic-isolated degradation
 - `tests/Hexalith.Memories.IntegrationTests/Search/DegradationIntegrationTests.cs` - share search test helpers
 - `tests/Hexalith.Memories.Integration.NightlyTests/Search/DegradationIntegrationTests.Nightly.cs` - use shared search test helpers
+- `docs/dev/health-checks.md` - document control-plane search availability
+- `src/Hexalith.Memories.Server/Cases/CaseService.cs` - reuse tenant-checked stored case reads
+- `src/Hexalith.Memories.Server/Endpoints/SearchEndpoints.cs` - bound and map search control-plane failure
+- `tests/Hexalith.Memories.Server.Tests/Endpoints/SearchEndpointContractTests.cs` - timeout, ownership, and denial-before-dependency regressions
+- `tests/Hexalith.Memories.Integration.NightlyTests/Search/SearchControlPlaneOutageIntegrationTests.cs` - full outage and independent-axis recovery
 
 ## Verification
 
@@ -64,6 +70,7 @@ Allowed files for this story:
 - DW-559 review verification also compared native Dapr workflow keys and checked the persisted reverse lookup for unexpected ingestion admission. The isolated final run of `UrlIngestion_PrivateIpWithAllowDisabled_ShouldRejectBeforeScheduling` passed.
 - DW-560 `ReIngestBulk_MixedOutcomes_EnumeratedInResponse`, `PostBulkReIngest_WithLostClaimAndRegistryError_ReturnsFiveOrderedOutcomes`, and `ClaimWriteFailurePreservesTheFailedUnitAndOnlyOneRetryCanClaimAfterRepair` passed.
 - DW-564 `HybridSearch_WhenQueryEmbeddingFails_DegradesOnlySemanticAndRecoversAsync` and the existing `OllamaOidcFakeServerTests` passed.
+- DW-565 `HybridSearch_AllStorageBackendsStopped_FailsClosedAndRecovers` and the existing FalkorDB-only degradation scenario passed on real Docker resources. The Server route suite verified stalled lookup, authorization precedence, and graph-independent ownership checks.
 
 ## Cross-Tenant Negative Evidence
 
@@ -82,3 +89,11 @@ Allowed files for this story:
 **Command:** `dotnet tests/Hexalith.Memories.IntegrationTests/bin/Release/net11.0/Hexalith.Memories.IntegrationTests.dll -method '*ReIngestBulk_MixedOutcomes_EnumeratedInResponse'`
 
 **Result:** Passed against the Aspire topology. Another tenant is denied. A sibling case receives case mismatch for every known failed unit. Neither attempt changes the identified records or source inventory.
+
+**Surfaces:** DW-565 search tenant verification and Redis case ownership.
+
+**Tests:** `HybridSearch_TenantStateOutageFailsClosedBeforeRetrieval`, `CaseScopedSyntacticSearch_VerifiesCaseOwnershipWithoutRequiringGraph`
+
+**Command:** `dotnet tests/Hexalith.Memories.Server.Tests/bin/Release/net11.0/Hexalith.Memories.Server.Tests.dll -class '*SearchEndpointContractTests'`
+
+**Result:** Passed. A tenant outside bearer claims is denied before Dapr or Redis reads. A case hash marked as another tenant is unavailable under the authorized route and no graph enrichment occurs during the ownership check.

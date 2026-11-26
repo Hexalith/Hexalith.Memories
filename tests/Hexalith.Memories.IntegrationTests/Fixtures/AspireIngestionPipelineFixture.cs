@@ -1661,6 +1661,46 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             $"{Environment.NewLine}{FormatRecentLogs(_logProvider.GetEntriesSince(logStartIndex), maxLines: 40)}");
     }
 
+    /// <summary>Changes the fixture-owned Redis Stack resource state in place.</summary>
+    /// <param name="running">Whether to start the resource.</param>
+    /// <param name="cancellationToken">Cancellation for the resource command and convergence wait.</param>
+    internal async Task SetRedisStackRunningAsync(bool running, CancellationToken cancellationToken)
+    {
+        DistributedApplication app = _app
+            ?? throw new InvalidOperationException("The Aspire topology has not been started.");
+        const string resource = "memories-vectors";
+        using CancellationTokenSource commandCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        commandCts.CancelAfter(ResourceHealthyTimeout);
+        await ExecuteResourceCommandAsync(
+            app,
+            resource,
+            running ? KnownResourceCommands.StartCommand : KnownResourceCommands.StopCommand,
+            commandCts.Token).ConfigureAwait(false);
+
+        if (running)
+        {
+            _ = await app.ResourceNotifications.WaitForResourceHealthyAsync(resource, commandCts.Token)
+                .ConfigureAwait(false);
+            while (true)
+            {
+                try
+                {
+                    _ = await RedisConnection.GetDatabase().PingAsync().WaitAsync(commandCts.Token)
+                        .ConfigureAwait(false);
+                    return;
+                }
+                catch (Exception ex) when (ex is RedisConnectionException or RedisTimeoutException)
+                {
+                    await Task.Delay(EndpointPollInterval, commandCts.Token).ConfigureAwait(false);
+                }
+            }
+        }
+
+        _ = await app.ResourceNotifications.WaitForResourceAsync(
+            resource, [KnownResourceStates.Exited, KnownResourceStates.Finished], commandCts.Token)
+            .ConfigureAwait(false);
+    }
+
     /// <summary>Stops the FalkorDB resource in place through the Aspire resource command service.</summary>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A task that completes when Aspire reports the resource stopped.</returns>

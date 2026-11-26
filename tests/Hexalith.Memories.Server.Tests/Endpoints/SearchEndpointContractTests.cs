@@ -628,6 +628,90 @@ public sealed class SearchEndpointContractTests : IDisposable
         GetSingleHeaderValue(response, "Retry-After").ShouldBe("5");
     }
 
+    [Theory]
+    [InlineData("acme-search", HttpStatusCode.OK)]
+    [InlineData("other-tenant", HttpStatusCode.NotFound)]
+    public async Task CaseScopedSyntacticSearch_VerifiesCaseOwnershipWithoutRequiringGraph(
+        string storedTenant,
+        HttpStatusCode expectedStatus)
+    {
+        StubTenantActive("acme-search");
+        _factory.RedisDatabase.HashGetAllAsync("acme-search:case:case-1", Arg.Any<CommandFlags>())
+            .Returns([new HashEntry("id", "case-1"), new HashEntry("tenantId", storedTenant)]);
+        _factory.RedisDatabase.ExecuteAsync("FT.PROFILE", Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())
+            .Returns(RedisResult.Create([
+                RedisResult.Create([RedisResult.Create(0)]),
+                RedisResult.Create([RedisResult.Create([RedisResult.Create((RedisValue)"Warning")])]),
+            ]));
+        using HttpClient client = _factory.CreateClient();
+        using HttpResponseMessage response = await client.GetAsync(
+            "/api/v1/search?tenantId=acme-search&caseId=case-1&query=canary&axis=syntactic",
+            TestContext.Current.CancellationToken);
+
+        response.StatusCode.ShouldBe(expectedStatus);
+        await _factory.FalkorDbDatabase.DidNotReceive()
+            .ExecuteAsync(Arg.Any<string>(), Arg.Any<object[]>());
+        await _factory.FalkorDbDatabase.DidNotReceive()
+            .ExecuteAsync(Arg.Any<string>(), Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>());
+    }
+
+    [Theory]
+    [InlineData(false, HttpStatusCode.ServiceUnavailable, "DAPR_UNAVAILABLE")]
+    [InlineData(true, HttpStatusCode.Forbidden, "TENANT_FORBIDDEN")]
+    public async Task HybridSearch_TenantStateOutageFailsClosedBeforeRetrieval(
+        bool otherTenant,
+        HttpStatusCode expectedStatus,
+        string expectedCode)
+    {
+        string tenant = otherTenant ? "tenant-outside-claims" : "acme-search";
+        _factory.DaprClient.GetStateAsync<StoredTenantRegistryEntry?>(
+            StoreName, $"tenant-registry-{tenant}", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<StoredTenantRegistryEntry?>(new Dapr.DaprException("private state-store diagnostic")));
+        using HttpClient client = _factory.CreateClient();
+        using HttpResponseMessage response = await client.GetAsync(
+            $"/api/v1/search?tenantId={tenant}&axis=hybrid&axes=syntactic,graph&caseId=case-1&query=canary",
+            TestContext.Current.CancellationToken);
+
+        response.StatusCode.ShouldBe(expectedStatus);
+        (await ReadErrorResponseAsync(response)).Code.ShouldBe(expectedCode);
+        (await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).ShouldNotContain("private state-store");
+        await _factory.DaprClient.Received(otherTenant ? 0 : 1).GetStateAsync<StoredTenantRegistryEntry?>(
+            StoreName, $"tenant-registry-{tenant}", cancellationToken: Arg.Any<CancellationToken>());
+        await _factory.RedisDatabase.DidNotReceive().HashGetAllAsync($"{tenant}:case:case-1", Arg.Any<CommandFlags>());
+        await _factory.RedisDatabase.DidNotReceive().ExecuteAsync("FT.PROFILE", Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>());
+        if (!otherTenant)
+        {
+            GetSingleHeaderValue(response, "Retry-After").ShouldBe("5");
+        }
+    }
+
+    [Fact]
+    public async Task HybridSearch_StalledTenantStateReadReturnsBoundedUnavailable()
+    {
+        TaskCompletionSource<StoredTenantRegistryEntry?> unfinished = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        _factory.DaprClient.GetStateAsync<StoredTenantRegistryEntry?>(
+            StoreName, "tenant-registry-acme-search", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(unfinished.Task);
+        using HttpClient client = _factory.CreateClient();
+        using CancellationTokenSource testTimeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        testTimeout.CancelAfter(TimeSpan.FromSeconds(10));
+
+        try
+        {
+            using HttpResponseMessage response = await client.GetAsync(
+                "/api/v1/search?tenantId=acme-search&axis=hybrid&axes=syntactic&query=canary",
+                testTimeout.Token);
+            response.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable);
+            GetSingleHeaderValue(response, "Retry-After").ShouldBe("5");
+            (await ReadErrorResponseAsync(response)).Code.ShouldBe("DAPR_UNAVAILABLE");
+            unfinished.Task.IsCompleted.ShouldBeFalse();
+        }
+        finally
+        {
+            unfinished.TrySetResult(null);
+        }
+    }
+
     public void Dispose() => _factory.Dispose();
 
     private void StubTenantActive(string tenantId)

@@ -13,6 +13,8 @@ using Dapr.Actors.Client;
 using Dapr.Client;
 using Dapr.Workflow;
 
+using Grpc.Core;
+
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Indexing;
 using Hexalith.Memories.Server.Activities.Ingestion;
@@ -46,6 +48,8 @@ using static Hexalith.Memories.Server.Endpoints.EndpointValidationHelpers;
 /// <summary>Maps the Memories Server endpoints for this resource area.</summary>
 internal static class SearchEndpoints
 {
+    private static readonly TimeSpan ControlPlaneReadTimeout = TimeSpan.FromSeconds(5);
+
     /// <summary>Maps this resource area's endpoints.</summary>
     /// <param name="app">The endpoint route builder.</param>
     /// <returns>The endpoint route builder.</returns>
@@ -194,6 +198,14 @@ internal static class SearchEndpoints
                 return result;
             }
 
+            IResult SearchControlPlaneUnavailable()
+            {
+                httpContext.Response.Headers.RetryAfter = "5";
+                return SearchError("DAPR_UNAVAILABLE", ErrorResults.DaprUnavailableResult(
+                    "Search could not verify the tenant or case state.",
+                    "Check service readiness and retry the same search."));
+            }
+
             try
             {
                 if (string.IsNullOrWhiteSpace(tenantId))
@@ -214,7 +226,23 @@ internal static class SearchEndpoints
                     return SearchError(tenantValidationError.Code, Results.BadRequest(tenantValidationError));
                 }
 
-                ErrorResponse? tenantStatusError = await tenantGuard.ValidateTenantActiveAsync(tenantId, cancellationToken);
+                using CancellationTokenSource controlPlaneTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                controlPlaneTimeout.CancelAfter(ControlPlaneReadTimeout);
+                CancellationToken controlPlaneToken = controlPlaneTimeout.Token;
+                ErrorResponse? tenantStatusError;
+                try
+                {
+                    tenantStatusError = await tenantGuard.ValidateTenantActiveAsync(tenantId, controlPlaneToken)
+                        .WaitAsync(controlPlaneToken);
+                }
+                catch (Exception ex) when (
+                    IsTenantStateUnavailable(ex)
+                    || ex is OperationCanceledException && controlPlaneTimeout.IsCancellationRequested)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    return SearchControlPlaneUnavailable();
+                }
+
                 if (tenantStatusError is not null)
                 {
                     return SearchTenantRejected(tenantStatusError.Code, TenantStatusGuard.ToHttpResult(tenantStatusError));
@@ -244,7 +272,21 @@ internal static class SearchEndpoints
                 // Validate caseId exists before executing search
                 if (!string.IsNullOrWhiteSpace(caseId))
                 {
-                    Case? targetCase = await caseService.GetCaseAsync(tenantId, caseId, cancellationToken);
+                    Case? targetCase;
+                    try
+                    {
+                        targetCase = await caseService.ReadCaseRecordAsync(tenantId, caseId)
+                            .WaitAsync(controlPlaneToken);
+                    }
+                    catch (Exception ex) when (
+                        ex is RedisConnectionException or RedisTimeoutException
+                        || ex is RedisServerException redis && SearchEndpointDegradationLog.IsTransientRedisError(redis)
+                        || ex is OperationCanceledException && controlPlaneTimeout.IsCancellationRequested)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        return SearchControlPlaneUnavailable();
+                    }
+
                     if (targetCase is null)
                     {
                         return SearchError(
@@ -991,6 +1033,10 @@ internal static class SearchEndpoints
 
         return app;
     }
+
+    private static bool IsTenantStateUnavailable(Exception exception)
+        => exception is Dapr.DaprException or HttpRequestException or TimeoutException
+            or RpcException { StatusCode: StatusCode.Unavailable or StatusCode.Internal or StatusCode.DeadlineExceeded };
 
     private static bool IsSemanticConfigUnavailable(Exception ex)
     {

@@ -365,10 +365,28 @@ internal sealed partial class CaseService
     /// </remarks>
     public async Task<Case?> GetCaseAsync(string tenantId, string caseId, CancellationToken cancellationToken)
     {
+        Case? parsed = await ReadCaseRecordAsync(tenantId, caseId).ConfigureAwait(false);
+        if (parsed is null)
+        {
+            return null;
+        }
+
+        NFalkorDB.FalkorDB falkor = new(_falkorDb.GetDatabase());
+
+        // Graph ID is tenantId, NOT caseId — each tenant has one FalkorDB database
+        int memoryUnitCount = await GetMemoryUnitCountSafe(falkor, tenantId, caseId).ConfigureAwait(false);
+        return parsed with { MemoryUnitCount = memoryUnitCount };
+    }
+
+    /// <summary>Reads and verifies the case record without enriching it from the graph.</summary>
+    /// <param name="tenantId">The route tenant identifier.</param>
+    /// <param name="caseId">The case identifier.</param>
+    /// <returns>The verified case record, or null when absent or owned by another tenant.</returns>
+    internal async Task<Case?> ReadCaseRecordAsync(string tenantId, string caseId)
+    {
         IDatabase db = _redis.GetDatabase();
         string redisKey = $"{tenantId}:case:{caseId}";
         HashEntry[] entries = await db.HashGetAllAsync(redisKey).ConfigureAwait(false);
-
         if (entries.Length == 0)
         {
             return null;
@@ -381,13 +399,7 @@ internal sealed partial class CaseService
             return null;
         }
 
-        NFalkorDB.FalkorDB falkor = new(_falkorDb.GetDatabase());
-
-        // Graph ID is tenantId, NOT caseId — each tenant has one FalkorDB database
-        int memoryUnitCount = await GetMemoryUnitCountSafe(falkor, tenantId, caseId).ConfigureAwait(false);
-
-        Case? parsed = ParseCaseFromHash(entries, tenantId);
-        return parsed is null ? null : parsed with { MemoryUnitCount = memoryUnitCount };
+        return ParseCaseFromHash(entries, tenantId);
     }
 
     public async Task<CaseStatusDetail?> GetCaseStatusAsync(string tenantId, string caseId, CancellationToken cancellationToken)

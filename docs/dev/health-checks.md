@@ -32,6 +32,11 @@ The status-code map lives at [`Extensions.cs`](../../src/Hexalith.Memories.Servi
 
 All five registrations share a single 3-second timeout (`Program.cs` — `healthCheckTimeout`). Backend checks fail as `Degraded` so one backend outage does not remove the pod from service rotation — the request pipeline's per-capability routing (Story 5.6) handles the reduced capability mix.
 
+Search returns `503 DAPR_UNAVAILABLE` with `Retry-After: 5` when it cannot verify
+tenant or case state within its five-second control-plane budget. In the Aspire
+topology, a Redis Stack outage can interrupt this verification because Redis
+serves both Dapr state and search storage.
+
 MCP adds `memories-upstream` to readiness. An unavailable Server is immediately `Unhealthy`; there is no initial degraded strike window because MCP cannot serve safely without that dependency. `/api/v1/health` is anonymous at the OIDC layer so the health call cannot deadlock on bearer acquisition, but the DAPR application-token middleware and deny-by-default workload ACL still constrain it to the `memories-mcp` sidecar identity.
 
 ## Response shape

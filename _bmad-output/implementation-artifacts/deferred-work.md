@@ -4011,7 +4011,8 @@ resolution: A test-owned provider injects one failure for the exact query in the
 origin: migrated from legacy ledger ("Story 26.3 Explicit Integration Deferrals (2026-07-13)"), 2026-09-01
 location: tests/Hexalith.Memories.IntegrationTests/Search/DegradationIntegrationTests.cs
 reason: - **26.3-ALL-BACKENDS-STATESTORE - accepted.** Stopping Redis Stack and FalkorDB also removes workflow, actor, pub/sub, and state-store availability. - ID: 26.3-ALL-BACKENDS-STATESTORE - Status: accepted - Source story: 26-3-integration-stub-closure - Target artifact: tests/Hexalith.Memories.IntegrationTests/Search/DegradationIntegrationTests.cs - Re-open trigger: define and implement the supported API contract for total Redis-backed control-plane collapse, then add bounded recovery assertions against that real dependency graph. - Rationale: The legacy `ALL_BACKENDS_UNAVAILABLE` comment assumes independent retrieval containers that the AppHost does not have. Owner: platform reliability maintainer.
-status: open
+status: done 2026-11-26
+resolution: Search fails closed with bounded 503 DAPR_UNAVAILABLE and Retry-After when tenant or case state cannot be verified. The nightly test stops both storage backends, verifies refusal, and checks persisted state and all three search scores after recovery.
 decision: 2026-09-01 Define fail-closed 503 — Define a bounded unavailable response and recovery contract, then add integration evidence.
 decision: 2026-09-01 Define fail-closed 503 — Define a bounded unavailable response and recovery contract, then add integration evidence.
 
