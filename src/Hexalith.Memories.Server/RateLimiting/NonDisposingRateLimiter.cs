@@ -10,23 +10,21 @@ using System.Threading.RateLimiting;
 /// <summary>
 /// Exposes a shared rate limiter to an owning framework without transferring disposal ownership.
 /// </summary>
-internal sealed class NonDisposingRateLimiter(RateLimiter inner) : RateLimiter
+internal sealed class NonDisposingRateLimiter(InboundRequestRateLimiter owner, string partitionKey) : RateLimiter
 {
-    private readonly RateLimiter _inner = inner ?? throw new ArgumentNullException(nameof(inner));
+    /// <inheritdoc />
+    public override TimeSpan? IdleDuration => owner.GetIdleDuration(partitionKey);
 
     /// <inheritdoc />
-    public override TimeSpan? IdleDuration => _inner.IdleDuration;
-
-    /// <inheritdoc />
-    public override RateLimiterStatistics? GetStatistics() => _inner.GetStatistics();
+    public override RateLimiterStatistics? GetStatistics() => owner.GetStatistics(partitionKey);
 
     /// <inheritdoc />
     protected override ValueTask<RateLimitLease> AcquireAsyncCore(
         int permitCount,
         CancellationToken cancellationToken)
-        => _inner.AcquireAsync(permitCount, cancellationToken);
+        => owner.AcquireAsync(partitionKey, permitCount, cancellationToken);
 
     /// <inheritdoc />
     protected override RateLimitLease AttemptAcquireCore(int permitCount)
-        => _inner.AttemptAcquire(permitCount);
+        => owner.AttemptAcquire(partitionKey, permitCount);
 }

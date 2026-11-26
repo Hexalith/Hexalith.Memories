@@ -114,17 +114,15 @@ internal static class MemoriesServerServiceCollectionExtensions
                 .Build());
         builder.Services.Configure<InboundRateLimitOptions>(
             builder.Configuration.GetSection(InboundRateLimitOptions.SectionName));
-        InboundRateLimitOptions inboundRateLimitOptions = builder.Configuration
-            .GetSection(InboundRateLimitOptions.SectionName)
-            .Get<InboundRateLimitOptions>() ?? new InboundRateLimitOptions();
-        var inboundRequestRateLimiter = new InboundRequestRateLimiter(inboundRateLimitOptions);
-        builder.Services.AddSingleton(inboundRequestRateLimiter);
-        builder.Services.AddRateLimiter(options =>
-        {
-            options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
-                InboundRateLimitPartitionFactory.CreatePartition(httpContext, inboundRequestRateLimiter));
-            options.OnRejected = InboundRateLimitPartitionFactory.OnRejectedAsync;
-        });
+        builder.Services.AddSingleton<InboundRequestRateLimiter>();
+        builder.Services.AddRateLimiter();
+        builder.Services.AddOptions<RateLimiterOptions>()
+            .Configure<InboundRequestRateLimiter>((options, limiter) =>
+            {
+                options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+                    InboundRateLimitPartitionFactory.CreatePartition(httpContext, limiter));
+                options.OnRejected = InboundRateLimitPartitionFactory.OnRejectedAsync;
+            });
 
         // Story 9.2 Task 1: DAPR Conversation API registration — backs GenerateNaturalLanguageDescriptionActivity.
         // The component name (default "llm") is resolved at activity-call time from NaturalLanguageDescriptionOptions.

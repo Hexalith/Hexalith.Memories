@@ -3830,15 +3830,17 @@ origin: migrated from legacy ledger ("Deferred from: code review of 25-3-shared-
 location: _bmad-output/implementation-artifacts/25-3-shared-route-table-and-client-consolidation.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/25-3-shared-route-table-and-client-consolidation.md` summary: Published commit `8e92fe7` advanced five root submodule pointers even though Story 25.3 excluded submodule edits. evidence: Removing those historical gitlink changes now would require rewriting published history or rolling dependencies back across later `main` commits. The user finalized remediation commit `eb959d7` without authorizing either destructive operation, so the scope deviation remains documented rather than mutating current dependency state.
 status: open
+note: 2026-11-26 — Skipped. The published scope deviation is recorded in Story 25.3. The remaining options would rewrite published history or roll back current dependencies.
 
 ### DW-543: NonDisposingRateLimiter has no disposed-state guard; a host-shutdown ordering race can call a disposed inner limiter and throw ObjectDisposedException on an in-flight request.
 
 origin: migrated from legacy ledger ("Deferred from: code review of spec-25-4-contract-persistence-separation-and-route-versioning (2026-07-12)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-25-4-contract-persistence-separation-and-route-versioning.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-25-4-contract-persistence-separation-and-route-versioning.md` summary: NonDisposingRateLimiter has no disposed-state guard; a host-shutdown ordering race can call a disposed inner limiter and throw ObjectDisposedException on an in-flight request. evidence: `src/Hexalith.Memories.Server/RateLimiting/NonDisposingRateLimiter.cs:24` delegates `AcquireAsyncCore`/`AttemptAcquireCore` blindly to `_inner`; `InboundRequestRateLimiter.DisposeAsync` (`src/Hexalith.Memories.Server/RateLimiting/InboundRequestRateLimiter.cs:56`) disposes every shared inner `FixedWindowRateLimiter` while the ASP.NET partitioned limiter may still hold the `NonDisposingRateLimiter` wrappers. Low-impact (shutdown only) and the fix (disposed-state guard or shutdown-ordering) is a design choice, so deferred rather than patched. The wrapper correctly solves the framework idle-eviction disposal it was written for; only the shutdown corner is unguarded.
-status: open
+status: done 2026-11-26
 decision: 2026-09-06 Add lifecycle guard — Add a shutdown-state guard and concurrency tests.
 decision: 2026-09-06 Add lifecycle guard — Add a shutdown-state guard and concurrency tests.
+resolution: The host owns and disposes the shared limiter. Shutdown denies queued, existing-partition, and late-partition requests while framework partition eviction leaves the owner usable.
 
 ### DW-544: The array element values of `deletedBackends`/`compensatedBackends` changed vocabulary (RediSearch→syntactic, RedisVector→semantic, FalkorDB→graph, RedisDataKeys→state); the JSON keys are pinned but no test pins the workflow-emitted values.
 
