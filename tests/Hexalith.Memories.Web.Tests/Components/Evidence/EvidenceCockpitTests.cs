@@ -538,21 +538,37 @@ public sealed class EvidenceCockpitTests : FrontComposerTestBase
         component.Find("[data-testid='mem-trust-source-count']").TextContent.ShouldContain("sources unavailable");
     }
 
-    [Fact]
-    public void MemoriesTrustStrip_UnauthorizedStateWithAuthorizedScope_ShouldHideSourceCount()
+    [Theory]
+    [InlineData(EvidencePacketIsolationStatus.Unknown, EvidencePacketState.PendingExpansion, EvidencePacketOmissionReason.TokenBudget)]
+    [InlineData(EvidencePacketIsolationStatus.Unauthorized, EvidencePacketState.PendingExpansion, EvidencePacketOmissionReason.TokenBudget)]
+    [InlineData(EvidencePacketIsolationStatus.Authorized, EvidencePacketState.Unauthorized, EvidencePacketOmissionReason.TokenBudget)]
+    [InlineData(EvidencePacketIsolationStatus.Authorized, EvidencePacketState.PendingExpansion, EvidencePacketOmissionReason.Authorization)]
+    [InlineData((EvidencePacketIsolationStatus)99, EvidencePacketState.PendingExpansion, EvidencePacketOmissionReason.TokenBudget)]
+    public void MemoriesTrustStrip_RestrictivePacket_ShouldSuppressTrustMetadata(
+        EvidencePacketIsolationStatus isolation,
+        EvidencePacketState state,
+        EvidencePacketOmissionReason omission)
     {
-        EvidencePacket packet = EvidencePacketFixtures.UnauthorizedPacket() with
+        EvidencePacket packet = EvidencePacketFixtures.CompressedPacket();
+        packet = packet with
         {
-            Scope = EvidencePacketFixtures.UnauthorizedPacket().Scope with
-            {
-                IsolationStatus = EvidencePacketIsolationStatus.Authorized,
-            },
+            Scope = packet.Scope with { IsolationStatus = isolation },
+            State = state,
+            OmittedDetails = packet.OmittedDetails with { Reason = omission },
         };
         IRenderedComponent<MemoriesTrustStrip> component = Render<MemoriesTrustStrip>(parameters => parameters
             .Add(p => p.Packet, packet));
 
         component.Find("[data-testid='mem-trust-source-count']").TextContent.ShouldContain("sources unavailable");
+        foreach (string label in new[] { "Confidence", "Freshness", "Token budget" })
+        {
+            IElement badge = component.Find($"[aria-label='{label}: Unavailable']");
+            badge.GetAttribute("data-fc-badge-slot").ShouldBe("Neutral");
+        }
+
         component.Markup.ShouldNotContain("1 source");
+        component.Markup.ShouldNotContain("Confidence: Strong");
+        component.Markup.ShouldNotContain("Token budget: compressed");
     }
 
     [Theory]

@@ -36,7 +36,9 @@
     [Parameter]
     public TrustStripMode Mode { get; set; } = TrustStripMode.Packet;
 
-    private bool ShowPacketValues => Mode == TrustStripMode.Packet;
+    private bool ShowPacketValues => Mode == TrustStripMode.Packet
+        && Packet.Scope.IsolationStatus == EvidencePacketIsolationStatus.Authorized
+        && !EvidenceDisplay.IsRestrictiveScope(Packet);
 
     private string ConfidenceLabel => ShowPacketValues
         ? EvidenceDisplay.Label(Packet.Evidence.EvidenceStrength, Localizer)
@@ -52,7 +54,7 @@
     {
         get
         {
-            if (!ShowPacketValues)
+            if (Mode != TrustStripMode.Packet)
             {
                 return null;
             }
@@ -89,9 +91,7 @@
     {
         get
         {
-            if (!ShowPacketValues
-                || EvidenceDisplay.IsRestrictiveScope(Packet.Scope.IsolationStatus)
-                || HealthState == EvidencePacketState.Unauthorized)
+            if (!ShowPacketValues)
             {
                 return EvidenceDisplay.SourceCountLabel(0, sourcesAvailable: false, Localizer);
             }

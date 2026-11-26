@@ -3807,9 +3807,10 @@ resolution: The MCP executor records the tool name, exception type, and HRESULT 
 origin: migrated from legacy ledger ("Deferred from: bmad-dev-auto follow-up review of spec-25-7-evidence-cockpit-ux-conformance (2026-07-11)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-25-7-evidence-cockpit-ux-conformance.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-25-7-evidence-cockpit-ux-conformance.md` summary: The trust strip still renders the packet's confidence (evidence strength) and freshness for an unauthorized or unknown-isolation packet, even though the source-count badge is now fail-closed to "sources unavailable"; the residual confidence/freshness badges leak a coarse "strong evidence exists" inference past the authorization wall. evidence: `MemoriesTrustStrip.razor` gates the source-count badge on `Packet.State == Unauthorized || IsRestrictiveScope(Packet.Scope.IsolationStatus)` but gates `ConfidenceLabel`, `FreshnessText`, and `TokenBudgetText` only on `ShowPacketValues` (Packet mode), so a restrictive packet carrying real `EvidenceStrength`/`Freshness` still shows "Confidence: Strong" and the actual freshness while the count is suppressed. The exposure is pre-existing — the trust strip has always rendered confidence/freshness in Packet mode — and was surfaced incidentally because Story 25.7 hardened only the source-count badge. The intent scopes fail-closed suppression to source/axis/graph detail and explicitly forbids introducing new trust semantics, so tightening the trust-summary badges is out of scope for this story and needs a focused fail-closed trust-surface decision.
-status: open
+status: done 2026-11-26
 decision: 2026-09-06 Suppress all metadata — Suppress all trust metadata for unauthorized callers.
 decision: 2026-09-06 Suppress all metadata — Suppress all trust metadata for unauthorized callers.
+resolution: The trust strip withholds confidence, freshness, source counts, and token-budget details for unauthorized and unverified packets. Component tests cover each restrictive signal and preserve authorized rendering.
 
 ### DW-540: Release preflight does not recognize semantic-release's alternate first-release version message when no prior tag exists.
 
