@@ -365,9 +365,17 @@ internal sealed class RestoreDataPlaneActivity : WorkflowActivity<RestoreDataPla
             return RestoreEdgeOutcome.SkippedByDesign;
         }
 
-        if (!Enum.TryParse(edge.Origin, ignoreCase: true, out EdgeOrigin origin))
+        if (!Enum.TryParse(edge.Origin, ignoreCase: true, out EdgeOrigin origin)
+            || !Enum.IsDefined(origin)
+            || !string.Equals(edge.Origin, origin.ToString(), StringComparison.OrdinalIgnoreCase))
         {
-            origin = EdgeOrigin.Inferred;
+            _logger.LogWarning(
+                "Skipping restore of edge {EdgeType} ({SourceId} -> {TargetId}) for tenant {TenantId}: unrecognized origin.",
+                edge.EdgeType,
+                edge.SourceId,
+                edge.TargetId,
+                tenantId);
+            return RestoreEdgeOutcome.SkippedInvalid;
         }
 
         string query;

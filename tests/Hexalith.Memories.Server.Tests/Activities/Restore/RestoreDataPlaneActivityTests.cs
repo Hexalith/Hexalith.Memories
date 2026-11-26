@@ -182,6 +182,29 @@ public class RestoreDataPlaneActivityTests
         result.RestoredMemoryUnitCount.ShouldBe(2);
     }
 
+    [Theory]
+    [InlineData("future-origin")]
+    [InlineData("99")]
+    [InlineData("0")]
+    [InlineData("explicit,inferred")]
+    public async Task RunAsync_EdgeWithUnsupportedOrigin_SkipsEdgeBeforeGraphWrites(string origin)
+    {
+        Fixture fixture = Fixture.Create(TenantEnvelope.Replace(
+            "\"origin\": \"inferred\"", $"\"origin\": \"{origin}\"", StringComparison.Ordinal));
+
+        RestoreDataPlaneResult result = await fixture.Activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new RestoreDataPlaneInput("acme", null, "acme:import:staging:instance-1", "operator"));
+
+        result.RestoredEdgeCount.ShouldBe(0);
+        result.SkippedRecords.ShouldBe(1);
+        result.RestoredMemoryUnitCount.ShouldBe(2);
+        fixture.Builder.DidNotReceive().BuildMergeStubNode(Arg.Any<string>(), Arg.Any<DateTimeOffset>());
+        fixture.Builder.DidNotReceive().BuildRestoreEdge(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<EdgeType>(), Arg.Any<float>(),
+            Arg.Any<EdgeOrigin>(), Arg.Any<DateTimeOffset>(), Arg.Any<string?>(), Arg.Any<float?>());
+    }
+
     [Fact]
     public async Task RunAsync_MemoryUnitWithBlankCaseId_RejectsBeforeMutation()
     {

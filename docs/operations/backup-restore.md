@@ -385,6 +385,10 @@ submit_and_wait_restore "$TENANT_EXPORT" \
 #   "$MEMORIES_BASE_URL/api/v1/tenants/$TENANT/cases/$CASE/import"
 ```
 
+Restore accepts the exported edge origins `explicit` and `inferred`. If an edge has an
+unsupported origin, restore counts it in `skippedRecords` and continues with other records.
+Review any nonzero skipped count before declaring the restore complete.
+
 ### Client errors
 
 | HTTP | Code | Meaning |

@@ -20,7 +20,7 @@ namespace Hexalith.Memories.Contracts.V1;
 /// <param name="TargetId">Target memory unit identifier.</param>
 /// <param name="EdgeType">Edge type name (camelCase string, e.g. <c>causedBy</c>, <c>supports</c>).</param>
 /// <param name="Confidence">Edge confidence in the range [0, 1].</param>
-/// <param name="Origin">Origin of the edge (for example, <c>human</c>, <c>inferred</c>).</param>
+/// <param name="Origin">Origin of the edge (for example, <c>explicit</c>, <c>inferred</c>).</param>
 /// <param name="CreatedAt">When the edge was created.</param>
 /// <param name="VerifiedBy">Identity of the operator who promoted the edge confidence (Story 4.3); <see langword="null"/> if never promoted.</param>
 /// <param name="PreviousConfidence">Previous confidence value before the most recent promotion; <see langword="null"/> if never promoted.</param>

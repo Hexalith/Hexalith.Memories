@@ -3902,6 +3902,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of spec-26-1-pr
 location: _bmad-output/implementation-artifacts/spec-26-1-production-deployment-artifacts.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-26-1-production-deployment-artifacts.md` summary: [LOW — cleanup] Two divergent DAPR config sources, plus an orphaned in-namespace `eventstore` identity. evidence: `deploy/dapr/config.yaml` + `deploy/dapr/components/*` were rewritten but are not consumed by the authoritative `kubectl kustomize` render (which uses `deploy/kubernetes/base/dapr/*`); they must be hand-synced (one file is load-bearing only because the Server `.csproj` copies it into the image). `eventstore` gets a namespace-local ServiceAccount/Role/RoleBinding with no workload deployed here (external publisher by design). Re-open trigger: any DAPR component/config edit, to avoid the two copies drifting.
 status: open
+note: 2026-11-26 — Skipped. Standalone and Kubernetes templates still serve separate documented consumers. Retiring the reserved EventStore publisher identity requires the owning platform and downstream publishers to confirm their migration.
 
 ### DW-552: [LOW — hardening] Server/MCP images are tag-only with `imagePullPolicy: IfNotPresent` while data stores are digest-pinned (`@sha256:`).
 
@@ -3909,6 +3910,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of spec-26-1-pr
 location: _bmad-output/implementation-artifacts/spec-26-1-production-deployment-artifacts.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-26-1-production-deployment-artifacts.md` summary: [LOW — hardening] Server/MCP images are tag-only with `imagePullPolicy: IfNotPresent` while data stores are digest-pinned (`@sha256:`). evidence: `deploy/kubernetes/base/{server,mcp}-deployment.yaml`. Safe only while semantic-release tags stay immutable; a reused tag lets nodes silently run a stale cached layer with no digest to detect it. Re-open trigger: a supply-chain/image-provenance hardening decision.
 status: open
+note: 2026-11-26 — Skipped. Production deploy and recovery currently consume release-generated tags. Digest promotion needs a coordinated release and rollback policy.
 
 ### DW-553: [LOW — unverified] `readOnlyRootFilesystem: true` with only `/tmp` writable may fault ASP.NET Core Data Protection.
 
@@ -3916,6 +3918,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of spec-26-1-pr
 location: _bmad-output/implementation-artifacts/spec-26-1-production-deployment-artifacts.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-26-1-production-deployment-artifacts.md` summary: [LOW — unverified] `readOnlyRootFilesystem: true` with only `/tmp` writable may fault ASP.NET Core Data Protection. evidence: The default Data Protection key ring path (`~/.aspnet/DataProtection-Keys`) is not under the single writable `emptyDir` at `/tmp`; if antiforgery/cookie/ephemeral key material is ever touched, the app faults or warns. Unverified — no gate that ran boots the app under the read-only rootfs. Re-open trigger: the disposable-cluster rollout running, or adding any Data-Protection-dependent feature.
 status: open
+note: 2026-11-26 — Skipped. The current Server and MCP APIs are bearer-authenticated and have no data-protection key-ring consumer. Read-only-root startup is covered by the production verification path.
 
 ### DW-554: [LOW] Case-scoped restore does not enforce per-record case membership.
 
@@ -3928,7 +3931,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of story-26.2 (2026-07-13)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/26-2-backup-and-restore.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/26-2-backup-and-restore.md` summary: [LOW] Unknown edge `origin` is silently coerced to `Inferred` on restore. evidence: `RestoreDataPlaneActivity.RestoreEdgeAsync` (`:232-235`) rewrites an unrecognized/future `origin` to `EdgeOrigin.Inferred` rather than preserving or rejecting it — a fidelity change on an audit field the story claims to round-trip exactly. Only fires on corrupt/foreign export data. Re-open trigger: an export produced by a newer edge-origin schema.
-status: open
+status: done 2026-11-26
+resolution: Restore skips unsupported edge origins before graph writes, counts them in skippedRecords, and continues restoring valid records. The export contract and restore runbook name the supported origin values.
 
 ### DW-556: [LOW] No operation-level idempotency token — concurrent/duplicate import POSTs run duplicate full re-embeds.
 

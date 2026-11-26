@@ -2,7 +2,7 @@
 title: 'Complete six deferred trust, lifecycle, deployment, and restore fixes'
 type: 'bugfix'
 created: '2026-11-26'
-status: 'in-progress'
+status: 'done'
 route: 'oneshot'
 baseline_commit: '66aa2f26ed4818768e3ae541cafe5907b16705eb'
 review_loop_iteration: 0
@@ -18,6 +18,13 @@ Implement the next six actionable deferred items in ledger order. Suppress restr
 </frozen-after-approval>
 
 ## Implementation Notes
+
+- DW-539 leaves the generic authorization or availability state visible and withholds all packet-derived trust values outside authorized scope.
+- DW-543 registers the shared limiter with host-owned disposal and protects acquisition and partition creation with the same shutdown guard.
+- DW-544 exercises real workflow outputs and checks the exact serialized backend names.
+- DW-548 grants storage access through the pod group. The rollout verifier uses local PVs that apply group ownership to the data directory.
+- DW-550 reads the named Component from the Kubernetes API with the projected service account and CA bundle.
+- DW-555 counts unsupported edge origins as invalid records before creating graph stubs and continues with valid records.
 
 ## File Scope
 
@@ -50,3 +57,17 @@ Allowed files for this story:
 - `tests/Hexalith.Memories.Server.Tests/NaturalLanguage/KubernetesComponentCacheReaderTests.cs` - DW-550 API transport and TTL regressions
 - `src/Hexalith.Memories.Contracts/V1/ExportedEdge.cs` - DW-555 public origin vocabulary
 - `docs/operations/backup-restore.md` - DW-555 skipped-edge recovery guidance
+
+## Review Triage Log
+
+- DW-543. Host registration now disposes the shared limiter and the tests exercise actual host disposal, waiting requests, and both acquisition modes during shutdown.
+- DW-548. Rollback guidance preserves the newer datastore identities or restores PVC permissions offline before returning to the old identities.
+- DW-550. A live Component read replaces the rendered copy. The reader rejects duplicate and secret-backed TTLs, supports integer TTLs, and verifies API TLS with the in-cluster address and CA bundle. Tests cover host selection, restricted API access, and the response format.
+- DW-555. The public export example and restore runbook use the canonical origin values.
+
+## Verification
+
+- The Release solution build and all 69 focused Server tests passed.
+- The 88 focused evidence-cockpit tests and all six Chromium specimen checks passed.
+- Disposable kind runs proved persisted data survived root-to-non-root rollout and a second restart. Live API verification observed a changed TTL and denied reads outside the scoped Component grant.
+- The offline functional-target suite passed all 26 cases.
