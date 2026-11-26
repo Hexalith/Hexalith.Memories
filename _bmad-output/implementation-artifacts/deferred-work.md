@@ -4087,7 +4087,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of 26-2-backup-and-restore (2026-07-15)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-contract-doc-drift-guard-hardening.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-contract-doc-drift-guard-hardening.md` summary: Generalize positive route discovery beyond Program.cs and top-level `Endpoints/*Endpoints.cs` files so nested endpoint files, controllers, and differently named registration files cannot evade the route-surface guard. evidence: Review confirmed the approved hardening preserves the pre-existing route-source scope; a future endpoint outside that scope would not enter the source-derived route count or exact-row tie.
-status: open
+status: done 2026-11-26
+resolution: The contract uses the real Server EndpointDataSource, including route groups, arbitrary registration files and controllers, to pin each registered application method/template and the exact documentation count. A grouped multi-method fixture verifies the discovery.
 
 ### DW-576: Generalize the `/process` negative route scan across every production host and controller source so an unexpected route cannot evade the refutation guard by appearing outside the currently enumerated files.
 

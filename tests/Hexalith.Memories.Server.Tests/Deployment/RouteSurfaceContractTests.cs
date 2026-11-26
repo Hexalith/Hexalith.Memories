@@ -8,38 +8,22 @@ namespace Hexalith.Memories.Server.Tests.Deployment;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Reflection;
-using System.Text.RegularExpressions;
 
 using Hexalith.Memories.EventStore;
+using Hexalith.Memories.Server.Tests.EventStoreIntegration;
 using Hexalith.Memories.ServiceDefaults.Health;
 using Hexalith.Memories.TestHelpers.Documentation;
 
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
+
 using Shouldly;
 
-using MemoriesRoutes = Hexalith.Memories.Contracts.V1.MemoriesRoutes;
-
-/// <summary>Story 18.3 AC3 — drift guard for the invocable route/operation-surface contract published at
-/// <c>docs/operations/route-surface.md</c>. The novel guard over the Story 18.2
-/// <see cref="DeploymentConfigurationContractTests"/> precedent is the <b>forward code → doc tie</b>: the
-/// direct <c>app.MapX(MemoriesRoutes.X, …)</c> route references are regex-extracted from the authoritative
-/// <c>src/Hexalith.Memories.Server/Program.cs</c> and decomposed endpoint source files (read via the
-/// repo-root marker walk) and each is asserted documented, so a newly added endpoint cannot slip through
-/// undocumented. A count tie defends against silent omission and phantom rows; the pub/sub, health, MCP,
-/// and <c>/process</c> ties anchor the remaining surface to code constants and source text. QA gap-closure
-/// additions also guard the AC2 Dapr service-invocation operation-mapping section, the AC4 publish-via-DAPR
-/// statement, and the <c>HXL002</c> experimental-handler marker (code ↔ doc), promoting those from
-/// review-enforced to test-enforced.</summary>
+/// <summary>Guards the documented REST, pub/sub, health, MCP and /process operation surfaces.</summary>
 public sealed class RouteSurfaceContractTests
 {
     private const string DocRelativePath = "docs/operations/route-surface.md";
-
-    // Matches only a direct `app.MapGet(MemoriesRoutes.X, …)` route-table reference. Requiring the comma
-    // immediately after the member rejects both inline literals and composed expressions such as
-    // `MemoriesRoutes.Search + "/internal"`, preserving the single-source route invariant.
-    // Group 1 = HTTP verb; Group 2 = MemoriesRoutes member name.
-    private static readonly Regex MappedRouteRegex =
-        new(@"app\.Map(Get|Post|Put|Delete|Patch)\(\s*MemoriesRoutes\.([A-Za-z0-9_]+)\s*,", RegexOptions.Compiled);
 
     [Fact]
     public void RouteSurfaceDoc_Exists()
@@ -56,16 +40,14 @@ public sealed class RouteSurfaceContractTests
         // ties to the documented row form `<VERB> <path>` (a backtick code span) so illustrative prose that
         // mentions a path substring (e.g. the Dapr `method/api/v1/…` operation example) cannot satisfy it — only
         // a real method+path table row can.
-        string routeSources = ReadMappedRouteSources();
         var document = new MarkdownContractDocument(ReadDoc());
         document.GetTableHeader("REST `/api/v1/*` operation surface").ShouldBe(["Area", "Method + path", "Purpose"]);
         IReadOnlyList<IReadOnlyList<string>> rows = document.GetTableRows("REST `/api/v1/*` operation surface");
 
-        IReadOnlyList<(string Verb, string Path)> mappedRoutes = ExtractMappedRoutes(routeSources)
-            .Where(static route => route.Path.StartsWith("/api/v1/", System.StringComparison.Ordinal))
-            .ToArray();
-        mappedRoutes.Count.ShouldBeGreaterThan(0, "Failed to extract any app.MapX route literal from Program.cs or decomposed endpoint files — the extraction regex or marker walk is broken.");
-        mappedRoutes.Distinct().Count().ShouldBe(mappedRoutes.Count, "Each source route must be registered exactly once before it can be tied uniquely to the contract table.");
+        using EventStoreWebAppFactory factory = new();
+        IReadOnlyList<(string Verb, string Path)> mappedRoutes = GetApiRoutes(GetServerEndpoints(factory));
+        mappedRoutes.ShouldNotBeEmpty("The Server must register its documented REST endpoints.");
+        mappedRoutes.Distinct().Count().ShouldBe(mappedRoutes.Count, "Each HTTP method and route pattern must be registered once.");
 
         foreach ((string verb, string path) in mappedRoutes)
         {
@@ -80,19 +62,19 @@ public sealed class RouteSurfaceContractTests
     {
         // Count tie: defends against silent omission (fewer rows than routes) AND phantom rows (more rows
         // than routes). Both counts are emitted so the Change Log delta is visible on failure.
-        string routeSources = ReadMappedRouteSources();
         IReadOnlyList<IReadOnlyList<string>> rows = new MarkdownContractDocument(ReadDoc())
             .GetTableRows("REST `/api/v1/*` operation surface");
 
-        int sourceApiRouteCount = ExtractMappedRoutes(routeSources).Count(r => r.Path.StartsWith("/api/v1/", System.StringComparison.Ordinal));
+        using EventStoreWebAppFactory factory = new();
+        int sourceApiRouteCount = GetApiRoutes(GetServerEndpoints(factory)).Count;
         int documentedApiRowCount = rows.Count;
 
         documentedApiRowCount.ShouldBe(
             sourceApiRouteCount,
-            $"Documented /api/v1/ route rows ({documentedApiRowCount}) must equal the mapped /api/v1/ route literals in Program.cs and decomposed endpoint files ({sourceApiRouteCount}). Reconcile the route-surface table in {DocRelativePath}.");
+            $"Documented /api/v1/ route rows ({documentedApiRowCount}) must equal the registered application /api/v1/ routes ({sourceApiRouteCount}). Reconcile the route-surface table in {DocRelativePath}.");
 
         new MarkdownContractDocument(ReadDoc()).GetSection("Automated enforcement")
-            .ShouldContain($"currently **{sourceApiRouteCount}**", Case.Sensitive, "The narrative route count must stay tied to the source-derived count.");
+            .ShouldContain($"currently **{sourceApiRouteCount}**", Case.Sensitive, "The narrative route count must stay tied to the registered route count.");
     }
 
     [Fact]
@@ -119,18 +101,15 @@ public sealed class RouteSurfaceContractTests
     }
 
     [Fact]
-    public void RouteExtractor_AcceptsOnlyDirectRouteTableMembers()
+    public async Task RouteDiscovery_UsesComposedPatternsAndEveryDeclaredHttpMethod()
     {
-        const string Source = """
-            app.MapGet(MemoriesRoutes.Search, Handler);
-            app.MapGet(MemoriesRoutes.Search + "/internal", Handler);
-            app.MapGet("/api/v1/search", Handler);
-            """;
+        await using WebApplication app = WebApplication.CreateSlimBuilder().Build();
+        app.MapGroup("/api/v1").MapMethods("/composed", ["GET", "HEAD"], () => "ok");
+        app.MapGet(HealthEndpointPaths.DaprApiHealth, () => "healthy");
+        app.MapGet("/other", () => "outside REST");
 
-        IReadOnlyList<(string Verb, string Path)> routes = ExtractMappedRoutes(Source);
-
-        routes.Count.ShouldBe(1);
-        routes[0].ShouldBe(("Get", MemoriesRoutes.Search));
+        GetApiRoutes(((IEndpointRouteBuilder)app).DataSources.SelectMany(source => source.Endpoints))
+            .ShouldBe([("GET", "/api/v1/composed"), ("HEAD", "/api/v1/composed")]);
     }
 
     [Fact]
@@ -258,33 +237,30 @@ public sealed class RouteSurfaceContractTests
         diagnostics.ShouldBeEmpty($"{DocRelativePath} contains leaked tool-call markup: {string.Join("; ", diagnostics)}");
     }
 
-    private static IReadOnlyList<(string Verb, string Path)> ExtractMappedRoutes(string program)
-    {
-        // Story 25.3: routes are registered directly against MemoriesRoutes constants rather than inline or
-        // composed paths, so a matched `MemoriesRoutes.X` reference is resolved to its concrete value.
-        IReadOnlyDictionary<string, string> routeConstants = RouteConstantsByName();
-        List<(string Verb, string Path)> routes = [];
-        foreach (Match match in MappedRouteRegex.Matches(program))
-        {
-            string verb = match.Groups[1].Value;
-            string member = match.Groups[2].Value;
-            routeConstants.ContainsKey(member).ShouldBeTrue(
-                $"A route registration references MemoriesRoutes.{member}, but no matching public string constant exists on MemoriesRoutes — the route table and its consumers have drifted.");
-            string path = routeConstants[member];
+    private static IReadOnlyList<Microsoft.AspNetCore.Http.Endpoint> GetServerEndpoints(EventStoreWebAppFactory factory)
+        => factory.Services.GetRequiredService<EndpointDataSource>().Endpoints;
 
-            routes.Add((verb, path));
+    private static IReadOnlyList<(string Verb, string Path)> GetApiRoutes(
+        IEnumerable<Microsoft.AspNetCore.Http.Endpoint> endpoints)
+    {
+        List<(string Verb, string Path)> routes = [];
+        foreach (RouteEndpoint endpoint in endpoints.OfType<RouteEndpoint>())
+        {
+            string path = "/" + endpoint.RoutePattern.RawText.ShouldNotBeNull().TrimStart('/');
+            if (!path.StartsWith("/api/v1/", StringComparison.OrdinalIgnoreCase) ||
+                path.Equals(HealthEndpointPaths.DaprApiHealth, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            IReadOnlyList<string>? methods = endpoint.Metadata.GetMetadata<IHttpMethodMetadata>()?.HttpMethods;
+            methods.ShouldNotBeNull($"REST route '{path}' must restrict its HTTP methods.");
+            methods.ShouldNotBeEmpty($"REST route '{path}' must restrict its HTTP methods.");
+            routes.AddRange(methods.Select(method => (method.ToUpperInvariant(), path)));
         }
 
         return routes;
     }
-
-    // Reflects the public string constants declared on MemoriesRoutes into a name → value map so the extractor
-    // can resolve `MemoriesRoutes.X` route references back to their concrete `/api/v1/…` templates.
-    private static IReadOnlyDictionary<string, string> RouteConstantsByName()
-        => typeof(Hexalith.Memories.Contracts.V1.MemoriesRoutes)
-            .GetFields(BindingFlags.Public | BindingFlags.Static)
-            .Where(static f => f.IsLiteral && !f.IsInitOnly && f.FieldType == typeof(string))
-            .ToDictionary(static f => f.Name, static f => (string)f.GetRawConstantValue()!, System.StringComparer.Ordinal);
 
     private static string ReadMappedRouteSources()
     {

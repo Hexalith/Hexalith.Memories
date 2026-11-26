@@ -1,4 +1,4 @@
-<!-- Review cadence: update when an `app.MapX("/api/v1/…")` route is added/removed/renamed, when the pub/sub delivery or subscription-discovery route changes, when a health-probe path changes, or when the MCP transport route changes; otherwise quarterly — whichever comes first. Last reviewed: 2026-07-04. -->
+<!-- Review cadence: update when an application `/api/v1/*` route is added/removed/renamed, when the pub/sub delivery or subscription-discovery route changes, when a health-probe path changes, or when the MCP transport route changes; otherwise quarterly — whichever comes first. Last reviewed: 2026-07-04. -->
 
 # Invocable Route and Operation Surface Contract (Story 18.3)
 
@@ -145,10 +145,10 @@ The route templates, the pub/sub delivery and discovery routes, the topic env va
 ## Automated enforcement
 
 A structure-aware drift-guard test protects this contract:
-[`tests/Hexalith.Memories.Server.Tests/Deployment/RouteSurfaceContractTests.cs`](../../tests/Hexalith.Memories.Server.Tests/Deployment/RouteSurfaceContractTests.cs). It runs on every build (plain `[Fact]`s, no Docker/fixture, repo-root marker walk) and enforces:
+[`tests/Hexalith.Memories.Server.Tests/Deployment/RouteSurfaceContractTests.cs`](../../tests/Hexalith.Memories.Server.Tests/Deployment/RouteSurfaceContractTests.cs). It runs on every build in the Docker-free Server test project and enforces:
 
-- **Forward tie (code → exact row), the core sync guard:** every source-derived `app.Map(Get|Post|Put|Delete|Patch)(MemoriesRoutes.X, …)` route must be unique in source and appear exactly once as the normalized Method + path cell in the exact REST table.
-- **Count tie:** the number of extracted `/api/v1/*` source routes (currently **58**) must equal the REST table's data-row count — defending against silent omission, duplicate rows, and phantom rows.
+- **Forward tie (code → exact row), the core sync guard:** every registered application HTTP method and route pattern from the Server endpoint data source must be unique and appear exactly once as the normalized Method + path cell in the exact REST table.
+- **Count tie:** the number of registered application `/api/v1/*` routes (currently **58**, excluding the separate Dapr health probe) must equal the REST table's data-row count — defending against silent omission, duplicate rows, and phantom rows.
 - **Pub/sub constant tie (bidirectional):** the exact two-row pub/sub table is tied to `MapSubscribeHandler()`, `EventIngestionController.PubSubName`, `TopicEnvVar`, `[Route("events")]`, and `[HttpPost("ingest")]`.
 - **Health constant tie:** the exact three-row health table binds each path cell to its adjacent `HealthEndpointPaths.Health` / `.Alive` / `.Ready` constant cell.
 - **`/process` negative tie (code-tied):** asserts neither `Program.cs` nor `EventIngestionController.cs` contains a `/process` route literal, **and** that this document contains the explicit "no `/process`" statement.
