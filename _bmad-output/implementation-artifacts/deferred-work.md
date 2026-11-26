@@ -3939,7 +3939,8 @@ resolution: Restore skips unsupported edge origins before graph writes, counts t
 origin: migrated from legacy ledger ("Deferred from: code review of story-26.2 (2026-07-13)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/26-2-backup-and-restore.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/26-2-backup-and-restore.md` summary: [LOW] No operation-level idempotency token — concurrent/duplicate import POSTs run duplicate full re-embeds. evidence: `ImportEndpoints.HandleImportAsync` (`:147,164`) mints a fresh GUID instance id per request and unconditionally schedules a new `RestoreWorkflow`. End state converges (HSET overwrite + graph MERGE) so AC5's idempotency clause holds; the impact is doubled embedding-provider cost/load and interleaved writes on a retry/double-submit. Re-open trigger: an operator restore-cost incident, or a decision to reject a second in-flight restore per tenant.
-status: open
+status: done 2026-11-26
+resolution: Atomically reserve or read the tenant lease, return the existing workflow only after Dapr confirms it, and release staging on pre-scheduling cancellation. API retry and live Redis contention tests cover conflicts and tenant isolation.
 decision: 2026-09-06 Build idempotency — Add tenant-scoped idempotency and in-flight suppression.
 decision: 2026-09-06 Build idempotency — Add tenant-scoped idempotency and in-flight suppression.
 
@@ -3955,6 +3956,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-26.2 (
 location: _bmad-output/implementation-artifacts/26-2-backup-and-restore.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/26-2-backup-and-restore.md` summary: [LOW — hygiene, not a defect] Line-ending normalization churn folded into the feature commits. evidence: ~2,500 diff lines are LF→CRLF flips (correct direction, toward the repo's required CRLF standard), including `src/Hexalith.Memories.Server/Hosting/MemoriesServerServiceCollectionExtensions.cs` (959 lines, 0 substantive changes). Mixing a mass line-ending normalization into `feat` commits inflates the diff and can mask real edits. Re-open trigger: next time a bulk normalization is needed — isolate it in a dedicated `chore` commit.
 status: open
+note: 2026-11-26 — Skipped. This records historical line-ending churn and a rule for the next bulk normalization. This batch has no bulk normalization to isolate.
 
 ### DW-559: 26.3-PRIVATE-HOST-FIXTURE: accepted. The shared Aspire ingestion fixture sets `Ingestion__UrlFetcher__AllowPrivateHosts=true` before AppHost startup and cannot vary that startup-only option per test.
 

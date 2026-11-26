@@ -389,6 +389,9 @@ Restore accepts the exported edge origins `explicit` and `inferred`. If an edge 
 unsupported origin, restore counts it in `skippedRecords` and continues with other records.
 Review any nonzero skipped count before declaring the restore complete.
 
+An identical upload can reuse the active restore workflow once Dapr confirms it exists.
+If the first request is still validating the target or scheduling the workflow, retry the same upload after a short delay.
+
 ### Client errors
 
 | HTTP | Code | Meaning |

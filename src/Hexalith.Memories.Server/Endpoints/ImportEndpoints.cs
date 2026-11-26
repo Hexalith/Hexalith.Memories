@@ -44,7 +44,7 @@ internal static class ImportEndpoints
         ArgumentNullException.ThrowIfNull(app);
 
         app.MapPost(MemoriesRoutes.TenantImport, async (
-            DaprWorkflowClient workflowClient,
+            IDaprWorkflowClient workflowClient,
             TenantStatusGuard tenantGuard,
             IImportStagingStore stagingStore,
             IRestoreTargetGuard targetGuard,
@@ -56,7 +56,7 @@ internal static class ImportEndpoints
             .AddEndpointFilter<InboundRateLimitEndpointFilter>();
 
         app.MapPost(MemoriesRoutes.CaseImport, async (
-            DaprWorkflowClient workflowClient,
+            IDaprWorkflowClient workflowClient,
             TenantStatusGuard tenantGuard,
             IImportStagingStore stagingStore,
             IRestoreTargetGuard targetGuard,
@@ -69,7 +69,7 @@ internal static class ImportEndpoints
             .AddEndpointFilter<InboundRateLimitEndpointFilter>();
 
         app.MapGet(MemoriesRoutes.RestoreStatus, async (
-            DaprWorkflowClient workflowClient,
+            IDaprWorkflowClient workflowClient,
             string tenantId,
             string instanceId,
             CancellationToken cancellationToken) =>
@@ -81,7 +81,7 @@ internal static class ImportEndpoints
 
     private static async Task<IResult> HandleImportAsync(
         HttpContext context,
-        DaprWorkflowClient workflowClient,
+        IDaprWorkflowClient workflowClient,
         TenantStatusGuard tenantGuard,
         IImportStagingStore stagingStore,
         IRestoreTargetGuard targetGuard,
@@ -218,23 +218,46 @@ internal static class ImportEndpoints
         if (!lease.Acquired)
         {
             await stagingStore.DeleteAsync(stagingKey, CancellationToken.None);
-            string existingLocation = MemoriesRoutes.RestoreStatusLocation(tenantId, lease.InstanceId);
             if (lease.SameOperation)
             {
-                return Results.Accepted(
-                    existingLocation,
-                    new RestoreAcceptedResponse(lease.InstanceId, tenantId, caseId, manifest.Scope, existingLocation));
+                // The owner reserves the lease before checking the target or scheduling the workflow.
+                // A duplicate can only adopt an instance that Dapr confirms was actually scheduled.
+                try
+                {
+                    WorkflowState? state = await workflowClient.GetWorkflowStateAsync(
+                        lease.InstanceId,
+                        getInputsAndOutputs: false,
+                        cancellationToken);
+                    if (state is { Exists: true })
+                    {
+                        string existingLocation = MemoriesRoutes.RestoreStatusLocation(tenantId, lease.InstanceId);
+                        return Results.Accepted(
+                            existingLocation,
+                            new RestoreAcceptedResponse(lease.InstanceId, tenantId, caseId, manifest.Scope, existingLocation));
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    return ErrorResults.DaprUnavailableResult(
+                        "Restore workflow status could not be confirmed.",
+                        "Retry the same import when the workflow backend is available.");
+                }
             }
 
             return Results.Conflict(new ErrorResponse(
                 "RESTORE_TARGET_BUSY",
-                $"A restore already owns the target scope (workflow '{lease.InstanceId}').",
-                "Wait for that restore to finish before importing different content into the same target."));
+                "Another restore owns the tenant-wide restore lease.",
+                "For the same upload, retry when the workflow has been scheduled. For different content, wait for the active restore to finish."));
         }
 
         try
         {
             await targetGuard.EnsureCleanAsync(tenantId, caseId, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            await stagingStore.DeleteAsync(stagingKey, CancellationToken.None);
+            throw;
         }
         catch (ImportEnvelopeException ex) when (string.Equals(ex.Code, "RESTORE_TARGET_NOT_CLEAN", StringComparison.Ordinal))
         {
@@ -297,7 +320,7 @@ internal static class ImportEndpoints
     }
 
     private static async Task<IResult> ReadRestoreStatusAsync(
-        DaprWorkflowClient workflowClient,
+        IDaprWorkflowClient workflowClient,
         string tenantId,
         string instanceId,
         CancellationToken cancellationToken)

@@ -276,7 +276,10 @@ internal sealed class RedisImportStagingStore : IImportStagingStore
 
         string leaseKey = BuildLeaseKey(tenantId, caseId);
         string leaseValue = instanceId + "|" + hash.ToString();
-        if (await db.StringSetAsync(leaseKey, leaseValue, StagingTtl, When.NotExists).ConfigureAwait(false))
+        // SET NX GET returns the previous holder even if it releases the lease immediately afterward.
+        RedisValue existing = await db.StringSetAndGetAsync(leaseKey, leaseValue, StagingTtl, when: When.NotExists)
+            .ConfigureAwait(false);
+        if (existing.IsNull)
         {
             try
             {
@@ -290,11 +293,15 @@ internal sealed class RedisImportStagingStore : IImportStagingStore
             }
         }
 
-        RedisValue existing = await db.StringGetAsync(leaseKey).ConfigureAwait(false);
         string existingText = existing.ToString();
         int separator = existingText.IndexOf('|', StringComparison.Ordinal);
-        string existingInstance = separator > 0 ? existingText[..separator] : string.Empty;
-        string existingHash = separator > 0 ? existingText[(separator + 1)..] : string.Empty;
+        if (separator <= 0 || separator == existingText.Length - 1)
+        {
+            throw new InvalidDataException("The existing restore lease has invalid metadata.");
+        }
+
+        string existingInstance = existingText[..separator];
+        string existingHash = existingText[(separator + 1)..];
         if (string.Equals(existingHash, hash.ToString(), StringComparison.Ordinal))
         {
             return new RestoreLeaseResult(false, existingInstance, true);
