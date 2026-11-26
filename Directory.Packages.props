@@ -1,7 +1,7 @@
 <Project TreatAsLocalProperty="HexalithEventStoreVersion;MemoriesEventStoreMinimumVersion">
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
-    <HexalithFrontComposerVersion Condition="'$(HexalithFrontComposerVersion)' == ''">6.1.0</HexalithFrontComposerVersion>
+    <HexalithFrontComposerVersion Condition="'$(HexalithFrontComposerVersion)' == ''">6.2.0</HexalithFrontComposerVersion>
     <HexalithCommonsVersion Condition="'$(HexalithCommonsVersion)' == ''">3.0.4</HexalithCommonsVersion>
     <HexalithPolymorphicSerializationsVersion Condition="'$(HexalithPolymorphicSerializationsVersion)' == ''">2.0.2</HexalithPolymorphicSerializationsVersion>
     <!-- Define paths of the Hexalith packages props. -->
