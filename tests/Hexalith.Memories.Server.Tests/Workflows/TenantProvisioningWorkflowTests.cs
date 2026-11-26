@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Tests.Workflows;
 
+using System.Text.Json;
+
 using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
@@ -82,6 +84,24 @@ public class TenantProvisioningWorkflowTests
                 && i.Status == TenantStatus.Failed
                 && i.WorkflowInstanceId == TestInstanceId),
             Arg.Any<WorkflowTaskOptions>());
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenVerificationFails_ShouldSerializeCompensatedBackendNames()
+    {
+        TenantProvisioningInput input = new("tenant-1", "Tenant One") { VectorDimensions = 768 };
+        WorkflowContext context = CreateContext();
+        SetupHappyPath(context, input);
+        context.CallActivityAsync<bool>(nameof(VerifyTenantActivity), Arg.Any<TenantProvisioningInput>())
+            .Throws(CreateTaskFailedException());
+        TenantProvisioningWorkflow workflow = new();
+
+        TenantProvisioningResult result = await workflow.RunAsync(context, input);
+
+        result.Status.ShouldBe(TenantStatus.Failed);
+        JsonSerializer.SerializeToElement(result).GetProperty("compensatedBackends")
+            .EnumerateArray().Select(axis => axis.GetString())
+            .ShouldBe(["syntactic", "semantic", "graph"]);
     }
 
     [Fact]

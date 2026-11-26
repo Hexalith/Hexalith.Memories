@@ -3847,7 +3847,8 @@ resolution: The host owns and disposes the shared limiter. Shutdown denies queue
 origin: migrated from legacy ledger ("Deferred from: code review of spec-25-4-contract-persistence-separation-and-route-versioning (2026-07-12)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-25-4-contract-persistence-separation-and-route-versioning.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-25-4-contract-persistence-separation-and-route-versioning.md` summary: The array element values of `deletedBackends`/`compensatedBackends` changed vocabulary (RediSearch→syntactic, RedisVector→semantic, FalkorDB→graph, RedisDataKeys→state); the JSON keys are pinned but no test pins the workflow-emitted values. evidence: `[JsonPropertyName]` preserves the keys, but `TenantDeletionWorkflow.cs`/`TenantProvisioningWorkflow.cs` now emit axis names in the arrays. `TenantProvisioningResultSerializationTests` uses arbitrary sample values (e.g. `["RediSearch","RedisVector"]`) that no longer reflect production output, so a regression in the emitted vocabulary would not be caught. Intended part of the retrieval-axis migration; deferred as a minor test-pin gap. Any downstream ACL/runbook that string-matches the old element values would break silently — relates to the "release as breaking" decision recorded in the story's Review Findings.
-status: open
+status: done 2026-11-26
+resolution: Workflow tests serialize the actual deletion and compensation results and pin the ordered values under deletedBackends and compensatedBackends.
 
 ### DW-545: [Decision resolved — document & accept] Commits `94eb4c8` and `376096d` bumped the `references/Hexalith.EventStore` and `references/Hexalith.FrontComposer` submodule gitlinks despite the story's "Never edit submodules" constraint.
 

@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Tests.Workflows;
 
+using System.Text.Json;
+
 using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
@@ -36,11 +38,9 @@ public class TenantDeletionWorkflowTests
 
         result.Status.ShouldBe(TenantStatus.Active);
         result.Message.ShouldContain("deleted successfully");
-        result.DeletedAxes.ShouldNotBeNull();
-        result.DeletedAxes.ShouldContain("syntactic");
-        result.DeletedAxes.ShouldContain("semantic");
-        result.DeletedAxes.ShouldContain("graph");
-        result.DeletedAxes.ShouldContain("state");
+        JsonSerializer.SerializeToElement(result).GetProperty("deletedBackends")
+            .EnumerateArray().Select(axis => axis.GetString())
+            .ShouldBe(["syntactic", "semantic", "graph", "state"]);
 
         // Verify activity call order
         Received.InOrder(() =>
