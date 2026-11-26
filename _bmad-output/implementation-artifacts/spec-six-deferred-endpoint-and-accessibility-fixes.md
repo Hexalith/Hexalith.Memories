@@ -34,16 +34,19 @@ Allowed files for this story:
 - `tests/Hexalith.Memories.Server.Tests/Endpoints/IngestionEndpointE2ETests.cs` - body and audit regressions
 - `src/Hexalith.Memories.Server/Endpoints/GraphEndpoints.cs` - DW-531 implementation or verification
 - `tests/Hexalith.Memories.Server.Tests/Endpoints/EdgeConfidenceEndpointTests.cs` - DW-531 implementation or verification
+- `src/Hexalith.Memories.Server/Endpoints/TenantLifecycleEndpoints.cs` - DW-532 implementation or verification
+- `tests/Hexalith.Memories.Server.Tests/Endpoints/TenantLifecycleEndpointTests.cs` - DW-532 implementation or verification
 
 ## Cross-Tenant Negative Evidence
 
-**Surfaces:** Ingestion body tenant selection and audit context. The ingestion requests preserve the [Story 20.2 authorization boundary](20-2-tenant-authorization-filter-and-principal-derived-audit-identity.md). Edge-confidence PATCH validation before graph selection.
-**Tests:** `ServerEndpointAuthorizationTests.TenantScopedIngestSchedulingEndpoint_WithMismatchedBodyTenant_ReturnsTenantForbiddenBeforeSchedulingDependencies`. `EdgeConfidenceEndpointTests.Patch_InvalidEdgeTypeOrUnauthorizedTenant_StopsBeforeGraphAccess`.
-**Command:** `dotnet tests/Hexalith.Memories.Server.Tests/bin/Release/net11.0/Hexalith.Memories.Server.Tests.dll -class "*IngestionEndpointE2ETests" -class "*ServerEndpointAuthorizationTests"`. The same assembly with `-class "*EdgeConfidenceEndpointTests"`.
-**Result:** The body tenant mismatch cases passed for all three routes. Each returned 403 before tenant storage and scheduling dependencies. All five graph cases passed, including the 403 response before graph access.
+**Surfaces:** Ingestion body tenant selection and audit context. The ingestion requests preserve the [Story 20.2 authorization boundary](20-2-tenant-authorization-filter-and-principal-derived-audit-identity.md). Edge-confidence PATCH validation before graph selection. Provision and deletion status routing and workflow ID ownership.
+**Tests:** `ServerEndpointAuthorizationTests.TenantScopedIngestSchedulingEndpoint_WithMismatchedBodyTenant_ReturnsTenantForbiddenBeforeSchedulingDependencies`. `EdgeConfidenceEndpointTests.Patch_InvalidEdgeTypeOrUnauthorizedTenant_StopsBeforeGraphAccess`. `TenantLifecycleEndpointTests.GetStatus_UnauthorizedTenant_RejectsBeforeRegistryOrWorkflowLookup` and `TenantLifecycleEndpointTests.GetStatus_WrongWorkflowTenant_RejectsBeforeWorkflowLookup`.
+**Command:** `dotnet tests/Hexalith.Memories.Server.Tests/bin/Release/net11.0/Hexalith.Memories.Server.Tests.dll -class "*IngestionEndpointE2ETests" -class "*ServerEndpointAuthorizationTests"`. The same assembly with `-class "*EdgeConfidenceEndpointTests"`. The same assembly with `-class "*TenantLifecycleEndpointTests"`.
+**Result:** The body tenant mismatch cases passed for all three routes. Each returned 403 before tenant storage and scheduling dependencies. All five graph cases passed, including the 403 response before graph access. All 16 lifecycle cases passed. Wrong workflow tenants, including overlapping tenant names, were denied before workflow access.
 
 ## Review Triage Log
 
 - DW-528, patched. The audit scope retains the rejected-tenant tag and tests verify its error events. Validation checks for a missing URL request before reading fetcher options.
 - DW-528, outside the reported wire shape. A chunked body with no JSON bytes follows the framework’s malformed-JSON path.
 - DW-531, patched. The edge validation checks case-insensitive property matches for compound values that deserialize to another edge. HTTP coverage rejects those inputs and confirms cross-tenant denial. Existing successful promotions are covered by ConfidencePromotionIntegrationTests. Malformed JSON keeps the established error response.
+- DW-532, patched. A five-second dependency budget covers registry and workflow reads, including the SDK’s wait-for-ready behavior. Cancellation, distinct permission failures, readiness guidance, and the deletion inbox retry follow their own paths. The generated workflow ID’s final delimiter separates suffixes from tenant IDs, including tenant names that share a prefix. Dapr’s established result for a missing workflow and untyped backend errors remain outside the sidecar-outage fix.

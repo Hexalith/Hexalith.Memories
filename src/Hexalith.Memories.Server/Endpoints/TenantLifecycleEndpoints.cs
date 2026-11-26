@@ -12,6 +12,7 @@ using Dapr.Actors;
 using Dapr.Actors.Client;
 using Dapr.Client;
 using Dapr.Workflow;
+using Grpc.Core;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Actors;
@@ -27,6 +28,7 @@ using Hexalith.Memories.Server.Search;
 using Hexalith.Memories.Server.Telemetry;
 using Hexalith.Memories.Server.Tenants;
 using Hexalith.Memories.Server.Workflows;
+using Hexalith.Memories.ServiceDefaults.Health;
 using Hexalith.Memories.Telemetry;
 
 using Microsoft.AspNetCore.Http;
@@ -197,64 +199,17 @@ internal static class TenantLifecycleEndpoints
             }
         });
 
-        app.MapGet(MemoriesRoutes.TenantProvisionStatus, async (
-            DaprWorkflowClient workflowClient,
+        app.MapGet(MemoriesRoutes.TenantProvisionStatus, (
+            IDaprWorkflowClient workflowClient,
             TenantStatusGuard tenantGuard,
             ILogger<AccessTelemetryCategory> auditLogger,
             HttpContext httpContext,
             string tenantId,
             string instanceId,
             CancellationToken cancellationToken) =>
-        {
-            using EndpointTelemetryScope scope = CreateEndpointAuditScope(
-                auditLogger,
-                httpContext,
-                MemoriesActivitySource.TenantLifecycle,
-                AccessTelemetryLog.OperationTenantLifecycle,
-                successEventId: 7506,
-                errorEventId: 7516,
-                tenantId,
-                caseId: null,
-                CreateWorkflowStatusAuditQueryParams("tenant-provision-status", instanceId));
-
-            try
-            {
-            ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
-            if (tenantValidationError is not null)
-            {
-                scope.MarkValidationError(tenantValidationError.Code);
-                return Results.BadRequest(tenantValidationError);
-            }
-
-            ErrorResponse? tenantExistsError = await tenantGuard.ValidateTenantExistsAsync(tenantId, cancellationToken);
-            if (tenantExistsError is not null)
-            {
-                scope.MarkTenantRejected(tenantExistsError.Code);
-                return TenantStatusGuard.ToHttpResult(tenantExistsError);
-            }
-
-            if (!instanceId.StartsWith($"provision-{tenantId}-", StringComparison.Ordinal))
-            {
-                scope.MarkValidationError("PROVISIONING_STATUS_NOT_FOUND");
-                return Results.NotFound(new ErrorResponse(
-                    "PROVISIONING_STATUS_NOT_FOUND",
-                    $"Provisioning workflow '{instanceId}' was not found for tenant '{tenantId}'.",
-                    $"Use the workflowInstanceId returned by POST {MemoriesRoutes.Tenants} for the same tenant."));
-            }
-
-            WorkflowState? state = await workflowClient.GetWorkflowStateAsync(instanceId);
-            scope.QueryParams = new Dictionary<string, object?>(scope.QueryParams, StringComparer.Ordinal)
-            {
-                ["state"] = state?.RuntimeStatus.ToString(),
-            };
-            return state is null ? Results.NotFound() : Results.Ok(state);
-            }
-            catch (Exception ex)
-            {
-                scope.MarkUnhandledException(ex);
-                throw;
-            }
-        });
+                GetTenantWorkflowStatusAsync(
+                    workflowClient, tenantGuard, auditLogger, httpContext, tenantId, instanceId,
+                    isDeletion: false, cancellationToken));
 
         // Story 5.5 AC1 / FR41: enriched tenant listing — per-tenant counts + index health + activity.
         // Contract change (pre-Gate-2): now returns TenantSummary[] instead of TenantInfo[].
@@ -503,64 +458,17 @@ internal static class TenantLifecycleEndpoints
             }
         });
 
-        app.MapGet(MemoriesRoutes.TenantDeletionStatus, async (
-            DaprWorkflowClient workflowClient,
+        app.MapGet(MemoriesRoutes.TenantDeletionStatus, (
+            IDaprWorkflowClient workflowClient,
             TenantStatusGuard tenantGuard,
             ILogger<AccessTelemetryCategory> auditLogger,
             HttpContext httpContext,
             string tenantId,
             string instanceId,
             CancellationToken cancellationToken) =>
-        {
-            using EndpointTelemetryScope scope = CreateEndpointAuditScope(
-                auditLogger,
-                httpContext,
-                MemoriesActivitySource.TenantLifecycle,
-                AccessTelemetryLog.OperationTenantLifecycle,
-                successEventId: 7506,
-                errorEventId: 7516,
-                tenantId,
-                caseId: null,
-                CreateWorkflowStatusAuditQueryParams("tenant-deletion-status", instanceId));
-
-            try
-            {
-            ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
-            if (tenantValidationError is not null)
-            {
-                scope.MarkValidationError(tenantValidationError.Code);
-                return Results.BadRequest(tenantValidationError);
-            }
-
-            ErrorResponse? tenantExistsError = await tenantGuard.ValidateTenantExistsAsync(tenantId, cancellationToken);
-            if (tenantExistsError is not null)
-            {
-                scope.MarkTenantRejected(tenantExistsError.Code);
-                return TenantStatusGuard.ToHttpResult(tenantExistsError);
-            }
-
-            if (!instanceId.StartsWith($"delete-{tenantId}-", StringComparison.Ordinal))
-            {
-                scope.MarkValidationError("DELETION_STATUS_NOT_FOUND");
-                return Results.NotFound(new ErrorResponse(
-                    "DELETION_STATUS_NOT_FOUND",
-                    $"Deletion workflow '{instanceId}' was not found for tenant '{tenantId}'.",
-                    $"Use the workflowInstanceId returned by DELETE {MemoriesRoutes.Tenant} for the same tenant."));
-            }
-
-            WorkflowState? state = await ReadDeletionWorkflowStateAsync(workflowClient, instanceId, cancellationToken);
-            scope.QueryParams = new Dictionary<string, object?>(scope.QueryParams, StringComparer.Ordinal)
-            {
-                ["state"] = state?.RuntimeStatus.ToString(),
-            };
-            return state is null ? Results.NotFound() : Results.Ok(state);
-            }
-            catch (Exception ex)
-            {
-                scope.MarkUnhandledException(ex);
-                throw;
-            }
-        });
+                GetTenantWorkflowStatusAsync(
+                    workflowClient, tenantGuard, auditLogger, httpContext, tenantId, instanceId,
+                    isDeletion: true, cancellationToken));
 
         // Story 5.3: Tenant isolation verification
         app.MapPost(MemoriesRoutes.TenantVerify, async (
@@ -651,12 +559,110 @@ internal static class TenantLifecycleEndpoints
         return app;
     }
 
-    /// <summary>
-    /// Reads deletion workflow state, retrying the short interval before the actor inbox is visible.
-    /// </summary>
-    private static async Task<WorkflowState?> ReadDeletionWorkflowStateAsync(
-        DaprWorkflowClient workflowClient,
+    private static async Task<IResult> GetTenantWorkflowStatusAsync(
+        IDaprWorkflowClient workflowClient,
+        TenantStatusGuard tenantGuard,
+        ILogger<AccessTelemetryCategory> auditLogger,
+        HttpContext httpContext,
+        string tenantId,
         string instanceId,
+        bool isDeletion,
+        CancellationToken cancellationToken)
+    {
+        using EndpointTelemetryScope scope = CreateEndpointAuditScope(
+            auditLogger,
+            httpContext,
+            MemoriesActivitySource.TenantLifecycle,
+            AccessTelemetryLog.OperationTenantLifecycle,
+            successEventId: 7506,
+            errorEventId: 7516,
+            tenantId,
+            caseId: null,
+            CreateWorkflowStatusAuditQueryParams(
+                isDeletion ? "tenant-deletion-status" : "tenant-provision-status", instanceId));
+
+        // The workflow SDK waits for the sidecar to reconnect without imposing a deadline.
+        using CancellationTokenSource readTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        readTimeout.CancelAfter(TimeSpan.FromSeconds(5));
+
+        try
+        {
+            ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
+            if (tenantValidationError is not null)
+            {
+                scope.MarkValidationError(tenantValidationError.Code);
+                return Results.BadRequest(tenantValidationError);
+            }
+
+            ErrorResponse? tenantExistsError = await tenantGuard.ValidateTenantExistsAsync(tenantId, readTimeout.Token)
+                .WaitAsync(readTimeout.Token).ConfigureAwait(false);
+            if (tenantExistsError is not null)
+            {
+                scope.MarkTenantRejected(tenantExistsError.Code);
+                return TenantStatusGuard.ToHttpResult(tenantExistsError);
+            }
+
+            string workflowPrefix = isDeletion ? "delete" : "provision";
+            string tenantPrefix = $"{workflowPrefix}-{tenantId}-";
+            if (!instanceId.StartsWith(tenantPrefix, StringComparison.Ordinal)
+                || instanceId.LastIndexOf('-') != tenantPrefix.Length - 1
+                || instanceId.Length == tenantPrefix.Length)
+            {
+                string code = isDeletion ? "DELETION_STATUS_NOT_FOUND" : "PROVISIONING_STATUS_NOT_FOUND";
+                string workflowName = isDeletion ? "Deletion" : "Provisioning";
+                string origin = isDeletion ? $"DELETE {MemoriesRoutes.Tenant}" : $"POST {MemoriesRoutes.Tenants}";
+                scope.MarkValidationError(code);
+                return Results.NotFound(new ErrorResponse(
+                    code,
+                    $"{workflowName} workflow '{instanceId}' was not found for tenant '{tenantId}'.",
+                    $"Use the workflowInstanceId returned by {origin} for the same tenant."));
+            }
+
+            WorkflowState? state = await ReadTenantWorkflowStateAsync(
+                workflowClient, instanceId, isDeletion, readTimeout.Token).ConfigureAwait(false);
+            scope.QueryParams = new Dictionary<string, object?>(scope.QueryParams, StringComparer.Ordinal)
+            {
+                ["state"] = state?.RuntimeStatus.ToString(),
+            };
+            return state is null ? Results.NotFound() : Results.Ok(state);
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested &&
+            (IsDaprUnavailable(ex)
+            || IsDaprRpcStatus(ex, StatusCode.DeadlineExceeded)
+            || (readTimeout.IsCancellationRequested && IsDaprReadCanceled(ex))))
+        {
+            scope.MarkValidationError("DAPR_UNAVAILABLE");
+            return ErrorResults.DaprUnavailableResult(
+                suggestion: $"Check service readiness via {HealthEndpointPaths.Ready} and retry.");
+        }
+        catch (Exception ex) when (cancellationToken.IsCancellationRequested && IsDaprReadCanceled(ex))
+        {
+            OperationCanceledException canceled = new("The request was canceled.", ex, cancellationToken);
+            scope.MarkUnhandledException(canceled);
+            throw canceled;
+        }
+        catch (Exception ex)
+        {
+            scope.MarkUnhandledException(ex);
+            throw;
+        }
+    }
+
+    private static bool IsDaprUnavailable(Exception exception)
+        => exception is Dapr.DaprException { InnerException: null }
+            || IsDaprRpcStatus(exception, StatusCode.Unavailable);
+
+    private static bool IsDaprRpcStatus(Exception exception, StatusCode statusCode)
+        => exception is RpcException rpc && rpc.StatusCode == statusCode
+            || exception is Dapr.DaprException { InnerException: { } inner } && IsDaprRpcStatus(inner, statusCode);
+
+    private static bool IsDaprReadCanceled(Exception exception)
+        => exception is OperationCanceledException || IsDaprRpcStatus(exception, StatusCode.Cancelled);
+
+    private static async Task<WorkflowState?> ReadTenantWorkflowStateAsync(
+        IDaprWorkflowClient workflowClient,
+        string instanceId,
+        bool retryInbox,
         CancellationToken cancellationToken)
     {
         const int attempts = 8;
@@ -664,11 +670,13 @@ internal static class TenantLifecycleEndpoints
         {
             try
             {
-                return await workflowClient.GetWorkflowStateAsync(instanceId).WaitAsync(cancellationToken).ConfigureAwait(false);
+                return await workflowClient.GetWorkflowStateAsync(instanceId, getInputsAndOutputs: true, cancellationToken)
+                    .WaitAsync(cancellationToken).ConfigureAwait(false);
             }
-            catch (Grpc.Core.RpcException ex) when (
-                attempt < attempts
-                && ex.StatusCode == Grpc.Core.StatusCode.Unknown
+            catch (RpcException ex) when (
+                retryInbox
+                && attempt < attempts
+                && ex.StatusCode == StatusCode.Unknown
                 && ex.Status.Detail.Contains("inbox key", StringComparison.Ordinal)
                 && ex.Status.Detail.Contains("declared in metadata", StringComparison.Ordinal))
             {

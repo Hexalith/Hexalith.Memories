@@ -3752,7 +3752,8 @@ resolution: Edge confidence promotion rejects undefined and combined edge types 
 origin: migrated from legacy ledger ("Deferred from: bmad-dev-auto review of spec-25-1-program-cs-decomposition (2026-07-06)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-25-1-program-cs-decomposition.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-25-1-program-cs-decomposition.md` summary: Tenant provision/deletion status endpoints do not translate Dapr sidecar outages into structured `DAPR_UNAVAILABLE` responses. evidence: The review traced `GET /api/tenants/{tenantId}/provision-status/{instanceId}` and `GET /api/tenants/{tenantId}/deletion-status/{instanceId}`; `GetWorkflowStateAsync` exceptions flow to the generic unhandled-exception path. This behavior existed before endpoint extraction.
-status: open
+status: done 2026-11-26
+resolution: Provisioning and deletion status reads return DAPR_UNAVAILABLE for sidecar unavailability and timeouts. Status routes keep deletion inbox retries and reject workflow IDs issued for neighboring tenants.
 
 ### DW-533: Tenant deletion Dapr-unavailable rollback catches only `InvalidOperationException`, so other rollback failures can replace the intended 503 response.
 
