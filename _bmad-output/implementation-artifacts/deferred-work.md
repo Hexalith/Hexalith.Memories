@@ -4109,7 +4109,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of 27-1-access-telemetry-retention-ownership-decision (2026-07-17)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/27-1-access-telemetry-retention-ownership-decision.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/27-1-access-telemetry-retention-ownership-decision.md` summary: Reconcile raw privacy-sensitive state on the preserved JSON-console and optional OTLP routes with the bounded lifecycle target. evidence: Search and source-URI events can already expose raw query, subject, or source URI values through the existing logging routes. Story 27.1 documents that pre-existing deviation and sanitizes only the accepted Dapr lifecycle path; a later scope decision must choose sanitization before provider fan-out or explicit category exclusion from durable external routes.
-status: open
+status: done 2026-11-26
+resolution: All access-audit emitters apply the lifecycle request-parameter projection ahead of logger providers. Provider captures prove private query, subject, URI and unit values are excluded, and lifecycle tests verify all operation families including tenant deletion. Console correlation fields follow the existing audit contract.
 decision: 2026-09-01 Sanitize before fan-out — Apply the lifecycle sanitizer before every provider and add privacy-negative tests.
 decision: 2026-09-01 Sanitize before fan-out — Apply the lifecycle sanitizer before every provider and add privacy-negative tests.
 

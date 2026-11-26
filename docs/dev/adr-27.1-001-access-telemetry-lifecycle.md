@@ -49,9 +49,9 @@ operations documentation, and the evidence-backed A41 close-out gate.
 - JSON console preserves an outer JSON envelope but formats `@AuditEvent` via
   record `ToString()`, so `QueryParams` values cannot be recovered. The future
   writer must consume typed logger state, not reparse stdout.
-- Search and source-URI producers can currently place raw `query`, `subject`,
-  and `sourceUri` values in `QueryParams`. Durable storage of those values is
-  prohibited; Story 27.2 must sanitize them before enqueue.
+- DW-578 applies the bounded request-parameter projection before logger provider
+  fan-out. Raw search queries, subjects, and source URIs are replaced by their
+  bounded classifications before console, OTLP, or lifecycle logging.
 
 ## Options Evaluated
 

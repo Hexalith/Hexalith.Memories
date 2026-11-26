@@ -10,6 +10,7 @@ using System.Diagnostics;
 using System.Globalization;
 
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Telemetry.AccessTelemetryLifecycle;
 
 using Microsoft.Extensions.Logging;
 
@@ -122,57 +123,123 @@ internal static partial class AccessTelemetryLog
             SpanId = currentActivity?.SpanId.ToString(),
         };
 
-    [LoggerMessage(EventId = 7501, Level = LogLevel.Information, Message = "Search access {@AuditEvent}")]
-    public static partial void LogSearchAccess(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+    public static void LogSearchAccess(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent)
+        => Emit(logger, LogLevel.Information, auditEvent, LogSearchAccessCore);
 
-    [LoggerMessage(EventId = 7502, Level = LogLevel.Information, Message = "Ingest access {@AuditEvent}")]
-    public static partial void LogIngestAccess(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+    [LoggerMessage(EventId = 7501, Level = LogLevel.Information, Message = "Search access {@AuditEvent}", SkipEnabledCheck = true, EventName = nameof(LogSearchAccess))]
+    private static partial void LogSearchAccessCore(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
 
-    [LoggerMessage(EventId = 7503, Level = LogLevel.Information, Message = "Traverse access {@AuditEvent}")]
-    public static partial void LogTraverseAccess(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+    public static void LogIngestAccess(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent)
+        => Emit(logger, LogLevel.Information, auditEvent, LogIngestAccessCore);
 
-    [LoggerMessage(EventId = 7504, Level = LogLevel.Information, Message = "Case access {@AuditEvent}")]
-    public static partial void LogCaseAccess(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+    [LoggerMessage(EventId = 7502, Level = LogLevel.Information, Message = "Ingest access {@AuditEvent}", SkipEnabledCheck = true, EventName = nameof(LogIngestAccess))]
+    private static partial void LogIngestAccessCore(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
 
-    [LoggerMessage(EventId = 7505, Level = LogLevel.Information, Message = "Delete access {@AuditEvent}")]
-    public static partial void LogDeleteAccess(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+    public static void LogTraverseAccess(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent)
+        => Emit(logger, LogLevel.Information, auditEvent, LogTraverseAccessCore);
 
-    [LoggerMessage(EventId = 7506, Level = LogLevel.Information, Message = "Tenant lifecycle access {@AuditEvent}")]
-    public static partial void LogTenantLifecycleAccess(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+    [LoggerMessage(EventId = 7503, Level = LogLevel.Information, Message = "Traverse access {@AuditEvent}", SkipEnabledCheck = true, EventName = nameof(LogTraverseAccess))]
+    private static partial void LogTraverseAccessCore(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
 
-    [LoggerMessage(EventId = 7507, Level = LogLevel.Information, Message = "Tenant config access {@AuditEvent}")]
-    public static partial void LogTenantConfigAccess(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+    public static void LogCaseAccess(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent)
+        => Emit(logger, LogLevel.Information, auditEvent, LogCaseAccessCore);
 
-    [LoggerMessage(EventId = 7508, Level = LogLevel.Information, Message = "Case member access {@AuditEvent}")]
-    public static partial void LogCaseMemberAccess(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+    [LoggerMessage(EventId = 7504, Level = LogLevel.Information, Message = "Case access {@AuditEvent}", SkipEnabledCheck = true, EventName = nameof(LogCaseAccess))]
+    private static partial void LogCaseAccessCore(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
 
-    [LoggerMessage(EventId = 7509, Level = LogLevel.Information, Message = "Annotation access {@AuditEvent}")]
-    public static partial void LogAnnotationAccess(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+    public static void LogDeleteAccess(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent)
+        => Emit(logger, LogLevel.Information, auditEvent, LogDeleteAccessCore);
 
-    [LoggerMessage(EventId = 7511, Level = LogLevel.Warning, Message = "Search access error {@AuditEvent}")]
-    public static partial void LogSearchAccessError(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+    [LoggerMessage(EventId = 7505, Level = LogLevel.Information, Message = "Delete access {@AuditEvent}", SkipEnabledCheck = true, EventName = nameof(LogDeleteAccess))]
+    private static partial void LogDeleteAccessCore(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
 
-    [LoggerMessage(EventId = 7512, Level = LogLevel.Warning, Message = "Ingest access error {@AuditEvent}")]
-    public static partial void LogIngestAccessError(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+    public static void LogTenantLifecycleAccess(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent)
+        => Emit(logger, LogLevel.Information, auditEvent, LogTenantLifecycleAccessCore);
 
-    [LoggerMessage(EventId = 7513, Level = LogLevel.Warning, Message = "Traverse access error {@AuditEvent}")]
-    public static partial void LogTraverseAccessError(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+    [LoggerMessage(EventId = 7506, Level = LogLevel.Information, Message = "Tenant lifecycle access {@AuditEvent}", SkipEnabledCheck = true, EventName = nameof(LogTenantLifecycleAccess))]
+    private static partial void LogTenantLifecycleAccessCore(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
 
-    [LoggerMessage(EventId = 7514, Level = LogLevel.Warning, Message = "Case access error {@AuditEvent}")]
-    public static partial void LogCaseAccessError(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+    public static void LogTenantConfigAccess(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent)
+        => Emit(logger, LogLevel.Information, auditEvent, LogTenantConfigAccessCore);
 
-    [LoggerMessage(EventId = 7515, Level = LogLevel.Warning, Message = "Delete access error {@AuditEvent}")]
-    public static partial void LogDeleteAccessError(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+    [LoggerMessage(EventId = 7507, Level = LogLevel.Information, Message = "Tenant config access {@AuditEvent}", SkipEnabledCheck = true, EventName = nameof(LogTenantConfigAccess))]
+    private static partial void LogTenantConfigAccessCore(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
 
-    [LoggerMessage(EventId = 7516, Level = LogLevel.Warning, Message = "Tenant lifecycle access error {@AuditEvent}")]
-    public static partial void LogTenantLifecycleAccessError(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+    public static void LogCaseMemberAccess(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent)
+        => Emit(logger, LogLevel.Information, auditEvent, LogCaseMemberAccessCore);
 
-    [LoggerMessage(EventId = 7517, Level = LogLevel.Warning, Message = "Tenant config access error {@AuditEvent}")]
-    public static partial void LogTenantConfigAccessError(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+    [LoggerMessage(EventId = 7508, Level = LogLevel.Information, Message = "Case member access {@AuditEvent}", SkipEnabledCheck = true, EventName = nameof(LogCaseMemberAccess))]
+    private static partial void LogCaseMemberAccessCore(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
 
-    [LoggerMessage(EventId = 7518, Level = LogLevel.Warning, Message = "Case member access error {@AuditEvent}")]
-    public static partial void LogCaseMemberAccessError(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+    public static void LogAnnotationAccess(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent)
+        => Emit(logger, LogLevel.Information, auditEvent, LogAnnotationAccessCore);
 
-    [LoggerMessage(EventId = 7519, Level = LogLevel.Warning, Message = "Annotation access error {@AuditEvent}")]
-    public static partial void LogAnnotationAccessError(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+    [LoggerMessage(EventId = 7509, Level = LogLevel.Information, Message = "Annotation access {@AuditEvent}", SkipEnabledCheck = true, EventName = nameof(LogAnnotationAccess))]
+    private static partial void LogAnnotationAccessCore(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+
+    public static void LogSearchAccessError(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent)
+        => Emit(logger, LogLevel.Warning, auditEvent, LogSearchAccessErrorCore);
+
+    [LoggerMessage(EventId = 7511, Level = LogLevel.Warning, Message = "Search access error {@AuditEvent}", SkipEnabledCheck = true, EventName = nameof(LogSearchAccessError))]
+    private static partial void LogSearchAccessErrorCore(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+
+    public static void LogIngestAccessError(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent)
+        => Emit(logger, LogLevel.Warning, auditEvent, LogIngestAccessErrorCore);
+
+    [LoggerMessage(EventId = 7512, Level = LogLevel.Warning, Message = "Ingest access error {@AuditEvent}", SkipEnabledCheck = true, EventName = nameof(LogIngestAccessError))]
+    private static partial void LogIngestAccessErrorCore(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+
+    public static void LogTraverseAccessError(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent)
+        => Emit(logger, LogLevel.Warning, auditEvent, LogTraverseAccessErrorCore);
+
+    [LoggerMessage(EventId = 7513, Level = LogLevel.Warning, Message = "Traverse access error {@AuditEvent}", SkipEnabledCheck = true, EventName = nameof(LogTraverseAccessError))]
+    private static partial void LogTraverseAccessErrorCore(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+
+    public static void LogCaseAccessError(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent)
+        => Emit(logger, LogLevel.Warning, auditEvent, LogCaseAccessErrorCore);
+
+    [LoggerMessage(EventId = 7514, Level = LogLevel.Warning, Message = "Case access error {@AuditEvent}", SkipEnabledCheck = true, EventName = nameof(LogCaseAccessError))]
+    private static partial void LogCaseAccessErrorCore(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+
+    public static void LogDeleteAccessError(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent)
+        => Emit(logger, LogLevel.Warning, auditEvent, LogDeleteAccessErrorCore);
+
+    [LoggerMessage(EventId = 7515, Level = LogLevel.Warning, Message = "Delete access error {@AuditEvent}", SkipEnabledCheck = true, EventName = nameof(LogDeleteAccessError))]
+    private static partial void LogDeleteAccessErrorCore(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+
+    public static void LogTenantLifecycleAccessError(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent)
+        => Emit(logger, LogLevel.Warning, auditEvent, LogTenantLifecycleAccessErrorCore);
+
+    [LoggerMessage(EventId = 7516, Level = LogLevel.Warning, Message = "Tenant lifecycle access error {@AuditEvent}", SkipEnabledCheck = true, EventName = nameof(LogTenantLifecycleAccessError))]
+    private static partial void LogTenantLifecycleAccessErrorCore(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+
+    public static void LogTenantConfigAccessError(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent)
+        => Emit(logger, LogLevel.Warning, auditEvent, LogTenantConfigAccessErrorCore);
+
+    [LoggerMessage(EventId = 7517, Level = LogLevel.Warning, Message = "Tenant config access error {@AuditEvent}", SkipEnabledCheck = true, EventName = nameof(LogTenantConfigAccessError))]
+    private static partial void LogTenantConfigAccessErrorCore(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+
+    public static void LogCaseMemberAccessError(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent)
+        => Emit(logger, LogLevel.Warning, auditEvent, LogCaseMemberAccessErrorCore);
+
+    [LoggerMessage(EventId = 7518, Level = LogLevel.Warning, Message = "Case member access error {@AuditEvent}", SkipEnabledCheck = true, EventName = nameof(LogCaseMemberAccessError))]
+    private static partial void LogCaseMemberAccessErrorCore(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+
+    public static void LogAnnotationAccessError(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent)
+        => Emit(logger, LogLevel.Warning, auditEvent, LogAnnotationAccessErrorCore);
+
+    [LoggerMessage(EventId = 7519, Level = LogLevel.Warning, Message = "Annotation access error {@AuditEvent}", SkipEnabledCheck = true, EventName = nameof(LogAnnotationAccessError))]
+    private static partial void LogAnnotationAccessErrorCore(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+
+    private static void Emit(
+        ILogger<AccessTelemetryCategory> logger,
+        LogLevel level,
+        AccessTelemetryEvent auditEvent,
+        Action<ILogger<AccessTelemetryCategory>, AccessTelemetryEvent> log)
+    {
+        if (logger.IsEnabled(level))
+        {
+            log(logger, AccessTelemetrySanitizer.SanitizeForProviders(auditEvent));
+        }
+    }
 }

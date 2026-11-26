@@ -41,7 +41,7 @@ public sealed class MutationAuditLogStreamTests : IDisposable
         auditEvent.Outcome.ShouldBe(AccessTelemetryLog.OutcomeError);
         auditEvent.ErrorCode.ShouldBe("INVALID_INPUT");
         auditEvent.User.ShouldBe("operator-1");
-        auditEvent.QueryParams!["operation"].ShouldBe("tenant-create");
+        auditEvent.QueryParams!["action"].ShouldBe("provision");
     }
 
     [Fact]
@@ -62,7 +62,7 @@ public sealed class MutationAuditLogStreamTests : IDisposable
         auditEvent.Outcome.ShouldBe(AccessTelemetryLog.OutcomeError);
         auditEvent.ErrorCode.ShouldBe("INVALID_INPUT");
         auditEvent.User.ShouldBe("operator-1");
-        auditEvent.QueryParams!["operation"].ShouldBe("display-name-update");
+        auditEvent.QueryParams!["configKind"].ShouldBe("display-name");
         auditEvent.QueryParams.Keys.ShouldNotContain("displayName");
     }
 
@@ -90,7 +90,7 @@ public sealed class MutationAuditLogStreamTests : IDisposable
         auditEvent.Outcome.ShouldBe(AccessTelemetryLog.OutcomeError);
         auditEvent.ErrorCode.ShouldBe("TENANT_NOT_FOUND");
         auditEvent.TenantId.ShouldBe("__rejected__");
-        auditEvent.QueryParams!["operation"].ShouldBe("embedding-config-update");
+        auditEvent.QueryParams!["configKind"].ShouldBe("embedding");
         auditEvent.QueryParams["forceReindex"].ShouldBe(true);
         auditEvent.QueryParams.Keys.ShouldNotContain("apiSecretKeyName");
         auditEvent.QueryParams.Keys.ShouldNotContain("baseUrl");
@@ -123,8 +123,8 @@ public sealed class MutationAuditLogStreamTests : IDisposable
         auditEvent.Outcome.ShouldBe(AccessTelemetryLog.OutcomeError);
         auditEvent.ErrorCode.ShouldBe(errorCode);
         auditEvent.TenantId.ShouldBe("__rejected__");
-        auditEvent.QueryParams!["operation"].ShouldBe(operation);
-        auditEvent.QueryParams.Keys.ShouldContain("workflowInstanceIdPrefix");
+        auditEvent.QueryParams!["action"].ShouldBe(operation == "tenant-provision-status" ? "provision-status" : "deletion-status");
+        auditEvent.QueryParams.Keys.ShouldNotContain("workflowInstanceIdPrefix");
         auditEvent.QueryParams.Keys.ShouldNotContain("workflowInstanceId");
     }
 
@@ -144,7 +144,7 @@ public sealed class MutationAuditLogStreamTests : IDisposable
         auditEvent.Outcome.ShouldBe(AccessTelemetryLog.OutcomeError);
         auditEvent.ErrorCode.ShouldBe("TENANT_NOT_FOUND");
         auditEvent.TenantId.ShouldBe("__rejected__");
-        auditEvent.QueryParams!["operation"].ShouldBe("tenant-delete");
+        auditEvent.QueryParams!["targetKind"].ShouldBe("tenant");
     }
 
     [Fact]
@@ -165,7 +165,7 @@ public sealed class MutationAuditLogStreamTests : IDisposable
         auditEvent.Outcome.ShouldBe(AccessTelemetryLog.OutcomeError);
         auditEvent.CaseId.ShouldBe("case-1");
         auditEvent.User.ShouldBe("operator-1");
-        auditEvent.QueryParams!["operation"].ShouldBe("case-member-add");
+        auditEvent.QueryParams!["action"].ShouldBe("add");
         auditEvent.QueryParams.Keys.ShouldNotContain("requestBody");
     }
 
@@ -185,8 +185,8 @@ public sealed class MutationAuditLogStreamTests : IDisposable
         auditEvent.Outcome.ShouldBe(AccessTelemetryLog.OutcomeError);
         auditEvent.CaseId.ShouldBe("bad case");
         auditEvent.User.ShouldBe("operator-1");
-        auditEvent.QueryParams!["operation"].ShouldBe("case-member-remove");
-        auditEvent.QueryParams.Keys.ShouldContain("memberIdPrefix");
+        auditEvent.QueryParams!["action"].ShouldBe("remove");
+        auditEvent.QueryParams.Keys.ShouldNotContain("memberIdPrefix");
     }
 
     [Fact]
@@ -207,7 +207,7 @@ public sealed class MutationAuditLogStreamTests : IDisposable
         auditEvent.Outcome.ShouldBe(AccessTelemetryLog.OutcomeError);
         auditEvent.CaseId.ShouldBe("case-1");
         auditEvent.User.ShouldBe("operator-1");
-        auditEvent.QueryParams!["operation"].ShouldBe("annotation-create");
+        auditEvent.QueryParams!["action"].ShouldBe("create");
         auditEvent.QueryParams.Keys.ShouldNotContain("content");
     }
 
@@ -226,7 +226,7 @@ public sealed class MutationAuditLogStreamTests : IDisposable
         auditEvent.EventId.ShouldBe(7515);
         auditEvent.Outcome.ShouldBe(AccessTelemetryLog.OutcomeError);
         auditEvent.User.ShouldBe("operator-1");
-        auditEvent.QueryParams!["operation"].ShouldBe("memory-unit-delete");
+        auditEvent.QueryParams!["targetKind"].ShouldBe("memory-unit");
     }
 
     [Fact]
@@ -245,7 +245,7 @@ public sealed class MutationAuditLogStreamTests : IDisposable
         auditEvent.Outcome.ShouldBe(AccessTelemetryLog.OutcomeError);
         auditEvent.User.ShouldBe("operator-1");
         auditEvent.CaseId.ShouldBe("bad case");
-        auditEvent.QueryParams!["operation"].ShouldBe("case-delete");
+        auditEvent.QueryParams!["targetKind"].ShouldBe("case");
     }
 
     public void Dispose() => _factory.Dispose();

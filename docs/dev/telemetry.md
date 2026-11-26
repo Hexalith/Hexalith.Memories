@@ -129,7 +129,7 @@ EventId bank: **7500-7599** (success 7501-7509, error 7511-7519).
     "operationType": "search", // search | ingest | traverse | case-access | delete | tenant-lifecycle | tenant-config | case-member | annotation
     "caseId": null,
     "user": "anonymous", // ADR-7.5-004 resolution rules
-    "queryParams": { "query": "...", "axis": "hybrid", "maxResults": 10 },
+    "queryParams": { "axis": "hybrid", "caseScope": "all-authorized", "explain": false, "queryLengthBucket": "1-32", "subjectPresent": false, "weightProfile": "configured" },
     "resultCount": 3, // null for write/schedule operations
     "durationMs": 42,
     "outcome": "ok", // ok | partial | error
@@ -139,15 +139,14 @@ EventId bank: **7500-7599** (success 7501-7509, error 7511-7519).
 }
 ```
 
-The example reflects the public logger contract. JSON console/OTLP output can
-still contain the raw logger fields shown above and remains governed by the
-operator's existing log-routing policy. The separate lifecycle provider never
-parses stdout: it reads typed `AccessTelemetryEvent` state, HMAC-marks
-tenant/user/case identifiers, buckets query length, reduces subject to presence,
-classifies source URI into a bounded kind, canonicalizes the internal record,
-and only then attempts nonblocking enqueue. Raw query, subject, URI, payload,
-credential, token, secret, or exception content is not admitted to lifecycle
-state.
+The Server applies the lifecycle's allowlisted request-parameter transformations
+before sending the audit event to any logging provider. JSON console and optional
+OTLP can receive bounded classifications such as query length, subject presence,
+and URI kind. The existing operator log-routing policy still governs the audit
+identity fields. The separate lifecycle provider reads the same typed event,
+HMAC-marks tenant, user and case identifiers, then canonicalizes and enqueues
+its internal record. The lifecycle retention setting is independent of console
+and OTLP routing.
 
 ### Versioning policy
 
@@ -169,7 +168,7 @@ state.
 
 ## Audit log routing recipe
 
-Search queries may contain privacy-sensitive terms on regulated tenants. The dedicated
+Access events carry operator audit identity fields. The dedicated
 `Hexalith.Memories.Server.Telemetry.AccessTelemetryCategory` category lets operators route audit
 events to a separate sink, distinct from operational logs consumed by sysadmins for general
 deployment troubleshooting.

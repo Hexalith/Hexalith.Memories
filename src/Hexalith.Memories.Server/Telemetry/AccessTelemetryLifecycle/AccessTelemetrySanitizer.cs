@@ -75,6 +75,30 @@ internal sealed class AccessTelemetrySanitizer
         _qualificationMode = qualificationMode;
     }
 
+    /// <summary>Projects request parameters before the logger routes typed state to any provider.</summary>
+    internal static AccessTelemetryEvent SanitizeForProviders(AccessTelemetryEvent source)
+    {
+        try
+        {
+            return source with
+            {
+                QueryParams = new AccessTelemetryLogParameters(
+                    SanitizeQueryParams(source, IsRejectedTenant(source)),
+                    TryGetQualificationIdentity(source),
+                    isValid: true),
+            };
+        }
+        catch (AccessTelemetryContractException)
+        {
+            // Keep emitting the audit event even if its request parameters fail validation.
+            return source with
+            {
+                QueryParams = new AccessTelemetryLogParameters(
+                    new Dictionary<string, object?>(), TryGetQualificationIdentity(source), isValid: false),
+            };
+        }
+    }
+
     /// <summary>Attempts to sanitize one exact logger tuple.</summary>
     public bool TrySanitize(
         LogLevel level,
@@ -93,19 +117,12 @@ internal sealed class AccessTelemetrySanitizer
                 return false;
             }
 
-            if (!AllowedSourceKeys[source.OperationType].IsSupersetOf(source.QueryParams.Keys))
-            {
-                return false;
-            }
-            ValidateSourceValueTypes(source.OperationType, source.QueryParams);
-
-            bool rejectedTenant = string.Equals(source.TenantId, "__rejected__", StringComparison.Ordinal) ||
-                string.IsNullOrWhiteSpace(source.TenantId);
+            bool rejectedTenant = IsRejectedTenant(source);
             string tenantMarker = rejectedTenant ? "__rejected__" : CreateMarker("tenant", source.TenantId);
             string? userMarker = rejectedTenant || string.IsNullOrWhiteSpace(source.User) ? null : CreateMarker("user", source.User);
             string? caseMarker = rejectedTenant || string.IsNullOrWhiteSpace(source.CaseId) ? null : CreateMarker("case", source.CaseId);
-            IReadOnlyDictionary<string, object?> queryParams = TransformQueryParams(source, rejectedTenant);
-            ValidateCaseAndResult(source, caseMarker);
+            IReadOnlyDictionary<string, object?> queryParams = SanitizeQueryParams(source, rejectedTenant);
+            ValidateCaseAndResult(source, caseMarker, queryParams);
 
             DateTimeOffset expiresAt = emittedAt.Add(_retention);
             string? qualificationIdentity = _qualificationMode
@@ -165,10 +182,16 @@ internal sealed class AccessTelemetrySanitizer
         return new string(encoded);
     }
 
-    private static string? TryGetQualificationIdentity(AccessTelemetryEvent source)
+    /// <summary>Reads the strictly bounded synthetic qualification identity used by the lifecycle.</summary>
+    internal static string? TryGetQualificationIdentity(AccessTelemetryEvent source)
     {
+        if (source.QueryParams is AccessTelemetryLogParameters sanitized)
+        {
+            return sanitized.QualificationIdentity;
+        }
+
         if (!string.Equals(source.TenantId, "qualification-tenant", StringComparison.Ordinal) ||
-            !source.QueryParams.TryGetValue("workflowInstanceIdPrefix", out object? value) ||
+            source.QueryParams is null || !source.QueryParams.TryGetValue("workflowInstanceIdPrefix", out object? value) ||
             value is not string marker || marker.Length != 50 ||
             !marker.StartsWith("qualification-", StringComparison.Ordinal) || marker[46] != '-')
         {
@@ -478,6 +501,29 @@ internal sealed class AccessTelemetrySanitizer
         }
     }
 
+    private static bool IsRejectedTenant(AccessTelemetryEvent source)
+        => string.Equals(source.TenantId, "__rejected__", StringComparison.Ordinal) ||
+            string.IsNullOrWhiteSpace(source.TenantId);
+
+    private static IReadOnlyDictionary<string, object?> SanitizeQueryParams(
+        AccessTelemetryEvent source, bool rejectedTenant)
+    {
+        if (source.QueryParams is AccessTelemetryLogParameters sanitized && sanitized.IsValid)
+        {
+            return sanitized;
+        }
+
+        if (source.QueryParams is null or AccessTelemetryLogParameters ||
+            !AllowedSourceKeys.TryGetValue(source.OperationType, out HashSet<string>? allowedKeys) ||
+            !allowedKeys.IsSupersetOf(source.QueryParams.Keys))
+        {
+            throw new AccessTelemetryContractException("query_params_value_invalid");
+        }
+
+        ValidateSourceValueTypes(source.OperationType, source.QueryParams);
+        return TransformQueryParams(source, rejectedTenant);
+    }
+
     private static IReadOnlyDictionary<string, object?> TransformQueryParams(AccessTelemetryEvent source, bool rejectedTenant)
         => source.OperationType switch
         {
@@ -642,7 +688,8 @@ internal sealed class AccessTelemetrySanitizer
         };
     }
 
-    private static void ValidateCaseAndResult(AccessTelemetryEvent source, string? caseMarker)
+    private static void ValidateCaseAndResult(
+        AccessTelemetryEvent source, string? caseMarker, IReadOnlyDictionary<string, object?> queryParams)
     {
         bool rejected = source.TenantId == "__rejected__" || string.IsNullOrWhiteSpace(source.TenantId);
         if (!rejected && source.OperationType is "case-access" or "case-member" or "annotation" && caseMarker is null)
@@ -656,9 +703,8 @@ internal sealed class AccessTelemetrySanitizer
             throw new AccessTelemetryContractException("result_count_invalid");
         }
 
-        string? deleteOperation = source.OperationType == "delete" ? GetString(source.QueryParams, "operation") : null;
         if (!rejected && source.OperationType == "delete" &&
-            ((deleteOperation == "tenant-delete") != (caseMarker is null)))
+            ((GetString(queryParams, "targetKind") == "tenant") != (caseMarker is null)))
         {
             throw new AccessTelemetryContractException("case_marker_invalid");
         }

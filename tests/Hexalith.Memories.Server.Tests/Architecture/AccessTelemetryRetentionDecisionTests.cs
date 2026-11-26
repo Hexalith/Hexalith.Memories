@@ -497,10 +497,10 @@ public sealed partial class AccessTelemetryRetentionDecisionTests
         routing.ShouldNotContain("dedicated JSON file sink", Case.Sensitive);
 
         string schema = NormalizeWhitespace(telemetry.GetSection("Audit event schema (FR67)"));
-        schema.ShouldContain("public logger contract", Case.Sensitive);
-        schema.ShouldContain("reads typed `AccessTelemetryEvent` state", Case.Sensitive);
-        schema.ShouldContain("only then attempts nonblocking enqueue", Case.Sensitive);
-        schema.ShouldContain("not admitted to lifecycle state", Case.Sensitive);
+        schema.ShouldContain("before sending the audit event to any logging provider", Case.Sensitive);
+        schema.ShouldContain("bounded classifications such as query length, subject presence, and URI kind", Case.Sensitive);
+        schema.ShouldContain("lifecycle provider reads the same typed event", Case.Sensitive);
+        schema.ShouldContain("HMAC-marks tenant, user and case identifiers", Case.Sensitive);
 
         string logLevelGate = NormalizeWhitespace(telemetry.GetSection("Log-level config gate"));
         logLevelGate.ShouldContain("provider/category scoped, not tenant scoped", Case.Sensitive);

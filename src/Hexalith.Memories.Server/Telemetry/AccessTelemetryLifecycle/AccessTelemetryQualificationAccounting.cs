@@ -168,22 +168,7 @@ internal sealed class AccessTelemetryQualificationAccounting
             : AccessTelemetryQualificationRejectionBreakdown.Empty;
 
     private static string? TryGetCorrelation(AccessTelemetryEvent source)
-    {
-        if (!string.Equals(source.TenantId, "qualification-tenant", StringComparison.Ordinal) ||
-            !source.QueryParams.TryGetValue("workflowInstanceIdPrefix", out object? value) ||
-            value is not string marker || marker.Length < CorrelationLength + 4 ||
-            !marker.StartsWith("qualification-", StringComparison.Ordinal) || marker[CorrelationLength] != '-')
-        {
-            return null;
-        }
-
-        ReadOnlySpan<char> hash = marker.AsSpan("qualification-".Length, 32);
-        ReadOnlySpan<char> ordinal = marker.AsSpan(CorrelationLength + 1);
-        return hash.IndexOfAnyExcept("0123456789abcdef") < 0 &&
-            ordinal.Length == 3 && ordinal.IndexOfAnyExcept("0123456789") < 0
-            ? marker[..CorrelationLength]
-            : null;
-    }
+        => AccessTelemetrySanitizer.TryGetQualificationIdentity(source)?[..CorrelationLength];
 
     private void RecordDisposition(
         IReadOnlyList<AccessTelemetryRecord> records,

@@ -6,9 +6,11 @@
 namespace Hexalith.Memories.Server.Tests.Telemetry;
 
 using System.Collections.Generic;
+using System.Text.Json;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Telemetry;
+using Hexalith.Memories.Server.Tests.Telemetry.Infrastructure;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -47,6 +49,48 @@ public sealed class AccessTelemetryLogTests
         evt.ErrorCode.ShouldBeNull();
         evt.ResultCount.ShouldBe(3);
         evt.Timestamp.ShouldNotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
+    public void AuditEmitters_ProjectPrivateInputsBeforeEveryLoggerProvider()
+    {
+        const string Query = "sensitive acquisition terms";
+        const string Subject = "private strategy";
+        const string Uri = "https://example.test/private/customer?token=value";
+        using CapturingAuditLoggerProvider first = new();
+        using CapturingAuditLoggerProvider second = new();
+        using ILoggerFactory factory = LoggerFactory.Create(builder => builder.AddProvider(first).AddProvider(second));
+        ILogger<AccessTelemetryCategory> logger = factory.CreateLogger<AccessTelemetryCategory>();
+
+        // A caller can construct typed state directly, so prove the emitter itself enforces projection.
+        AccessTelemetryLog.LogSearchAccess(logger, CreateSample(7501, AccessTelemetryLog.OutcomeOk) with
+        {
+            QueryParams = new Dictionary<string, object?> { ["query"] = Query, ["subject"] = Subject },
+        });
+        AccessTelemetryLog.LogCaseAccess(logger, CreateSample(7504, AccessTelemetryLog.OutcomeOk) with
+        {
+            OperationType = AccessTelemetryLog.OperationCaseAccess,
+            QueryParams = new Dictionary<string, object?> { ["sourceUri"] = Uri, ["memoryUnitId"] = "private-unit-id" },
+        });
+
+        foreach (CapturingAuditLoggerProvider provider in new[] { first, second })
+        {
+            AuditLogCapture search = provider.AccessTelemetryCaptures.Single(capture => capture.EventId == 7501);
+            AuditLogCapture source = provider.AccessTelemetryCaptures.Single(capture => capture.EventId == 7504);
+            search.AuditEvent.ShouldNotBeNull().QueryParams["queryLengthBucket"].ShouldBe("1-32");
+            search.AuditEvent.QueryParams["subjectPresent"].ShouldBe(true);
+            source.AuditEvent.ShouldNotBeNull().QueryParams["accessKind"].ShouldBe("source-uri");
+            source.AuditEvent.QueryParams["sourceKind"].ShouldBe("url");
+            foreach (AuditLogCapture capture in new[] { search, source })
+            {
+                string serialized = JsonSerializer.Serialize(capture.Fields);
+                foreach (string secret in new[] { Query, Subject, Uri, "private-unit-id" })
+                {
+                    capture.Message.ShouldNotContain(secret);
+                    serialized.ShouldNotContain(secret);
+                }
+            }
+        }
     }
 
     [Theory]

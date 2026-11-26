@@ -138,15 +138,9 @@ public sealed class AuditLogStreamTests : IDisposable
         auditEvent.QueryParams.ShouldNotBeNull();
         auditEvent.QueryParams!.Keys.ShouldNotContain("content");
         auditEvent.QueryParams!.Keys.ShouldNotContain("contentBody");
-        auditEvent.QueryParams!.Keys.ShouldContain("sourceType");
-        auditEvent.QueryParams!.Keys.ShouldContain("contentType");
-        auditEvent.QueryParams!.Keys.ShouldContain("bytes");
-        auditEvent.QueryParams!.Keys.ShouldNotContain("sourceUriPresent");
-        auditEvent.QueryParams!.Keys.ShouldNotContain("contentBytes");
-        auditEvent.QueryParams!.Keys.ShouldNotContain("metadataCount");
-        auditEvent.QueryParams!["sourceType"].ShouldBe(SourceType.Event.ToString());
-        auditEvent.QueryParams!["contentType"].ShouldBe("text/plain");
-        auditEvent.QueryParams!["bytes"].ShouldBe(0);
+        auditEvent.QueryParams!["sourceKind"].ShouldBe("event");
+        auditEvent.QueryParams!["contentKind"].ShouldBe("text");
+        auditEvent.QueryParams!["contentLengthBucket"].ShouldBe("0");
     }
 
     [Fact]
@@ -205,7 +199,9 @@ public sealed class AuditLogStreamTests : IDisposable
         auditEvent.TenantId.ShouldBe("acme");
         auditEvent.CaseId.ShouldBe("c1");
         auditEvent.TraceId.ShouldNotBeNullOrWhiteSpace();
-        auditEvent.QueryParams.ShouldContainKey("sourceUri");
+        auditEvent.QueryParams.ShouldNotContainKey("sourceUri");
+        auditEvent.QueryParams["accessKind"].ShouldBe("source-uri");
+        auditEvent.QueryParams["sourceKind"].ShouldBe("unknown");
     }
 
     [Fact]

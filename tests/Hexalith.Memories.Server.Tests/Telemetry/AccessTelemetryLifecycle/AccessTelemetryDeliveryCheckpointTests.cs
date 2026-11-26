@@ -57,6 +57,10 @@ public sealed class AccessTelemetryDeliveryCheckpointTests
             ["memoryUnitIdPrefix"] = "raw-prefix",
             ["operation"] = "memory-unit-delete",
         })];
+        yield return [LogLevel.Information, new EventId(7505), CreateEvent(7505, "delete", null, null, new Dictionary<string, object?>
+        {
+            ["operation"] = "tenant-delete",
+        })];
         yield return [LogLevel.Information, new EventId(7506), CreateEvent(7506, "tenant-lifecycle", null, null, new Dictionary<string, object?>
         {
             ["operation"] = "tenant-create",
@@ -95,6 +99,11 @@ public sealed class AccessTelemetryDeliveryCheckpointTests
         record.ShouldNotBeNull();
         record.OperationType.ShouldBe(source.OperationType);
         AccessTelemetryCanonicalizer.CanonicalizeRecord(record).Length.ShouldBeLessThanOrEqualTo(AccessTelemetryOptions.MaximumRecordBytes);
+
+        AccessTelemetryEvent projected = AccessTelemetrySanitizer.SanitizeForProviders(source);
+        CreateSanitizer().TrySanitize(level, eventId, projected, out AccessTelemetryRecord? projectedRecord, out reason)
+            .ShouldBeTrue(reason.ToString());
+        projectedRecord.ShouldNotBeNull().QueryParams.ShouldBe(record.QueryParams);
     }
 
     [Fact]
@@ -204,6 +213,24 @@ public sealed class AccessTelemetryDeliveryCheckpointTests
         rejectedCategory.Log(LogLevel.Information, new EventId(7501), CreateSearchEvent(), null, static (_, _) => "ignored");
 
         queue.Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public void Provider_AcceptsTenantDeleteThroughTheAuditEmitter()
+    {
+        var queue = new BoundedAccessTelemetryQueue(8, 8192);
+        using var provider = new AccessTelemetryLifecycleLoggerProvider(queue, CreateSanitizer());
+        using ILoggerFactory factory = LoggerFactory.Create(builder => builder.AddProvider(provider));
+        AccessTelemetryEvent source = CreateEvent(7505, "delete", null, null, new Dictionary<string, object?>
+        {
+            ["operation"] = "tenant-delete",
+        });
+
+        AccessTelemetryLog.LogDeleteAccess(factory.CreateLogger<AccessTelemetryCategory>(), source);
+
+        AccessTelemetryRecord record = queue.PeekBatch(8, 8192).ShouldHaveSingleItem();
+        record.QueryParams["targetKind"].ShouldBe("tenant");
+        record.CaseMarker.ShouldBeNull();
     }
 
     [Fact]
