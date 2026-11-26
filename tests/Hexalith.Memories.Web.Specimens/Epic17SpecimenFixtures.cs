@@ -28,7 +28,7 @@ public static class Epic17SpecimenFixtures
             "case-activity-trail" => Epic17LensPacketFixtures.Degraded(),
             "ingestion-lifecycle-tracker" => Epic17LensPacketFixtures.NotIngested(),
             "operator-health-matrix" => Epic17LensPacketFixtures.Degraded(),
-            "benchmark-result-comparator" => Epic17LensPacketFixtures.Empty(),
+            "benchmark-result-comparator" => Epic17LensPacketFixtures.Happy(),
             "agent-packet-inspector" => Epic17LensPacketFixtures.Compressed(),
             "evidence-grid" => Epic17EvidencePacketFixtures.MultiSourcePacket(),
             "filter-summary" => Epic17EvidencePacketFixtures.MultiSourcePacket(),

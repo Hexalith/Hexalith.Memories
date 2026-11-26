@@ -2,7 +2,7 @@
 title: 'Complete six deferred API and accessibility fixes'
 type: 'bugfix'
 created: '2026-11-26'
-status: 'in-progress'
+status: 'done'
 route: 'oneshot'
 baseline_commit: '1f68406be7a61064044963139941c9ba2c117947'
 review_loop_iteration: 0
@@ -44,6 +44,11 @@ Allowed files for this story:
 - `src/Hexalith.Memories.Server/Hosting/MemoriesServerServiceCollectionExtensions.cs` - DW-534 implementation or verification
 - `src/Hexalith.Memories.Server/Hosting/MemoriesWorkflowRegistration.cs` - DW-534 implementation or verification
 - `tests/Hexalith.Memories.Server.Tests/Authentication/ServerEndpointAuthorizationTests.cs` - DW-534 implementation or verification
+- `src/Hexalith.Memories.Web/Components/Lenses/Benchmark/MemoriesBenchmarkResultComparator.razor` - DW-535 implementation or verification
+- `src/Hexalith.Memories.Web/Components/Lenses/MemoriesLensShell.razor` - DW-535 implementation or verification
+- `tests/Hexalith.Memories.Web.E2E/specs/specimen-a11y.spec.ts` - DW-535 implementation or verification
+- `tests/Hexalith.Memories.Web.Specimens/Epic17SpecimenFixtures.cs` - DW-535 implementation or verification
+- `tests/Hexalith.Memories.Web.Tests/Components/Validation/Epic17AccessibilitySweepTests.cs` - DW-535 implementation or verification
 
 ## Cross-Tenant Negative Evidence
 
@@ -60,3 +65,10 @@ Allowed files for this story:
 - DW-532, patched. A five-second dependency budget covers registry and workflow reads, including the SDK’s wait-for-ready behavior. Cancellation, distinct permission failures, readiness guidance, and the deletion inbox retry follow their own paths. The generated workflow ID’s final delimiter separates suffixes from tenant IDs, including tenant names that share a prefix. Dapr’s established result for a missing workflow and untyped backend errors remain outside the sidecar-outage fix.
 - DW-533, patched. A failed or stalled best-effort rollback preserves the original 503 and logs only the tenant and exception type. The existing deletion claim is retained when the gRPC schedule acknowledgement is uncertain. The rollback test verifies the persisted row and owner after each outcome.
 - DW-534, patched. Runtime endpoint metadata proves that each of the seven moved routes is registered exactly once and has no anonymous override. Source comparison verified unchanged route verbs, handler logic, and ordering of all 77 workflow/activity registrations. Additional independent behavior coverage falls outside this mechanical extraction.
+- DW-535, patched. Named groups replace generic labeled containers in the comparator and its trust header. The browser checks the full populated route, visible score text, the exact semantic score in the accessibility snapshot, and the absence of a duplicate progress-bar role.
+
+## Verification
+
+- The Release solution build passed with zero errors and one existing warning for the obsolete RedisConnectionException constructor in the nightly test fixture.
+- Focused Server checks passed for ingestion, graph validation, tenant lifecycle and registry, route contracts, authorization, search, cases, telemetry, and workflow composition.
+- Chromium passed all six specimen checks. The populated comparator’s route produced no axe violations or incomplete checks. TypeScript checking passed.

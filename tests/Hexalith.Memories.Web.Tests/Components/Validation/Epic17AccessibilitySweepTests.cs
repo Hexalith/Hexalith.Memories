@@ -140,9 +140,16 @@ public sealed class Epic17AccessibilitySweepTests : Epic17ValidationTestBase
     {
         string markup = RenderSurface("BenchmarkResultComparator", LensPacketFixtures.Happy());
 
-        QueryAll(markup, "[data-testid='mem-benchmark-axis']").ShouldNotBeEmpty();
-        QueryAll(markup, "[data-testid='mem-benchmark-axis-score']")
-            .ShouldAllBe(e => !string.IsNullOrWhiteSpace(e.TextContent));
+        IReadOnlyList<IElement> scoredAxes = QueryAll(markup, "[data-testid='mem-benchmark-axis'][data-has-score='true']");
+        scoredAxes.ShouldNotBeEmpty();
+        foreach (IElement axis in scoredAxes)
+        {
+            IElement bar = axis.QuerySelector("[data-testid='mem-benchmark-axis-bar']").ShouldNotBeNull();
+            bar.GetAttribute("aria-hidden").ShouldBe("true");
+            bar.HasAttribute("aria-label").ShouldBeFalse();
+            axis.QuerySelector("[data-testid='mem-benchmark-axis-score']").ShouldNotBeNull()
+                .TextContent.ShouldNotBeNullOrWhiteSpace();
+        }
     }
 
     [Fact]

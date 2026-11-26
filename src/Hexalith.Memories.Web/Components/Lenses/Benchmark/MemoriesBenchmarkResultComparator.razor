@@ -22,6 +22,7 @@
     <div class="mem-benchmark-comparator"
          data-testid="mem-benchmark-comparator"
          data-result-state="@_view.ResultState"
+         role="group"
          aria-label="@Localizer[BenchmarkResourceKeys.RegionLabel]">
         <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" Wrap="true" VerticalAlignment="VerticalAlignment.Center">
             <FluentLabel Typo="Typography.Subject">
@@ -84,7 +85,7 @@
                                 <FluentProgressBar Min="0"
                                                    Max="100"
                                                    Value="@row.ScorePercent"
-                                                   aria-label="@($"{Localizer[BenchmarkResourceKeys.ScoreLabel]}: {row.SafeScore}")"
+                                                   aria-hidden="true"
                                                    data-testid="mem-benchmark-axis-bar" />
                             }
                             <FluentLabel Typo="Typography.Body" data-testid="mem-benchmark-axis-description">

@@ -10,7 +10,29 @@ test('specimen routes pass blocking axe checks with nonzero target nodes', async
   const scans = [];
 
   for (const route of routes) {
-    scans.push(await scanRouteWithAxe(page, route));
+    const scan = await scanRouteWithAxe(page, route);
+    scans.push(scan);
+    if (route.slug === 'benchmark-result-comparator') {
+      const comparator = page.getByTestId('mem-benchmark-comparator');
+      const scoredAxes = comparator.getByTestId('mem-benchmark-axis')
+        .and(comparator.locator('[data-has-score="true"]'));
+      expect(await scoredAxes.count()).toBeGreaterThan(0);
+      for (const axis of await scoredAxes.all()) {
+        const bar = axis.getByTestId('mem-benchmark-axis-bar');
+        await expect(bar).toBeVisible();
+        await expect(bar).toHaveAttribute('aria-hidden', 'true');
+        await expect(bar).not.toHaveAttribute('aria-label');
+        const score = axis.getByTestId('mem-benchmark-axis-score');
+        await expect(score).toBeVisible();
+        await expect(score).toHaveText(/Score:\s*\d/);
+      }
+      const semanticAxis = comparator.locator('[data-axis="semantic"]');
+      const accessibleAxis = await semanticAxis.ariaSnapshot();
+      expect(accessibleAxis).toContain('Axis: semantic · Score: 0.91 · Normalization: cosine');
+      expect(accessibleAxis).not.toContain('progressbar');
+      expect(scan.violationCount).toBe(0);
+      expect(scan.incompleteIds).toEqual([]);
+    }
     if (route.slug === 'operator-health-matrix') {
       const action = page.getByTestId('mem-health-action-button')
         .filter({ hasText: 'Next action: Use graph traversal' });

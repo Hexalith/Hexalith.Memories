@@ -3776,7 +3776,8 @@ resolution: Case membership, tenant diagnostics, search result enrichment, and w
 origin: migrated from legacy ledger ("Deferred from: bmad-dev-auto review of spec-17-7-runnable-web-specimen-and-browser-at-accessibility-gap-closure (2026-07-06)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-17-7-runnable-web-specimen-and-browser-at-accessibility-gap-closure.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-17-7-runnable-web-specimen-and-browser-at-accessibility-gap-closure.md` summary: The existing benchmark comparator happy-state progress indicator needs source-owned browser accessibility remediation before that state can be claimed axe-clean. evidence: The Story 17.7 Playwright axe lane initially exposed an `aria-prohibited-attr` issue on the benchmark comparator progress indicator when rendered with the happy packet fixture. Story 17.7 source ownership is specimen/test-only, so the browser specimen uses the existing empty-state fixture and keeps the happy-state remediation deferred.
-status: open
+status: done 2026-11-26
+resolution: The populated comparator exposes the exact score as text and hides the redundant Fluent bar from assistive technology. The Chromium fixture renders scored axes and passes its axe scan with zero violations and zero incomplete checks.
 
 ### DW-536: The existing benchmark comparator happy-state progress indicator remains source-owned browser accessibility follow-up work.
 
@@ -3784,6 +3785,8 @@ origin: migrated from legacy ledger ("Deferred from: bmad-dev-auto review of spe
 location: _bmad-output/implementation-artifacts/spec-17-7-runnable-web-specimen-and-browser-at-accessibility-gap-closure.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-17-7-runnable-web-specimen-and-browser-at-accessibility-gap-closure.md` summary: The existing benchmark comparator happy-state progress indicator remains source-owned browser accessibility follow-up work. evidence: The Story 17.7 review confirmed the browser specimen intentionally avoids claiming the benchmark happy-state progress-bar path as axe-clean because the underlying RCL/Fluent progress indicator produced `aria-prohibited-attr` browser accessibility evidence outside this specimen/test-only story's source ownership.
 status: open
+note: 2026-11-26 — Skipped. This entry repeats DW-535. The populated comparator remediation and Chromium evidence are recorded there.
+
 
 ### DW-537: Hexalith.Memories.Web.Tests — including the Epic 17 machine-checked inventory/over-claim guards — is in the .slnx test inventory but absent from every tools/test-projects.*.txt lane, so it never runs in CI.
 
