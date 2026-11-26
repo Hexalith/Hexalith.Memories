@@ -12,11 +12,16 @@ using System.Linq;
 using Hexalith.Memories.EventStore;
 using Hexalith.Memories.Server.Tests.EventStoreIntegration;
 using Hexalith.Memories.ServiceDefaults.Health;
+using Hexalith.Memories.ServiceDefaults.Security;
 using Hexalith.Memories.TestHelpers.Documentation;
 
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 using Shouldly;
 
@@ -44,8 +49,7 @@ public sealed class RouteSurfaceContractTests
         document.GetTableHeader("REST `/api/v1/*` operation surface").ShouldBe(["Area", "Method + path", "Purpose"]);
         IReadOnlyList<IReadOnlyList<string>> rows = document.GetTableRows("REST `/api/v1/*` operation surface");
 
-        using EventStoreWebAppFactory factory = new();
-        IReadOnlyList<(string Verb, string Path)> mappedRoutes = GetApiRoutes(GetServerEndpoints(factory));
+        IReadOnlyList<(string Verb, string Path)> mappedRoutes = GetProductionApiRoutes();
         mappedRoutes.ShouldNotBeEmpty("The Server must register its documented REST endpoints.");
         mappedRoutes.Distinct().Count().ShouldBe(mappedRoutes.Count, "Each HTTP method and route pattern must be registered once.");
 
@@ -65,8 +69,7 @@ public sealed class RouteSurfaceContractTests
         IReadOnlyList<IReadOnlyList<string>> rows = new MarkdownContractDocument(ReadDoc())
             .GetTableRows("REST `/api/v1/*` operation surface");
 
-        using EventStoreWebAppFactory factory = new();
-        int sourceApiRouteCount = GetApiRoutes(GetServerEndpoints(factory)).Count;
+        int sourceApiRouteCount = GetProductionApiRoutes().Count;
         int documentedApiRowCount = rows.Count;
 
         documentedApiRowCount.ShouldBe(
@@ -272,6 +275,21 @@ public sealed class RouteSurfaceContractTests
         IReadOnlyList<string> diagnostics = ContractDocumentGuard.FindLeakedToolCallMarkup(ReadDoc());
 
         diagnostics.ShouldBeEmpty($"{DocRelativePath} contains leaked tool-call markup: {string.Join("; ", diagnostics)}");
+    }
+
+    private static IReadOnlyList<(string Verb, string Path)> GetProductionApiRoutes()
+    {
+        using EventStoreWebAppFactory factory = new();
+        using WebApplicationFactory<Program> production = factory.WithWebHostBuilder(builder =>
+        {
+            builder.UseEnvironment(Environments.Production);
+            builder.ConfigureTestServices(services => services.Remove(services.Single(service =>
+                service.ServiceType == typeof(IHostedService) &&
+                service.ImplementationType == typeof(DaprTokenStartupValidator))));
+        });
+
+        production.Services.GetRequiredService<IHostEnvironment>().IsProduction().ShouldBeTrue();
+        return GetApiRoutes(production.Services.GetRequiredService<EndpointDataSource>().Endpoints);
     }
 
     private static IReadOnlyList<Microsoft.AspNetCore.Http.Endpoint> GetServerEndpoints(EventStoreWebAppFactory factory)

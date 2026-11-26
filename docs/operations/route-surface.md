@@ -147,7 +147,7 @@ The route templates, the pub/sub delivery and discovery routes, the topic env va
 A structure-aware drift-guard test protects this contract:
 [`tests/Hexalith.Memories.Server.Tests/Deployment/RouteSurfaceContractTests.cs`](../../tests/Hexalith.Memories.Server.Tests/Deployment/RouteSurfaceContractTests.cs). It runs on every build in the Docker-free Server test project and enforces:
 
-- **Forward tie (code → exact row), the core sync guard:** every registered application HTTP method and route pattern from the Server endpoint data source must be unique and appear exactly once as the normalized Method + path cell in the exact REST table.
+- **Forward tie (code → exact row), the core sync guard:** every registered application HTTP method and route pattern from the Production Server endpoint data source must be unique and appear exactly once as the normalized Method + path cell in the exact REST table.
 - **Count tie:** the number of registered application `/api/v1/*` routes (currently **58**, excluding the separate Dapr health probe) must equal the REST table's data-row count — defending against silent omission, duplicate rows, and phantom rows.
 - **Pub/sub constant tie (bidirectional):** the exact two-row pub/sub table is tied to `MapSubscribeHandler()`, `EventIngestionController.PubSubName`, `TopicEnvVar`, `[Route("events")]`, and `[HttpPost("ingest")]`.
 - **Health constant tie:** the exact three-row health table binds each path cell to its adjacent `HealthEndpointPaths.Health` / `.Alive` / `.Ready` constant cell.
