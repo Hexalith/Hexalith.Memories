@@ -3722,7 +3722,8 @@ resolution: The new Redis marker records only a complete zero-drain check. Track
 origin: migrated from legacy ledger ("Deferred from: bmad-dev-auto review of spec-25-1-program-cs-decomposition (2026-07-06)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-25-1-program-cs-decomposition.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-25-1-program-cs-decomposition.md` summary: Ingestion endpoints dereference null JSON request bodies while setting telemetry before reaching the existing structured validation response. evidence: The review traced `POST /api/ingest`, `/api/ingest/url`, and `/api/ingest/directory`; each path reads `input.TenantId` or `request.TenantId` before the existing `Validate*Request` helper can return `INVALID_INPUT`. This behavior existed in the original inline `Program.cs` handlers and was preserved by the decomposition.
-status: open
+status: done 2026-11-26
+resolution: File, URL, and directory ingestion return an audited INVALID_INPUT for omitted or JSON-null bodies before accessing tenant storage or scheduling.
 
 ### DW-529: Search source-type validation accepts numeric enum values that do not correspond to defined `SourceType` members.
 

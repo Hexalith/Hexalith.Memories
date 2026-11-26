@@ -62,7 +62,7 @@ internal static class IngestionEndpoints
             IOptionsMonitor<Hexalith.Memories.EventStore.TenantEventRoutingOptions> ingestRoutingOptions,
             ILogger<AccessTelemetryCategory> auditLogger,
             HttpContext httpContext,
-            IngestionInput input) =>
+            IngestionInput? input) =>
         {
             long scheduledDocumentCount = 1;
             using EndpointTelemetryScope scope = CreateEndpointAuditScope(
@@ -72,9 +72,10 @@ internal static class IngestionEndpoints
                 AccessTelemetryLog.OperationIngest,
                 successEventId: 7502,
                 errorEventId: 7512,
-                input.TenantId,
-                input.CaseId,
-                CreateIngestAuditQueryParams(input.SourceType, input.ContentType, IngestionPayloadClaimCheck.GetDeclaredPayloadLength(input)),
+                input?.TenantId,
+                input?.CaseId,
+                CreateIngestAuditQueryParams(input?.SourceType, input?.ContentType,
+                    input is null ? null : IngestionPayloadClaimCheck.GetDeclaredPayloadLength(input)),
                 recordMetricOnDispose: s =>
                 {
                     if (s.Outcome == AccessTelemetryLog.OutcomeError)
@@ -87,12 +88,19 @@ internal static class IngestionEndpoints
                     }
                 });
             System.Diagnostics.Activity? activity = scope.Activity;
-            activity?.SetTag(MemoriesActivitySource.TagTenantId, input.TenantId);
-            activity?.SetTag(MemoriesActivitySource.TagCaseId, input.CaseId);
-            activity?.SetTag(MemoriesActivitySource.TagSourceType, input.SourceType.ToString().ToLowerInvariant());
+            activity?.SetTag(MemoriesActivitySource.TagSourceType, input?.SourceType.ToString().ToLowerInvariant());
 
             try
             {
+                if (input is null)
+                {
+                    ErrorResponse bodyError = ErrorResults.InvalidInput(
+                        "Request body is required.",
+                        "Provide a JSON ingestion request body.");
+                    scope.MarkValidationError(bodyError.Code);
+                    return Results.BadRequest(bodyError);
+                }
+
                 ErrorResponse? validationError = ValidateIngestionRequest(input);
                 if (validationError is not null)
                 {
@@ -276,7 +284,7 @@ internal static class IngestionEndpoints
             ILoggerFactory loggerFactory,
             ILogger<AccessTelemetryCategory> auditLogger,
             HttpContext httpContext,
-            UrlIngestionRequest request,
+            UrlIngestionRequest? request,
             CancellationToken cancellationToken) =>
         {
             long scheduledDocumentCount = 1;
@@ -287,8 +295,8 @@ internal static class IngestionEndpoints
                 AccessTelemetryLog.OperationIngest,
                 successEventId: 7502,
                 errorEventId: 7512,
-                request.TenantId,
-                request.CaseId,
+                request?.TenantId,
+                request?.CaseId,
                 CreateIngestAuditQueryParams(SourceType.Url, contentType: null, bytes: 0),
                 recordMetricOnDispose: s =>
                 {
@@ -302,16 +310,14 @@ internal static class IngestionEndpoints
                     }
                 });
             System.Diagnostics.Activity? activity = scope.Activity;
-            activity?.SetTag(MemoriesActivitySource.TagTenantId, request.TenantId);
-            activity?.SetTag(MemoriesActivitySource.TagCaseId, request.CaseId);
             activity?.SetTag(MemoriesActivitySource.TagSourceType, SourceType.Url.ToString().ToLowerInvariant());
 
             ILogger urlLogger = loggerFactory.CreateLogger("Hexalith.Memories.Server.Ingestion.Url");
 
             try
             {
-                ErrorResponse? validationError = ValidateUrlIngestionRequest(request, urlFetcherOptions.Value, out Uri? url);
-                if (validationError is not null || url is null)
+                ErrorResponse? validationError = ValidateUrlIngestionRequest(request, urlFetcherOptions, out Uri? url);
+                if (request is null || validationError is not null || url is null)
                 {
                     scope.MarkValidationError(validationError!.Code);
                     IngestionEndpointLog.LogUrlIngestionRejected(
@@ -376,7 +382,7 @@ internal static class IngestionEndpoints
             ILoggerFactory loggerFactory,
             ILogger<AccessTelemetryCategory> auditLogger,
             HttpContext httpContext,
-            DirectoryIngestionRequest request,
+            DirectoryIngestionRequest? request,
             CancellationToken cancellationToken) =>
         {
             long scheduledDocumentCount = 0;
@@ -387,8 +393,8 @@ internal static class IngestionEndpoints
                 AccessTelemetryLog.OperationIngest,
                 successEventId: 7502,
                 errorEventId: 7512,
-                request.TenantId,
-                request.CaseId,
+                request?.TenantId,
+                request?.CaseId,
                 CreateIngestAuditQueryParams(SourceType.File, contentType: null, bytes: 0),
                 recordMetricOnDispose: s =>
                 {
@@ -402,8 +408,6 @@ internal static class IngestionEndpoints
                     }
                 });
             System.Diagnostics.Activity? activity = scope.Activity;
-            activity?.SetTag(MemoriesActivitySource.TagTenantId, request.TenantId);
-            activity?.SetTag(MemoriesActivitySource.TagCaseId, request.CaseId);
             activity?.SetTag(MemoriesActivitySource.TagSourceType, SourceType.File.ToString().ToLowerInvariant());
 
             ILogger dirLogger = loggerFactory.CreateLogger("Hexalith.Memories.Server.Ingestion.Directory");
@@ -411,15 +415,15 @@ internal static class IngestionEndpoints
             try
             {
                 ErrorResponse? shapeError = ValidateDirectoryIngestionRequest(request);
-                if (shapeError is not null)
+                if (request is null || shapeError is not null)
                 {
-                    scope.MarkValidationError(shapeError.Code);
+                    scope.MarkValidationError(shapeError!.Code);
                     IngestionEndpointLog.LogDirectoryBatchRejected(
                         dirLogger,
                         request?.TenantId ?? "(missing)",
                         request?.CaseId ?? "(missing)",
                         null,
-                        shapeError.Code,
+                        shapeError!.Code,
                         request?.DirectoryPath ?? string.Empty);
                     return Results.BadRequest(shapeError);
                 }
@@ -595,7 +599,7 @@ internal static class IngestionEndpoints
         return app;
     }
 
-    private static ErrorResponse? ValidateUrlIngestionRequest(UrlIngestionRequest request, UrlFetcherOptions options, out Uri? url)
+    private static ErrorResponse? ValidateUrlIngestionRequest(UrlIngestionRequest? request, IOptions<UrlFetcherOptions> options, out Uri? url)
     {
         url = null;
         if (request is null)
@@ -629,7 +633,7 @@ internal static class IngestionEndpoints
                 "Use an http(s) URL with a publicly routable host.");
         }
 
-        if (!UrlHostValidator.IsAllowedHost(parsed, options))
+        if (!UrlHostValidator.IsAllowedHost(parsed, options.Value))
         {
             return new ErrorResponse(
                 "INVALID_URL",
@@ -657,7 +661,7 @@ internal static class IngestionEndpoints
         return null;
     }
 
-    private static ErrorResponse? ValidateDirectoryIngestionRequest(DirectoryIngestionRequest request)
+    private static ErrorResponse? ValidateDirectoryIngestionRequest(DirectoryIngestionRequest? request)
     {
         if (request is null)
         {

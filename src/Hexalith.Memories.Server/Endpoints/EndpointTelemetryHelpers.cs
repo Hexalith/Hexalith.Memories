@@ -24,12 +24,12 @@ internal static class EndpointTelemetryHelpers
     internal const string EndpointTelemetryErrorCodeItemKey = "__Hexalith.Memories.EndpointTelemetryErrorCode";
 
     internal static IReadOnlyDictionary<string, object?> CreateIngestAuditQueryParams(
-        SourceType sourceType,
+        SourceType? sourceType,
         string? contentType,
         long? bytes)
         => new Dictionary<string, object?>(System.StringComparer.Ordinal)
         {
-            ["sourceType"] = sourceType.ToString(),
+            ["sourceType"] = sourceType?.ToString(),
             ["contentType"] = string.IsNullOrWhiteSpace(contentType) ? null : contentType,
             ["bytes"] = bytes ?? 0,
         };

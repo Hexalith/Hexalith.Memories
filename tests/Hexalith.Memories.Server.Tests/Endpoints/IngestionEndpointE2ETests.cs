@@ -16,6 +16,7 @@ using Dapr.Client;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Ingestion;
+using Hexalith.Memories.Server.Telemetry;
 using Hexalith.Memories.Server.Tenants;
 using Hexalith.Memories.Server.Tests.Authentication;
 using Hexalith.Memories.Server.Tests.EventStoreIntegration;
@@ -43,6 +44,40 @@ public sealed class IngestionEndpointE2ETests : IDisposable
     {
         _factory.IngestionWorkflowSchedulerOverride = _scheduler;
         _factory.ConfigurationOverrides["EventStoreIntegration:Routing:PreflightDedupEnabled"] = "false";
+    }
+
+    [Theory]
+    [InlineData(MemoriesRoutes.Ingest)]
+    [InlineData(MemoriesRoutes.IngestUrl)]
+    [InlineData(MemoriesRoutes.IngestDirectory)]
+    public async Task PostIngest_MissingOrNullBody_ReturnsStructuredBadRequest(string path)
+    {
+        using HttpClient client = CreateAuthorizedClient();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        using StringContent jsonNull = new("null", Encoding.UTF8, "application/json");
+
+        foreach (HttpContent? content in new HttpContent?[] { null, jsonNull })
+        {
+            using HttpResponseMessage response = await client.PostAsync(path, content, cancellationToken);
+            response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+            ErrorResponse? error = await response.Content.ReadFromJsonAsync<ErrorResponse>(
+                MemoriesJsonContext.Options, cancellationToken);
+            error.ShouldNotBeNull().Code.ShouldBe("INVALID_INPUT");
+            error.Message.ShouldBe("Request body is required.");
+        }
+
+        var audits = _factory.AuditLogs.Captures.Where(log => log.EventId == 7512).ToArray();
+        audits.Length.ShouldBe(2);
+        foreach (var capture in audits)
+        {
+            var audit = capture.AuditEvent.ShouldNotBeNull();
+            audit.TenantId.ShouldBe(MemoriesMeter.RejectedTenantTag);
+            audit.Outcome.ShouldBe(AccessTelemetryLog.OutcomeError);
+            audit.ErrorCode.ShouldBe("INVALID_INPUT");
+        }
+
+        _scheduler.ReceivedCalls().ShouldBeEmpty();
+        _factory.DaprClient.ReceivedCalls().ShouldBeEmpty();
     }
 
     [Fact]
