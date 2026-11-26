@@ -215,9 +215,16 @@ for project in "${PROJECTS[@]}"; do
     )
   fi
 
+  benchmark_result=""
+  if [[ "$FILTER" == "Category=Benchmark" ]]; then
+    benchmark_target=$(dotnet msbuild "$project" -getProperty:TargetPath "-p:Configuration=$CONFIGURATION")
+    benchmark_result="$(dirname "$benchmark_target")/benchmark-results.json"
+    rm -f -- "$benchmark_result"
+  fi
+
   echo "${CMD[*]}"
   test_exit_code=0
-  "${CMD[@]}" || test_exit_code=$?
+  MEMORIES_BENCHMARK_RESULTS_PATH="$benchmark_result" "${CMD[@]}" || test_exit_code=$?
 
   if [[ "$COVERAGE" == true && -n "${project_results_directory:-}" ]]; then
     python3 - "$project_results_directory" <<'PY'
@@ -270,5 +277,16 @@ PY
   if [[ $test_exit_code -ne 0 ]]; then
     echo "dotnet test failed ($test_exit_code) for $project" >&2
     exit "$test_exit_code"
+  fi
+
+  if [[ -n "$benchmark_result" ]]; then
+    (
+      second_run=$(mktemp -d)
+      trap 'rm -rf -- "$second_run"' EXIT
+      echo "Running the benchmark in an independent process."
+      MEMORIES_BENCHMARK_RESULTS_PATH="$second_run/benchmark-results.json" \
+        dotnet "$benchmark_target" -method '*RunBenchmarkSuite_ProducesValidResults'
+      python3 tools/compare-benchmark-results.py "$benchmark_result" "$second_run/benchmark-results.json"
+    )
   fi
 done

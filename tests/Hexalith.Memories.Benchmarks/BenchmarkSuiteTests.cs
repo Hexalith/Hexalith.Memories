@@ -236,7 +236,12 @@ public class BenchmarkSuiteTests
     }
 
     private static string GetBenchmarkResultsOutputPath()
-        => System.IO.Path.Combine(AppContext.BaseDirectory, "benchmark-results.json");
+    {
+        string? outputPath = Environment.GetEnvironmentVariable("MEMORIES_BENCHMARK_RESULTS_PATH");
+        return string.IsNullOrEmpty(outputPath)
+            ? System.IO.Path.Combine(AppContext.BaseDirectory, "benchmark-results.json")
+            : outputPath;
+    }
 
     private static void WriteBenchmarkResultsArtifact(BenchmarkSuiteResult result)
         => BenchmarkReporter.WriteResults(result, GetBenchmarkResultsOutputPath());

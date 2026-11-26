@@ -4061,7 +4061,8 @@ resolution: The current release step requires Skopeo availability and version ou
 origin: migrated from legacy ledger ("Deferred from: code review of 26-2-backup-and-restore (2026-07-15)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-epic-26-benchmark-quality-gate.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-epic-26-benchmark-quality-gate.md` summary: Make independent-process benchmark reproducibility a permanent fail-closed CI comparison. evidence: Story 26.8 retained and compared two independent benchmark processes, but the nightly lane launches one process and its in-process reproducibility check cannot detect process-initialized drift. A future lane should normalize and compare two independently generated result payloads without weakening the existing gate.
-status: open
+status: done 2026-11-26
+resolution: The nightly benchmark command runs the full quality gate and a fresh benchmark process, compares complete JSON results after removing only runTimestamp, and fails on drift, missing output, or invalid payloads. The live runs matched, and comparator fixtures exercise rejection.
 
 ### DW-572: Reconcile the access-telemetry retention deferred-entry schema, accepted-debt validation, and proposal wording before using that evidence to close A41.
 

@@ -74,6 +74,17 @@ Integration tests split into two lanes by wall-clock cost. Performance-tagged in
 ./tools/test.ps1 -Filter 'Category=Performance'
 ```
 
+### Benchmark reproducibility
+
+The nightly Bash benchmark lane runs the complete quality-gate project, then
+runs the benchmark against newly seeded backends in a second test process.
+It fails if either process fails, either result is missing or malformed, or any
+result field other than the run timestamp changes.
+
+```bash
+bash ./tools/test.sh --filter "Category=Benchmark" --configuration Release --no-build --results-directory TestResults/benchmark
+```
+
 ### Full suite
 
 ```bash
