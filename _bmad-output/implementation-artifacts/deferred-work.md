@@ -3971,7 +3971,8 @@ resolution: The isolated Aspire topology disables private hosts. A loopback cana
 origin: migrated from legacy ledger ("Story 26.3 Explicit Integration Deferrals (2026-07-13)"), 2026-09-01
 location: tests/Hexalith.Memories.IntegrationTests/Ingestion/RetryFailureIntegrationTests.cs
 reason: - **26.3-BULK-REINGEST-HICCUP - accepted.** The five-way bulk re-ingestion scenario needs deterministic per-unit missing, claimed, and Redis-write-failure control in one request. - ID: 26.3-BULK-REINGEST-HICCUP - Status: accepted - Source story: 26-3-integration-stub-closure - Target artifact: tests/Hexalith.Memories.IntegrationTests/Ingestion/RetryFailureIntegrationTests.cs - Re-open trigger: provide a fixture-scoped claim/hiccup seam that can assign Scheduled, NotFound, Conflicted, and Errored outcomes without process-global mutation. - Rationale: Existing topology controls cannot inject one scoped Redis failure while preserving the four sibling outcomes and shared state store. Owner: ingestion reliability maintainer.
-status: open
+status: done 2026-11-26
+resolution: The bulk API emits five ordered outcomes under a live scoped Redis fault with two completed retry workflows. Hosted route coverage controls a competing claim and claim write failure. Real Redis rejects a claim write without losing its record, and only one retry wins after repair.
 
 ### DW-561: 26.3-COUNTER-STAGE-BARRIER: accepted. Exact simultaneous queued/extracting/embedding counts require deterministic workflow stage barriers.
 

@@ -25,7 +25,7 @@ using Shouldly;
 using StackExchange.Redis;
 
 /// <summary>
-/// Story 23.4 API-level coverage for failed non-URL re-ingestion outcomes. These tests exercise
+/// API-level coverage for failed-unit re-ingestion outcomes. These tests exercise
 /// the real minimal API routes and JSON contracts while replacing the coordinator dependencies.
 /// </summary>
 public sealed class ReIngestionEndpointE2ETests : IDisposable
@@ -160,6 +160,57 @@ public sealed class ReIngestionEndpointE2ETests : IDisposable
             "mu-unsupported",
             Arg.Any<string>(),
             Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task PostBulkReIngest_WithLostClaimAndRegistryError_ReturnsFiveOrderedOutcomes()
+    {
+        StubTenantActive();
+        StubCaseExists();
+        FailedUnitRecord first = CreateRecord("mu-first", SourceType.Url);
+        FailedUnitRecord second = CreateRecord("mu-second", SourceType.Url);
+        FailedUnitRecord conflicted = CreateRecord("mu-conflicted", SourceType.Url);
+        const string erroredId = "mu-errored";
+        const string missingId = "mu-missing";
+        const string redisError = "Test Redis write failure while removing the failed-unit claim";
+        FailedUnitRecord errored = CreateRecord(erroredId, SourceType.Url);
+
+        foreach (FailedUnitRecord record in new[] { first, second })
+        {
+            _registry.GetAsync(TenantId, record.MemoryUnitId, Arg.Any<CancellationToken>()).Returns(record);
+            _registry.RemoveAsync(TenantId, CaseId, record.MemoryUnitId, record.SourceUri, Arg.Any<CancellationToken>()).Returns(true);
+            _scheduler.ScheduleFailedRetryAsync(record, Arg.Any<IngestionInput>(), Arg.Any<CancellationToken>())
+                .Returns($"wf-{record.MemoryUnitId}");
+        }
+
+        _registry.GetAsync(TenantId, conflicted.MemoryUnitId, Arg.Any<CancellationToken>()).Returns(conflicted);
+        // A concurrent caller removed the record after this request read it but before it could claim it.
+        _registry.RemoveAsync(TenantId, CaseId, conflicted.MemoryUnitId, conflicted.SourceUri, Arg.Any<CancellationToken>()).Returns(false);
+        _registry.GetAsync(TenantId, erroredId, Arg.Any<CancellationToken>()).Returns(errored);
+        _registry.RemoveAsync(TenantId, CaseId, erroredId, errored.SourceUri, Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<bool>(new RedisServerException(redisError)));
+        using HttpClient client = CreateAuthorizedClient();
+        ReIngestRequest request = new([first.MemoryUnitId, missingId, conflicted.MemoryUnitId, erroredId, second.MemoryUnitId]);
+
+        using HttpResponseMessage response = await client.PostAsJsonAsync(
+            $"/api/v1/tenants/{TenantId}/cases/{CaseId}/failed-units/re-ingest", request, MemoriesJsonContext.Options);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        BulkReIngestionResponse bulk = await ReadJsonAsync<BulkReIngestionResponse>(response);
+        (bulk.Scheduled, bulk.NotFound, bulk.Conflicted, bulk.Errored, bulk.Unsupported).ShouldBe((2, 1, 1, 1, 0));
+        bulk.Units.ShouldBe(
+        [
+            new(first.MemoryUnitId, $"wf-{first.MemoryUnitId}", "scheduled", null),
+            new(missingId, null, "not-found", null),
+            new(conflicted.MemoryUnitId, null, "conflict", null),
+            new(erroredId, null, "error", redisError),
+            new(second.MemoryUnitId, $"wf-{second.MemoryUnitId}", "scheduled", null),
+        ]);
+        await _registry.Received(1).RemoveAsync(TenantId, CaseId, conflicted.MemoryUnitId, conflicted.SourceUri, Arg.Any<CancellationToken>());
+        await _scheduler.DidNotReceive().ScheduleFailedRetryAsync(
+            Arg.Is<FailedUnitRecord>(record => record == conflicted || record == errored),
+            Arg.Any<IngestionInput>(), Arg.Any<CancellationToken>());
+        await _registry.DidNotReceive().RestoreAsync(Arg.Any<FailedUnitRecord>(), Arg.Any<CancellationToken>());
     }
 
     public void Dispose() => _factory.Dispose();
