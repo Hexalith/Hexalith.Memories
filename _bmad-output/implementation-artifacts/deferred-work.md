@@ -4021,7 +4021,8 @@ decision: 2026-09-01 Define fail-closed 503 — Define a bounded unavailable res
 origin: migrated from legacy ledger ("Story 26.3 Explicit Integration Deferrals (2026-07-13)"), 2026-09-01
 location: tests/Hexalith.Memories.IntegrationTests/Search/DegradationIntegrationTests.cs
 reason: - **26.3-SINGLE-AXIS-REDIS-COLLAPSE - accepted.** A Redis resource stop is not a syntactic-only outage and can prevent the service from reading authorization, tenant, workflow, and actor state. - ID: 26.3-SINGLE-AXIS-REDIS-COLLAPSE - Status: accepted - Source story: 26-3-integration-stub-closure - Target artifact: tests/Hexalith.Memories.IntegrationTests/Search/DegradationIntegrationTests.cs - Re-open trigger: add a request-scoped RediSearch capability fault or publish a truthful state-store-collapse contract for the single-axis endpoint. - Rationale: A resource stop would overclaim `BACKEND_UNAVAILABLE` syntactic-only semantics. Owner: search reliability maintainer.
-status: open
+status: done 2026-11-26
+resolution: The nightly single-axis scenario stops shared Redis, observes the explicit control-plane 503 while direct graph reads still succeed, then verifies syntactic retrieval and its original persisted hash after restart.
 
 ### DW-567: Distinguish a confirmed missing remote manifest from registry authentication, availability, and malformed-response failures before authorizing a container push.
 

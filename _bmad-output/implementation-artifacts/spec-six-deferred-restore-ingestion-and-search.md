@@ -2,7 +2,7 @@
 title: 'Complete six deferred restore, ingestion, and search items'
 type: 'bugfix'
 created: '2026-11-26'
-status: 'in-progress'
+status: 'done'
 route: 'one-shot'
 baseline_commit: '81928b7e0a1700ac609a7af7c4d748fdd5aaede5'
 context: []
@@ -27,6 +27,7 @@ Complete the next six actionable deferred items in ledger order. Implement and v
 - DW-561 needs a worker that can hold real workflows at requested transitions. DW-562 and DW-563 need an isolated performance lane with a stable baseline.
 - DW-564 scopes a failure to an exact query embedding input in the test-owned provider. The live API and Redis/FalkorDB remain active. The control query and healthy retry verify that other work and subsequent semantic retrieval still succeed.
 - DW-565 bounds tenant and case verification to five seconds. Case verification reads the stored case record and preserves its tenant check independently of optional graph enrichment. A valid cached tenant status can allow tenant-wide search to proceed to the existing axis-specific responses. The outage test verifies each axis actually contributes after both storage resources restart.
+- DW-566 proves the shared Redis failure response on syntactic search with a live graph backend. The request recovers once the stored case and index can be read again. The previous skipped topology assumptions were removed when their replacement tests landed.
 
 ## File Scope
 
@@ -59,6 +60,8 @@ Allowed files for this story:
 - `src/Hexalith.Memories.Server/Endpoints/SearchEndpoints.cs` - bound and map search control-plane failure
 - `tests/Hexalith.Memories.Server.Tests/Endpoints/SearchEndpointContractTests.cs` - timeout, ownership, and denial-before-dependency regressions
 - `tests/Hexalith.Memories.Integration.NightlyTests/Search/SearchControlPlaneOutageIntegrationTests.cs` - full outage and independent-axis recovery
+- `tests/Hexalith.Memories.IntegrationTests/Search/DegradationIntegrationTests.Fast.cs` - remove obsolete skipped scenarios
+- `tests/Hexalith.Memories.Integration.NightlyTests/Search/SyntacticSearchControlPlaneOutageIntegrationTests.cs` - single-axis outage and recovery
 
 ## Verification
 
@@ -71,6 +74,7 @@ Allowed files for this story:
 - DW-560 `ReIngestBulk_MixedOutcomes_EnumeratedInResponse`, `PostBulkReIngest_WithLostClaimAndRegistryError_ReturnsFiveOrderedOutcomes`, and `ClaimWriteFailurePreservesTheFailedUnitAndOnlyOneRetryCanClaimAfterRepair` passed.
 - DW-564 `HybridSearch_WhenQueryEmbeddingFails_DegradesOnlySemanticAndRecoversAsync` and the existing `OllamaOidcFakeServerTests` passed.
 - DW-565 `HybridSearch_AllStorageBackendsStopped_FailsClosedAndRecovers` and the existing FalkorDB-only degradation scenario passed on real Docker resources. The Server route suite verified stalled lookup, authorization precedence, and graph-independent ownership checks.
+- DW-566 `SyntacticSearch_SharedRedisStopped_FailsClosedWhileGraphRemainsAvailable` passed on the same nightly topology as DW-565.
 
 ## Cross-Tenant Negative Evidence
 
@@ -97,3 +101,18 @@ Allowed files for this story:
 **Command:** `dotnet tests/Hexalith.Memories.Server.Tests/bin/Release/net11.0/Hexalith.Memories.Server.Tests.dll -class '*SearchEndpointContractTests'`
 
 **Result:** Passed. A tenant outside bearer claims is denied before Dapr or Redis reads. A case hash marked as another tenant is unavailable under the authorized route and no graph enrichment occurs during the ownership check.
+
+## Review Triage Log
+
+- DW-556. Patched production gRPC reconciliation, the possible lost Redis acknowledgment and cancellation after staging. Live Redis lease ownership and the HTTP response contract were verified independently.
+- DW-559. Added native workflow-key and persisted reverse-index comparisons to the denial test.
+- DW-560. Added real Redis guards for the failed claim write and competing owners. The hosted five-way case uses a source-admission fence, and the route test controls the exact lost-claim branch.
+- DW-564. The exact query fault exercises the semantic embedding dependency using the live topology. A vector-store outage uses the shared Redis failure scenarios.
+- DW-565 and DW-566. Removed optional graph enrichment from case verification, checked the returned memory-unit identifier, verified all recovered hybrid contributions, and bounded the Redis connection and single-axis recovery waits. When cached tenant state already answers a tenant-wide query, existing retrieval degradation applies.
+
+## Full Verification
+
+- `dotnet restore Hexalith.Memories.slnx` and `dotnet build Hexalith.Memories.slnx --configuration Release --no-restore -m:1` passed.
+- Ran every project in the unit/contract, integration-fast, integration-slow and benchmark inventories. The final Server test project run passed. Initial fast and nightly integration failures were replayed and passed on isolated topologies, including the FalkorDB-only degradation case after the case-read fix. Existing skips were retained.
+- The Chromium suite passed all six checks. Type checking and artifact validation passed.
+- The isolated AccessTelemetry SQL contract suite passed all 19 tests. The focused backup recovery verifier passed all eight cases. A supplementary full release-tooling sweep was stopped after product and focused verification finished.
