@@ -3760,7 +3760,8 @@ resolution: Provisioning and deletion status reads return DAPR_UNAVAILABLE for s
 origin: migrated from legacy ledger ("Deferred from: bmad-dev-auto review of spec-25-1-program-cs-decomposition (2026-07-06)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-25-1-program-cs-decomposition.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-25-1-program-cs-decomposition.md` summary: Tenant deletion Dapr-unavailable rollback catches only `InvalidOperationException`, so other rollback failures can replace the intended 503 response. evidence: The review traced the Dapr-unavailable branch in `DELETE /api/tenants/{tenantId}`; rollback errors other than `InvalidOperationException` are not swallowed or logged. This behavior existed before endpoint extraction and can leave a tenant in deleting state while returning an unexpected 500.
-status: open
+status: done 2026-11-26
+resolution: Deletion preserves the structured 503 when rollback fails and logs a sanitized diagnostic. The registry’s ownership check prevents stale rollback, and a lost gRPC response preserves the claim.
 
 ### DW-534: Large extracted endpoint and service-registration files remain candidates for further focused decomposition.
 

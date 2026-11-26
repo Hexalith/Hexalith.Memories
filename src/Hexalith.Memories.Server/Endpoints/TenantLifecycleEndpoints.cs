@@ -43,7 +43,7 @@ using static Hexalith.Memories.Server.Endpoints.EndpointTelemetryHelpers;
 using static Hexalith.Memories.Server.Endpoints.EndpointValidationHelpers;
 
 /// <summary>Maps the Memories Server endpoints for this resource area.</summary>
-internal static class TenantLifecycleEndpoints
+internal static partial class TenantLifecycleEndpoints
 {
     /// <summary>Maps this resource area's endpoints.</summary>
     /// <param name="app">The endpoint route builder.</param>
@@ -314,7 +314,7 @@ internal static class TenantLifecycleEndpoints
 
         // Story 5.2: Tenant deletion endpoints
         app.MapDelete(MemoriesRoutes.Tenant, async (
-            DaprWorkflowClient workflowClient,
+            IDaprWorkflowClient workflowClient,
             TenantRegistryService registry,
             ILogger<AccessTelemetryCategory> auditLogger,
             HttpContext httpContext,
@@ -376,10 +376,11 @@ internal static class TenantLifecycleEndpoints
                             });
                     }
                 }
-                catch (Dapr.DaprException)
+                catch (Exception ex) when (ex is Dapr.DaprException || IsDaprRpcStatus(ex, StatusCode.Unavailable))
                 {
                     scope.MarkValidationError("DAPR_UNAVAILABLE");
-                    return ErrorResults.DaprUnavailableResult();
+                    return ErrorResults.DaprUnavailableResult(
+                        suggestion: $"Check service readiness via {HealthEndpointPaths.Ready} and retry.");
                 }
             }
 
@@ -426,26 +427,27 @@ internal static class TenantLifecycleEndpoints
                 await workflowClient.ScheduleNewWorkflowAsync(
                     nameof(TenantDeletionWorkflow), instanceId, new TenantDeletionInput(tenantId));
             }
-            catch (Dapr.DaprException)
+            catch (Exception ex) when (ex is Dapr.DaprException || IsDaprRpcStatus(ex, StatusCode.Unavailable))
             {
                 scope.MarkValidationError("DAPR_UNAVAILABLE");
-                if (tenantEntry.Tenant.Status != TenantStatus.Deleting)
+                // A lost gRPC acknowledgement can follow durable scheduling. Preserve that claim for retry.
+                if (ex is Dapr.DaprException && tenantEntry.Tenant.Status != TenantStatus.Deleting)
                 {
                     try
                     {
+                        using CancellationTokenSource rollbackTimeout = new(TimeSpan.FromSeconds(5));
                         await registry.UpdateTenantStatusAsync(
-                            tenantId,
-                            tenantEntry.Tenant.Status,
-                            CancellationToken.None,
-                            instanceId);
+                                tenantId, tenantEntry.Tenant.Status, rollbackTimeout.Token, instanceId)
+                            .WaitAsync(rollbackTimeout.Token);
                     }
-                    catch (InvalidOperationException)
+                    catch (Exception rollbackError)
                     {
-                        // Best effort rollback only — the original Dapr error is more actionable to callers.
+                        LogTenantDeletionRollbackFailed(auditLogger, tenantId, rollbackError.GetType().Name);
                     }
                 }
 
-                return ErrorResults.DaprUnavailableResult();
+                return ErrorResults.DaprUnavailableResult(
+                    suggestion: $"Check service readiness via {HealthEndpointPaths.Ready} and retry.");
             }
 
             return Results.Accepted(MemoriesRoutes.TenantDeletionStatusLocation(tenantId, instanceId),
@@ -647,6 +649,9 @@ internal static class TenantLifecycleEndpoints
             throw;
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Tenant deletion rollback for {TenantId} failed with {ExceptionType}")]
+    private static partial void LogTenantDeletionRollbackFailed(ILogger logger, string tenantId, string exceptionType);
 
     private static bool IsDaprUnavailable(Exception exception)
         => exception is Dapr.DaprException { InnerException: null }

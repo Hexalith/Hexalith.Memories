@@ -18,6 +18,7 @@ using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Tenants;
 using Hexalith.Memories.Server.Tests.Authentication;
 using Hexalith.Memories.Server.Tests.EventStoreIntegration;
+using Hexalith.Memories.Server.Workflows;
 
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -182,6 +183,112 @@ public sealed class TenantLifecycleEndpointTests : IDisposable
         using HttpResponseMessage response = await client.GetAsync(
             $"/api/v1/tenants/tenant-b/{route}-status/{workflowPrefix}-tenant-b-{Guid.NewGuid():N}",
             TestContext.Current.CancellationToken);
+
+        await AssertErrorAsync(response, HttpStatusCode.Forbidden, "TENANT_FORBIDDEN");
+        _factory.DaprClient.ReceivedCalls().ShouldBeEmpty();
+        _workflowClient.ReceivedCalls().ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(false, false)]
+    public async Task Delete_ScheduleOutage_PreservesServiceUnavailableAndDeletionOwnership(
+        bool grpc, bool rollbackFails)
+    {
+        StubActiveTenant();
+        StoredTenantRegistryEntry persisted = new TenantRegistryEntry(
+            new TenantInfo(TenantId, TenantId, TenantStatus.Active, DateTimeOffset.UtcNow),
+            WorkflowInstanceId: null);
+        string etag = "active";
+        _factory.DaprClient.GetStateAndETagAsync<StoredTenantRegistryEntry?>(
+                StateStore, StateKey, cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(_ => ((StoredTenantRegistryEntry?)persisted, etag));
+        _factory.DaprClient.TrySaveStateAsync(
+                StateStore, StateKey, Arg.Any<StoredTenantRegistryEntry>(),
+                Arg.Any<string>(), cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                call.ArgAt<string>(3).ShouldBe(etag);
+                if (rollbackFails && etag == "deleting")
+                {
+                    return Task.FromException<bool>(new IOException(InternalError));
+                }
+
+                persisted = call.Arg<StoredTenantRegistryEntry>();
+                etag = persisted.Tenant.Status == TenantStatus.Deleting ? "deleting" : "restored";
+                return Task.FromResult(true);
+            });
+
+        Exception failure = grpc
+            ? new RpcException(new Status(StatusCode.Unavailable, InternalError))
+            : new DaprException(InternalError, new IOException(InternalError));
+        string? attemptedInstanceId = null;
+        _workflowClient.ScheduleNewWorkflowAsync(
+                nameof(TenantDeletionWorkflow), Arg.Any<string>(), Arg.Any<TenantDeletionInput>())
+            .Returns(call =>
+            {
+                attemptedInstanceId = call.ArgAt<string>(1);
+                persisted.WorkflowInstanceId.ShouldBe(attemptedInstanceId);
+                persisted.Tenant.Status.ShouldBe(TenantStatus.Deleting);
+                return Task.FromException<string>(failure);
+            });
+        using HttpClient client = CreateAuthorizedClient();
+
+        using HttpResponseMessage response = await client.DeleteAsync(
+            $"/api/v1/tenants/{TenantId}", TestContext.Current.CancellationToken);
+
+        await AssertErrorAsync(response, HttpStatusCode.ServiceUnavailable, "DAPR_UNAVAILABLE");
+        attemptedInstanceId.ShouldNotBeNullOrWhiteSpace();
+        await _factory.DaprClient.Received(grpc ? 0 : 1).TrySaveStateAsync(
+            StateStore, StateKey, Arg.Is<StoredTenantRegistryEntry>(entry => entry.Tenant.Status == TenantStatus.Active),
+            "deleting", cancellationToken: Arg.Any<CancellationToken>());
+        bool claimRemains = grpc || rollbackFails;
+        persisted.Tenant.Status.ShouldBe(claimRemains ? TenantStatus.Deleting : TenantStatus.Active);
+        persisted.WorkflowInstanceId.ShouldBe(claimRemains ? attemptedInstanceId : null);
+        var warnings = _factory.AuditLogs.Captures
+            .Where(log => log.Message.StartsWith("Tenant deletion rollback", StringComparison.Ordinal)).ToArray();
+        warnings.Length.ShouldBe(rollbackFails ? 1 : 0);
+        if (rollbackFails)
+        {
+            warnings[0].Message.ShouldContain(nameof(IOException));
+            warnings[0].Message.ShouldNotContain(InternalError);
+            warnings[0].Exception.ShouldBeNull();
+        }
+    }
+
+    [Fact]
+    public async Task Delete_WorkflowLookupOutage_LeavesExistingDeletionOwnerInPlace()
+    {
+        string instanceId = $"delete-{TenantId}-{Guid.NewGuid():N}";
+        TenantRegistryEntry entry = new(
+            new TenantInfo(TenantId, TenantId, TenantStatus.Deleting, DateTimeOffset.UtcNow), instanceId);
+        _factory.DaprClient.GetStateAsync<StoredTenantRegistryEntry?>(
+                StateStore, StateKey, cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(entry);
+        _workflowClient.GetWorkflowStateAsync(instanceId, true, Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<WorkflowState>(
+                new RpcException(new Status(StatusCode.Unavailable, InternalError))));
+        using HttpClient client = CreateAuthorizedClient();
+
+        using HttpResponseMessage response = await client.DeleteAsync(
+            $"/api/v1/tenants/{TenantId}", TestContext.Current.CancellationToken);
+
+        await AssertErrorAsync(response, HttpStatusCode.ServiceUnavailable, "DAPR_UNAVAILABLE");
+        await _factory.DaprClient.DidNotReceive().TrySaveStateAsync(
+            StateStore, StateKey, Arg.Any<StoredTenantRegistryEntry>(), Arg.Any<string>(),
+            cancellationToken: Arg.Any<CancellationToken>());
+        await _workflowClient.DidNotReceive().ScheduleNewWorkflowAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TenantDeletionInput>());
+    }
+
+    [Fact]
+    public async Task Delete_UnauthorizedTenant_RejectsBeforeRegistryOrWorkflowLookup()
+    {
+        using HttpClient client = CreateAuthorizedClient();
+
+        using HttpResponseMessage response = await client.DeleteAsync(
+            "/api/v1/tenants/tenant-b", TestContext.Current.CancellationToken);
 
         await AssertErrorAsync(response, HttpStatusCode.Forbidden, "TENANT_FORBIDDEN");
         _factory.DaprClient.ReceivedCalls().ShouldBeEmpty();
