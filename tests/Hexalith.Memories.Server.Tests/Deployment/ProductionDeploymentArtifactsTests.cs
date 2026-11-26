@@ -121,6 +121,13 @@ public sealed class ProductionDeploymentArtifactsTests
         falkordb.ShouldContain("failureThreshold: 60");
         falkordb.ShouldContain("memory: 4Gi");
 
+        foreach (string datastore in new[] { redis, falkordb })
+        {
+            datastore.ShouldContain(
+                "securityContext:\n        fsGroup: 1654\n        fsGroupChangePolicy: Always\n"
+                + "        runAsGroup: 1654\n        runAsNonRoot: true\n        runAsUser: 1654");
+        }
+
         // Retro item 63: the disabled lifecycle's PostgreSQL is scaled to zero, not excluded (see
         // ProductionOverlay_DisabledLifecycleIsInert); its profile below still renders unchanged.
         ReadIntegerField(accessTelemetryPostgresql, "replicas").ShouldBe(0);

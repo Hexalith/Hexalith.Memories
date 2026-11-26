@@ -59,6 +59,15 @@ The default DAPR trust domain is `public` and the production namespace is `hexal
 
 The `memories-config` and `memories-access-telemetry-config` DAPR configurations explicitly disable the DAPR 1.18 `HotReload` feature. Both workloads use actor state stores, which DAPR cannot reload in place. After changing `statestore`, `access-telemetry-store`, or another component visible to either workload, apply the reviewed component manifest and run `kubectl rollout restart deployment/memories -n hexalith-memories`; when lifecycle replicas are enabled, also restart `deployment/memories-access-telemetry`. Wait for each rollout and require the structured `/ready` response to return top-level `status: Healthy`. Do not treat the DAPR log message that rejects an actor-state-store hot reload as evidence that a changed component was accepted.
 
+### Redis Stack and FalkorDB volume permissions
+
+The StatefulSets run as UID and GID 1654. Use a storage class that supports Kubernetes
+`fsGroup` or applies the requested group itself. The StatefulSets request recursive group
+permission setup on each mount so existing root-owned AOF files and directories remain
+readable and writable. Confirm your CSI driver's behavior before upgrading an existing PVC.
+If the driver leaves ownership unchanged, arrange an offline volume permission update to GID
+1654 with group read/write access and directory traversal before restarting the StatefulSet.
+
 ### Apply and verify
 
 1. Install DAPR 1.18 or later and confirm its control plane and injector are healthy.
@@ -71,7 +80,12 @@ The application port `8080` has no direct Service target. The committed `memorie
 
 ### Rollback
 
-Keep the preceding release's rendered deployment artifact. Reapply that artifact and use `kubectl rollout status` for `deployment/memories`, `deployment/memories-mcp`, `statefulset/redis-stack`, and `statefulset/falkordb`. If only a stateless image rollout is bad, `kubectl rollout undo deployment/<name> -n hexalith-memories` is sufficient. Do not delete Redis/FalkorDB PVCs during rollback; backup/restore is owned by Story 26.2.
+Keep the preceding release's rendered deployment artifact. Reapply that artifact and use `kubectl rollout status` for `deployment/memories`, `deployment/memories-mcp`, `statefulset/redis-stack`, and `statefulset/falkordb`. If only a stateless image rollout is bad, `kubectl rollout undo deployment/<name> -n hexalith-memories` is sufficient. Keep the Redis Stack and FalkorDB pod security contexts from the non-root release when
+rolling back application images or reapplying an older artifact. AOF files created as UID 1654
+must remain writable by the restarted data store. To return a data store to the old process
+identity, stop it and have the storage operator restore the old UID/GID and required read/write
+permissions on that PVC before restarting it. Preserve the PVCs during rollback. See Story 26.2
+for backup and restore.
 
 ## OTLP telemetry export
 

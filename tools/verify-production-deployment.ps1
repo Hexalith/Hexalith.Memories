@@ -1021,6 +1021,8 @@ try {
     # $env:KUBECONFIG having just been repointed on the line above. This is the earliest point the
     # check is meaningful: the kind context does not exist until the cluster is created.
     Assert-DisposableClusterContext $ClusterName -RefusalPrefix 'Refusing to run the production deployment verification'
+    # Local PVs apply the datastore Pods' fsGroup. kind's default hostPath volumes do not.
+    Invoke-Checked kubectl @('annotate', 'storageclass', 'standard', 'defaultVolumeType=local', '--overwrite') | Out-Null
     Invoke-Checked dapr @('init', '-k', '--runtime-version', $DaprRuntimeVersion, '--wait') | Out-Host
 
     # .NET SDK archive mode can emit registry-less RepoTags even when ContainerRegistry is supplied.

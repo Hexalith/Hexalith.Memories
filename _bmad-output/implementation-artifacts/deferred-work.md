@@ -3856,6 +3856,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of spec-25-4-co
 location: _bmad-output/implementation-artifacts/spec-25-4-contract-persistence-separation-and-route-versioning.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-25-4-contract-persistence-separation-and-route-versioning.md` summary: [Decision resolved — document & accept] Commits `94eb4c8` and `376096d` bumped the `references/Hexalith.EventStore` and `references/Hexalith.FrontComposer` submodule gitlinks despite the story's "Never edit submodules" constraint. evidence: Both gitlink changes are already published on `main`; `Hexalith.FrontComposer` (Web UI composer) is unrelated to the contract/persistence/route scope of Story 25.4. User decision 2026-07-12: document and accept rather than rewrite published history (same resolution as the Story 25.3 review of commit `8e92fe7`). No revert performed. If a future release surfaces an unintended FrontComposer or EventStore change, revisit this entry.
 status: open
+note: 2026-11-26 — Skipped. Story 25.4 records the maintainer decision to accept the already published gitlink changes. There is no new dependency regression to remediate.
 
 ### DW-546: [Decision resolved — release-PR action] The intentional breaking route/CLR cutover landed as `feat:` with no `BREAKING CHANGE:` footer (and test-only commit `94eb4c8` is mislabeled `feat:Add`).
 
@@ -3863,6 +3864,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of spec-25-4-co
 location: _bmad-output/implementation-artifacts/spec-25-4-contract-persistence-separation-and-route-versioning.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-25-4-contract-persistence-separation-and-route-versioning.md` summary: [Decision resolved — release-PR action] The intentional breaking route/CLR cutover landed as `feat:` with no `BREAKING CHANGE:` footer (and test-only commit `94eb4c8` is mislabeled `feat:Add`). evidence: User decision 2026-07-12: leave landed commit messages as-is (no history rewrite) and add a `BREAKING CHANGE:` footer to the eventual release/squash-merge PR so the generated CHANGELOG flags the `/api/v1` route + public-CLR-rename cutover as breaking for downstream consumers. Pre-GA (0.x) semver impact is limited, but the CHANGELOG breaking flag and Design-Notes intent ("must be released as a breaking refactor") require the footer. Action owner: whoever cuts the Epic 25 release PR.
 status: open
+note: 2026-11-26 — Skipped. The recorded action belongs to the release or squash-merge PR. This batch pushes directly to main and does not cut a release.
 
 ### DW-547: [HIGH — gating, environment-blocked] The mandatory no-skip disposable-cluster DAPR rollout (`tools/verify-production-deployment.ps1`) has never executed; every runtime AC (AC-3/4/5 aggregate-health/degradation/fail-closed + AC-1 container-start) rests on it.
 
@@ -3875,7 +3877,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of spec-26-1-production-deployment-artifacts (2026-07-12)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-26-1-production-deployment-artifacts.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-26-1-production-deployment-artifacts.md` summary: [MEDIUM — hardening beyond AC] Redis Stack and FalkorDB containers run as root (only `allowPrivilegeEscalation:false` + `drop:[ALL]` + seccomp; no `runAsNonRoot`/`runAsUser`). evidence: `deploy/kubernetes/base/{redis,falkordb}-statefulset.yaml`. AC-1 mandates non-root only for Server/MCP (both UID 1654, satisfied). Making the data stores non-root needs `fsGroup`/PVC-permission handling for `/data`. Re-open trigger: a security-hardening pass on the deployment topology, or a Pod Security Standards enforcement decision.
-status: open
+status: done 2026-11-26
+resolution: Redis Stack and FalkorDB run as UID/GID 1654 with fsGroup-based PVC access. A disposable kind rollout preserved root-owned AOF data, accepted new writes, and reopened both stores after a second restart.
 
 ### DW-549: [MEDIUM — hardening beyond AC] No NetworkPolicies or Pod Security Standards in the production deployment.
 

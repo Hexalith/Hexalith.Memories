@@ -30,6 +30,11 @@ spec:
         app.kubernetes.io/name: redis-stack
     spec:
       securityContext:
+        runAsNonRoot: true
+        runAsUser: 1654
+        runAsGroup: 1654
+        fsGroup: 1654
+        fsGroupChangePolicy: Always
         seccompProfile:
           type: RuntimeDefault
       containers:

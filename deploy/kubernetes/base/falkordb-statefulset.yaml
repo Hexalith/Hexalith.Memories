@@ -30,6 +30,11 @@ spec:
         app.kubernetes.io/name: falkordb
     spec:
       securityContext:
+        runAsNonRoot: true
+        runAsUser: 1654
+        runAsGroup: 1654
+        fsGroup: 1654
+        fsGroupChangePolicy: Always
         seccompProfile:
           type: RuntimeDefault
       containers:
