@@ -34,8 +34,14 @@ docker run -d --name dapr_scheduler -p "${scheduler_port}:50006" -p 2379:2379 -v
 wait_for_listener() {
   local resource="$1" port="$2"
   local readiness_timeout=30
+  # Dapr answers on gRPC even when the standard health service is unregistered.
   if ! timeout "${readiness_timeout}s" bash -c '
-    until ( : >"/dev/tcp/127.0.0.1/$1" ) 2>/dev/null; do
+    until response=$(printf "\0\0\0\0\0" | curl -q --noproxy "*" \
+        --http2-prior-knowledge --max-time 2 --silent --output /dev/null \
+        --write-out "%{http_version} %{http_code} %{content_type}" \
+        --header "Content-Type: application/grpc" --header "TE: trailers" \
+        --data-binary @- "http://127.0.0.1:$1/grpc.health.v1.Health/Check") &&
+      [[ "$response" == "2 200 application/grpc" ]]; do
       sleep 1
     done
   ' _ "$port"; then
