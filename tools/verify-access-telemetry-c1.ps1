@@ -1417,15 +1417,15 @@ try {
             }
         }
 
-        $rawAppId = Get-RequiredProperty -Object $metadata -Names @('id') -FailureCode 'metadata-app-id-missing'
-        if ($script:pg2RuntimeCapture -and $rawAppId -isnot [string]) { throw 'metadata-app-id-mismatch' }
-        $appId = [string]$rawAppId
-        if (-not [string]::Equals($appId, $expectedAppId, [StringComparison]::Ordinal)) {
+        $appId = Get-RequiredProperty -Object $metadata -Names @('id') -FailureCode 'metadata-app-id-missing'
+        if ($appId -isnot [string] -or
+            -not [string]::Equals($appId, $expectedAppId, [StringComparison]::Ordinal)) {
             throw 'metadata-app-id-mismatch'
         }
 
-        $runtimeVersion = [string](Get-RequiredProperty -Object $metadata -Names @('runtimeVersion') -FailureCode 'metadata-runtime-version-missing')
-        if ([string]::IsNullOrWhiteSpace($runtimeVersion) -or
+        $runtimeVersion = Get-RequiredProperty -Object $metadata -Names @('runtimeVersion') -FailureCode 'metadata-runtime-version-missing'
+        if ($runtimeVersion -isnot [string] -or
+            [string]::IsNullOrWhiteSpace($runtimeVersion) -or
             $runtimeVersion.Trim() -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$') {
             throw 'metadata-runtime-version-invalid'
         }

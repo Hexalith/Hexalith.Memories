@@ -1001,7 +1001,12 @@ class RuntimeControlPlaneIdentityTests(unittest.TestCase):
         self.assertRegex(packets[0]["blockers"][0], r"^kubectl-metadata:.*-output-too-large$")
         self.assertNotIn("x" * 1024, json.dumps(packets[0]))
 
-    def assert_metadata_json_rejected(self, raw_metadata: str, *secrets: str) -> None:
+    def assert_metadata_json_rejected(
+        self,
+        raw_metadata: str,
+        *secrets: str,
+        blocker: str = "malformed-metadata-json",
+    ) -> None:
         scenario = copy.deepcopy(self.base_scenario)
         pod = next(iter(scenario["metadata"]))
         scenario["metadataRaw"] = {pod: raw_metadata}
@@ -1010,12 +1015,13 @@ class RuntimeControlPlaneIdentityTests(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertEqual(1, len(packets))
         packet = packets[0]
-        self.assertEqual(["malformed-metadata-json"], packet["blockers"])
+        self.assertEqual([blocker], packet["blockers"])
         self.assertEqual("blocked", packet["producerStatus"])
         self.assertEqual("not-evaluated", packet["gateStatus"])
         self.assertFalse(packet["productionGatePassed"])
         self.assertEqual("not-evaluated", packet["productionLifecycleWrites"])
         self.assertEqual([], packet["observations"]["pods"])
+        self.assertFalse(any("alpha-opt-in:" in entry["purpose"] for entry in packet["commands"]))
         self.assertFalse(any("AccessTelemetryLifecycle__ComponentIsAlpha" in call[-1] for call in calls))
         self.assertFalse(any("get" in call and "pods" in call for call in calls[2:]))
         self.assertFalse(any(entry["source"].startswith("kubectl:metadata:") for entry in packet["sources"]))
@@ -1069,6 +1075,26 @@ class RuntimeControlPlaneIdentityTests(unittest.TestCase):
         for name, raw_metadata in cases.items():
             with self.subTest(name=name):
                 self.assert_metadata_json_rejected(raw_metadata)
+
+    def test_metadata_identity_fields_require_json_strings(self) -> None:
+        pod = next(iter(self.base_scenario["metadata"]))
+        metadata = self.base_scenario["metadata"][pod]
+        blockers = {
+            "id": "metadata-app-id-mismatch",
+            "runtimeVersion": "metadata-runtime-version-invalid",
+        }
+        for field, blocker in blockers.items():
+            values = {
+                "singleton-array": [metadata[field]],
+                "number": 1181,
+                "boolean": True,
+                "null": None,
+                "object": {"value": metadata[field]},
+            }
+            for name, value in values.items():
+                with self.subTest(field=field, name=name):
+                    raw_metadata = json.dumps({**metadata, field: value})
+                    self.assert_metadata_json_rejected(raw_metadata, TOKEN_CANARY, blocker=blocker)
 
     def test_repeated_names_in_separate_objects_and_escaped_names_preserve_observations(self) -> None:
         baseline_result, baseline_packets, _, _ = self.run_gate(self.base_scenario)
