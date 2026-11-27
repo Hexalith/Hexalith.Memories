@@ -11,12 +11,15 @@ using Dapr.Client;
 
 using Hexalith.Memories.Server.Tests.Authentication;
 using Hexalith.Memories.Server.Tests.Infrastructure;
+using Hexalith.Memories.ServiceDefaults.Security;
 
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
@@ -84,6 +87,18 @@ internal sealed class TelemetryWebAppFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
+
+        // WithWebHostBuilder can change the environment after this factory is configured.
+        builder.ConfigureAppConfiguration((context, configuration) =>
+        {
+            if (context.HostingEnvironment.IsDevelopment())
+            {
+                configuration.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    [DaprApplicationTokenMiddleware.AppApiTokenOverrideConfigurationKey] = string.Empty,
+                });
+            }
+        });
 
         // Sentinel connection strings so the production keyed-multiplexer factory does not throw
         // "Connection string '{name}' is required" BEFORE our ConfigureTestServices override takes effect.

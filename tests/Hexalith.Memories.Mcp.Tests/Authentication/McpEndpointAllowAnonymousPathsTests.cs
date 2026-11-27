@@ -8,9 +8,12 @@ namespace Hexalith.Memories.Mcp.Tests.Authentication;
 using System.Net;
 using System.Text;
 
+using Hexalith.Memories.ServiceDefaults.Security;
+
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 
 using Shouldly;
 
@@ -73,8 +76,12 @@ public sealed class McpEndpointAllowAnonymousPathsTests
                     ["Authentication:JwtBearer:RequireHttpsMetadata"] = "false",
                 };
 
+                if (context.HostingEnvironment.IsDevelopment())
+                {
+                    settings[DaprApplicationTokenMiddleware.AppApiTokenOverrideConfigurationKey] = string.Empty;
+                }
+
                 _ = configuration.AddInMemoryCollection(settings);
-                _ = context;
             });
         }
     }

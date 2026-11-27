@@ -603,10 +603,13 @@ public sealed class AccessTelemetryQualificationWorkloadTests
                 ConfigureProgramFactory(builder, gatePath);
             });
 
+            using HttpClient developmentClient = baseFactory.CreateClient(
+                new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
             using HttpClient qualificationClient = qualificationFactory.CreateClient(
                 new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
             using HttpClient productionClient = productionFactory.CreateClient(
                 new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+            using HttpRequestMessage developmentRequest = CreateProgramRequest();
             using HttpRequestMessage qualificationRequest = CreateProgramRequest();
             using HttpRequestMessage productionRequest = CreateProgramRequest();
             qualificationRequest.Headers.Add(
@@ -616,6 +619,9 @@ public sealed class AccessTelemetryQualificationWorkloadTests
                 DaprApplicationTokenMiddleware.DaprApiTokenHeader,
                 "qualification-program-app-token");
 
+            using HttpResponseMessage developmentResponse = await developmentClient.SendAsync(
+                developmentRequest,
+                TestContext.Current.CancellationToken);
             using HttpResponseMessage qualificationResponse = await qualificationClient.SendAsync(
                 qualificationRequest,
                 TestContext.Current.CancellationToken);
@@ -623,8 +629,18 @@ public sealed class AccessTelemetryQualificationWorkloadTests
                 productionRequest,
                 TestContext.Current.CancellationToken);
 
+            developmentResponse.StatusCode.ShouldBe(HttpStatusCode.NotFound);
             qualificationResponse.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable);
             productionResponse.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+
+            using HttpRequestMessage productionRequestWithoutToken = CreateProgramRequest();
+            using HttpResponseMessage productionResponseWithoutToken = await productionClient.SendAsync(
+                productionRequestWithoutToken,
+                TestContext.Current.CancellationToken);
+            productionResponseWithoutToken.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+            string problem = await productionResponseWithoutToken.Content.ReadAsStringAsync(
+                TestContext.Current.CancellationToken);
+            problem.ShouldContain("https://hexalith.io/problems/dapr-application-token");
         }
         finally
         {

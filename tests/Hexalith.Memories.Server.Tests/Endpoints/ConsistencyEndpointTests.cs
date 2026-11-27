@@ -25,12 +25,15 @@ using Hexalith.Memories.Server.Tests.Infrastructure;
 using Hexalith.Memories.Server.Tests.Telemetry.Infrastructure;
 using Hexalith.Memories.Server.Tenants;
 using Hexalith.Memories.Server.Workflows;
+using Hexalith.Memories.ServiceDefaults.Security;
 
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -475,6 +478,18 @@ public sealed class ConsistencyEndpointTests : IDisposable
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment("Development");
+
+            builder.ConfigureAppConfiguration((context, configuration) =>
+            {
+                if (context.HostingEnvironment.IsDevelopment())
+                {
+                    configuration.AddInMemoryCollection(new Dictionary<string, string?>
+                    {
+                        [DaprApplicationTokenMiddleware.AppApiTokenOverrideConfigurationKey] = string.Empty,
+                    });
+                }
+            });
+
             builder.UseSetting("ConnectionStrings:redis", "localhost:0,abortConnect=false,connectTimeout=1");
             builder.UseSetting("ConnectionStrings:falkordb", "localhost:0,abortConnect=false,connectTimeout=1");
 
