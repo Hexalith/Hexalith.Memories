@@ -8,7 +8,8 @@ Enforces the mechanically checkable subset of `_bmad/custom/story-phase-ledger.m
     C3  A recognised story/spec status.
     C4  sprint-status.yaml agreement.
     C6  Published checkpoints stay visible. Each row reaches review or done
-        with evidence or an accountable disposition.
+        with evidence or an accountable disposition. Story 27.3 also needs
+        its binding C0 handoff and the independent reviewer's execution receipt.
 
 There is deliberately no C5. A proposed `File List` / `File Scope` set-agreement
 check was specified, implemented, and withdrawn after measurement: `File Scope`
@@ -97,6 +98,14 @@ VALID_STATUSES = ("backlog", "ready-for-dev", "in-progress", "review", "done")
 C1_STATUSES = ("in-progress", "review")
 # C6 fires only once the story claims its evidence is complete.
 C6_STATUSES = ("review", "done")
+C0_STORY = "27-3-production-adapter-and-deployment-profile"
+C0_CHECKPOINT_SECTION = "current binding checkpoints — c0/c2/c3/c4"
+C0_CHECKPOINT_LABEL = "c0 - story 27.2 completion handoff"
+C0_RECEIPT_SECTION = "c0 independent review receipt"
+C0_RECEIPT_HEADERS = ("step", "reviewer command", "exit code", "observed result")
+C0_TEST_PROJECT = "tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj"
+C0_TEST_ASSEMBLY = r"tests/Hexalith\.Memories\.IntegrationTests/bin/Release/net(?:10|11)\.0/Hexalith\.Memories\.IntegrationTests\.dll"
+C0_TEST_CLASS = "Hexalith.Memories.IntegrationTests.Telemetry.AccessTelemetryLifecycleIntegrationCheckpointTests"
 
 DEFAULT_BRANCHES = ("main", "master")
 BYPASS_TRAILER_KEY = "story-review-readiness-bypass"
@@ -998,6 +1007,72 @@ def check_evidence_rows(text: str, status: str, previous_texts: list[str]) -> tu
     return failures, len(tables)
 
 
+def check_c0_receipt(text: str) -> list[str]:
+    """Validate the recorded reviewer execution attached to Story 27.3."""
+    # Exclude Markdown code and comments before accepting an operator-visible receipt.
+    visible_lines = [""] * len(text.splitlines())
+    for index, line in iter_unfenced_lines(text):
+        if not line.startswith(("    ", "\t")):
+            visible_lines[index] = line
+    text = re.sub(r"<!--[\s\S]*?(?:-->|$)", "", "\n".join(visible_lines))
+    checkpoints = [
+        (table, row)
+        for table in find_evidence_tables(text)
+        if table.section == C0_CHECKPOINT_SECTION
+        for row in table.rows
+        if normalize_cell(evidence_label(table, row)) == C0_CHECKPOINT_LABEL
+    ]
+    if len(checkpoints) != 1:
+        return ["C6/C0: the binding checkpoint table must contain exactly one C0 handoff."]
+    table, row = checkpoints[0]
+    if (
+        len(row) != len(table.headers)
+        or table.headers.count("completion state") != 1
+        or not re.fullmatch(
+            r"reviewed \d{4}-\d{2}-\d{2} \(independent reviewer accepted after fresh execution\)",
+            normalize_cell(row[table.status_index]),
+        )
+        or normalize_cell(row[table.headers.index("completion state")]) != "complete"
+    ):
+        return ["C6/C0: the binding handoff must be independently reviewed and complete."]
+
+    receipts = [
+        (headers, rows) for section, headers, rows in parse_tables(text)
+        if section == C0_RECEIPT_SECTION
+    ]
+    if len(receipts) != 1 or tuple(map(normalize_cell, receipts[0][0])) != C0_RECEIPT_HEADERS:
+        return ["C6/C0: record one independent review receipt with reviewer commands, exit codes and observed results."]
+
+    project = re.escape(C0_TEST_PROJECT)
+    test_class = re.escape(C0_TEST_CLASS)
+    execution = rf"DiffEngine_Disabled=true dotnet exec ({C0_TEST_ASSEMBLY})"
+    options = (
+        r" --configuration Release --disable-build-servers -m:1 /nr:false"
+        r"(?: -p:NuGetAudit=false)? -p:MinVerVersionOverride=1\.0\.0 --verbosity minimal"
+    )
+    pass_counts = "Total: 8, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0"
+    expected = (
+        ("clean", rf"DOTNET_CLI_USE_MSBUILD_SERVER=0 dotnet clean {project}{options}", "Clean succeeded"),
+        ("build", rf"DOTNET_CLI_USE_MSBUILD_SERVER=0 dotnet build {project}{options}", "Build succeeded, 0 warnings, 0 errors"),
+        ("discovery", rf"{execution} -list methods -class {test_class} -noLogo", "8 unique methods"),
+        ("canonical run", rf"{execution} -class {test_class} -parallel none -noLogo", pass_counts),
+    )
+    rows = receipts[0][1]
+    if len(rows) != len(expected) or any(len(row) != len(C0_RECEIPT_HEADERS) for row in rows):
+        return ["C6/C0: the receipt must contain clean, build, discovery and canonical run in order."]
+
+    assemblies = []
+    for (step, command, exit_code, result), (name, pattern, observed) in zip(rows, expected):
+        match = re.fullmatch(pattern, command.strip().strip("`"))
+        if normalize_cell(step) != name or not match or normalize_cell(exit_code) != "0" or result != observed:
+            return [f"C6/C0: the receipt needs the successful reviewer {name} command and its observed result."]
+        if match.groups():
+            assemblies.append(match[1])
+    if assemblies[0] != assemblies[1]:
+        return ["C6/C0: discovery and canonical execution must use the same Release assembly."]
+    return []
+
+
 def validate(args: argparse.Namespace) -> int:
     message = read_commit_message(args)
     trailer_keys, bypass = parse_trailers(message)
@@ -1036,6 +1111,8 @@ def validate(args: argparse.Namespace) -> int:
     file_list = parse_section_paths(text, "File List")
     status = parse_status(text)
     evidence_failures, table_count = check_evidence_rows(text, status or "", previous_story_snapshots(paths, args))
+    if source.key == C0_STORY and status in C6_STATUSES:
+        evidence_failures.extend(check_c0_receipt(text))
 
     if ledger is None and file_list is None and not table_count and not evidence_failures:
         print("Artifact carries no ledger, File List, or evidence table; check is a no-op.")

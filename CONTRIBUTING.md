@@ -284,6 +284,13 @@ blocked record documents a disposition, not successful execution of its proof.
 C6 remains inactive below review; newly exposed historical violations must be
 reported honestly rather than treated as completed evidence.
 
+Story 27.3 also requires its current C0 handoff row to be independently reviewed
+and complete at `review` and `done`. Its `C0 Independent Review Receipt` table
+records the reviewer's successful clean, Release build, discovery of eight unique
+methods, and canonical execution of all eight. Discovery and execution must use
+the same Release assembly. The checker validates the recorded receipt in the
+selected story snapshot. The reviewer owns the execution and acceptance.
+
 C2 requires `create-story` first and development before QA or review. Repeated
 phases, including development after review and later `correct-course` rows,
 remain valid; `done` requires a final `code-review` row after that work. Date,

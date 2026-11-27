@@ -4511,7 +4511,8 @@ decision: 2026-09-01 Adopt measured budget — Benchmark current runs and update
 origin: migrated from legacy ledger ("Deferred from: code review of 27-3-production-adapter-and-deployment-profile (2026-07-31)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-27-2-lifecycle-checkpoint-gaps-cr42-cr46.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-27-2-lifecycle-checkpoint-gaps-cr42-cr46.md` summary: Make the normal story-readiness gate require an executed C0 receipt and reviewer-owned command evidence before accepting review or done. evidence: The current readiness gate can accept a story whose C0 remains blocked because it validates declared paths, status vocabulary, sprint-status agreement, and evidence-table row state, but does not mechanically require this receipt row or prove that its recorded commands executed; independent review remains the fail-closed control.
-status: open
+status: done 2026-11-27
+resolution: The story-readiness checker requires the reviewed current C0 handoff and successful independent clean, build, discovery and canonical run records. CLI tests cover missing, blocked, reopened and invalid evidence.
 
 ### DW-633: Fix integration-fast Dapr actor Connection refused failures from CI run 30990821240 (rate limiting + tenant configuration tests against 127.0.0.1:35131).
 
@@ -4533,6 +4534,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 27-3-product
 location: _bmad-output/implementation-artifacts/spec-gh-29354084222-fix-ci-cd-issues.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-gh-29354084222-fix-ci-cd-issues.md` summary: Historical container rebuilds are not bit-identical, so re-running Recover Partial Release after a successful image push hits immutable digest conflicts with no release-only workflow path. evidence: 2.6.5 first push succeeded then evidence failed; second run conflicted on config digest. 2.6.0-2.6.4 Releases had to be completed offline from already-present remote tags.
 status: open
+note: 2026-11-27 — Skipped. The historical-only recovery path requires a Hexalith.CiCd-owned workflow change. The affected releases were recovered and current releases reuse retained bytes.
 
 ### DW-636: Workflow 2-or-4 Server/MCP evidence gates are only source-text pinned in CiTestInventoryTests, not executed as PowerShell.
 
@@ -4548,6 +4550,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 27-3-product
 location: _bmad-output/implementation-artifacts/spec-gh-29354084222-fix-ci-cd-issues.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-gh-29354084222-fix-ci-cd-issues.md` summary: PARTIAL PUBLISH incidents for 2.6.0-2.6.7 were already closed before evidence-backed recovery completed. evidence: Issues #22-#33 show closedAt before the 2026-08-08 recovery; complete-partial-release only closes open issues.
 status: open
+note: 2026-11-27 — Skipped. The 2.6.0–2.6.7 incident closure dates are historical. Current completion verifies release evidence before closing open incidents.
 
 ### DW-638: Align Story 24.6 Cross-Tenant Negative Evidence with the three axis-specific search classes required before removing the all-axis test.
 

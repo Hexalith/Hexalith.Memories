@@ -75,6 +75,49 @@ class StoryEvidenceTransferTests(unittest.TestCase):
     def validate(self, *arguments):
         return self.command(sys.executable, str(VALIDATOR), "--story-key", STORY, *arguments)
 
+    def test_story_27_3_requires_the_independent_c0_receipt(self):
+        key = "27-3-production-adapter-and-deployment-profile"
+        actual = (ROOT / f"_bmad-output/implementation-artifacts/{key}.md").read_text(encoding="utf-8")
+        checkpoint = actual.split("### Current Binding Checkpoints", 1)[1].splitlines()[:7]
+        receipt = actual.split("### C0 Independent Review Receipt", 1)[1].split("### Code Review Evidence", 1)[0]
+        self.story = self.story.with_name(f"{key}.md")
+        file_list = f"### File List\n\n- `{self.story.relative_to(self.repo).as_posix()}`\n"
+        checkpoint = "### Current Binding Checkpoints" + "\n".join(checkpoint) + "\n\n"
+        receipt = "### C0 Independent Review Receipt" + receipt
+        for status in ("review", "done"):
+            self.story.with_name("sprint-status.yaml").write_text(
+                f"development_status:\n  {key}: {status}\n", encoding="utf-8",
+            )
+            for label, changed_checkpoint, changed_receipt in (
+                ("valid", checkpoint, receipt),
+                ("missing handoff", "", receipt),
+                ("historical handoff", checkpoint.replace("Current Binding", "Historical"), receipt),
+                ("blocked handoff", checkpoint.replace("reviewed 2026-08-01", "blocked 2026-08-01", 1), receipt),
+                ("incomplete handoff", checkpoint.replace("| complete |", "| pending |", 1), receipt),
+                ("reopened handoff", checkpoint.replace("| complete |", "| complete; reopened |", 1), receipt),
+                ("implementer reviewed", checkpoint.replace("independent reviewer accepted", "implementer accepted"), receipt),
+                ("missing receipt", checkpoint, ""),
+                ("duplicate receipt", checkpoint, receipt * 2),
+                ("fenced receipt", checkpoint, f"```text\n{receipt}```\n"),
+                ("commented receipt", checkpoint, f"<!--\n{receipt}-->\n"),
+                ("indented receipt", checkpoint, "\n".join("    " + line for line in receipt.splitlines())),
+                ("command failed", checkpoint, receipt.replace("| 0 |", "| 1 |", 1)),
+                ("execution skipped", checkpoint, receipt.replace("Skipped: 0", "Skipped: 1")),
+                ("different assembly", checkpoint, receipt.replace("net10.0", "net11.0", 1)),
+                ("wrong command", checkpoint, receipt.replace("dotnet clean", "dotnet build", 1)),
+                ("wrong build output", checkpoint, receipt.replace("--verbosity minimal", "-o /elsewhere --verbosity minimal", 1)),
+                ("wrong framework", checkpoint, receipt.replace("net10.0", "net99.0")),
+            ):
+                with self.subTest(status=status, receipt=label):
+                    self.write_story(file_list + changed_checkpoint + changed_receipt, status)
+                    result = self.command(
+                        sys.executable, str(VALIDATOR), "--story-key", key,
+                        "--changed-file", str(self.story.relative_to(self.repo)),
+                    )
+                    self.assertEqual(0 if label == "valid" else 1, result.returncode, result.stdout)
+                    if label != "valid":
+                        self.assertIn("C6/C0:", result.stdout)
+
     def test_deleting_the_only_table_is_rejected_at_every_status(self):
         for status in ("ready-for-dev", "done"):
             with self.subTest(status=status):
