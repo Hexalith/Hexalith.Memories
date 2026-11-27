@@ -24,8 +24,18 @@ while [ "$#" -gt 0 ]; do
     shift
 done
 if [ -n "${results:-}" ]; then
-    printf '%s\n' "$TEST_TRX" > "$results/$filename"
+    if [ "${TEST_TRX+x}" = x ]; then
+        printf '%s\\n' "$TEST_TRX" > "$results/$filename"
+    fi
+    if [ "${TEST_COVERAGE+x}" = x ]; then
+        printf '%s\\n' "$TEST_COVERAGE" > "$results/fixture.coverage.cobertura.xml"
+    fi
 fi
+status=${TEST_DOTNET_EXIT:-0}
+if [ "$status" -ne 0 ]; then
+    printf 'native test failure\\n' >&2
+fi
+exit "$status"
 """
 
 
@@ -128,6 +138,55 @@ class IntegrationTestRunnerTests(unittest.TestCase):
                 self.assertEqual(1, result.returncode, result.stderr)
                 self.assertIn("--results-directory must resolve beneath the repository root", result.stderr)
                 self.assertFalse(self.calls.exists())
+
+    def test_bash_preserves_native_failure_when_reports_are_missing(self):
+        self.environment["TEST_DOTNET_EXIT"] = "37"
+        command = [*self.bash, "--filter", "Category=IntegrationSlow", "--results-directory", "reports"]
+
+        for coverage in ([], ["--coverage"]):
+            with self.subTest(coverage=bool(coverage)):
+                result = self.run_wrapper([*command, *coverage])
+                self.assertEqual(37, result.returncode, result.stderr)
+                self.assertIn("native test failure", result.stderr)
+                self.assertIn("dotnet test failed (37) for", result.stderr)
+                self.assertNotIn("Traceback", result.stderr)
+
+    def test_bash_reads_available_trx_after_a_native_failure(self):
+        self.environment["TEST_DOTNET_EXIT"] = "37"
+        self.environment["TEST_TRX"] = '<TestRun><ResultSummary><Counters executed="1" /></ResultSummary></TestRun>'
+        command = [*self.bash, "--filter", "Category=IntegrationSlow", "--results-directory", "reports", "--coverage"]
+
+        valid = self.run_wrapper(command)
+        self.assertEqual(37, valid.returncode, valid.stderr)
+        self.assertIn("Executed 1 tests for", valid.stdout)
+
+        self.environment["TEST_TRX"] = "<TestRun>"
+        malformed = self.run_wrapper(command)
+        self.assertEqual(37, malformed.returncode, malformed.stderr)
+        self.assertIn("Unable to read TRX file", malformed.stderr)
+        self.assertIn("dotnet test failed (37) for", malformed.stderr)
+
+    def test_bash_keeps_available_coverage_after_a_native_failure(self):
+        self.environment["TEST_DOTNET_EXIT"] = "37"
+        self.environment["TEST_COVERAGE"] = "<coverage/>"
+        result = self.run_wrapper([
+            *self.bash, "--filter", "Category=IntegrationSlow", "--results-directory", "reports", "--coverage",
+        ])
+        self.assertEqual(37, result.returncode, result.stderr)
+        reports = list((self.root / "reports").glob("*/coverage.cobertura.xml"))
+        self.assertEqual(1, len(reports))
+        self.assertEqual("<coverage/>\n", reports[0].read_text(encoding="utf-8"))
+
+    def test_bash_requires_reports_after_a_successful_test_process(self):
+        command = [*self.bash, "--filter", "Category=IntegrationSlow", "--results-directory", "reports"]
+        missing_trx = self.run_wrapper(command)
+        self.assertEqual(1, missing_trx.returncode, missing_trx.stderr)
+        self.assertIn("Expected TRX file", missing_trx.stderr)
+
+        self.environment["TEST_TRX"] = '<TestRun><ResultSummary><Counters executed="1" /></ResultSummary></TestRun>'
+        missing_coverage = self.run_wrapper([*command, "--coverage"])
+        self.assertEqual(1, missing_coverage.returncode, missing_coverage.stderr)
+        self.assertIn("produced no Cobertura report", missing_coverage.stderr)
 
     def assert_integration_routes(self, wrapper, filter_flag):
         fast = self.read_inventory("integration-fast")

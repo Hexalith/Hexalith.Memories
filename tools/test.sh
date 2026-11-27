@@ -243,12 +243,15 @@ for project in "${PROJECTS[@]}"; do
   test_exit_code=0
   MEMORIES_BENCHMARK_RESULTS_PATH="$benchmark_result" "${CMD[@]}" || test_exit_code=$?
 
+  # A failed test process may leave partial reports. Keep their diagnostics and return its exit code.
+  report_exit_code=0
   if [[ "$COVERAGE" == true && -n "${project_results_directory:-}" ]]; then
-    python3 - "$project_results_directory" <<'PY'
+    python3 - "$project_results_directory" "$test_exit_code" <<'PY' || report_exit_code=$?
 from pathlib import Path
 import sys
 
 results = Path(sys.argv[1])
+report_required = sys.argv[2] == "0"
 canonical = results / "coverage.cobertura.xml"
 if canonical.is_file():
     raise SystemExit(0)
@@ -260,22 +263,29 @@ candidates = sorted(
     }
 )
 if not candidates:
-    raise SystemExit(f"Test project produced no Cobertura report under {results}.")
+    if report_required:
+        raise SystemExit(f"Test project produced no Cobertura report under {results}.")
+    raise SystemExit(0)
 canonical.write_bytes(candidates[-1].read_bytes())
 PY
   fi
 
-  if [[ -n "$TRX_PATH" ]]; then
-    python3 - "$TRX_PATH" "$project" "$EFFECTIVE_FILTER" "$EXPECTED_EXECUTED_TESTS" <<'PY'
+  if [[ -n "$TRX_PATH" && ( $test_exit_code -eq 0 || -f "$TRX_PATH" ) ]]; then
+    python3 - "$TRX_PATH" "$project" "$EFFECTIVE_FILTER" "$EXPECTED_EXECUTED_TESTS" <<'PY' || report_exit_code=$?
 import sys
 import xml.etree.ElementTree as ET
 
 trx_path, project, test_filter, expected_text = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
-root = ET.parse(trx_path).getroot()
-namespace = root.tag.partition("}")[0] + "}" if root.tag.startswith("{") else ""
-counters = root.find(f"{namespace}ResultSummary/{namespace}Counters")
-executed = int(counters.attrib.get("executed", "0")) if counters is not None else 0
-not_executed = int(counters.attrib.get("notExecuted", "0")) if counters is not None else 0
+try:
+    root = ET.parse(trx_path).getroot()
+    namespace = root.tag.partition("}")[0] + "}" if root.tag.startswith("{") else ""
+    counters = root.find(f"{namespace}ResultSummary/{namespace}Counters")
+    executed = int(counters.attrib.get("executed", "0")) if counters is not None else 0
+    not_executed = int(counters.attrib.get("notExecuted", "0")) if counters is not None else 0
+except FileNotFoundError:
+    raise SystemExit(f"Expected TRX file '{trx_path}' was not produced.")
+except (OSError, ET.ParseError, ValueError) as error:
+    raise SystemExit(f"Unable to read TRX file '{trx_path}': {error}")
 
 if executed <= 0:
     raise SystemExit(f"Test project '{project}' executed zero tests for filter '{test_filter}'.")
@@ -294,6 +304,9 @@ PY
   if [[ $test_exit_code -ne 0 ]]; then
     echo "dotnet test failed ($test_exit_code) for $project" >&2
     exit "$test_exit_code"
+  fi
+  if [[ $report_exit_code -ne 0 ]]; then
+    exit "$report_exit_code"
   fi
 
   if [[ -n "$benchmark_result" ]]; then
