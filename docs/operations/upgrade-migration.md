@@ -31,10 +31,11 @@ stores. Do not treat a raw Redis SCAN alone as proof that Dapr-state EventStore 
 
 Case deletion replaces matching case IDs with empty string markers. The marker keeps the mapping ETag
 non-reusable when a later event recreates the mapping. The tenant index retains those aggregate types
-for physical tenant purge, and active mapping counts exclude the markers. Older runtimes read the same
-wire format but count those aggregate types toward the cap and can physically delete mappings during
-case cleanup. Drain older case-deletion workers before upgrading so those workers cannot reset an ETag
-during an upgraded deletion or remap.
+for physical tenant purge, and active mapping counts exclude the markers. Each distinct retired
+aggregate type increases storage use and the number of entries scanned for active mapping counts until
+tenant purge. Older runtimes read the same wire format but count those aggregate types toward the cap
+and can physically delete mappings during case cleanup. Drain older case-deletion workers before
+upgrading so those workers cannot reset an ETag during an upgraded deletion or remap.
 
 Repository pins and image digests are the deployment input. Current pins include .NET SDK 10.0.400,
 Dapr .NET packages 1.18.5, Redis Stack 7.4.0-v8, and FalkorDB 4.12.0. A package pin does not prove the

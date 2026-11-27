@@ -253,33 +253,30 @@ internal sealed class DaprAggregateCaseMappingStore : IAggregateCaseMappingStore
 
         string indexKey = GetIndexKey(tenantId);
 
-        // CAS-clear the index first, then delete map/lock keys from each snapshot, and re-read until
-        // empty so concurrent TryStoreCaseIdAsync cannot leave post-purge leftovers (review patch #18).
-        for (int attempt = 0; attempt < MaxConcurrencyRetries; attempt++)
+        // Keep the index available until each map and lock delete is acknowledged.
+        // A retry can then repeat the deletes for the same types after a partial failure.
+        for (int attempt = 0; attempt <= MaxConcurrencyRetries; attempt++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             (List<string>? index, string etag) = await _daprClient
                 .GetStateAndETagAsync<List<string>?>(_stateStoreName, indexKey, cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
-
-            if (index is null || index.Count == 0)
+            if (index is null && string.IsNullOrEmpty(etag))
             {
-                await _daprClient.DeleteStateAsync(_stateStoreName, indexKey, cancellationToken: cancellationToken)
-                    .ConfigureAwait(false);
                 return;
             }
 
-            List<string> snapshot = [.. index];
-            bool cleared = await _daprClient
-                .TryDeleteStateAsync(_stateStoreName, indexKey, etag, cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
-            if (!cleared)
+            if (attempt == MaxConcurrencyRetries)
             {
-                await DelayBackoffAsync(attempt, cancellationToken).ConfigureAwait(false);
-                continue;
+                break;
             }
 
-            foreach (string aggregateType in snapshot)
+            if (string.IsNullOrEmpty(etag))
+            {
+                throw new InvalidOperationException("Cannot conditionally delete an aggregate-to-case mapping index without an ETag.");
+            }
+
+            foreach (string aggregateType in index ?? [])
             {
                 await _daprClient
                     .DeleteStateAsync(_stateStoreName, GetMapEntryKey(tenantId, aggregateType), cancellationToken: cancellationToken)
@@ -289,7 +286,15 @@ internal sealed class DaprAggregateCaseMappingStore : IAggregateCaseMappingStore
                     .ConfigureAwait(false);
             }
 
-            // Loop again: a concurrent TryStore may have recreated the index after our CAS-delete.
+            bool cleared = await _daprClient
+                .TryDeleteStateAsync(_stateStoreName, indexKey, etag, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+            if (!cleared)
+            {
+                await DelayBackoffAsync(attempt, cancellationToken).ConfigureAwait(false);
+            }
+
+            // Re-read after success to catch an index recreated before the purge returns.
         }
 
         throw new InvalidOperationException(

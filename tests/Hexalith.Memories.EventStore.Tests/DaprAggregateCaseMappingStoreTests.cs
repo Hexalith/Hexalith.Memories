@@ -267,6 +267,54 @@ public sealed class DaprAggregateCaseMappingStoreTests
     }
 
     [Fact]
+    public async Task DeleteAllTenantDataAsync_WhenLockDeleteFails_RetainsIndexAndPurgesRemainingKeysOnRetry()
+    {
+        const string retiredMapKey = "tenant-1:eventstore:aggregate-case-map:Claims";
+        const string retiredLockKey = "tenant-1:eventstore:aggregate-case-lock:Claims";
+        const string remainingMapKey = "tenant-1:eventstore:aggregate-case-map:Orders";
+        const string remainingLockKey = "tenant-1:eventstore:aggregate-case-lock:Orders";
+        const string otherTenantMapKey = "tenant-2:eventstore:aggregate-case-map:Claims";
+        FakeDaprStateStore fake = new();
+        DaprClient client = fake.CreateClient();
+        DaprAggregateCaseMappingStore firstInstance = new(client, Options.Create(new EventStoreStateStoreOptions { StateStoreName = Store }));
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        TimeSpan lease = TimeSpan.FromMinutes(1);
+        (await firstInstance.TryStoreCaseIdAsync("tenant-1", "Claims", "case-delete", cancellationToken)).ShouldBeTrue();
+        (await firstInstance.TryStoreCaseIdAsync("tenant-1", "Orders", "case-keep", cancellationToken)).ShouldBeTrue();
+        (await firstInstance.TryStoreCaseIdAsync("tenant-2", "Claims", "case-other", cancellationToken)).ShouldBeTrue();
+        (await firstInstance.TryAcquireCreationLockAsync("tenant-1", "Claims", lease, cancellationToken)).ShouldBeTrue();
+        (await firstInstance.TryAcquireCreationLockAsync("tenant-1", "Orders", lease, cancellationToken)).ShouldBeTrue();
+        (await firstInstance.DeleteCaseMappingsAsync("tenant-1", "case-delete", cancellationToken)).ShouldBe(1);
+        fake.TryGet(retiredMapKey, out string? tombstone).ShouldBeTrue();
+        tombstone.ShouldBeEmpty();
+
+        DaprException unavailable = new("Injected creation-lock delete failure.");
+        _ = client.DeleteStateAsync(
+                Store, retiredLockKey, Arg.Any<StateOptions?>(), Arg.Any<IReadOnlyDictionary<string, string>?>(), cancellationToken)
+            .Returns(Task.FromException(unavailable));
+
+        DaprException failure = await Should.ThrowAsync<DaprException>(
+            () => firstInstance.DeleteAllTenantDataAsync("tenant-1", cancellationToken));
+
+        failure.ShouldBeSameAs(unavailable);
+        fake.TryGet(IndexKey, out List<string>? index).ShouldBeTrue();
+        index.ShouldBe(["Claims", "Orders"]);
+        fake.ContainsKey(retiredMapKey).ShouldBeFalse();
+        fake.ContainsKey(retiredLockKey).ShouldBeTrue();
+        fake.ContainsKey(remainingMapKey).ShouldBeTrue();
+        fake.ContainsKey(remainingLockKey).ShouldBeTrue();
+
+        DaprAggregateCaseMappingStore retry = CreateStore(fake);
+        await retry.DeleteAllTenantDataAsync("tenant-1", cancellationToken);
+
+        fake.ContainsKey(IndexKey).ShouldBeFalse();
+        fake.ContainsKey(retiredLockKey).ShouldBeFalse();
+        fake.ContainsKey(remainingMapKey).ShouldBeFalse();
+        fake.ContainsKey(remainingLockKey).ShouldBeFalse();
+        fake.ContainsKey(otherTenantMapKey).ShouldBeTrue();
+    }
+
+    [Fact]
     public async Task EnsureIndexedAsync_WhenIndexCasExhausted_RollsBackMapEntryAndThrows()
     {
         // review patch #2/#7: FirstWrite then index CAS exhaustion must not leave an unindexed orphan.
