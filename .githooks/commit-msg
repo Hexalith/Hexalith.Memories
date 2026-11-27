@@ -38,4 +38,4 @@ git diff --cached --no-renames --name-only -z -- > "$changed_file"
 # Story review-readiness gate. Runs here for the same trailer reason as the
 # gates above. --derive-cumulative anchors C1 on the story's baseline_commit,
 # because the staged set is one commit's files, not the story's cumulative diff.
-"$py" tools/check-story-review-readiness.py --branch-name "$branch_name" --commit-message-file "$message_file" --changed-files0-file "$changed_file" --derive-cumulative
+"$py" tools/check-story-review-readiness.py --branch-name "$branch_name" --commit-message-file "$message_file" --changed-files0-file "$changed_file" --derive-cumulative --staged-story

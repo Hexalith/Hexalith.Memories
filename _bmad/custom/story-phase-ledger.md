@@ -135,9 +135,19 @@ missing any of the three is a violation, not an exclusion.
 A governed story that declares an evidence, checkpoint, or gate table — any
 table carrying a `Review status` or `Review state` column — owns that table's
 truthfulness at every status transition. Before `review`, each row must hold
-either a completed state with its completion date, or an explicit blocked state
-naming owner, consequence, and reopen trigger. Before `done`, no row may remain
-`pending` or dateless.
+a completed state with its completion date, an explicit blocked state naming
+owner, consequence, and reopen trigger, or a dated `transferred` state. Keep
+each published checkpoint label in its evidence section even when the work moves.
+For a scope transfer, cite the approving decision and the destination alongside the owner,
+consequence, and reopen trigger. For example:
+
+| Checkpoint | Review state | Completion date | Disposition |
+| ---------- | ------------ | --------------- | ----------- |
+| C1 | transferred | 2026-07-30 | Decision: approved change proposal dated 2026-07-30; Destination: Story 27.5; Owner: deployment adapter owner; Consequence: C1 evidence is pending; Reopen trigger: destination scope changes |
+
+Before `done`, no row may remain `pending` or dateless. For an audit of a
+committed story change, pass `--commit-sha <commit>` from its checkout so the
+checker can compare its checkpoints with the parent commit.
 
 A row left at `pending` under a story that reads `review` or `done` is a false
 record, not a formatting lapse: it asserts that the story's own declared proof

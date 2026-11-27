@@ -4493,7 +4493,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of 27-3-production-adapter-and-deployment-profile (2026-07-30)"), 2026-09-01
 location: n/a
 reason: - The C6 evidence-row gate can be satisfied by deleting rows rather than proving them. The 2026-07-30 correction moved the C1 umbrella row from `pending` to `complete` and deleted twelve `pending` child-gate rows, clearing thirteen mechanical C6 blockers by record edit alone; the gate now sees one evidence table where the story carried two. Not a defect of this story — the transfer is Administrator-approved and `epics.md` now carries a stronger 25-row table with a consequence-and-reopen-trigger column the deleted table lacked, so the record was moved, not erased. Owner: story-gate tooling. Re-open trigger: when `check-story-review-readiness.py` is next revised, make a `complete` completion state distinguishable from an administrative scope transfer that proved nothing.
-status: open
+status: done 2026-11-27
+resolution: The C6 checker retains previously committed checkpoint labels and recognizes an approved transfer as a dated disposition with a destination and accountability. Git-backed regressions cover deletion, renaming, misclassification, and incomplete records.
 
 ### DW-631: Reconcile the documented approximately five-minute `integration-fast` budget with observed 15–20 minute executions.
 
