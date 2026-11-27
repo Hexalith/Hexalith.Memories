@@ -104,10 +104,30 @@ class IntegrationTestRunnerTests(unittest.TestCase):
                     '</ResultSummary></TestRun>'
                 )
                 result = self.run_wrapper([
-                    *self.bash, "--filter", "Category=IntegrationSlow", "--results-directory", "reports",
+                    *self.bash, "--filter", "Category=IntegrationSlow",
+                    "--results-directory", "./reports/./nested",
                 ])
                 self.assertEqual(0, result.returncode, result.stderr)
                 self.assertIn("Executed 1 tests for", result.stdout)
+                self.assertTrue(list((self.root / "reports" / "nested").glob("*/*.trx")))
+
+    def test_bash_refuses_non_descendant_results_before_cleanup(self):
+        (self.root / "checkout-link").symlink_to(self.root, target_is_directory=True)
+        outside = tempfile.TemporaryDirectory()
+        self.addCleanup(outside.cleanup)
+        (self.root / "outside-link").symlink_to(outside.name, target_is_directory=True)
+        cleanup = self.bin / "rm"
+        cleanup.write_text("#!/bin/sh\necho 'unexpected results cleanup' >&2\nexit 99\n", encoding="utf-8")
+        cleanup.chmod(0o755)
+
+        for path in (".", "./", "././", "checkout-link", "outside-link/reports"):
+            with self.subTest(path=path):
+                result = self.run_wrapper([
+                    *self.bash, "--filter", "Category=IntegrationSlow", "--results-directory", path,
+                ])
+                self.assertEqual(1, result.returncode, result.stderr)
+                self.assertIn("--results-directory must resolve beneath the repository root", result.stderr)
+                self.assertFalse(self.calls.exists())
 
     def assert_integration_routes(self, wrapper, filter_flag):
         fast = self.read_inventory("integration-fast")

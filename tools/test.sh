@@ -149,6 +149,23 @@ if [[ -n "$RESULTS_DIRECTORY" ]]; then
     exit 1
   fi
   RESULTS_ROOT="$REPO_ROOT/${RESULTS_DIRECTORY#./}"
+  # Resolve symlinks for containment without redirecting cleanup to their targets.
+  if ! python3 - "$REPO_ROOT" "$RESULTS_ROOT" <<'PY'
+from pathlib import Path
+import sys
+
+try:
+    root, results = (Path(path).resolve() for path in sys.argv[1:])
+except (OSError, RuntimeError):
+    raise SystemExit(1)
+
+if root not in results.parents:
+    raise SystemExit(1)
+PY
+  then
+    echo "--results-directory must resolve beneath the repository root." >&2
+    exit 1
+  fi
   rm -rf -- "$RESULTS_ROOT"
   mkdir -p "$RESULTS_ROOT"
 fi
