@@ -1,17 +1,70 @@
 param(
     [string]$RepositoryRoot,
     [string]$ResultsRoot,
-    [string[]]$Components
+    [string[]]$Components,
+    [scriptblock]$RunProjects
 )
+
+function Invoke-StagedTestProjects([string]$Staging, [scriptblock]$Publish) {
+    $succeeded = $false
+    try {
+        & $RunProjects $Staging
+        $succeeded = $true
+    }
+    finally {
+        try {
+            & $Publish
+        }
+        catch {
+            if ($succeeded) { throw }
+            Write-Error -ErrorAction Continue -ErrorRecord $_
+        }
+    }
+}
 
 if (-not $IsWindows) {
     $python = Get-Command python3 -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($null -eq $python) {
         throw '-ResultsDirectory requires python3 for descriptor-relative cleanup on Linux and macOS.'
     }
-    & $python.Source (Join-Path $PSScriptRoot 'prepare-test-results.py') $RepositoryRoot $ResultsRoot
-    if ($LASTEXITCODE -ne 0) {
-        throw '-ResultsDirectory could not be prepared safely.'
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $python.Source
+    $startInfo.WorkingDirectory = $RepositoryRoot
+    $startInfo.UseShellExecute = $false
+    $startInfo.RedirectStandardInput = $true
+    $startInfo.RedirectStandardOutput = $true
+    foreach ($argument in @(
+        (Join-Path $PSScriptRoot 'prepare-test-results.py'), $RepositoryRoot, $ResultsRoot, '-ResultsDirectory'
+    )) {
+        [void]$startInfo.ArgumentList.Add($argument)
+    }
+
+    $process = [System.Diagnostics.Process]::Start($startInfo)
+    try {
+        $ready = $process.StandardOutput.ReadLine()
+        if ($null -eq $ready) {
+            throw '-ResultsDirectory could not be prepared safely.'
+        }
+        $staging = ConvertFrom-Json -InputObject $ready
+        Invoke-StagedTestProjects $staging {
+            $process.StandardInput.WriteLine('publish')
+            $process.StandardInput.Close()
+            $output = $process.StandardOutput.ReadToEnd()
+            $process.WaitForExit()
+            if ($process.ExitCode -ne 0) {
+                throw '-ResultsDirectory could not publish test reports safely.'
+            }
+            if ($output) { Write-Host ($output.TrimEnd()) }
+        }
+    }
+    finally {
+        try {
+            $process.StandardInput.Close()
+            $process.WaitForExit()
+        }
+        finally {
+            $process.Dispose()
+        }
     }
     return
 }
@@ -26,7 +79,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Win32.SafeHandles;
 
-public static class WindowsTestResultsCleanup
+public sealed class WindowsTestResultsCleanup : IDisposable
 {
     private const string Marker = ".hexalith-memories-test-results";
     private static readonly byte[] Signature = Encoding.UTF8.GetBytes("Hexalith.Memories test results v1\n");
@@ -49,15 +102,21 @@ public static class WindowsTestResultsCleanup
     private const int FileFullDirectoryRestartInfo = 15;
     private const int FileDispositionInfoEx = 21;
 
-    public static void Prepare(string repository, string results, string[] components)
+    private readonly List<SafeFileHandle> handles = new List<SafeFileHandle>();
+    private FileStream marker;
+
+    private WindowsTestResultsCleanup() { }
+
+    public static WindowsTestResultsCleanup Prepare(string repository, string results, string[] components)
     {
-        var directories = new List<SafeFileHandle>();
+        var owner = new WindowsTestResultsCleanup();
+        var handles = owner.handles;
         try
         {
             // Accept the checkout as the starting directory, as the wrapper does for dotnet.
             var root = CreateFileW(repository, ListDirectory | ReadAttributes,
                 FileShare.ReadWrite, IntPtr.Zero, 3, 0x02000000, IntPtr.Zero);
-            directories.Add(root);
+            handles.Add(root);
             if (root.IsInvalid)
             {
                 throw Failure("open the checkout", repository, Marshal.GetLastWin32Error());
@@ -68,70 +127,114 @@ public static class WindowsTestResultsCleanup
             foreach (string component in components)
             {
                 current = Path.Combine(current, component);
-                var directory = OpenRelative(directories[directories.Count - 1], component,
+                var directory = OpenRelative(handles[handles.Count - 1], component,
                     ListDirectory, OpenIf, DirectoryFile);
-                directories.Add(directory);
+                handles.Add(directory);
                 if (Attributes(directory, current).HasFlag(FileAttributes.ReparsePoint))
                 {
                     throw new IOException("-ResultsDirectory must not traverse a symbolic link or reparse point at '" + current + "'.");
                 }
             }
 
-            var destination = directories[directories.Count - 1];
+            var destination = handles[handles.Count - 1];
             var entries = ReadEntries(destination, results);
             if (entries.Count == 0)
             {
-                using (var marker = OpenRelative(destination, Marker, WriteData, Create, NonDirectoryFile))
-                using (var stream = new FileStream(marker, FileAccess.Write))
-                {
-                    stream.Write(Signature, 0, Signature.Length);
-                }
-                return;
+                owner.marker = OpenMarker(destination, results, create: true);
+                owner.marker.Write(Signature, 0, Signature.Length);
+                owner.marker.Flush();
+                return owner;
             }
 
             if (!entries.Exists(entry => entry.Key == Marker &&
-                (entry.Value & (FileAttributes.ReparsePoint | FileAttributes.Directory)) == 0) ||
-                !HasOwnershipMarker(destination))
+                (entry.Value & (FileAttributes.ReparsePoint | FileAttributes.Directory)) == 0))
             {
-                throw new IOException("-ResultsDirectory must name an empty or runner-owned directory. Refusing to clean '" + results + "'.");
+                throw Unowned(results);
+            }
+            owner.marker = OpenMarker(destination, results, create: false);
+            if (!HasOwnershipMarker(owner.marker))
+            {
+                throw Unowned(results);
             }
 
+            // A different invocation can finish between the initial listing
+            // and our marker open. Clean the entries seen under this lease.
+            entries = ReadEntries(destination, results);
             // Keep the ownership marker and address each stale entry by its parent handle.
             CleanEntries(destination, entries, keepMarker: true);
+            return owner;
+        }
+        catch
+        {
+            owner.Dispose();
+            throw;
+        }
+    }
+
+    public void Dispose()
+    {
+        try
+        {
+            marker?.Dispose();
         }
         finally
         {
-            for (int index = directories.Count - 1; index >= 0; index--)
+            for (int index = handles.Count - 1; index >= 0; index--)
             {
-                directories[index].Dispose();
+                handles[index].Dispose();
             }
         }
     }
 
-    private static bool HasOwnershipMarker(SafeFileHandle directory)
+    private static FileStream OpenMarker(SafeFileHandle directory, string results, bool create)
     {
-        using (var marker = OpenRelative(directory, Marker, ReadData, Open, NonDirectoryFile))
+        // An exclusive open blocks other Windows processes and WSL processes
+        // opening this marker. The OS releases the handle on abnormal exit.
+        SafeFileHandle handle;
+        try
         {
-            if (Attributes(marker, Marker).HasFlag(FileAttributes.ReparsePoint))
+            handle = OpenRelative(directory, Marker, create ? WriteData : ReadData,
+                create ? Create : Open, NonDirectoryFile, FileShare.None);
+        }
+        catch (IOException error) when (error.InnerException is Win32Exception native &&
+            (native.NativeErrorCode == 32 || native.NativeErrorCode == 80 || native.NativeErrorCode == 183))
+        {
+            throw new IOException("-ResultsDirectory is in use by another test run. Refusing to use '" + results + "'.", error);
+        }
+        try
+        {
+            if (Attributes(handle, Marker).HasFlag(FileAttributes.ReparsePoint))
+            {
+                throw Unowned(results);
+            }
+            return new FileStream(handle, create ? FileAccess.Write : FileAccess.Read);
+        }
+        catch
+        {
+            handle.Dispose();
+            throw;
+        }
+    }
+
+    private static IOException Unowned(string results)
+    {
+        return new IOException("-ResultsDirectory must name an empty or runner-owned directory. Refusing to clean '" + results + "'.");
+    }
+
+    private static bool HasOwnershipMarker(FileStream stream)
+    {
+        if (stream.Length != Signature.Length)
+        {
+            return false;
+        }
+        foreach (byte expected in Signature)
+        {
+            if (stream.ReadByte() != expected)
             {
                 return false;
             }
-            using (var stream = new FileStream(marker, FileAccess.Read))
-            {
-                if (stream.Length != Signature.Length)
-                {
-                    return false;
-                }
-                foreach (byte expected in Signature)
-                {
-                    if (stream.ReadByte() != expected)
-                    {
-                        return false;
-                    }
-                }
-                return stream.ReadByte() == -1;
-            }
         }
+        return stream.ReadByte() == -1;
     }
 
     private static void CleanEntries(SafeFileHandle parent, List<KeyValuePair<string, FileAttributes>> entries, bool keepMarker)
@@ -244,7 +347,8 @@ public static class WindowsTestResultsCleanup
         return (FileAttributes)(uint)info;
     }
 
-    private static SafeFileHandle OpenRelative(SafeFileHandle parent, string name, uint access, uint disposition, uint kind)
+    private static SafeFileHandle OpenRelative(SafeFileHandle parent, string name, uint access, uint disposition,
+        uint kind, FileShare share = FileShare.ReadWrite)
     {
         IntPtr text = Marshal.StringToHGlobalUni(name);
         IntPtr textDescriptor = Marshal.AllocHGlobal(Marshal.SizeOf<UnicodeString>());
@@ -264,7 +368,7 @@ public static class WindowsTestResultsCleanup
             // Deny delete sharing to pin Windows bindings until cleanup finishes.
             const uint SynchronousNoReparse = 0x00200020;
             int status = NtCreateFile(out SafeFileHandle handle, access | ReadAttributes | Synchronize,
-                ref attributes, out _, IntPtr.Zero, 0, FileShare.ReadWrite, disposition,
+                ref attributes, out _, IntPtr.Zero, 0, share, disposition,
                 kind | SynchronousNoReparse, IntPtr.Zero, 0);
             GC.KeepAlive(parent);
             if (status < 0)
@@ -288,7 +392,8 @@ public static class WindowsTestResultsCleanup
 
     private static IOException Failure(string operation, string path, int error)
     {
-        return new IOException("-ResultsDirectory could not " + operation + " '" + path + "': " + new Win32Exception(error).Message);
+        var native = new Win32Exception(error);
+        return new IOException("-ResultsDirectory could not " + operation + " '" + path + "': " + native.Message, native);
     }
 
     private static void RejectWslRedirector(SafeFileHandle root, string repository)
@@ -369,4 +474,30 @@ public static class WindowsTestResultsCleanup
 '@
 }
 
-[WindowsTestResultsCleanup]::Prepare($RepositoryRoot, $ResultsRoot, $Components)
+$staging = $null
+if ($RunProjects) {
+    $temporaryRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
+    $staging = Join-Path $temporaryRoot ('memories-test-reports-' + [guid]::NewGuid().ToString('N'))
+    if ($staging.StartsWith($RepositoryRoot + '\', [StringComparison]::OrdinalIgnoreCase)) {
+        throw '-ResultsDirectory requires a temporary directory outside the repository.'
+    }
+    [void][System.IO.Directory]::CreateDirectory($staging)
+}
+
+try {
+    $owner = [WindowsTestResultsCleanup]::Prepare($RepositoryRoot, $ResultsRoot, $Components)
+    try {
+        if ($RunProjects) {
+            Invoke-StagedTestProjects $staging {
+                Get-ChildItem -Force -LiteralPath $staging |
+                    Copy-Item -Destination $ResultsRoot -Recurse -Force
+            }
+        }
+    }
+    finally {
+        $owner.Dispose()
+    }
+}
+finally {
+    if ($staging) { [System.IO.Directory]::Delete($staging, $true) }
+}

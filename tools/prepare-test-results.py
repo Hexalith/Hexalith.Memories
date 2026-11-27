@@ -1,7 +1,9 @@
-"""Prepare test results using POSIX directory descriptors."""
+"""Lease POSIX test results and publish reports through directory descriptors."""
 
 from contextlib import ExitStack, contextmanager
 import errno
+import fcntl
+import json
 import os
 from pathlib import Path
 import shutil
@@ -38,18 +40,25 @@ def require_unchanged(bindings, results, phase="preparation"):
             raise ValueError(f"path changed during {phase}. Refusing to use '{results}'.")
 
 
-def has_ownership_marker(directory):
+def has_ownership_marker(directory, results, descriptors):
     try:
         metadata = os.lstat(MARKER, dir_fd=directory)
-        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size != len(SIGNATURE):
+        if not stat.S_ISREG(metadata.st_mode):
             return False
         descriptor = os.open(MARKER, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+    except PermissionError as error:
+        # A native Windows run opens this same marker exclusively on an NTFS
+        # checkout also accessed from WSL. That denial arrives as EACCES.
+        raise ValueError(f"could not lease '{results}'. It may be in use by another test run.") from error
     except OSError as error:
         if error.errno in (errno.ENOENT, errno.ELOOP):
             return False
         raise
-    with os.fdopen(descriptor, "rb") as receipt:
-        return os.path.samestat(metadata, os.fstat(descriptor)) and receipt.read(len(SIGNATURE) + 1) == SIGNATURE
+
+    # An open marker also prevents native Windows from leasing the same NTFS
+    # results directory while it is in use from WSL.
+    descriptors.callback(os.close, descriptor)
+    return os.path.samestat(metadata, os.fstat(descriptor)) and os.read(descriptor, len(SIGNATURE) + 1) == SIGNATURE
 
 
 @contextmanager
@@ -84,20 +93,30 @@ def prepared_results(root, results):
             descriptors.callback(os.close, directory)
             bindings.append((parent, component, directory))
 
-        entries = os.listdir(directory)
-        if entries and not has_ownership_marker(directory):
-            raise ValueError(f"must name an empty or runner-owned directory. Refusing to clean '{results}'.")
+        # Lock the verified directory itself. Closing the descriptor releases
+        # the lease even if the runner exits without cleaning up.
+        try:
+            fcntl.flock(directory, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise ValueError(f"is in use by another test run. Refusing to use '{results}'.") from error
 
+        empty = not os.listdir(directory)
+        if not empty and not has_ownership_marker(directory, results, descriptors):
+            raise ValueError(f"must name an empty or runner-owned directory. Refusing to clean '{results}'.")
         require_unchanged(bindings, results)
-        if not entries:
-            descriptor = os.open(MARKER, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666, dir_fd=directory)
-            with os.fdopen(descriptor, "wb") as receipt:
-                receipt.write(SIGNATURE)
+        if empty:
+            try:
+                marker = os.open(MARKER, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666, dir_fd=directory)
+            except FileExistsError as error:
+                raise ValueError(f"is in use by another test run. Refusing to use '{results}'.") from error
+            descriptors.callback(os.close, marker)
+            if os.write(marker, SIGNATURE) != len(SIGNATURE):
+                raise OSError("could not write the full test results ownership marker.")
         else:
             # Relative names stay anchored by this process's cwd, including on Python <3.11.
             os.fchdir(directory)
             try:
-                for entry in entries:
+                for entry in os.listdir(directory):
                     if entry == MARKER:
                         continue
                     if stat.S_ISDIR(os.lstat(entry).st_mode):
@@ -141,12 +160,20 @@ def run_with_reports(root, results, command):
     # the checkout, then publish to the directory held open since cleanup.
     with tempfile.TemporaryDirectory(prefix="memories-test-reports-", dir=scratch) as staging:
         with prepared_results(root, results) as (directory, bindings):
-            process = subprocess.run(
-                command,
-                env=dict(os.environ, MEMORIES_TEST_REPORT_STAGING=staging),
-                check=False,
-            )
-            status = process.returncode if process.returncode >= 0 else 128 - process.returncode
+            if not command:
+                # PowerShell runs the projects. On owner exit, EOF releases
+                # the lease and discards staging without publishing reports.
+                print(json.dumps(staging), flush=True)
+                if sys.stdin.readline() != "publish\n":
+                    return 0
+                status = 0
+            else:
+                process = subprocess.run(
+                    command,
+                    env=dict(os.environ, MEMORIES_TEST_REPORT_STAGING=staging),
+                    check=False,
+                )
+                status = process.returncode if process.returncode >= 0 else 128 - process.returncode
             try:
                 require_unchanged(bindings, results, "report generation")
                 publish_reports(Path(staging), directory)
@@ -162,11 +189,8 @@ def run_with_reports(root, results, command):
 
 if __name__ == "__main__":
     root, results, *arguments = sys.argv[1:]
-    option = arguments[0] if arguments else "-ResultsDirectory"
+    option, *command = arguments
     try:
-        if len(arguments) > 1:
-            raise SystemExit(run_with_reports(Path(root), Path(results), arguments[1:]))
-        with prepared_results(Path(root), Path(results)):
-            pass
+        raise SystemExit(run_with_reports(Path(root), Path(results), command))
     except (OSError, RuntimeError, ValueError) as error:
         raise SystemExit(f"{option} {error}") from None

@@ -1,10 +1,14 @@
 """Exercise integration selectors and report handling without Docker."""
 
+import ctypes
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
+import sys
 import tempfile
+import time
 import unittest
 
 
@@ -26,6 +30,10 @@ while [ "$#" -gt 0 ]; do
     esac
     shift
 done
+if [ -n "${TEST_DOTNET_STARTED:-}" ]; then
+    touch "$TEST_DOTNET_STARTED"
+    while [ ! -e "$TEST_DOTNET_RELEASE" ]; do sleep 0.02; done
+fi
 if [ -n "${results:-}" ]; then
     if [ "${TEST_TRX+x}" = x ]; then
         printf '%s\\n' "$TEST_TRX" > "$results/$filename"
@@ -40,6 +48,9 @@ if [ -n "${results:-}" ]; then
 fi
 if [ -n "${TEST_DOTNET_BEFORE_EXIT:-}" ]; then
     "$TEST_DOTNET_BEFORE_EXIT" || exit $?
+fi
+if [ -n "${TEST_DOTNET_FINISHED:-}" ]; then
+    touch "$TEST_DOTNET_FINISHED"
 fi
 status=${TEST_DOTNET_EXIT:-0}
 if [ "$status" -ne 0 ]; then
@@ -76,6 +87,7 @@ class IntegrationTestRunnerTests(unittest.TestCase):
             'param([string]$Filter, [string]$ResultsDirectory, [switch]$Coverage)\n'
             '$ErrorActionPreference = "Stop"\n'
             '$env:PATH = $env:TEST_WRAPPER_PATH\n'
+            'if ($env:TEST_POWERSHELL_PID) { [IO.File]::WriteAllText($env:TEST_POWERSHELL_PID, [string]$PID) }\n'
             '& "$PSScriptRoot/tools/test.ps1" @PSBoundParameters\n',
             encoding="utf-8",
         )
@@ -185,6 +197,137 @@ class IntegrationTestRunnerTests(unittest.TestCase):
             self.assertEqual(0, result.returncode, result.stderr)
             self.assertFalse(receipt.exists())
             receipt.write_text("stale report", encoding="utf-8")
+
+    def test_bash_refuses_an_overlapping_bash_run(self):
+        self.assert_overlapping_run(self.bash, self.bash)
+
+    @unittest.skipUnless(shutil.which("pwsh"), "requires PowerShell 7")
+    def test_powershell_refuses_an_overlapping_powershell_run(self):
+        self.assert_overlapping_run(self.powershell, self.powershell)
+
+    @unittest.skipUnless(shutil.which("pwsh"), "requires PowerShell 7")
+    def test_wrappers_share_the_active_results_lease(self):
+        self.assert_overlapping_run(self.bash, self.powershell)
+        self.assert_overlapping_run(self.powershell, self.bash)
+
+    def assert_overlapping_run(self, owner_wrapper, contender_wrapper):
+        self.environment["TEST_TRX"] = TRX
+        owner_command = self.report_command(owner_wrapper, "reports/nested")
+        contender = self.report_command(contender_wrapper, "./reports/./nested/")
+        results = self.root / "reports" / "nested"
+
+        with tempfile.TemporaryDirectory() as scratch:
+            start, release = (Path(scratch) / name for name in ("start", "release"))
+            owner, log = self.start_report_owner(owner_command, start, release)
+            self.wait_for_file(start, owner, log)
+            calls = self.calls.read_bytes()
+            active_report = results / "active-report.txt"
+            active_report.write_text("owner data", encoding="utf-8")
+
+            refused = self.run_wrapper(contender)
+            self.assertEqual(1, refused.returncode, refused.stderr)
+            self.assertIn("in use by another test run", refused.stderr)
+            self.assertEqual(calls, self.calls.read_bytes())
+            self.assertEqual("owner data", active_report.read_text(encoding="utf-8"))
+
+            separate = self.run_wrapper(self.report_command(contender_wrapper, "independent"))
+            self.assertEqual(0, separate.returncode, separate.stderr)
+            release.touch()
+            self.assertEqual(0, owner.wait(timeout=120), log.read_text(encoding="utf-8"))
+            self.assertTrue(list(results.glob("*/*.trx")))
+
+            rerun = self.run_wrapper(contender)
+            self.assertEqual(0, rerun.returncode, rerun.stderr)
+            self.assertFalse(active_report.exists())
+            self.assertTrue(list(results.glob("*/*.trx")))
+
+    def test_results_are_reusable_after_bash_owner_is_killed(self):
+        self.assert_recovers_after_owner_exit(self.bash)
+
+    @unittest.skipUnless(shutil.which("pwsh"), "requires PowerShell 7")
+    def test_results_are_reusable_after_powershell_owner_is_killed(self):
+        self.assert_recovers_after_owner_exit(self.powershell)
+
+    def assert_recovers_after_owner_exit(self, wrapper):
+        self.environment["TEST_TRX"] = TRX
+        command = self.report_command(wrapper, "recovered")
+        with tempfile.TemporaryDirectory() as scratch:
+            start, release, finished = (Path(scratch) / name for name in ("start", "release", "finished"))
+            owner, log = self.start_report_owner(command, start, release, finished=finished)
+            self.wait_for_file(start, owner, log)
+            # The dotnet global tool can run PowerShell under a separate PID.
+            if wrapper == self.powershell:
+                powershell_pid = int(start.with_name("powershell.pid").read_text())
+                os.kill(powershell_pid, signal.SIGKILL)
+            else:
+                owner.kill()
+            self.assertNotEqual(0, owner.wait(timeout=120))
+
+            # The PowerShell lease helper gets EOF when its owner closes the pipe.
+            # Wait for successful lease acquisition without releasing the orphaned dotnet.
+            deadline = time.monotonic() + 20
+            self.environment["TEST_TRX"] = TRX.replace('executed="1"', 'executed="9"')
+            while True:
+                result = self.run_wrapper(command)
+                if "in use by another test run" not in result.stderr or time.monotonic() >= deadline:
+                    break
+                time.sleep(0.02)
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertFalse(finished.exists())
+            release.touch()
+            self.wait_for_file(finished)
+
+            reports = list((self.root / "recovered").glob("*/*.trx"))
+            self.assertEqual(1, len(reports))
+            self.assertEqual(self.environment["TEST_TRX"], reports[0].read_text(encoding="utf-8").strip())
+
+    @unittest.skipUnless(shutil.which("pwsh"), "requires PowerShell 7")
+    def test_powershell_publishes_available_reports_after_native_failure(self):
+        self.environment.update(TEST_TRX=TRX, TEST_COVERAGE="<coverage/>", TEST_DOTNET_EXIT="37")
+        command = self.report_command(self.powershell, "reports")
+        result = self.run_wrapper([*command, "-Coverage"])
+        self.assertEqual(1, result.returncode, result.stderr)
+        self.assertIn("dotnet test failed (37)", result.stderr)
+        self.assertEqual(1, len(list((self.root / "reports").glob("*/*.trx"))))
+        self.assertEqual(1, len(list((self.root / "reports").glob("*/coverage.cobertura.xml"))))
+
+    def report_command(self, wrapper, destination):
+        options = (
+            ("--filter", "--results-directory") if wrapper == self.bash else ("-Filter", "-ResultsDirectory")
+        )
+        return [*wrapper, options[0], "Category=IntegrationSlow", options[1], destination]
+
+    def start_report_owner(self, command, start, release, *, finished=None):
+        environment = self.wrapper_environment(command)
+        environment.update(TEST_DOTNET_STARTED=str(start), TEST_DOTNET_RELEASE=str(release))
+        if command[0] == self.powershell[0]:
+            environment["TEST_POWERSHELL_PID"] = str(start.with_name("powershell.pid"))
+        if finished:
+            environment["TEST_DOTNET_FINISHED"] = str(finished)
+        log = start.with_name("owner.log")
+        with log.open("w", encoding="utf-8") as output:
+            owner = subprocess.Popen(
+                command, cwd=self.root, env=environment, stdout=output, stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+        self.addCleanup(self.stop_report_owner, owner)
+        return owner, log
+
+    def stop_report_owner(self, owner):
+        try:
+            os.killpg(owner.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        owner.wait(timeout=120)
+
+    def wait_for_file(self, path, owner=None, log=None):
+        deadline = time.monotonic() + 30
+        while not path.exists():
+            if owner is not None and owner.poll() is not None:
+                self.fail(f"Owner exited before creating {path}: {log.read_text(encoding='utf-8')}")
+            if time.monotonic() >= deadline:
+                self.fail(f"Timed out waiting for {path}")
+            time.sleep(0.02)
 
     def test_bash_requires_python_only_for_reports_and_preserves_previous_results(self):
         for command in ("dirname", "grep", "sed", "rm", "mkdir", "basename"):
@@ -575,20 +718,121 @@ class IntegrationTestRunnerTests(unittest.TestCase):
         contents = (TOOLS / f"test-projects.{lane}.txt").read_text(encoding="utf-8")
         return [line for line in map(str.strip, contents.splitlines()) if line and not line.startswith("#")]
 
-    def run_wrapper(self, command, *, cwd=None):
+    def wrapper_environment(self, command):
         environment = self.environment.copy()
         if command[0] == self.powershell[0]:
             # The global-tool launcher may need real dotnet before the shell starts.
             environment["TEST_WRAPPER_PATH"] = environment["PATH"]
             environment["PATH"] = os.environ["PATH"]
+        return environment
+
+    def run_wrapper(self, command, *, cwd=None):
         # Allow the PowerShell runtime to start on a busy build host.
         return subprocess.run(
-            command, cwd=cwd or self.root, env=environment, text=True, capture_output=True, check=False, timeout=120,
+            command, cwd=cwd or self.root, env=self.wrapper_environment(command),
+            text=True, capture_output=True, check=False, timeout=120,
         )
 
 
 @unittest.skipUnless(os.name == "nt" and shutil.which("pwsh"), "requires Windows PowerShell 7")
 class WindowsTestResultsCleanupTests(unittest.TestCase):
+    def test_powershell_refuses_overlap_and_reuses_results_after_owner_exit(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            tools = root / "tools"
+            tools.mkdir()
+            for name in ("test.ps1", "prepare-test-results.ps1", "test-projects.integration-slow.txt"):
+                shutil.copy2(TOOLS / name, tools / name)
+            # A native executable is required by ProcessStartInfo on Windows.
+            # Use the running interpreter to execute a dummy dotnet test script.
+            shutil.copy2(sys.executable, root / "dotnet.exe")
+            (root / "test").write_text(
+                "import os, sys, time\n"
+                "from pathlib import Path\n"
+                "if os.environ.get('TEST_DOTNET_STARTED'):\n"
+                "    Path('child-pid').write_text(str(os.getpid()))\n"
+                "    Path('started').touch()\n"
+                "    deadline = time.monotonic() + 60\n"
+                "    while not Path('release').exists():\n"
+                "        if time.monotonic() >= deadline: raise SystemExit(99)\n"
+                "        time.sleep(0.02)\n"
+                "args = sys.argv[1:]\n"
+                "results = Path(args[args.index('--results-directory') + 1])\n"
+                "filename = args[args.index('--report-xunit-trx-filename') + 1]\n"
+                "(results / filename).write_text(os.environ['TEST_TRX'], encoding='utf-8')\n"
+                "(results / 'fixture.coverage.cobertura.xml').write_text('<coverage/>', encoding='utf-8')\n"
+                "if os.environ.get('TEST_DOTNET_STARTED'): Path('finished').touch()\n"
+                "raise SystemExit(int(os.environ.get('TEST_DOTNET_EXIT', 0)))\n",
+                encoding="utf-8",
+            )
+            environment = dict(
+                os.environ, PATH=os.pathsep.join((str(root), sys.base_prefix, os.environ["PATH"])),
+                PYTHONHOME=sys.base_prefix, TEST_TRX=TRX,
+            )
+            command = [
+                shutil.which("pwsh"), "-NoProfile", "-File", str(tools / "test.ps1"),
+                "-Filter", "Category=IntegrationSlow", "-ResultsDirectory", "reports", "-Coverage",
+            ]
+            results = root / "reports"
+            release = root / "release"
+            log = root / "owner.log"
+            with log.open("w", encoding="utf-8") as output:
+                owner = subprocess.Popen(
+                    command, cwd=root, env=dict(environment, TEST_DOTNET_STARTED="1"),
+                    stdout=output, stderr=subprocess.STDOUT,
+                )
+            child_handle = None
+            kernel = ctypes.windll.kernel32
+            kernel.OpenProcess.argtypes = (ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong)
+            kernel.OpenProcess.restype = ctypes.c_void_p
+            kernel.WaitForSingleObject.argtypes = (ctypes.c_void_p, ctypes.c_ulong)
+            kernel.CloseHandle.argtypes = (ctypes.c_void_p,)
+            try:
+                self.wait_for_receipt(root / "started", owner, log)
+                child_pid = int((root / "child-pid").read_text())
+                child_handle = kernel.OpenProcess(0x00100000, False, child_pid)  # SYNCHRONIZE
+                self.assertTrue(child_handle)
+                active_report = results / "active.txt"
+                active_report.write_text("active report", encoding="utf-8")
+                refused = subprocess.run(command, cwd=root, env=environment, capture_output=True, timeout=120)
+                self.assertEqual(1, refused.returncode, refused.stderr)
+                self.assertIn(b"in use by another test run", refused.stderr)
+                self.assertEqual("active report", active_report.read_text(encoding="utf-8"))
+
+                owner.kill()
+                owner.wait(timeout=120)
+                expected_trx = TRX.replace('executed="1"', 'executed="9"')
+                failed = subprocess.run(
+                    command, cwd=root, env=dict(environment, TEST_TRX=expected_trx, TEST_DOTNET_EXIT="37"),
+                    capture_output=True, timeout=120,
+                )
+                self.assertEqual(1, failed.returncode, failed.stderr)
+                self.assertIn(b"dotnet test failed (37)", failed.stderr)
+                self.assertFalse(active_report.exists())
+                self.assertFalse((root / "finished").exists())
+                release.touch()
+                self.wait_for_receipt(root / "finished", None, log)
+                reports = list(results.glob("*/*.trx"))
+                self.assertEqual(1, len(reports))
+                self.assertEqual(expected_trx, reports[0].read_text(encoding="utf-8"))
+                self.assertEqual(1, len(list(results.glob("*/coverage.cobertura.xml"))))
+            finally:
+                release.touch()
+                if owner.poll() is None:
+                    owner.wait(timeout=120)
+                if child_handle:
+                    try:
+                        self.assertEqual(0, kernel.WaitForSingleObject(child_handle, 30000))
+                    finally:
+                        kernel.CloseHandle(child_handle)
+
+    def wait_for_receipt(self, receipt, owner, log):
+        deadline = time.monotonic() + 30
+        while not receipt.exists():
+            if (owner is not None and owner.poll() is not None) or time.monotonic() >= deadline:
+                self.fail(f"Did not observe {receipt}: {log.read_text(encoding='utf-8', errors='replace')}")
+            time.sleep(0.02)
+
     def test_owned_cleanup_pins_parent_and_destination(self):
         checkpoint = "            CleanEntries(destination, entries, keepMarker: true);"
         attempt_replacement = """

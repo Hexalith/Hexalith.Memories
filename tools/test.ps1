@@ -126,152 +126,161 @@ try {
                 }
             }
         }
-
-        & (Join-Path $PSScriptRoot 'prepare-test-results.ps1') $repoRootFull $resultsRoot $components
     }
 
-    foreach ($projectPath in $projectPaths) {
-        $arguments = @('test')
-        $effectiveFilter = if ($Filter -eq 'Category!=Integration') {
-            'Category!=Integration&Category!=Benchmark'
-        }
-        elseif ($Filter -eq 'Category=Benchmark') {
-            $null
-        }
-        else {
-            $Filter
-        }
+    $runProjects = {
+        param([string]$reportStaging)
 
-        if (-not [string]::IsNullOrWhiteSpace($projectPath)) {
-            $arguments += @('--project', $projectPath)
-        }
-
-        $arguments += @('--configuration', $Configuration)
-
-        if ($NoBuild) {
-            $arguments += '--no-build'
-        }
-
-        $argumentList = [System.Collections.Generic.List[string]]::new()
-        foreach ($argument in $arguments) {
-            $argumentList.Add($argument)
-        }
-
-        Add-MtpFilterArguments $effectiveFilter $argumentList
-
-        $trxPath = $null
-        $expectedExecutedTests = $null
-        $projectResultsDirectory = $null
-        if (-not [string]::IsNullOrWhiteSpace($ResultsDirectory)) {
-            $safeName = if ([string]::IsNullOrWhiteSpace($projectPath)) {
-                'solution'
+        foreach ($projectPath in $projectPaths) {
+            $arguments = @('test')
+            $effectiveFilter = if ($Filter -eq 'Category!=Integration') {
+                'Category!=Integration&Category!=Benchmark'
+            }
+            elseif ($Filter -eq 'Category=Benchmark') {
+                $null
             }
             else {
-                [System.IO.Path]::GetFileNameWithoutExtension($projectPath)
+                $Filter
             }
 
-            $projectResultsDirectory = Join-Path $resultsRoot $safeName
-            New-Item -ItemType Directory -Force -Path $projectResultsDirectory | Out-Null
-            $trxPath = Join-Path $projectResultsDirectory "$safeName.trx"
-            $argumentList.Add('--results-directory')
-            $argumentList.Add($projectResultsDirectory)
-            $argumentList.Add('--report-xunit-trx')
-            $argumentList.Add('--report-xunit-trx-filename')
-            $argumentList.Add("$safeName.trx")
-            if ($Filter -eq 'Category=Benchmark') {
-                $expectedExecutedTests = 17
+            if (-not [string]::IsNullOrWhiteSpace($projectPath)) {
+                $arguments += @('--project', $projectPath)
             }
-        }
 
-        if ($Coverage) {
-            # coverlet.MTP matches the Coverlet include/exclude contract in tests/tests.runsettings.
-            # Microsoft.Testing.Extensions.CodeCoverage under-counted Hexalith.Memories.Server hits
-            # on GitHub-hosted runners (23% vs ~75% Coverlet), which failed the 76.5% line gate.
-            $argumentList.Add('--coverlet')
-            $argumentList.Add('--coverlet-output-format')
-            $argumentList.Add('cobertura')
-            $argumentList.Add('--coverlet-include')
-            $argumentList.Add('[Hexalith.Memories.*]*')
-            $argumentList.Add('--coverlet-exclude')
-            $argumentList.Add('[*.Tests]*')
-            $argumentList.Add('--coverlet-exclude')
-            $argumentList.Add('[Hexalith.Memories.TestHelpers]*')
-            $argumentList.Add('--coverlet-exclude')
-            $argumentList.Add('[Hexalith.Memories.Web.Specimens]*')
-            $argumentList.Add('--coverlet-exclude')
-            $argumentList.Add('[Hexalith.Memories.MigrateEmbeddingVectors]*')
-            $argumentList.Add('--coverlet-exclude-by-file')
-            $argumentList.Add('**/obj/**')
-            $argumentList.Add('--coverlet-exclude-by-attribute')
-            $argumentList.Add('GeneratedCodeAttribute')
-            $argumentList.Add('--coverlet-exclude-by-attribute')
-            $argumentList.Add('ObsoleteAttribute')
-            $argumentList.Add('--coverlet-skip-auto-props')
-        }
+            $arguments += @('--configuration', $Configuration)
 
-        $arguments = $argumentList.ToArray()
-        Write-Host ("dotnet {0}" -f ($arguments -join ' '))
-        $dotnetCommand = Get-Command dotnet -CommandType Application -ErrorAction Stop |
-            Select-Object -First 1
-        $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
-        $startInfo.FileName = $dotnetCommand.Source
-        $startInfo.UseShellExecute = $false
-        $startInfo.WorkingDirectory = $repoRoot
-        foreach ($argument in $arguments) {
-            [void]$startInfo.ArgumentList.Add($argument)
-        }
+            if ($NoBuild) {
+                $arguments += '--no-build'
+            }
 
-        $process = [System.Diagnostics.Process]::Start($startInfo)
-        if ($null -eq $process) {
-            throw 'Failed to start dotnet test.'
-        }
+            $argumentList = [System.Collections.Generic.List[string]]::new()
+            foreach ($argument in $arguments) {
+                $argumentList.Add($argument)
+            }
 
-        try {
-            $process.WaitForExit()
-            $testExitCode = $process.ExitCode
-        }
-        finally {
-            $process.Dispose()
-        }
+            Add-MtpFilterArguments $effectiveFilter $argumentList
 
-        if ($Coverage -and -not [string]::IsNullOrWhiteSpace($projectResultsDirectory)) {
-            $canonical = Join-Path $projectResultsDirectory 'coverage.cobertura.xml'
-            if (-not (Test-Path -LiteralPath $canonical)) {
-                $found = @(Get-ChildItem -LiteralPath $projectResultsDirectory -File |
-                    Where-Object {
-                        $_.Name -like 'coverage.cobertura*.xml' -or
-                        $_.Name -like '*.coverage.cobertura.xml'
-                    } |
-                    Sort-Object Name)
-                if ($found.Count -eq 0) {
-                    throw "Test project produced no Cobertura report under '$projectResultsDirectory'."
+            $trxPath = $null
+            $expectedExecutedTests = $null
+            $projectResultsDirectory = $null
+            if ($reportStaging) {
+                $safeName = if ([string]::IsNullOrWhiteSpace($projectPath)) {
+                    'solution'
                 }
-                Copy-Item -LiteralPath $found[-1].FullName -Destination $canonical
+                else {
+                    [System.IO.Path]::GetFileNameWithoutExtension($projectPath)
+                }
+
+                $projectResultsDirectory = Join-Path $reportStaging $safeName
+                New-Item -ItemType Directory -Force -Path $projectResultsDirectory | Out-Null
+                $trxPath = Join-Path $projectResultsDirectory "$safeName.trx"
+                $argumentList.Add('--results-directory')
+                $argumentList.Add($projectResultsDirectory)
+                $argumentList.Add('--report-xunit-trx')
+                $argumentList.Add('--report-xunit-trx-filename')
+                $argumentList.Add("$safeName.trx")
+                if ($Filter -eq 'Category=Benchmark') {
+                    $expectedExecutedTests = 17
+                }
+            }
+
+            if ($Coverage) {
+                # coverlet.MTP matches the Coverlet include/exclude contract in tests/tests.runsettings.
+                # Microsoft.Testing.Extensions.CodeCoverage under-counted Hexalith.Memories.Server hits
+                # on GitHub-hosted runners (23% vs ~75% Coverlet), which failed the 76.5% line gate.
+                $argumentList.Add('--coverlet')
+                $argumentList.Add('--coverlet-output-format')
+                $argumentList.Add('cobertura')
+                $argumentList.Add('--coverlet-include')
+                $argumentList.Add('[Hexalith.Memories.*]*')
+                $argumentList.Add('--coverlet-exclude')
+                $argumentList.Add('[*.Tests]*')
+                $argumentList.Add('--coverlet-exclude')
+                $argumentList.Add('[Hexalith.Memories.TestHelpers]*')
+                $argumentList.Add('--coverlet-exclude')
+                $argumentList.Add('[Hexalith.Memories.Web.Specimens]*')
+                $argumentList.Add('--coverlet-exclude')
+                $argumentList.Add('[Hexalith.Memories.MigrateEmbeddingVectors]*')
+                $argumentList.Add('--coverlet-exclude-by-file')
+                $argumentList.Add('**/obj/**')
+                $argumentList.Add('--coverlet-exclude-by-attribute')
+                $argumentList.Add('GeneratedCodeAttribute')
+                $argumentList.Add('--coverlet-exclude-by-attribute')
+                $argumentList.Add('ObsoleteAttribute')
+                $argumentList.Add('--coverlet-skip-auto-props')
+            }
+
+            $arguments = $argumentList.ToArray()
+            Write-Host ("dotnet {0}" -f ($arguments -join ' '))
+            $dotnetCommand = Get-Command dotnet -CommandType Application -ErrorAction Stop |
+                Select-Object -First 1
+            $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+            $startInfo.FileName = $dotnetCommand.Source
+            $startInfo.UseShellExecute = $false
+            $startInfo.WorkingDirectory = $repoRoot
+            foreach ($argument in $arguments) {
+                [void]$startInfo.ArgumentList.Add($argument)
+            }
+
+            $process = [System.Diagnostics.Process]::Start($startInfo)
+            if ($null -eq $process) {
+                throw 'Failed to start dotnet test.'
+            }
+
+            try {
+                $process.WaitForExit()
+                $testExitCode = $process.ExitCode
+            }
+            finally {
+                $process.Dispose()
+            }
+
+            if ($Coverage -and -not [string]::IsNullOrWhiteSpace($projectResultsDirectory)) {
+                $canonical = Join-Path $projectResultsDirectory 'coverage.cobertura.xml'
+                if (-not (Test-Path -LiteralPath $canonical)) {
+                    $found = @(Get-ChildItem -LiteralPath $projectResultsDirectory -File |
+                        Where-Object {
+                            $_.Name -like 'coverage.cobertura*.xml' -or
+                            $_.Name -like '*.coverage.cobertura.xml'
+                        } |
+                        Sort-Object Name)
+                    if ($found.Count -eq 0) {
+                        throw "Test project produced no Cobertura report under '$projectResultsDirectory'."
+                    }
+                    Copy-Item -LiteralPath $found[-1].FullName -Destination $canonical
+                }
+            }
+
+            if ($trxPath) {
+                if (-not (Test-Path -LiteralPath $trxPath)) {
+                    throw "Expected TRX file '$trxPath' was not produced."
+                }
+
+                [xml]$trx = Get-Content -LiteralPath $trxPath
+                $executed = [int]$trx.TestRun.ResultSummary.Counters.executed
+                $notExecuted = [int]$trx.TestRun.ResultSummary.Counters.notExecuted
+                if ($executed -le 0) {
+                    throw "Test project '$projectPath' executed zero tests for filter '$effectiveFilter'."
+                }
+                if ($null -ne $expectedExecutedTests -and
+                    ($executed -ne $expectedExecutedTests -or $notExecuted -ne 0)) {
+                    throw "Test project '$projectPath' must execute exactly $expectedExecutedTests tests with none skipped; TRX reported executed=$executed, notExecuted=$notExecuted."
+                }
+
+                Write-Host "Executed $executed tests for $projectPath"
+            }
+
+            if ($testExitCode -ne 0) {
+                throw "dotnet test failed ($testExitCode)"
             }
         }
+    }
 
-        if ($trxPath) {
-            if (-not (Test-Path -LiteralPath $trxPath)) {
-                throw "Expected TRX file '$trxPath' was not produced."
-            }
-
-            [xml]$trx = Get-Content -LiteralPath $trxPath
-            $executed = [int]$trx.TestRun.ResultSummary.Counters.executed
-            $notExecuted = [int]$trx.TestRun.ResultSummary.Counters.notExecuted
-            if ($executed -le 0) {
-                throw "Test project '$projectPath' executed zero tests for filter '$effectiveFilter'."
-            }
-            if ($null -ne $expectedExecutedTests -and
-                ($executed -ne $expectedExecutedTests -or $notExecuted -ne 0)) {
-                throw "Test project '$projectPath' must execute exactly $expectedExecutedTests tests with none skipped; TRX reported executed=$executed, notExecuted=$notExecuted."
-            }
-
-            Write-Host "Executed $executed tests for $projectPath"
-        }
-
-        if ($testExitCode -ne 0) {
-            throw "dotnet test failed ($testExitCode)"
-        }
+    if ($resultsRoot) {
+        & (Join-Path $PSScriptRoot 'prepare-test-results.ps1') $repoRootFull $resultsRoot $components $runProjects
+    }
+    else {
+        & $runProjects
     }
 }
 finally {

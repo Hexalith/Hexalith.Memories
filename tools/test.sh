@@ -314,8 +314,8 @@ if ! python3 -c 'import sys; import xml.etree.ElementTree; sys.exit(sys.version_
   exit 1
 fi
 
-# The Python process holds the verified destination while this project loop
-# generates and checks reports in private staging.
+# The Python process leases the verified destination while this project loop
+# generates and checks reports in private staging, then publishes them.
 exec python3 "$SCRIPT_DIR/prepare-test-results.py" "$REPO_ROOT" "$REPO_ROOT/$RESULTS_DIRECTORY" --results-directory \
   "$BASH" -c 'source "$1"; shift; run_projects "$MEMORIES_TEST_REPORT_STAGING" "$@"' \
   memories-test "$SCRIPT_DIR/test.sh" "$FILTER" "$CONFIGURATION" "$NO_BUILD" "$COVERAGE" "${PROJECTS[@]}"
