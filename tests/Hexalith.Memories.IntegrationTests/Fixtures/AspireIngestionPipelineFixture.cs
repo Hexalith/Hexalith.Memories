@@ -461,7 +461,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         using var cts = new CancellationTokenSource(TopologyStartupTimeout);
         Stopwatch stopwatch = Stopwatch.StartNew();
         try { await DisposeTopologyAsync(cts.Token).ConfigureAwait(false); }
-        finally { TestContext.Current.TestOutputHelper?.WriteLine($"Owned restart disposal: {stopwatch.Elapsed.TotalSeconds:F2}s"); }
+        finally { TryWriteStartupDiagnostic($"Owned restart disposal: {stopwatch.Elapsed.TotalSeconds:F2}s"); }
         TimeSpan disposedAt = stopwatch.Elapsed;
         try
         {
@@ -479,7 +479,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         }
         finally
         {
-            TestContext.Current.TestOutputHelper?.WriteLine($"Owned restart startup/readiness: {(stopwatch.Elapsed - disposedAt).TotalSeconds:F2}s");
+            TryWriteStartupDiagnostic($"Owned restart startup/readiness: {(stopwatch.Elapsed - disposedAt).TotalSeconds:F2}s");
         }
 
         stopwatch.Stop();
@@ -492,38 +492,63 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         string diagnosticKey,
         params (string ResourceName, string EndpointName)[] endpoints)
     {
-        try
+        string diagnostic = "AppHost construction did not complete.";
+        if (app is not null)
         {
-            if (app is null)
+            try
             {
-                startupException.Data[diagnosticKey] = "AppHost construction did not complete.";
-                return;
-            }
+                DistributedApplicationModel model = app.Services.GetRequiredService<DistributedApplicationModel>();
+                Task<string>[] ports = [.. endpoints.Select(endpoint => DescribeAsync(endpoint.ResourceName, endpoint.EndpointName))];
+                diagnostic = string.Join(Environment.NewLine, await Task.WhenAll(ports).ConfigureAwait(false));
 
-            DistributedApplicationModel model = app.Services.GetRequiredService<DistributedApplicationModel>();
-            Task<string>[] ports = [.. endpoints.Select(endpoint => DescribeAsync(endpoint.ResourceName, endpoint.EndpointName))];
-            string diagnostic = string.Join(Environment.NewLine, await Task.WhenAll(ports).ConfigureAwait(false));
-            startupException.Data[diagnosticKey] = diagnostic;
-            TestContext.Current.TestOutputHelper?.WriteLine($"{diagnosticKey}:{Environment.NewLine}{diagnostic}");
-
-            Task<string> DescribeAsync(string resourceName, string endpointName)
-            {
-                IResource? resource = model.Resources.SingleOrDefault(resource => resource.Name == resourceName);
-                if (resource is null)
+                async Task<string> DescribeAsync(string resourceName, string endpointName)
                 {
-                    return Task.FromResult($"{resourceName}/{endpointName}: resource unavailable");
-                }
+                    try
+                    {
+                        IResource? resource = model.Resources.SingleOrDefault(resource => resource.Name == resourceName);
+                        if (resource is null)
+                        {
+                            return $"{resourceName}/{endpointName}: resource unavailable";
+                        }
 
-                string? state = app.ResourceNotifications.TryGetCurrentState(resourceName, out ResourceEvent? current)
-                    ? current.Snapshot.State?.Text
-                    : null;
-                return DescribeBackendPortAsync(resource, endpointName, state);
+                        string? state = app.ResourceNotifications.TryGetCurrentState(resourceName, out ResourceEvent? current)
+                            ? current.Snapshot.State?.Text
+                            : null;
+                        return await DescribeBackendPortAsync(resource, endpointName, state).ConfigureAwait(false);
+                    }
+                    catch (Exception exception)
+                    {
+                        return $"{resourceName}/{endpointName}: diagnostic unavailable ({exception.GetType().Name})";
+                    }
+                }
+            }
+            catch (Exception exception)
+            {
+                diagnostic = $"Backend port diagnostics unavailable ({exception.GetType().Name}).";
             }
         }
-        catch (Exception diagnosticException)
+
+        try
         {
-            // Preserve the original startup failure if the partially started AppHost cannot provide diagnostics.
-            startupException.Data[$"{diagnosticKey} diagnostic failure"] = diagnosticException.GetType().Name;
+            startupException.Data[diagnosticKey] = diagnostic;
+        }
+        catch (Exception)
+        {
+            // Exception.Data implementations may reject writes. Preserve startup identity.
+        }
+
+        TryWriteStartupDiagnostic($"{diagnosticKey}:{Environment.NewLine}{diagnostic}");
+    }
+
+    private static void TryWriteStartupDiagnostic(string diagnostic)
+    {
+        try
+        {
+            TestContext.Current.TestOutputHelper?.WriteLine(diagnostic);
+        }
+        catch (Exception)
+        {
+            // Failure diagnostics must not interrupt cleanup or replace the startup exception.
         }
     }
 

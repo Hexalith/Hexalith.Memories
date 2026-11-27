@@ -22,6 +22,8 @@ using Hexalith.Memories.IntegrationTests.Telemetry;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.JsonWebTokens;
 
+using NSubstitute;
+
 using Shouldly;
 
 using FusionWeights = Hexalith.Memories.Contracts.V1.FusionWeights;
@@ -619,6 +621,27 @@ public sealed class AspireIngestionPipelineFixtureTests
         capturedBeforeCleanup.ShouldContain($"hostPort=127.0.0.1:{port}, listener=ConnectionRefused");
         capturedBeforeCleanup.ShouldNotContain(syntheticSeed);
         capturedBeforeCleanup.ShouldNotContain("OPENBAO_TEST_SEED");
+    }
+
+    [Fact]
+    public async Task FailedInitialization_WhenDiagnosticAttachmentThrows_PreservesOriginalAndRunsCleanup()
+    {
+        Exception startupException = Substitute.For<Exception>();
+        startupException.Data.Returns(static _ => throw new NotSupportedException("exception data unavailable"));
+        List<string> cleanupOrder = [];
+
+        Exception? thrown = await Record.ExceptionAsync(() =>
+            AspireIngestionPipelineFixture.RethrowAfterInitializationFailureAsync(
+                startupException,
+                app: null,
+                EmbeddingProviderTestMode.OllamaOidcFake,
+                [
+                    new("topology", () => RecordSuccessfulCleanup("topology", cleanupOrder)),
+                    new("environment", () => RecordSuccessfulCleanup("environment", cleanupOrder)),
+                ]));
+
+        thrown.ShouldBeSameAs(startupException);
+        cleanupOrder.ShouldBe(["topology", "environment"]);
     }
 
     [Fact]
