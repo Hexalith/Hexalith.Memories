@@ -29,13 +29,21 @@ Orphaned pre-cutover Redis keys under `{tenant}:eventstore:*` are removed by ten
 Dapr-state keys (app-id prefixed) are purged via `DeleteAllTenantDataAsync` on the mapping and observation
 stores. Do not treat a raw Redis SCAN alone as proof that Dapr-state EventStore data is gone.
 
-Case deletion replaces matching case IDs with empty string markers. The marker keeps the mapping ETag
-non-reusable when a later event recreates the mapping. The tenant index retains those aggregate types
-for physical tenant purge, and active mapping counts exclude the markers. Each distinct retired
-aggregate type increases storage use and the number of entries scanned for active mapping counts until
-tenant purge. Older runtimes read the same wire format but count those aggregate types toward the cap
-and can physically delete mappings during case cleanup. Drain older case-deletion workers before
-upgrading so those workers cannot reset an ETag during an upgraded deletion or remap.
+Case cleanup deletes matching map rows before pruning the tenant index. Retrying after a partial
+failure can therefore find remaining rows and prune acknowledged deletions. A previous cleanup that
+removed index entries first can leave map rows absent from the index. For that specific recovery,
+pause case-routing writers and deletion workflows for the affected tenant and take a scoped backup.
+Confirm the deployed Dapr app ID, state component, and Redis database. With the production app ID
+`memories` and default app-ID key prefix, compare only
+`memories||{tenant}:eventstore:aggregate-case-map:{aggregateType}` rows with that tenant's
+`memories||{tenant}:eventstore:aggregate-case-map-index` entry. Use the confirmed app prefix for any
+deployment override. Validate each case against the affected tenant's authoritative case state and
+use the owning app's Dapr state component to restore valid index membership or delete a confirmed
+stale mapping. Keep the tenant and app ID literal throughout reconciliation. Verify both sets agree
+before resuming traffic.
+
+Redis can recycle a mapping ETag when the same key is deleted and recreated. Case cleanup uses
+conditional deletes, and DW-691 tracks the separate tenant purge writer-admission boundary.
 
 Repository pins and image digests are the deployment input. Current pins include .NET SDK 10.0.400,
 Dapr .NET packages 1.18.5, Redis Stack 7.4.0-v8, and FalkorDB 4.12.0. A package pin does not prove the
@@ -266,10 +274,12 @@ the build you plan to upgrade to while intake is paused. Use
 and `ingestion-workflow:in-flight:drain-confirmed` for earlier builds. A subsequent upgrade enumerates
 Dapr workflows before recording a new confirmation.
 
-The annotation-aware gate checks the deterministic ingestion child when a tracked annotation parent
-is terminal or missing. It retains records for ambiguous submissions and unsettled child dispatches.
-A record whose parent and child remain absent stops delaying startup after the five-minute visibility
-window. Keep annotation intake paused and confirm workflow state before approving a rollout.
+The annotation-aware gate checks the deterministic ingestion child when a tracked parent is terminal
+or missing. During legacy enumeration it also checks the child of a listed annotation parent whose
+state or workflow name is missing. An active child or a confirmed dispatch awaiting a terminal result
+delays startup within the five-minute budget, regardless of the parent's age. The gate retains
+ambiguous tracked submissions for later checks and keeps legacy confirmation unset while evidence
+is inconclusive. Keep annotation intake paused and confirm workflow state before approving a rollout.
 
 Durable-data recovery uses retained logical exports and paired snapshots through
 [Backup and Restore](./backup-restore.md) and [Disaster Recovery](./disaster-recovery.md). Never delete

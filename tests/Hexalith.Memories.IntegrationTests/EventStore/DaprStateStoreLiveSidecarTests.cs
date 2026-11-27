@@ -52,7 +52,7 @@ public sealed class DaprStateStoreLiveSidecarTests
     }
 
     [Fact]
-    public async Task AggregateCaseMapping_CaseDeletionAndRemapKeepTheEtagLineage()
+    public async Task AggregateCaseMapping_CaseDeletionPrunesIndexAndAllowsRemap()
     {
         DaprAggregateCaseMappingStore store = CreateMappingStore();
         string tenantId = $"ida-cd-{Guid.NewGuid():N}"[..28];
@@ -60,25 +60,18 @@ public sealed class DaprStateStoreLiveSidecarTests
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
         (await store.TryStoreCaseIdAsync(tenantId, "Claims", "case-delete", cancellationToken)).ShouldBeTrue();
         (await store.TryStoreCaseIdAsync(tenantId, "Orders", "case-keep", cancellationToken)).ShouldBeTrue();
-        (_, string originalEtag) = await _fixture.DaprClient.GetStateAndETagAsync<string>(
-            _fixture.StateStoreName, mapKey, cancellationToken: cancellationToken);
-
         (await store.DeleteCaseMappingsAsync(tenantId, "case-delete", cancellationToken)).ShouldBe(1);
         (await store.GetCaseIdAsync(tenantId, "Claims", cancellationToken)).ShouldBeNull();
         (await store.GetCaseIdAsync(tenantId, "Orders", cancellationToken)).ShouldBe("case-keep");
         (await store.GetAggregateCountAsync(tenantId, cancellationToken)).ShouldBe(1);
         (await store.DeleteCaseMappingsAsync(tenantId, "case-delete", cancellationToken)).ShouldBe(0);
 
-        (string? retired, string retiredEtag) = await _fixture.DaprClient.GetStateAndETagAsync<string>(
+        (string? missing, string missingEtag) = await _fixture.DaprClient.GetStateAndETagAsync<string>(
             _fixture.StateStoreName, mapKey, cancellationToken: cancellationToken);
-        retired.ShouldBeEmpty();
-        retiredEtag.ShouldNotBe(originalEtag);
+        missing.ShouldBeNull();
+        missingEtag.ShouldBeEmpty();
         (await store.TryStoreCaseIdAsync(tenantId, "Claims", "case-replacement", cancellationToken)).ShouldBeTrue();
-        (string? replacement, string replacementEtag) = await _fixture.DaprClient.GetStateAndETagAsync<string>(
-            _fixture.StateStoreName, mapKey, cancellationToken: cancellationToken);
-        replacement.ShouldBe("case-replacement");
-        replacementEtag.ShouldNotBe(originalEtag);
-        replacementEtag.ShouldNotBe(retiredEtag);
+        (await store.GetCaseIdAsync(tenantId, "Claims", cancellationToken)).ShouldBe("case-replacement");
         (await store.GetAggregateCountAsync(tenantId, cancellationToken)).ShouldBe(2);
     }
 

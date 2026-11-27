@@ -156,7 +156,7 @@ internal sealed class FakeDaprStateStore(TimeProvider? timeProvider = null)
 
             StateEntry? current = FindEntry(key);
             bool compareEtags = options?.Concurrency != ConcurrencyMode.LastWrite && !string.IsNullOrEmpty(etag);
-            if (current is StateEntry entry && (compareEtags ? GetEtag(entry) != etag : entry.FirstWrite))
+            if (current is StateEntry entry && (compareEtags ? !MatchesSaveVersion(etag, entry.Version) : entry.FirstWrite))
             {
                 return false;
             }
@@ -173,6 +173,10 @@ internal sealed class FakeDaprStateStore(TimeProvider? timeProvider = null)
             return true;
         }
     }
+
+    private static bool MatchesSaveVersion(string? etag, long version)
+        => long.TryParse(etag, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out long expectedVersion)
+            && expectedVersion == version;
 
     private bool TryDelete(string key, string? etag)
     {

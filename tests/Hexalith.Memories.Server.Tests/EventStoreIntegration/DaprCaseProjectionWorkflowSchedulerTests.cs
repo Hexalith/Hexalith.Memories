@@ -30,18 +30,27 @@ public sealed class DaprCaseProjectionWorkflowSchedulerTests
         IDaprWorkflowClient client = Substitute.For<IDaprWorkflowClient>();
         IIngestionWorkflowInFlightRegistry registry = Substitute.For<IIngestionWorkflowInFlightRegistry>();
         FakeTimeProvider clock = new(DateTimeOffset.UnixEpoch);
+        TaskCompletionSource tracked = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IngestionWorkflowInFlightEntry entry = new(input.TenantId, parentId, clock.GetUtcNow());
+        registry.TrackAsync(entry, CancellationToken.None).Returns(tracked.Task);
         client.ScheduleNewWorkflowAsync(nameof(AnnotationProjectionWorkflow), parentId, input, null, CancellationToken.None)
             .Returns(parentId);
         DaprCaseProjectionWorkflowScheduler scheduler = new(client, registry, clock);
 
-        (await scheduler.ScheduleAsync(nameof(AnnotationProjectionWorkflow), parentId, input, CancellationToken.None))
-            .ShouldBe(parentId);
-
-        Received.InOrder(() =>
+        Task<string> scheduling = scheduler.ScheduleAsync(nameof(AnnotationProjectionWorkflow), parentId, input, CancellationToken.None);
+        try
         {
-            _ = registry.TrackAsync(new IngestionWorkflowInFlightEntry(input.TenantId, parentId, clock.GetUtcNow()), CancellationToken.None);
-            _ = client.ScheduleNewWorkflowAsync(nameof(AnnotationProjectionWorkflow), parentId, input, null, CancellationToken.None);
-        });
+            _ = registry.Received(1).TrackAsync(entry, CancellationToken.None);
+            scheduling.IsCompleted.ShouldBeFalse();
+            _ = client.DidNotReceiveWithAnyArgs().ScheduleNewWorkflowAsync(default!, default, default, default, default);
+        }
+        finally
+        {
+            tracked.TrySetResult();
+        }
+
+        (await scheduling.WaitAsync(TestContext.Current.CancellationToken)).ShouldBe(parentId);
+        await client.Received(1).ScheduleNewWorkflowAsync(nameof(AnnotationProjectionWorkflow), parentId, input, null, CancellationToken.None);
     }
 
     [Fact]

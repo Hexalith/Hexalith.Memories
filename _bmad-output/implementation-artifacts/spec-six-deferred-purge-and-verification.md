@@ -43,10 +43,18 @@ Preserve persisted identities, unaffected tenant data and existing callers. Use 
 ## Implementation Notes
 
 - The preceding batch processed entries through DW-689. All earlier open numbered entries already have skip reasons.
-- A focused live-sidecar experiment on daprd 1.19.1 found that a rejected Redis transaction could still change the index and that a missing-ETag transaction upsert could replace an existing row. DW-691 and DW-694 require a compatible atomic substrate or a separate persistence and recovery design. DW-690 clears an assignment with a single-key ETag check. It keeps the empty marker indexed until tenant purge to prevent recycled ETags from invalidating a replacement assignment. Active mapping counts exclude the cleared markers. A separate fix retains purge discovery through failed physical cleanup.
+- A focused live-sidecar experiment on daprd 1.19.1 found that a rejected Redis transaction could still change the index and that a missing-ETag transaction upsert could replace an existing row. DW-691 and DW-694 require a compatible atomic substrate or a separate persistence and recovery design. DW-690 uses conditional physical deletes before pruning the index. Case and tenant cleanup retain discovery through failed deletes. Successful mapping writes advance the index revision, including replacements of an already indexed type.
 - DW-696 requires central workflow ownership. DW-713 needs the Phase 1.5 successor story. DW-716's historic proof feed is out of CI and the gateway startup proof is blocked locally. Changes already present in `f11ce839` address DW-722 and DW-723. DW-729 was already measured, and a fresh read found the same rules. DW-730, DW-731, DW-733, DW-735 and DW-739 retain their recorded dependencies or reopening triggers.
 
 ## Review Triage Log
+
+- The blind, edge-case, and verification reviews found that stale ETag saves could recreate a retired map key and that retired types increased the size and scan cost of the index. Conditional physical deletes replace retired markers. The active count continues to use the index directly, so the proposed count batching verification is no longer applicable.
+- A purge could miss a replacement whose writer reused an existing index entry. A deterministic two-client test now proves that a completed replacement changes the index revision and forces purge to reread. Cross-process writer admission and Redis ETag reuse remain covered by the existing deferred work and upgrade guidance.
+- The upgrade runbook now describes tenant-scoped reconciliation for legacy map rows that older deletion logic had already orphaned.
+- The annotation drain checks canonical children even when legacy parent metadata disappears. It counts known unsettled dispatches within the current startup budget and treats history-specific lookup failures as unresolved. The scheduler test verifies that tracking completes before Dapr receives the schedule. Ambiguous submissions stay visible on later startups if Redis registration is only partially acknowledged.
+- The Dapr fake normalizes numeric save ETags like the pinned Redis component. The fake's bulk helper remains a test convenience. Product counts no longer use that bulk path.
+- Story 27.3 labels the old substitution verdict as historical and distinguishes the staged-design packet from current-profile qualification.
+- The full run exposed a fixture startup race in graph search. Both owned containers now wait for the mapped port and use the shared handshake retry. The test runner owns cleanup after initialization errors.
 
 ## Verification
 
@@ -76,6 +84,7 @@ Allowed files for this story:
 - `tests/Hexalith.Memories.EventStore.Tests/FakeDaprStateStore.cs`
 - `tests/Hexalith.Memories.EventStore.Tests/FakeDaprStateStoreTests.cs`
 - `tests/Hexalith.Memories.IntegrationTests/EventStore/DaprStateStoreLiveSidecarTests.cs`
+- `tests/Hexalith.Memories.IntegrationTests/Fixtures/CompositeSearchFixture.cs`
 - `tests/Hexalith.Memories.IntegrationTests/Ingestion/IngestDedupReservationIntegrationTests.cs`
 - `tests/Hexalith.Memories.Server.Tests/Endpoints/IngestionEndpointE2ETests.cs`
 - `tests/Hexalith.Memories.Server.Tests/EventStoreIntegration/DaprCaseProjectionWorkflowSchedulerTests.cs`

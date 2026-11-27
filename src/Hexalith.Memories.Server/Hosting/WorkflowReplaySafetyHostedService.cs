@@ -207,13 +207,18 @@ internal sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecyc
 
     private async Task<(bool Active, bool Retain)> CheckAnnotationChildAsync(
         string parentId,
-        DateTimeOffset trackedAt,
+        DateTimeOffset? trackedAt,
         WorkflowState? parentState,
         string childId,
         CancellationToken cancellationToken)
     {
         WorkflowState? childState = await QuerySidecarAsync(
             token => _workflowClient.GetWorkflowStateAsync(childId, false, token), cancellationToken).ConfigureAwait(false);
+        if (parentState is { Exists: true } && IsActive(parentState.RuntimeStatus))
+        {
+            return (true, true);
+        }
+
         if (childState is { Exists: true })
         {
             bool active = IsActive(childState.RuntimeStatus);
@@ -224,7 +229,12 @@ internal sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecyc
         {
             // The scheduler persists the row before Dapr receives the parent. Retain an ambiguous
             // submission for later checks even after it stops delaying startup.
-            return (IsWithinVisibilityWindow(trackedAt), true);
+            return (trackedAt is DateTimeOffset reservedAt && IsWithinVisibilityWindow(reservedAt), true);
+        }
+
+        if (parentState.RuntimeStatus == WorkflowRuntimeStatus.Completed)
+        {
+            return (false, false);
         }
 
         IReadOnlyList<WorkflowHistoryEvent> history;
@@ -233,19 +243,25 @@ internal sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecyc
             history = await QuerySidecarAsync(
                 token => _workflowClient.GetInstanceHistoryAsync(parentId, token), cancellationToken).ConfigureAwait(false);
         }
-        catch (RpcException exception) when (exception.StatusCode == StatusCode.NotFound)
+        catch (Exception exception) when (exception is RpcException or ReplaySafetyQueryTimeoutException)
         {
-            // A parent can disappear between the state and history reads. That is not evidence
-            // that its child cannot appear later.
+            cancellationToken.ThrowIfCancellationRequested();
+            // A failed history lookup leaves this child unresolved and preserves the count of
+            // other active work already observed in this pass.
             return (IsWithinVisibilityWindow(parentState.LastUpdatedAt), true);
         }
+
         bool childDispatched = history.Any(e => e.EventType == WorkflowHistoryEventType.SubOrchestrationInstanceCreated);
         bool childSettled = history.Any(e => e.EventType is WorkflowHistoryEventType.SubOrchestrationInstanceCompleted
             or WorkflowHistoryEventType.SubOrchestrationInstanceFailed);
         bool hasTerminalHistory = history.Any(e => e.EventType is WorkflowHistoryEventType.ExecutionCompleted
             or WorkflowHistoryEventType.ExecutionTerminated);
-        bool retainUnsettledChild = !hasTerminalHistory || (childDispatched && !childSettled);
-        return (retainUnsettledChild && IsWithinVisibilityWindow(parentState.LastUpdatedAt), retainUnsettledChild);
+        if (childDispatched && !childSettled)
+        {
+            return (true, true);
+        }
+
+        return (!hasTerminalHistory && IsWithinVisibilityWindow(parentState.LastUpdatedAt), !hasTerminalHistory);
     }
 
     private bool IsWithinVisibilityWindow(DateTimeOffset lastActivity) => _timeProvider.GetUtcNow() - lastActivity < TotalTimeout;
@@ -269,24 +285,14 @@ internal sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecyc
                     token => _workflowClient.GetWorkflowStateAsync(instanceId, false, token),
                     cancellationToken).ConfigureAwait(false);
 
-                if (state is null)
-                {
-                    continue;
-                }
-
-                string? childId = state.WorkflowName == nameof(AnnotationProjectionWorkflow)
+                bool nameUnreadable = state is not { Exists: true } || string.IsNullOrWhiteSpace(state.WorkflowName);
+                string? childId = nameUnreadable || state?.WorkflowName == nameof(AnnotationProjectionWorkflow)
                     ? AnnotationProjectionWorkflow.GetIngestionInstanceId(instanceId)
                     : null;
-                if (ShouldCountWorkflow(state.WorkflowName, state.Exists, state.RuntimeStatus)
-                    || (string.IsNullOrWhiteSpace(state.WorkflowName)
-                        && ShouldBlockForUnreadableWorkflowName(state.Exists, state.RuntimeStatus)))
-                {
-                    _ = activeInstances.Add(childId ?? instanceId);
-                }
-                else if (childId is not null && state.Exists)
+                if (childId is not null && (nameUnreadable || state is { Exists: true } && !IsActive(state.RuntimeStatus)))
                 {
                     (bool active, bool retain) = await CheckAnnotationChildAsync(
-                        instanceId, state.CreatedAt, state, childId, cancellationToken).ConfigureAwait(false);
+                        instanceId, trackedAt: null, state, childId, cancellationToken).ConfigureAwait(false);
                     if (active)
                     {
                         _ = activeInstances.Add(childId);
@@ -295,6 +301,12 @@ internal sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecyc
                     // Legacy parents have no registry row. Retest unresolved evidence on the next
                     // startup even after the bounded visibility window stops delaying this startup.
                     canConfirm &= !retain;
+                }
+                else if (state is not null
+                    && (ShouldCountWorkflow(state.WorkflowName, state.Exists, state.RuntimeStatus)
+                        || (nameUnreadable && ShouldBlockForUnreadableWorkflowName(state.Exists, state.RuntimeStatus))))
+                {
+                    _ = activeInstances.Add(childId ?? instanceId);
                 }
             }
 

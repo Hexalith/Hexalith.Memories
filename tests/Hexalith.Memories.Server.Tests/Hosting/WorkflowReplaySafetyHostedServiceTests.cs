@@ -11,6 +11,8 @@ using Dapr.Common.Serialization;
 using Dapr.Workflow;
 using Dapr.Workflow.Client;
 
+using Grpc.Core;
+
 using Hexalith.Memories.Server.Hosting;
 using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.Tests.Telemetry.Infrastructure;
@@ -425,7 +427,8 @@ public class WorkflowReplaySafetyHostedServiceTests
     [Theory]
     [InlineData(WorkflowRuntimeStatus.Failed, true, false, false)]
     [InlineData(WorkflowRuntimeStatus.Terminated, true, true, true)]
-    [InlineData(WorkflowRuntimeStatus.Completed, false, false, true)]
+    [InlineData(WorkflowRuntimeStatus.Failed, false, false, true)]
+    [InlineData(WorkflowRuntimeStatus.Completed, false, false, false)]
     public async Task TryCountInFlightAsync_UsesParentHistoryBeforePruningMissingChild(
         WorkflowRuntimeStatus parentStatus,
         bool terminalHistoryAvailable,
@@ -480,8 +483,10 @@ public class WorkflowReplaySafetyHostedServiceTests
         await registry.Received(1).MarkInitializedAsync(Arg.Any<CancellationToken>());
     }
 
-    [Fact]
-    public async Task TryCountInFlightAsync_LegacyDrainRemainsUnconfirmedUntilDelayedChildSettles()
+    [Theory]
+    [InlineData(nameof(AnnotationProjectionWorkflow))]
+    [InlineData("")]
+    public async Task TryCountInFlightAsync_LegacyDrainWaitsForDispatchedChildRegardlessOfParentAge(string workflowName)
     {
         const string childId = "legacy-annotation-unit";
         string parentId = AnnotationProjectionWorkflow.GetInstanceId(childId);
@@ -492,7 +497,7 @@ public class WorkflowReplaySafetyHostedServiceTests
         workflowClient.ListInstanceIdsAsync(null, 100, Arg.Any<CancellationToken>())
             .Returns(new WorkflowInstancePage([parentId], null));
         workflowClient.GetWorkflowStateAsync(parentId, false, Arg.Any<CancellationToken>())
-            .Returns(CreateState(parentId, WorkflowRuntimeStatus.Terminated, nameof(AnnotationProjectionWorkflow)));
+            .Returns(CreateState(parentId, WorkflowRuntimeStatus.Terminated, workflowName));
         workflowClient.GetWorkflowStateAsync(childId, false, Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<WorkflowState>(null!));
         workflowClient.GetInstanceHistoryAsync(parentId, Arg.Any<CancellationToken>()).Returns(
@@ -503,7 +508,7 @@ public class WorkflowReplaySafetyHostedServiceTests
 
         (await service.TryCountInFlightAsync(CancellationToken.None)).Count.ShouldBe(1);
         clock.Advance(WorkflowReplaySafetyHostedService.TotalTimeout + TimeSpan.FromSeconds(1));
-        (await service.TryCountInFlightAsync(CancellationToken.None)).Count.ShouldBe(0);
+        (await service.TryCountInFlightAsync(CancellationToken.None)).Count.ShouldBe(1);
         await registry.DidNotReceiveWithAnyArgs().MarkInitializedAsync(default);
 
         workflowClient.ListInstanceIdsAsync(null, 100, Arg.Any<CancellationToken>())
@@ -517,6 +522,84 @@ public class WorkflowReplaySafetyHostedServiceTests
             .Returns(CreateState(childId, WorkflowRuntimeStatus.Completed));
         (await service.TryCountInFlightAsync(CancellationToken.None)).Count.ShouldBe(0);
         await registry.Received(1).MarkInitializedAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task TryCountInFlightAsync_LegacyEnumerationChecksChildWhenParentStateIsUnreadable(bool missingParent)
+    {
+        const string childId = "legacy-annotation-unit";
+        string parentId = AnnotationProjectionWorkflow.GetInstanceId(childId);
+        IDaprWorkflowClient workflowClient = Substitute.For<IDaprWorkflowClient>();
+        IIngestionWorkflowInFlightRegistry registry = Substitute.For<IIngestionWorkflowInFlightRegistry>();
+        FakeTimeProvider clock = new(DateTimeOffset.UtcNow);
+        registry.ListAsync(Arg.Any<CancellationToken>()).Returns([]);
+        workflowClient.ListInstanceIdsAsync(null, 100, Arg.Any<CancellationToken>())
+            .Returns(new WorkflowInstancePage([parentId], null));
+        WorkflowState? parent = missingParent ? null : CreateState(parentId, WorkflowRuntimeStatus.Terminated, string.Empty);
+        workflowClient.GetWorkflowStateAsync(parentId, false, Arg.Any<CancellationToken>()).Returns(Task.FromResult(parent!));
+        workflowClient.GetInstanceHistoryAsync(parentId, Arg.Any<CancellationToken>()).Returns([]);
+        workflowClient.GetWorkflowStateAsync(childId, false, Arg.Any<CancellationToken>())
+            .Returns((WorkflowState)null!, CreateState(childId, WorkflowRuntimeStatus.Running),
+                CreateState(childId, WorkflowRuntimeStatus.Completed));
+        WorkflowReplaySafetyHostedService service = new(
+            workflowClient, registry, NullLogger<WorkflowReplaySafetyHostedService>.Instance, clock);
+        clock.Advance(WorkflowReplaySafetyHostedService.TotalTimeout + TimeSpan.FromSeconds(1));
+
+        (await service.TryCountInFlightAsync(CancellationToken.None)).Count.ShouldBe(0);
+        await registry.DidNotReceiveWithAnyArgs().MarkInitializedAsync(default);
+        (await service.TryCountInFlightAsync(CancellationToken.None)).Count.ShouldBe(1);
+        await registry.DidNotReceiveWithAnyArgs().MarkInitializedAsync(default);
+        (await service.TryCountInFlightAsync(CancellationToken.None)).Count.ShouldBe(0);
+        await registry.Received(1).MarkInitializedAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task TryCountInFlightAsync_HistoryFailurePreservesTheCountOfOtherActiveWork(bool timeout)
+    {
+        const string childId = "annotation-unit";
+        const string otherId = "other-running-ingestion";
+        string parentId = AnnotationProjectionWorkflow.GetInstanceId(childId);
+        IDaprWorkflowClient workflowClient = Substitute.For<IDaprWorkflowClient>();
+        IIngestionWorkflowInFlightRegistry registry = Substitute.For<IIngestionWorkflowInFlightRegistry>();
+        FakeTimeProvider clock = new(DateTimeOffset.UtcNow);
+        DateTimeOffset trackedAt = clock.GetUtcNow();
+        registry.ListAsync(Arg.Any<CancellationToken>()).Returns([new("tenant-a", otherId, trackedAt), new("tenant-a", parentId, trackedAt)]);
+        workflowClient.GetWorkflowStateAsync(otherId, false, Arg.Any<CancellationToken>())
+            .Returns(CreateState(otherId, WorkflowRuntimeStatus.Running));
+        workflowClient.GetWorkflowStateAsync(parentId, false, Arg.Any<CancellationToken>())
+            .Returns(CreateState(parentId, WorkflowRuntimeStatus.Terminated, nameof(AnnotationProjectionWorkflow)));
+        workflowClient.GetWorkflowStateAsync(childId, false, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<WorkflowState>(null!));
+        TaskCompletionSource<IReadOnlyList<WorkflowHistoryEvent>> pendingHistory = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        workflowClient.GetInstanceHistoryAsync(parentId, Arg.Any<CancellationToken>())
+            .Returns(_ => timeout ? pendingHistory.Task : Task.FromException<IReadOnlyList<WorkflowHistoryEvent>>(
+                new RpcException(new Status(StatusCode.Unavailable, "history unavailable"))));
+        WorkflowReplaySafetyHostedService service = new(
+            workflowClient, registry, NullLogger<WorkflowReplaySafetyHostedService>.Instance, clock);
+        clock.Advance(WorkflowReplaySafetyHostedService.TotalTimeout + TimeSpan.FromSeconds(1));
+
+        Task<(int? Count, string? FailureReason, Exception? Failure)> counting = service.TryCountInFlightAsync(CancellationToken.None);
+        try
+        {
+            if (timeout)
+            {
+                counting.IsCompleted.ShouldBeFalse();
+                clock.Advance(WorkflowReplaySafetyHostedService.PerQueryTimeout);
+            }
+
+            (int? count, string? failureReason, _) = await counting.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            count.ShouldBe(1);
+            failureReason.ShouldBeNull();
+            await registry.DidNotReceive().RemoveAsync(parentId, Arg.Any<CancellationToken>());
+        }
+        finally
+        {
+            pendingHistory.TrySetResult([]);
+        }
     }
 
     private static WorkflowReplaySafetyHostedService CreateService(

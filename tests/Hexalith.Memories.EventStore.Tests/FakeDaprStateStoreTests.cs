@@ -74,6 +74,19 @@ public sealed class FakeDaprStateStoreTests
     }
 
     [Fact]
+    public async Task SaveNormalizesNumericEtagsAndDeleteComparesTheSuppliedText()
+    {
+        using DaprClient client = new FakeDaprStateStore().CreateClient();
+        (await client.TrySaveStateAsync(Store, "versioned", "first", string.Empty, FirstWrite)).ShouldBeTrue();
+
+        (await client.TrySaveStateAsync(Store, "versioned", "second", "01", FirstWrite)).ShouldBeTrue();
+        (await client.TrySaveStateAsync(Store, "versioned", "stale", "01", FirstWrite)).ShouldBeFalse();
+        (await client.TryDeleteStateAsync(Store, "versioned", "02", FirstWrite)).ShouldBeFalse();
+        (await client.GetStateAsync<string>(Store, "versioned")).ShouldBe("second");
+        (await client.TryDeleteStateAsync(Store, "versioned", "2", FirstWrite)).ShouldBeTrue();
+    }
+
+    [Fact]
     public async Task OrdinaryLastWriteCanIgnoreThePreviousVersion()
     {
         using DaprClient client = new FakeDaprStateStore().CreateClient();
