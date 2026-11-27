@@ -608,16 +608,18 @@ function Invoke-DisposableOpenBaoBootstrap {
         Write-Host 'Disposable TLS OpenBao staged, seeded, and bootstrap Secrets published.'
     }
     catch {
+        $failureStage = $script:verificationStage
+        $failure = Protect-EvidenceText $_.Exception.Message
         try {
-            $bootstrapRecord.errorStage = $script:verificationStage
-            $bootstrapRecord.error = (Protect-EvidenceText $_.Exception.Message)
+            $bootstrapRecord.errorStage = $failureStage
+            $bootstrapRecord.error = $failure
             $bootstrapRecord | ConvertTo-Json -Depth 6 |
                 Set-Content -LiteralPath (Join-Path $EvidencePath 'openbao-bootstrap.json') -Encoding utf8
         }
         catch {
             Write-Warning "Unable to persist OpenBao bootstrap evidence: $(Protect-EvidenceText $_.Exception.Message)"
         }
-        throw
+        throw "Disposable OpenBao bootstrap failed at stage ${failureStage}: $failure"
     }
     finally {
         if (Test-Path -LiteralPath $workDirectory) {

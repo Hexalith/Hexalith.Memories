@@ -4655,7 +4655,8 @@ resolution: The pinned disposable OpenBao container uses a read-only root and re
 origin: migrated from legacy ledger ("Deferred from: code review of 27-3-production-adapter-and-deployment-profile (2026-07-31)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-gh-29804293613-fix-production-deployment-verification.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-gh-29804293613-fix-production-deployment-verification.md` summary: Full stubbed-kubectl execution suite for OpenBao init/unseal/KV/policy/seed/token paths is not unit-tested beyond source pins and kind e2e. evidence: Verification-gap review; kind verification exercised the live path, but Confirm/Get-HealthResponse-style stub execution coverage was not added for every OpenBao helper function.
-status: open
+status: done 2026-11-27
+resolution: Executed the real bootstrap through a native kubectl stub. Two success variants and 16 failure variants verify stage order, scoped policies and credentials, root revocation, retained evidence, and cleanup.
 
 ### DW-651: Remove unreferenced `RedisPlaceholder` port-constant compat surface on the next owned breaking major once no external consumer depends on it (F9).
 

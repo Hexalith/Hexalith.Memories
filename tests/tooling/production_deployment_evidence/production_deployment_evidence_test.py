@@ -1462,6 +1462,212 @@ class OpenBaoSecretTransportTests(unittest.TestCase):
             )
 
 
+class OpenBaoBootstrapExecutionTests(unittest.TestCase):
+    runtime_prefix = "hexalith/memories/runtime"
+    access_prefix = "hexalith/memories/access-telemetry"
+    stages = [
+        "service-ready", "initialized", "unsealed", "kv-v2", "policies", "seeded",
+        "scoped-tokens", "isolation-verified", "bootstrap-secrets", "root-revoked",
+    ]
+    seeded = {
+        "runtime": {
+            "redis-secret": {"password": "verification-redis-password", "falkordb-password": "verification-falkordb-password"},
+            "llm-secret": {"OPENAI_API_KEY": "verification-openai-key"},
+            "google-embedding-api-key": {"google-embedding-api-key": "verification-google-key"},
+            "memories-embedding-client-secret": {"memories-embedding-client-secret": "verification-embedding-secret"},
+        },
+        "access": {
+            "redis-secret": {"password": "verification-redis-password"},
+            "access-telemetry-marker-key": {"access-telemetry-marker-key": "verification-access-telemetry-marker"},
+        },
+    }
+    actions = [
+        "context", "namespace", "tls-secret", "config", "apply", "ready", "initialize",
+        "unseal", "enable-kv", "runtime-policy", "access-policy",
+        *(f"seed-{scope}-{name}" for scope, secrets in seeded.items() for name in secrets),
+        "runtime-token", "access-token", "runtime-read", "runtime-cross-prefix", "access-read",
+        "access-cross-prefix", "publish-runtime", "publish-access", "revoke-root",
+    ]
+    secret_names = ["openbao-runtime-bootstrap", "openbao-access-telemetry-bootstrap"]
+
+    def run_bootstrap(self, action: str = "", response: str = ""):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            kubectl = root / "kubectl"
+            fixture = Path(__file__).with_name("fixtures") / "openbao_bootstrap_kubectl.py"
+            kubectl.write_bytes(fixture.read_bytes())
+            kubectl.chmod(0o755)
+            verifier = VERIFIER.read_text(encoding="utf-8-sig")
+            verifier_helpers = "\n".join(extract_ps_function(verifier, name) for name in (
+                "Assert-DisposableClusterContext", "Invoke-Checked", "Set-VerificationStage", "Protect-EvidenceText",
+            ))
+            evidence_path = str(root).replace("'", "''")
+            result = run_pwsh_with_stub_path(
+                "$ErrorActionPreference = 'Stop'\n"
+                ". ./tools/production-deployment-openbao.ps1\n"
+                f"{verifier_helpers}\n"
+                f"$evidencePath = '{evidence_path}'\n"
+                "$env:TMPDIR = $evidencePath\n"
+                f"$env:STUB_OPENBAO_ACTION = '{action}'\n"
+                f"$env:STUB_OPENBAO_RESPONSE = '{response}'\n"
+                "$ownership = @{ NamespaceCreated = $false; BootstrapSecrets = [Collections.Generic.List[string]]::new() }\n"
+                "try { Invoke-DisposableOpenBaoBootstrap -ApplicationNamespace 'test-app' -ClusterName 'bootstrap-test' "
+                "-EvidencePath $evidencePath -Ownership $ownership }\n"
+                "finally { $ownership | ConvertTo-Json | Set-Content (Join-Path $evidencePath 'ownership.json') }\n",
+                root,
+            )
+            receipt_path = root / "openbao-bootstrap.json"
+            self.assertTrue(receipt_path.is_file(), flattened_output(result))
+            receipt_text = receipt_path.read_text(encoding="utf-8")
+            commands = [json.loads(line) for line in (root / "commands.jsonl").read_text(encoding="utf-8").splitlines()]
+            ownership = json.loads((root / "ownership.json").read_text(encoding="utf-8"))
+            self.assertTrue(ownership["NamespaceCreated"])
+            self.assertEqual([], list(root.glob("openbao-verify-*")))
+            self.assertEqual([], list(root.glob("openbao-bootstrap-*")))
+            self.assertEqual([], list(root.glob("openbao-config-*")))
+            argv = json.dumps([command["args"] for command in commands])
+            seeded_values = {value for secrets in self.seeded.values() for fields in secrets.values() for value in fields.values()}
+            for canary in (
+                "fixture-root-token", "fixture-unseal-key", "fixture-runtime-token", "fixture-access-token",
+                "fixture-runtime-read-value", "fixture-access-read-value", "BEGIN PRIVATE KEY",
+                "fixture-private-key-canary", "hvs.fixtureTokenCanary0123456789", *sorted(seeded_values),
+            ):
+                self.assertNotIn(canary, receipt_text)
+                self.assertNotIn(canary, argv)
+                self.assertNotIn(canary, flattened_output(result))
+            return result, json.loads(receipt_text), commands, ownership["BootstrapSecrets"]
+
+    def test_bootstrap_seeds_scoped_secrets_verifies_isolation_and_revokes_root(self) -> None:
+        for response in ("", "mount-exists"):
+            with self.subTest(response=response):
+                result, receipt, commands, owned = self.run_bootstrap("enable-kv" if response else "", response)
+                self.assertEqual(0, result.returncode, flattened_output(result))
+                self.assertEqual(self.actions, [command["action"] for command in commands])
+                self.assertEqual(self.stages, receipt["stages"])
+                self.assertEqual(self.secret_names, owned)
+                self.assertEqual(self.secret_names, receipt["bootstrapSecretNames"])
+                self.assertEqual(["token", "ca.pem"], receipt["bootstrapSecretKeys"])
+                self.assertEqual({"runtimeAllowed": True, "runtimeDeniedCrossPrefix": True,
+                                  "accessAllowed": True, "accessDeniedCrossPrefix": True}, receipt["isolation"])
+                self.assertTrue(receipt["tlsVerify"])
+                self.assertFalse(receipt["skipVerify"])
+                self.assertEqual("https://hexalith-keys.openbao.svc.cluster.local:8200", receipt["endpoint"])
+                self.assertNotIn("error", receipt)
+                calls = {command["action"]: command for command in commands}
+                self.assert_bootstrap_commands(calls, receipt)
+
+    def assert_bootstrap_commands(self, calls, receipt) -> None:
+        tls = calls["tls-secret"]
+        self.assertEqual(["create", "secret", "generic", "openbao-server-tls", "-n", "openbao"], tls["args"][:6])
+        self.assertEqual({"tls.crt", "tls.key", "ca.crt"}, set(tls["files"]))
+        self.assertTrue(tls["files"]["tls.crt"].startswith("-----BEGIN CERTIFICATE-----"))
+        self.assertRegex(tls["files"]["tls.key"], r"^-----BEGIN (?:RSA )?PRIVATE KEY-----$")
+        self.assertNotEqual(tls["files"]["tls.crt"], tls["files"]["ca.crt"])
+        config = calls["config"]
+        self.assertEqual(["create", "configmap", "hexalith-keys-config", "-n", "openbao"], config["args"][:5])
+        self.assertEqual({"extraconfig-from-values.hcl"}, set(config["files"]))
+        for directive, filename in (("tls_cert_file", "tls.crt"), ("tls_key_file", "tls.key"), ("tls_client_ca_file", "ca.crt")):
+            self.assertIn(f'{directive} = "/openbao/userconfig/openbao-server-tls/{filename}"', config["files"]["extraconfig-from-values.hcl"])
+        manifest = calls["apply"]["manifest"]
+        for wiring in (
+            "kind: Service", "kind: Deployment", f'image: {receipt["image"]}',
+            "-config=/openbao/config/extraconfig-from-values.hcl", "mountPath: /openbao/config",
+            "configMap:\n            name: hexalith-keys-config", "secretName: openbao-server-tls",
+            "mountPath: /openbao/userconfig/openbao-server-tls",
+        ):
+            self.assertIn(wiring, manifest.replace("\r\n", "\n"))
+        for action, call in calls.items():
+            if "bao" in call:
+                self.assertEqual(["--request-timeout=12s", "exec", "-n", "openbao", "deploy/hexalith-keys"], call["args"][:5])
+                self.assertEqual(action != "initialize", "-i" in call["args"])
+                self.assertIn("BAO_ADDR=https://127.0.0.1:8200", call["args"])
+                self.assertIn("BAO_CACERT=/openbao/userconfig/openbao-server-tls/ca.crt", call["args"])
+                self.assertFalse(any(argument.startswith("BAO_SKIP_VERIFY=") for argument in call["args"]))
+        self.assertEqual(["operator", "init", "-key-shares=1", "-key-threshold=1", "-format=json"], calls["initialize"]["bao"])
+        self.assertEqual({"key": "fixture-unseal-key"}, json.loads(calls["unseal"]["payload"]))
+        self.assertIsNone(calls["unseal"]["token"])
+        self.assertEqual(["secrets", "enable", "-path=secret", "kv-v2"], calls["enable-kv"]["bao"])
+        self.assertEqual("fixture-root-token", calls["enable-kv"]["token"])
+        reads = {
+            "runtime": (self.runtime_prefix, "redis-secret", "password"),
+            "access": (self.access_prefix, "access-telemetry-marker-key", "access-telemetry-marker-key"),
+        }
+        for (scope, (prefix, _, _)), secret_name in zip(reads.items(), self.secret_names, strict=True):
+            policy_name = "hexalith-memories-" + prefix.rsplit("/", 1)[1]
+            receipt_scope = "runtime" if scope == "runtime" else "accessTelemetry"
+            self.assertEqual(prefix, receipt[receipt_scope + "Prefix"])
+            self.assertEqual(policy_name, receipt[receipt_scope + "Policy"])
+            policy = calls[f"{scope}-policy"]
+            self.assertEqual(["policy", "write", policy_name, "-"], policy["bao"])
+            self.assertEqual([f'path "secret/data/{prefix}/*" {{', '  capabilities = ["read"]', '}'], policy["payload"].splitlines())
+            self.assertEqual("fixture-root-token", policy["token"])
+            self.assertEqual(list(self.seeded[scope]), receipt["seededSecretNames"][receipt_scope])
+            for name, fields in self.seeded[scope].items():
+                seed = calls[f"seed-{scope}-{name}"]
+                self.assertEqual(["kv", "put", "-mount=secret", f"{prefix}/{name}", "-"], seed["bao"])
+                self.assertEqual(fields, json.loads(seed["payload"]))
+                self.assertEqual("fixture-root-token", seed["token"])
+            token = calls[f"{scope}-token"]
+            self.assertEqual(["token", "create", "-policy", policy_name, "-orphan", "-no-default-policy",
+                              "-ttl=24h", "-explicit-max-ttl=24h", "-format=json"], token["bao"])
+            self.assertEqual("fixture-root-token", token["token"])
+            scoped_token = f"fixture-{scope}-token"
+            other_scope = "access" if scope == "runtime" else "runtime"
+            for read, (target_prefix, name, field) in (("read", reads[scope]), ("cross-prefix", reads[other_scope])):
+                probe = calls[f"{scope}-{read}"]
+                self.assertEqual(scoped_token, probe["token"])
+                self.assertEqual(["kv", "get", "-mount=secret", f"-field={field}", f"{target_prefix}/{name}"], probe["bao"])
+            publish = calls[f"publish-{scope}"]
+            self.assertEqual(["create", "secret", "generic", secret_name, "--namespace", "test-app"], publish["args"][:6])
+            self.assertEqual({"token", "ca.pem"}, set(publish["files"]))
+            self.assertEqual(scoped_token, publish["files"]["token"])
+            self.assertEqual(tls["files"]["ca.crt"].strip(), publish["files"]["ca.pem"])
+        self.assertEqual(["token", "revoke", "-self"], calls["revoke-root"]["bao"])
+        self.assertEqual("fixture-root-token", calls["revoke-root"]["token"])
+
+    def test_early_rollout_failure_redacts_native_diagnostics_on_stderr_and_in_receipt(self) -> None:
+        result, receipt, commands, owned = self.run_bootstrap("ready", "sensitive-exit")
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual(self.actions[:self.actions.index("ready") + 1], [command["action"] for command in commands])
+        self.assertEqual([], owned)
+        self.assertEqual([], receipt["stages"])
+        self.assertEqual("openbao-bootstrap", receipt["errorStage"])
+        self.assertIn("rollout rejected (Forbidden)", receipt["error"])
+        stderr = flattened_output(subprocess.CompletedProcess(result.args, result.returncode, "", result.stderr))
+        self.assertIn("failed at stage openbao-bootstrap", stderr)
+        self.assertIn("rollout rejected (Forbidden)", stderr)
+
+    def test_bootstrap_failures_stop_at_the_failing_command_and_preserve_safe_stage_evidence(self) -> None:
+        for action, response, stage, completed, message in (
+            ("apply", "exit", "bootstrap", 0, "Service/Deployment"),
+            ("initialize", "exit", "initialize", 1, "initialize failed"),
+            ("initialize", "non-json", "initialize", 1, "non-JSON output"),
+            ("initialize", "empty-object", "initialize", 1, "did not return a root token"),
+            ("unseal", "exit", "unseal", 1, "unseal failed"),
+            ("enable-kv", "exit", "enable-kv", 1, "KV v2 mount failed"),
+            ("runtime-policy", "exit", "policies", 4, "installation failed"),
+            ("seed-runtime-redis-secret", "exit", "seed", 5, "seed of"),
+            ("runtime-token", "exit", "scoped-tokens", 6, "creation for"),
+            ("runtime-token", "non-json", "scoped-tokens", 6, "non-JSON output"),
+            ("runtime-token", "empty-object", "scoped-tokens", 6, "returned an empty token"),
+            ("runtime-read", "exit", "access-isolation", 7, "could not read the allow-listed"),
+            ("runtime-cross-prefix", "success", "access-isolation", 7, "unexpectedly succeeded"),
+            ("access-cross-prefix", "exit", "access-isolation", 7, "non-ACL error"),
+            ("publish-access", "exit", "bootstrap-secrets", 8, "AlreadyExists"),
+            ("revoke-root", "exit", "revoke-root", 9, "root-token revoke failed"),
+        ):
+            with self.subTest(action=action, response=response):
+                result, receipt, commands, owned = self.run_bootstrap(action, response)
+                self.assertNotEqual(0, result.returncode)
+                self.assertEqual(self.actions[:self.actions.index(action) + 1], [command["action"] for command in commands])
+                self.assertEqual(self.stages[:completed], receipt["stages"])
+                self.assertEqual(f"openbao-{stage}", receipt["errorStage"])
+                self.assertIn(message, receipt["error"])
+                self.assertEqual({completed >= 8}, set(receipt["isolation"].values()))
+                expected_owned = {"publish-access": self.secret_names[:1], "revoke-root": self.secret_names}
+                self.assertEqual(expected_owned.get(action, []), owned)
+
+
 class OpenBaoCleanupExecutionTests(unittest.TestCase):
     def test_cleanup_failure_cannot_leave_a_successful_verification_receipt(self) -> None:
         verifier = VERIFIER.read_text(encoding="utf-8-sig")
