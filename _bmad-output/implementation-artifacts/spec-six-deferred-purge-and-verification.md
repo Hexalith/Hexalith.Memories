@@ -2,7 +2,7 @@
 title: 'Complete six deferred purge and verification items'
 type: 'bugfix'
 created: '2026-11-27'
-status: 'in-review'
+status: 'done'
 route: 'dispatch'
 baseline_commit: '049b3d939eb55f65692ccaf299cb66ab1039f39c'
 review_loop_iteration: 0
@@ -38,7 +38,7 @@ Preserve persisted identities, unaffected tenant data and existing callers. Use 
 - [x] DW-721. Given the qualifying staged-OpenBao evidence, when a maintainer reads either binding AC6 copy, then both state the same evidence requirement for the retained vault Components.
 - [x] DW-724. Given the existing reservation proof and later implementation changes, when reviewed independently, then focused verification and any remaining actionable findings are recorded.
 - [x] DW-740. Given an active annotation ingestion child that bypasses the normal scheduler, when the startup drain checks for incompatible in-flight work, then it continues waiting while that child can still execute. Existing workflow histories replay with the same commands.
-- [ ] Run the complete build and test inventory, record six verified completions in the ledger, and validate each commit message.
+- [x] Run the complete build and test inventory, record six verified completions in the ledger, and validate each commit message.
 
 ## Implementation Notes
 
@@ -60,6 +60,10 @@ Preserve persisted identities, unaffected tenant data and existing callers. Use 
 
 - Build `Hexalith.Memories.slnx` and run all test projects individually, including fast and nightly integration plus benchmarks. Run applicable browser and repository tooling checks.
 - Run commitlint on the full message before and after each commit.
+
+- Clean Release solution build at `ca83cca5` passed with zero warnings or errors. All nine unit and contract projects passed 5,877 cases with one configured skip.
+- Fast integration passed 711 cases and had four configured skips. An OpenBao startup timeout and a stuck Testcontainers Redis startup interrupted two cases. Their isolated reruns passed on the same revision, including all four deep-window theory variants. Nightly integration passed 58 cases and benchmarks passed 17. Chromium passed six tests and validated nine evidence artifacts.
+- The tooling sweep covered 23 suites. Across the sweep and an isolated rerun, 1,578 cases passed outside the parked access-telemetry lifecycle qualification suite. A C1.16 subprocess timeout passed on the exact isolated rerun. The parked suite reproduced authority and retained-profile failures on the starting revision. The affected inputs belong to the parked qualification track.
 
 ## File Scope
 

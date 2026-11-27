@@ -4953,7 +4953,8 @@ resolution: Empty-ETag index creation uses Dapr FirstWrite. Deterministic tests 
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence — eighth pass (2026-08-14)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-publish-approved-module-baselines-2026-08-01.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-publish-approved-module-baselines-2026-08-01.md` summary: Make case-mapping deletion recoverable when map-key deletion fails after index removal. evidence: `DeleteByCaseAsync` commits aggregate-type removal from the index before deleting map keys, so a later delete failure leaves unindexed state that retries cannot enumerate.
-status: open
+status: done 2026-11-27
+resolution: Case cleanup conditionally deletes matching map keys before pruning the index. Tenant purge preserves discovery until its map and lock deletes acknowledge. A completed replacement advances the index revision so purge retries its snapshot. The upgrade runbook documents scoped recovery for older unindexed rows.
 
 ### DW-691: Coordinate aggregate-to-case writers with tenant purge completion.
 
@@ -4961,6 +4962,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-gr
 location: _bmad-output/implementation-artifacts/spec-publish-approved-module-baselines-2026-08-01.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-publish-approved-module-baselines-2026-08-01.md` summary: Coordinate aggregate-to-case writers with tenant purge completion. evidence: `DeleteAllTenantDataAsync` can observe an empty index and return while a concurrent writer has persisted a map but has not yet recreated the index, leaving tenant data after purge reports success.
 status: open
+note: 2026-11-27 — Skipped. The Dapr 1.19.1 Redis transaction can write through a stale ETag guard. A compatible atomic state substrate or an approved durable recovery and migration contract is required for cross-process purge admission.
 
 ### DW-692: Rebuild missing observed-event discovery indexes when membership markers survive index expiry.
 
@@ -4984,6 +4986,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-gr
 location: _bmad-output/implementation-artifacts/spec-publish-approved-module-baselines-2026-08-01.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-publish-approved-module-baselines-2026-08-01.md` summary: Coordinate observed-event writers with tenant deletion. evidence: `DaprObservedEventTypeStore.DeleteAllTenantDataAsync` enumerates one snapshot and then deletes both indexes without a writer barrier, allowing concurrent observations to survive while becoming unindexed.
 status: open
+note: 2026-11-27 — Skipped. The Dapr 1.19.1 Redis transaction can write through a stale ETag guard. Observation and cleanup-index writes need a verified atomic substrate or an approved compatible persistence design.
 
 ### DW-695: Bound tenant-isolation embedding-configuration lookup time independently of caller cancellation.
 
@@ -4997,20 +5000,23 @@ origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-gr
 location: _bmad-output/implementation-artifacts/spec-publish-approved-module-baselines-2026-08-01.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-publish-approved-module-baselines-2026-08-01.md` summary: Ensure scheduled nightly runs execute the fast integration lane. evidence: `.github/workflows/nightly.yml` declares a schedule but gates `integration-fast` exclusively on `workflow_dispatch`, causing scheduled runs to skip that verification job.
 status: open
+note: 2026-11-27 — Skipped. Scheduled fast integration selection belongs to the Hexalith.CiCd-owned nightly workflow. DW-731 also governs the next integration lane selection change.
 
 ### DW-697: Restrict filesystem permissions on temporary OpenBao bootstrap credentials.
 
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence — eighth pass (2026-08-14)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-publish-approved-module-baselines-2026-08-01.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-publish-approved-module-baselines-2026-08-01.md` summary: Restrict filesystem permissions on temporary OpenBao bootstrap credentials. evidence: `Publish-OpenBaoBootstrapSecrets` writes live runtime and access tokens to a normal temporary directory without explicitly enforcing owner-only directory and file permissions on Unix hosts.
-status: open
+status: done 2026-11-27
+resolution: Temporary Unix bootstrap directories and files enforce owner-only permissions, and kubectl-path tests verify their modes and cleanup.
 
 ### DW-698: Make the fake Dapr state store copy mutable values and enforce state options.
 
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence — eighth pass (2026-08-14)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-publish-approved-module-baselines-2026-08-01.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-publish-approved-module-baselines-2026-08-01.md` summary: Make the fake Dapr state store copy mutable values and enforce state options. evidence: `FakeDaprStateStore` returns backing lists and dictionaries directly and ignores `StateOptions`, so failed-save and FirstWrite/TTL tests can mutate fake persistence in place or prove weaker semantics than production.
-status: open
+status: done 2026-11-27
+resolution: The test Dapr state store detaches mutable values and exercises conditional writes and expiration using deterministic state-store tests.
 
 ### DW-699: Convert Redis command timeouts across tenant-isolation checks into structured backend-unavailable evidence.
 
@@ -5106,6 +5112,7 @@ origin: migrated from legacy ledger ("Deferred from: spec-28-1-adopt-owner-appro
 location: _bmad-output/planning-artifacts/epics.md` (Epic 28, a new follow-up story)
 reason: - **Task 4 full-stack proof needs an EventStore domain-service resource Story 28.1 is not scoped to add.** - ID: 28.1-TASK4-FULLSTACK-PROOF-NEEDS-DOMAIN-SERVICE - Status: accepted - Source story: spec-28-1-adopt-owner-approved-eventstore-runtime-identity - Target artifact: `_bmad-output/planning-artifacts/epics.md` (Epic 28, a new follow-up story) - Rationale: Story 28.1's Task 3 correctly added exactly one `eventstore` gateway resource to Memories' AppHost (`src/Hexalith.Memories.AppHost/Program.cs`), per the spec's own "Never redesign ingestion/projection/deployment topology beyond identity adoption plus the one `eventstore` resource" boundary. EventStore's own full-stack proof pattern (`references/Hexalith.EventStore/tests/Hexalith.EventStore.IntegrationTests/Fixtures/AspirePubSubProofTestFixture.cs` + `ContractTests/PubSubDeliveryProofTests.cs`) submits a command to the Gateway HTTP API and asserts a Dapr-published CloudEvent, but that pattern's domain logic (e.g. the `counter` sample domain) is compiled into a **separate** Aspire-composed domain-service resource (`Hexalith.EventStore.AppHost/Program.cs:119`, `AddProject<Projects.Hexalith_EventStore_Sample>("sample")`) that Memories' AppHost has no equivalent of. `SandboxCommandRequest.cs`'s own doc comment confirms any command requires "the domain service Handle method" to exist. Adding one would expand Story 28.1's topology beyond its approved scope — exactly the case `epics.md`'s Story 28.1 final Given/When/Then clause ("Given adoption exposes a behavioral incompatibility... fails closed and routes that behavior change to a separately approved compatibility story rather than expanding silently") anticipates, and consistent with spec-28-1's own "Never redesign ingestion/projection/deployment topology beyond identity adoption plus the one `eventstore` resource" boundary. (Note: this is not a numbered "AC7" in either document; an earlier pass of this entry miscited it as one.) - Candidate resolutions (neither attempted, both need a human/architecture decision, not a unilateral dev choice): (1) add a Memories-owned EventStore domain-service resource to the AppHost so a real EventStore-originating command can be submitted and its Dapr-published event traced into Memories — the direct analog of EventStore's own proof pattern; or (2) route Memories' own existing Tenant/Case domain commands (which already reach the live `eventstore` gateway) back through `hexalith-eventstore/*` topic naming into Memories' own ingestion — investigated and set aside this session because no existing tenant-routing config maps that back to Memories' ingestion, and wiring one up risks an unverified self-referential duplicate-indexing loop. - Resolution criteria (per the original 23.7 entry, unchanged): a real EventStore-originating publish reaches Memories through Dapr; the resulting memory is persisted and searchable through Redis and FalkorDB; duplicate replay is ignored; negative evidence proves no cross-tenant result leakage. - Re-open trigger: a follow-up story is selected to close this gap; or any story/review claims EventStore-to-Memories full-stack proof without meeting every resolution criterion above.
 status: open
+note: 2026-11-27 — Skipped. The Phase 1.5/L2 exception retains this proof until a successor story approves the Memories-owned domain-service topology. Epic 28 retrospective item 76 still tracks that routing decision.
 decision: 2026-09-01 Own a domain service — Add a Memories-owned EventStore domain-service resource and prove commands through it end to end.
 decision: 2026-09-01 Own a domain service — Add a Memories-owned EventStore domain-service resource and prove commands through it end to end.
 
@@ -5127,6 +5134,7 @@ origin: code review of spec-28-1-adopt-owner-approved-eventstore-runtime-identit
 location: .github/workflows/ci.yml; .github/workflows/nightly.yml; src/Hexalith.Memories.AppHost/Program.cs
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-28-1-adopt-owner-approved-eventstore-runtime-identity.md` summary: `tools/ci/provision-eventstore-local-feed.sh`'s ~9-line invocation is copy-pasted verbatim into 7 CI job definitions across `ci.yml`/`nightly.yml` instead of a shared composite action, and local dev follows a separate, independently-maintained manual procedure (recorded in the spec's Verification section) for producing the same artifact rather than invoking the same script. evidence: confirmed by direct inspection of both workflow files -- the identical step comment and `run:` line appear in `build`, `test-unit-contract`, `web-e2e-specimen`, `integration-fast` (ci.yml) and `integration-fast`, `integration-slow`, `benchmark` (nightly.yml). Real DRY/drift risk (a future SHA/version rotation needs 7+ synchronized edits plus the local dev docs), but not a correctness defect in the current diff, and refactoring into a composite action is a real engineering task, not a trivial patch. **Partially mitigated (2026-09-01 follow-up patch pass):** the two hardcoded literals (`fa2d1c9910f8976553adb33dcdb1c9ff2ea75594` / `999.1.20-proof.fa2d1c9910f8`) that were duplicated across all 7 CI call sites are now centralized in each workflow file's top-level `env:` block (`EVENTSTORE_APPROVED_SHA` / `EVENTSTORE_APPROVED_VERSION`), reducing the literal-duplication surface from ~14 hardcoded values to 2 per workflow file. The *step itself* (name, comment, `run:` line referencing those env vars) is still repeated 7 times -- collapsing that into a shared composite action remains the open, real-engineering-task portion of this finding. -- source_spec: same. summary: No explicit Aspire `WaitFor` ordering is established between the `memories` resource (which reaches `eventstore` via Dapr service invocation) and the new `eventStoreGateway` resource, so it's unclear whether Memories Server could attempt to invoke the `eventstore` app-id before that resource/sidecar is ready. evidence: `src/Hexalith.Memories.AppHost/Program.cs`'s new `eventStoreGateway` only has `.WaitFor(redis)`; no `WaitFor(eventStoreGateway)` was added to the `memories`/`server` resource. Whether this is a real race depends on Dapr's own service-invocation retry/resiliency semantics, which needs an architect's judgment call rather than a mechanical fix -- do not guess at an ordering constraint without confirming Dapr's actual behavior here. - Re-open trigger: a follow-up story touches this CI wiring or the AppHost resource graph again, a flaky/racy `eventstore` invocation is observed at runtime, or (specific to the rebuild-and-self-sign CI provisioning workaround as a whole) EventStore's own team reseals Story 1.20's proof packet under Memories' mandated SDK `10.0.400` -- at that point `tools/ci/provision-eventstore-local-feed.sh`, `tools/nuget-local-feeds/`, and every CI step wired to them become retirable in favor of restoring the now-reproducible, originally-approved package hash directly, and this whole workaround (script, local-dev config, per-run signing) should be removed rather than kept running indefinitely alongside a now-available real fix.
 status: open
+note: 2026-11-27 — Skipped. Current CI no longer invokes the proof-feed workaround. The remaining gateway readiness and retry proof is blocked by the baseline AppHost EventStore gateway exit 134.
 decision: 2026-09-01 Prove retry behavior — Extract the action, regression-test Dapr retry behavior, document it, and retain no WaitFor only if safe.
 decision: 2026-09-01 Prove retry behavior — Extract the action, regression-test Dapr retry behavior, document it, and retain no WaitFor only if safe.
 
@@ -5159,7 +5167,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger (""), 2026-09-01
 location: _bmad-output/implementation-artifacts/27-3-production-adapter-and-deployment-profile.md:39; _bmad-output/planning-artifacts/epics.md
 reason: Commit `8a5fa3c6` (2026-08-08, landed under `spec-gh-29804293613-fix-production-deployment-verification`, outside Story 27.3) redesigned the lane to stage a real disposable OpenBao before scale-up; qualifying run `33400812038` (job `99516369413`, artifact `9761351293`) reports `secret-store-substitution.json` with `substitutionPerformed: false` and `substitutionVerified: true`, both Components still typed `secretstores.hashicorp.vault`, and a confirmed `200` health packet showing `dapr-statestore: Healthy`. This demonstrates the real OpenBao secret-resolution path that AC6 still calls unproven while making AC6's literal "the patch, the post-patch readback" clause structurally unreachable under the improved design; the 2026-09-01 review closed checkpoint C2 on this evidence, but the binding text still needs human-approved correction in both governed copies. Source story: 27-3-production-adapter-and-deployment-profile. Re-open trigger: an approved `correct-course` proposal rewrites AC6's patch/post-patch-readback clause and OpenBao-path disclosure in both governed copies.
-status: open
+status: done 2026-11-27
+resolution: Both binding AC6 copies now match the staged OpenBao verification and anchor the qualifying evidence for retained vault Components.
 decision: 2026-09-06 Correct the criterion — Run a focused correct-course update and reconcile evidence anchors.
 decision: 2026-09-06 Correct the criterion — Run a focused correct-course update and reconcile evidence anchors.
 
@@ -5170,6 +5179,7 @@ source_spec: `spec-dw-18-redis-ingest-race-proof.md`
 severity: medium
 reason: Grepping DuplicateInFlight across src/ and tests/ returns only IngestDedupReservation.cs, IngestDedupReservationTests.cs (substitute unit) and the new IngestDedupReservationIntegrationTests.cs. The endpoint branch at src/Hexalith.Memories.Server/Endpoints/IngestionEndpoints.cs:127 that returns Accepted(IngestStatusLocation(winnerInstanceId)) is observed by none of them, so returning the caller's own instance id there — or falling through to a second ScheduleAsync — would not fail any test. Pre-existing: this bundle adds the class-level race proof and does not touch the endpoint.
 status: open
+note: 2026-11-27 — Skipped. Already implemented by f11ce839. IngestionEndpointE2ETests.PostIngest_DuplicateInFlight_ReturnsWinnerWithoutScheduling proves the response points to the winner and schedules no duplicate.
 
 ### DW-723: IngestDedupReservation.TryReserveAsync and ReleaseAsync accept a CancellationToken and never pass it to any StackExchange.Redis call, so an aborted ingest request keeps waiting on Redis.
 origin: spec-deferred 6eb563b84d8e
@@ -5178,6 +5188,7 @@ source_spec: `spec-dw-18-redis-ingest-race-proof.md`
 severity: medium
 reason: src/Hexalith.Memories.Server/Ingestion/IngestDedupReservation.cs declares `CancellationToken cancellationToken` on both public methods; the bodies call StringSetAsync, StringGetAsync and KeyDeleteAsync with no token overload and never read the parameter. The repository convention (project-context.md, "Async APIs carry CancellationToken - public async service/client methods should accept and pass through cancellation") is therefore only half met, and the dead parameter reads as if cancellation were honoured. Pre-existing: this test-only bundle does not touch the production class, and both new tests pass CancellationToken.None, which keeps the gap invisible.
 status: open
+note: 2026-11-27 — Skipped. Already implemented by f11ce839. The reservation and release waits honor caller cancellation, and a late successful reservation write is compensated using an ownership check.
 
 ### DW-724: Follow-up review still recommended for dw-redis-ingest-race-proof after the damping cap was spent
 origin: review-budget-followup
@@ -5185,7 +5196,8 @@ location: n/a
 source_spec: `spec-dw-18-redis-ingest-race-proof.md`
 severity: low
 reason: The follow-up-review damping cap (limits.max_followup_reviews = 1) was spent with the story finalized (status: done, verify green) while the review pass still recommended an independent follow-up. The work was committed by bmad-loop run 20260901-065621-43db; this entry preserves the lingering recommendation for a deliberate later review.
-status: open
+status: done 2026-11-27
+resolution: The independent follow-up found that failed scheduling could delete a successor reservation. Release now compares the workflow owner atomically, and the original proof spec records the focused verification.
 
 ### DW-725: ID: 27.3-CR17 — production-deployment-verification lane never proved green against the reviewed Story 27.3 source; the entry recording its discharge was never written to this register.
 origin: code review of 27-3-production-adapter-and-deployment-profile (2026-09-02), reconstructing a discharge the story file had cited at this ID since 2026-09-01 without a corresponding register entry
@@ -5237,6 +5249,7 @@ source_spec: `_bmad-output/implementation-artifacts/spec-31-1-openbao-platform-h
 severity: medium (unverified)
 reason: Evidence §8.8 names NetworkPolicy `deployment-seal-external` with no `.spec`. The `hexalith-keys` policy was captured and matched the 2026-07-28 table; this extra policy was not, so a second ingress source on 8200 would be invisible while the bound NetworkPolicy probe still reads as unchanged. Pre-existing relative to this continuation’s frozen probe list (nodes, replicas, HA, `hexalith-keys` NetworkPolicy, automount, secret names/types). - ID: 31.1-CR-NP-SPEC - Status: open - Source story: 31-1-openbao-platform-hardening-and-documentation - Target artifact: `_bmad-output/implementation-artifacts/tests/31-1-openbao-platform-evidence.md` - Re-open trigger: `kubectl -n openbao get networkpolicy deployment-seal-external -o jsonpath='{.spec}'` against `jpiquot@local` shows whether the policy admits extra 8200 sources.
 status: open
+note: 2026-11-27 — Skipped. Story 31.1 evidence section 9.2 already captured the additive NetworkPolicy and documented its TCP/8200 ingress. A current read-only check found the same rules.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-31-1-openbao-platform-hardening-and-documentation-2.md`
   summary: Telemetry, consistency, and MCP WebAppFactory hosts omit `Hexalith:Dapr:ApplicationTokenOverride`, so leaked `APP_API_TOKEN` can 401 those in-memory hosts.
@@ -5277,6 +5290,7 @@ origin: Story 27.4 scope reset, `_bmad-output/planning-artifacts/sprint-change-p
 location: docs/operations/access-telemetry-full-qualification.md (34-row historical inventory); _bmad-output/planning-artifacts/epics.md Story 27.4 historical full-campaign acceptance criteria
 reason: - source_spec: `_bmad-output/planning-artifacts/sprint-change-proposal-2026-11-01.md` summary: Qualify the PostgreSQL access-telemetry lifecycle store for Production before any Production deployment enables lifecycle writes. Parked from Story 27.4 together with the former Story 27.3 Tasks 2–8 transferred scope and the 34 checkpoints of the historical inventory (C0, C1.1–C1.25, C1 aggregate, C2–C6, terminal validation, A41 publication), all `pending`/`open` when parked. Parked acceptance criteria, verbatim from epics.md Story 27.4: (AC1) **Given** the approved immutable profile, a short test retention window, and a production-shaped deployment, **When** old and new access events cross the expiry boundary across at least two Server writers and controlled workload, sidecar, actor, Placement, Scheduler, and backend-fault recovery, **Then** focused evidence proves exact acknowledgement, durable recovery, expired-record unavailability and purge, newer-record preservation, required audit emission continuity, and tenant/privacy denial before dependencies. (AC2) **Given** the ratified Production duration and exact adapter profile, **When** operators deploy, monitor, change, fail over, recover, or roll back the policy, **Then** telemetry, deployment configuration, capacity, monitoring, incident, recovery, adapter-reclamation, and decommission documentation identifies the owner, configuration, defaults, storage impact, purge verification, alarms, rollback, RPO/RTO limits, and assurance boundary. (AC3) **Given** C2-C6, terminal validation, and publish verification all pass against the unchanged approved profile, **When** A41 is closed, **Then** `20.5-A41-ACCESS-TELEMETRY-RETENTION` is reconciled from `carried-forward`, the matching sprint action is closed, architecture and all A41 summaries cite the same canonical evidence, and Epic 20/Story 20.5 remain historical `done` records rather than being reopened. (On reopening, AC3 converts the DW-17 accepted debt into a qualified closure.)
 status: open
+note: 2026-11-27 — Skipped. The parked qualification reopens only when the production deployment enables lifecycle writes. No production activation was selected for this batch.
 decision: 2026-11-01 keep-open — parked. Reopens only on the trigger: any Production deployment path (the Memories overlay or Platform composition through manifest reference `accesstelemetrylifecycle-enabled`) that sets `AccessTelemetryLifecycle:Enabled=true` or runs a lifecycle Deployment above zero replicas. "Do recommended", an available schedule window or new Platform capability does not reopen it. When triggered, re-plan from scratch against the real Production target; the 2026-10-25 → 2026-10-31 synthetic-target preparation (Spec 14 continuations, specs 15–26) is anti-template. Owner: Jérôme Piquot. Review: 2027-05-01 with DW-17. Follow-up, not scheduled: the five access-telemetry tooling CI lanes (`.github/workflows/ci.yml:368-397`) could move to nightly or be retired while this entry stays parked.
 
 ## Deferred from: DW-719 independent review (2026-10-03)
@@ -6029,6 +6043,7 @@ resolution: The live two-tenant collision proof obtains both graphs with their o
 
 - ID: 30.8-UNTAGGED-INTEGRATION
 - Status: open
+note: 2026-11-27 — Skipped. Automatic integration selection requires its own lane qualification, including the flaky producer case and exact discovered-versus-executed identities. Hosted lane ownership remains with Hexalith.CiCd.
 - Source story: 30.8 — Restore the orphaned Integration tests and guard CI lane selection
 - Target artifact: `tests/Hexalith.Memories.IntegrationTests/Fixtures/OllamaOidcFakeServerTests.cs` (11 methods), `Fixtures/PublicSurfaceStabilityTests.cs` (5), `Ingestion/InventoryWirePaginationIntegrationTests.cs` (1), `Ingestion/MemoryErasureProcessProtocolTests.cs` (5), `Ingestion/ReferencedSourceProducerIntegrationTests.cs` (4), `Ingestion/SourceInventoryProducerIntegrationTests.cs` (17), `Ingestion/TenantIngestionLifecycleIntegrationTests.cs` (5), `Ingestion/UnitOwnershipAuthorityIntegrationTests.cs` (12); all paths after the first share the IntegrationTests project root.
 - Re-open trigger: The next story that touches any of those eight files or the integration-fast filter must review and assign their automatic CI lane, resolve the failing producer case, and shrink `CiTestInventoryTests.ReviewedUnselectedTests` as methods gain selection.
@@ -6078,6 +6093,7 @@ dotnet tests/Hexalith.Memories.IntegrationTests/bin/Debug/net11.0/Hexalith.Memor
 
 - ID: AUDIT-20261120-LIVE-RESTORE
 - Status: open
+note: 2026-11-27 — Skipped. No claim of safe partial logical restore retry or production drill relying on it triggered the required live recovery rehearsal.
 - Source story: Repository audit and [audit course correction](../planning-artifacts/sprint-change-proposal-2026-11-20.md), finding 3
 - Target artifact: `docs/operations/backup-restore.md` and `tests/Hexalith.Memories.IntegrationTests/Restore/`
 - Re-open trigger: Before advertising a partial logical restore retry or approving a production recovery drill that depends on it.
@@ -6097,6 +6113,7 @@ dotnet tests/Hexalith.Memories.IntegrationTests/bin/Debug/net11.0/Hexalith.Memor
 
 - ID: AUDIT-20261120-OWNERSHIP-CAPACITY
 - Status: open
+note: 2026-11-27 — Skipped. The 100K-unit workload certification, Story 34.39 sizing exercise, and observed ownership-capacity refusal triggers remain unmet.
 - Source story: Repository audit and [audit course correction](../planning-artifacts/sprint-change-proposal-2026-11-20.md), finding 8
 - Target artifact: `src/Hexalith.Memories.Server/Ingestion/TenantIngestionOwnership.cs` and `docs/operations/capacity-planning.md`
 - Re-open trigger: Before claiming the 100K-unit reference workload, during the next Story 34.39 sizing exercise or on an observed ownership-capacity refusal, whichever comes first.
@@ -6181,6 +6198,7 @@ origin: DW-271 stable-release review, 2026-11-24
 location: docs/dev/telemetry.md; NuGet.config; references/Hexalith.Builds/Props/Directory.Packages.props
 reason: The current Builds pin is prerelease. The Memories release-manager rotation should review the official package feed within 14 days of its first stable release or by 2027-02-24, whichever comes first, and coordinate any pin change with Hexalith.Builds.
 status: open
+note: 2026-11-27 — Skipped. The official NuGet feed still shows the Redis instrumentation as prerelease. The scheduled review is due by 2027-02-24 or within 14 days of the first stable release.
 
 ## Deferred from review of spec-seven-ordered-deferred-items.md (2026-11-24)
 
@@ -6204,7 +6222,8 @@ location: src/Hexalith.Memories.Server/Workflows/AnnotationProjectionWorkflow.cs
 source_spec: spec-six-deferred-telemetry-and-recovery.md
 severity: medium
 reason: AnnotationProjectionWorkflow invokes IngestionWorkflow directly as a child, bypassing the scheduler that tracks workflow instance IDs. After the legacy drain is confirmed, the startup gate can miss an active annotation child. Track that entry point without changing existing workflow history replay.
-status: open
+status: done 2026-11-27
+resolution: The replay-safety drain accounts for annotation child ingestion while preserving the existing workflow history.
 
 ## Deferred from the review of the six-item bootstrap, graph, and mapping batch (2026-11-27)
 
@@ -6220,3 +6239,17 @@ status: open
 - source_spec: `_bmad-output/implementation-artifacts/spec-six-deferred-bootstrap-graph-and-mapping.md`
   summary: Diagnose intermittent Redis startup timeouts in the isolated Ollama integration fixture.
   evidence: The full fast suite recorded a two-minute timeout waiting for the AppHost Redis host port before the Ollama proof started. A single fresh focused rerun completed the same proof successfully. Investigate port readiness and collect the Redis allocation and resource states when it recurs.
+
+## Deferred from full verification of the six-item purge and verification batch (2026-11-27)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-six-deferred-purge-and-verification.md`
+  summary: Diagnose intermittent OpenBao loopback startup timeouts in the embedding-provider failure fixture.
+  evidence: The full fast run timed out initializing OpenBao before `HybridSearch_WhenQueryEmbeddingFails_DegradesOnlySemanticAndRecoversAsync` entered its test body. An isolated execution passed on the same revision. Capture DCP OpenBao allocation and listener state if startup times out again.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-six-deferred-purge-and-verification.md`
+  summary: Bound and diagnose the disposable Redis startup wait in the deep-window syntactic search tests.
+  evidence: In the full fast run the published port refused connections and Testcontainers stayed in Docker's exit-code wait even though the owned Redis container was running. Stopping that container let the suite continue. All four `SearchAsync_DeepWindowBeyondAggregateCap_ShouldRejectPartialSuccess` cases passed in an isolated execution on the same revision.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-six-deferred-purge-and-verification.md`
+  summary: Diagnose intermittent subprocess timeouts in the C1.16 tooling bounds fixture.
+  evidence: `test_literal_credentials_process_failures_timeouts_and_output_bounds_are_safe` exceeded its PowerShell outer subprocess deadline during the parallel tooling run. The same test passed in an isolated invocation on the final product revision. Preserve the existing timeout assertions while investigating the harness launch and termination path.
