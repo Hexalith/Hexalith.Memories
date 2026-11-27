@@ -29,39 +29,33 @@ public sealed class CompositeSearchFixture : IAsyncLifetime
 
     public async ValueTask InitializeAsync()
     {
-        try
-        {
-            _falkorDbContainer = new ContainerBuilder(FalkorDbImage)
-                .WithPortBinding(0, 6379)
-                .WithWaitStrategy(
-                    Wait.ForUnixContainer()
-                        .UntilInternalTcpPortIsAvailable(6379)
-                        .UntilCommandIsCompleted("redis-cli", "PING"))
-                .Build();
+        _falkorDbContainer = new ContainerBuilder(FalkorDbImage)
+            .WithPortBinding(0, 6379)
+            .WithWaitStrategy(
+                Wait.ForUnixContainer()
+                    .UntilInternalTcpPortIsAvailable(6379)
+                    .UntilExternalTcpPortIsAvailable(6379)
+                    .UntilCommandIsCompleted("redis-cli", "PING"))
+            .Build();
 
-            _redisStackContainer = new ContainerBuilder(RedisStackImage)
-                .WithPortBinding(0, 6379)
-                .WithWaitStrategy(
-                    Wait.ForUnixContainer()
-                        .UntilInternalTcpPortIsAvailable(6379)
-                        .UntilCommandIsCompleted("redis-cli", "PING"))
-                .Build();
+        _redisStackContainer = new ContainerBuilder(RedisStackImage)
+            .WithPortBinding(0, 6379)
+            .WithWaitStrategy(
+                Wait.ForUnixContainer()
+                    .UntilInternalTcpPortIsAvailable(6379)
+                    .UntilExternalTcpPortIsAvailable(6379)
+                    .UntilCommandIsCompleted("redis-cli", "PING"))
+            .Build();
 
-            await Task.WhenAll(
-                _falkorDbContainer.StartAsync(),
-                _redisStackContainer.StartAsync());
+        await Task.WhenAll(
+            _falkorDbContainer.StartAsync(),
+            _redisStackContainer.StartAsync());
 
-            RedisConnectionString = $"localhost:{_redisStackContainer.GetMappedPublicPort(6379)}";
-            FalkorDbConnectionString = $"localhost:{_falkorDbContainer.GetMappedPublicPort(6379)}";
+        RedisConnectionString = RedisStackFixture.OwnedLoopbackConnectionString(_redisStackContainer.GetMappedPublicPort(6379));
+        FalkorDbConnectionString = RedisStackFixture.OwnedLoopbackConnectionString(_falkorDbContainer.GetMappedPublicPort(6379));
 
-            FalkorDbConnection = await ConnectionMultiplexer.ConnectAsync(FalkorDbConnectionString);
-            RedisConnection = await ConnectionMultiplexer.ConnectAsync(RedisConnectionString);
-        }
-        catch
-        {
-            await DisposeAsync();
-            throw;
-        }
+        FalkorDbConnection = await RedisStackFixture.ConnectWhenReadyAsync(FalkorDbConnectionString);
+        RedisConnection = await RedisStackFixture.ConnectWhenReadyAsync(RedisConnectionString);
     }
 
     public async ValueTask DisposeAsync()
