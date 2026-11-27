@@ -633,14 +633,17 @@ public sealed class AccessTelemetryQualificationWorkloadTests
             qualificationResponse.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable);
             productionResponse.StatusCode.ShouldBe(HttpStatusCode.NotFound);
 
-            using HttpRequestMessage productionRequestWithoutToken = CreateProgramRequest();
-            using HttpResponseMessage productionResponseWithoutToken = await productionClient.SendAsync(
-                productionRequestWithoutToken,
-                TestContext.Current.CancellationToken);
-            productionResponseWithoutToken.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
-            string problem = await productionResponseWithoutToken.Content.ReadAsStringAsync(
-                TestContext.Current.CancellationToken);
-            problem.ShouldContain("https://hexalith.io/problems/dapr-application-token");
+            foreach (HttpClient client in new[] { qualificationClient, productionClient })
+            {
+                using HttpRequestMessage requestWithoutToken = CreateProgramRequest();
+                using HttpResponseMessage responseWithoutToken = await client.SendAsync(
+                    requestWithoutToken,
+                    TestContext.Current.CancellationToken);
+                responseWithoutToken.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+                string problem = await responseWithoutToken.Content.ReadAsStringAsync(
+                    TestContext.Current.CancellationToken);
+                problem.ShouldContain("https://hexalith.io/problems/dapr-application-token");
+            }
         }
         finally
         {
