@@ -6,7 +6,6 @@
 namespace Hexalith.Memories.IntegrationTests.Ingestion;
 
 using System.Net;
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 
@@ -36,8 +35,23 @@ public sealed class IngestionPipelineTests
     [Fact]
     public async Task PostIngest_ShouldIndexMemoryUnitAcrossAllBackends()
     {
-        // Arrange
         string tenantId = await _fixture.ProvisionActiveTenantAsync();
+        string controlTenantId = $"tenant-control-{Guid.NewGuid():N}";
+        bool controlTenantActive = false;
+        try
+        {
+            _ = await _fixture.ProvisionActiveTenantAsync(controlTenantId);
+            controlTenantActive = true;
+            await VerifyBackendWritesAsync(tenantId, controlTenantId);
+        }
+        finally
+        {
+            await _fixture.DeleteOwnedTenantAsync(controlTenantId, controlTenantActive);
+        }
+    }
+
+    private async Task VerifyBackendWritesAsync(string tenantId, string controlTenantId)
+    {
         string caseId = $"case-{Guid.NewGuid():N}";
         string sourceUri = $"file:///{Guid.NewGuid():N}.txt";
         IngestionInput input = new()
@@ -67,7 +81,23 @@ public sealed class IngestionPipelineTests
         accepted.ShouldNotBeNull();
         accepted.InstanceId.ShouldNotBeNullOrWhiteSpace();
 
+        IngestionIntegrationTestDriver driver = new(_fixture);
+        string completedStatus = await driver.WaitForWorkflowRuntimeStatusAsync(
+            tenantId, accepted.InstanceId, "Completed", cancellationToken: TestContext.Current.CancellationToken);
+        IngestionWorkflowStatus? status = JsonSerializer.Deserialize<IngestionWorkflowStatus>(completedStatus, MemoriesJsonContext.Options);
+        status.ShouldNotBeNull();
+        status.RuntimeStatus.ShouldBe("Completed");
+        status.MemoryUnitStatus.ShouldBe(MemoryUnitStatus.Indexed);
+
         (string syntacticKey, string semanticKey) = await WaitForBackendWritesAsync(tenantId, caseId, sourceUri);
+
+        FalkorDB falkor = new(_fixture.FalkorDbConnection.GetDatabase());
+        (await falkor.ListGraphsAsync()).ShouldContain(controlTenantId);
+        ResultSet foreignGraph = await falkor.SelectGraph(controlTenantId).QueryAsync(
+            "MATCH (m:MemoryUnit {sourceUri: $sourceUri}) RETURN count(m) AS cnt",
+            new Dictionary<string, object> { ["sourceUri"] = sourceUri });
+        foreignGraph.ShouldHaveSingleItem().GetValue<long>("cnt")
+            .ShouldBe(0, "Production ingestion must write the source only to the requesting tenant's graph.");
 
         IDatabase redisDb = _fixture.RedisConnection.GetDatabase();
         RedisValue ingestedBy = await redisDb.HashGetAsync(syntacticKey, "ingestedBy");
@@ -90,14 +120,6 @@ public sealed class IngestionPipelineTests
         ((int)storedChunkSequence).ShouldBe(0);
         ((int)storedChunkStartOffset).ShouldBe(0);
         ((int)storedChunkEndOffset).ShouldBeGreaterThan(0);
-
-        using var stateRequest = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/ingest/{accepted.InstanceId}");
-        stateRequest.Headers.Authorization = new AuthenticationHeaderValue(
-            "Bearer",
-            AspireIngestionPipelineFixture.MintServerBearer(tenantId));
-        using HttpResponseMessage stateResponse = await _fixture.MemoriesClient
-            .SendAsync(stateRequest);
-        stateResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
     }
 
     [Fact]

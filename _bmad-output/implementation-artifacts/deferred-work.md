@@ -4696,6 +4696,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-gr
 location: tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs
 reason: - **Graph proof coverage is one bounded edge/origin/source/depth shape.** - ID: 24.6-CR-W4 - Status: carried-forward - Source story: spec-24-6-graph-content-level-tenant-isolation-evidence - Target artifact: tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs - Rationale: Story 24.6 proves the required `EdgeType.CausedBy`, `EdgeOrigin.Explicit`, `SourceType.File`, depth-one collision fixture; additional relationship variants and traversal depths are useful expansion coverage but not part of the accepted NFR8 slice. - Re-open trigger: A new edge type, origin, source type, or deeper traversal path changes tenant-routing behavior or a leakage defect appears outside the proven fixture.
 status: open
+note: 2026-11-27 — Skipped. The bounded NFR8 proof still covers the accepted shape. Tenant graph selection precedes edge, origin, source, and depth processing, and no routing change or leakage outside that fixture was identified.
 
 ### DW-656: The verifier class-level contract had been narrowed beyond Story 24.6.
 
@@ -4720,7 +4721,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence (2026-08-12)"), 2026-09-01
 location: tests/Hexalith.Memories.IntegrationTests/Ingestion/IngestionPipelineTests.cs
 reason: - **Production graph write-path tenant selection lacks a direct negative control.** - ID: 24.6-CR-W8 - Status: carried-forward - Source story: spec-24-6-graph-content-level-tenant-isolation-evidence - Target artifact: tests/Hexalith.Memories.IntegrationTests/Ingestion/IngestionPipelineTests.cs - Rationale: The collision proof writes directly through `falkor.SelectGraph(tenantId)` and proves authenticated read-path routing and content locality; production `IndexGraphActivity` tenant scoping is only pinned indirectly by post-ingestion node counts and requires a distinct ingestion-owned negative scenario. - Re-open trigger: An ingestion story changes graph selection or claims direct write-path cross-tenant proof, or a tenant A ingestion is observed in tenant B's graph.
-status: open
+status: done 2026-11-27
+resolution: The live REST ingestion test provisions a second tenant and, after the source exists in the first tenant graph, asserts that the same source URI is absent from the second tenant’s existing FalkorDB graph.
 
 ### DW-660: The story embeds the Epic 23 checklist-preservation shell loop.
 
