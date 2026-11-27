@@ -4623,7 +4623,8 @@ decision: 2026-09-01 Update the guard — Recognize Story 27.21 and C1.15 owners
 origin: migrated from legacy ledger ("Deferred from: code review of 27-3-production-adapter-and-deployment-profile (2026-07-31)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-gh-29804293613-fix-production-deployment-verification.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-gh-29804293613-fix-production-deployment-verification.md` summary: OpenBao root/unseal/scoped tokens and KV field values still ride kubectl exec / bao argv during disposable bootstrap. evidence: Review found BAO_TOKEN= and key=value on process argv; Protect-EvidenceText redacts evidence output but cannot hide argv from node process lists or kubectl audit trails without redesigning away from bao CLI over kubectl exec.
-status: open
+status: done 2026-11-27
+resolution: The disposable bootstrap sends root and scoped tokens, unseal JSON, KV JSON and policies through kubectl stdin. Executable argv and payload tests cover the transport through the container shell.
 
 ### DW-647: Disposable OpenBao namespace objects and unseal material are not retired by OpenBao helper code beyond local work-dir deletion.
 

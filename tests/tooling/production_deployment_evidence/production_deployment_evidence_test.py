@@ -1375,6 +1375,72 @@ def write_kubectl_stub(root: Path, transcript: str) -> Path:
     return bin_dir
 
 
+class OpenBaoSecretTransportTests(unittest.TestCase):
+    def test_kubectl_and_bao_arguments_never_carry_secret_values(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            capture = root / "capture.jsonl"
+            kubectl = root / "kubectl"
+            kubectl.write_text(
+                "#!/usr/bin/env python3\n"
+                "import json, os, sys\n"
+                "args = sys.argv[1:]\n"
+                f"with open({str(capture)!r}, 'a', encoding='utf-8') as output:\n"
+                "    output.write(json.dumps({'kubectl': args}) + '\\n')\n"
+                "command = args[args.index('--') + 1:]\n"
+                "os.execvp(command[0], command)\n",
+                encoding="utf-8",
+            )
+            bao = root / "bao"
+            bao.write_text(
+                "#!/usr/bin/env python3\n"
+                "import json, os, sys\n"
+                "args = sys.argv[1:]\n"
+                "payload = sys.stdin.read() if args[-1] == '-' else ''\n"
+                f"with open({str(capture)!r}, 'a', encoding='utf-8') as output:\n"
+                "    output.write(json.dumps({'bao': args, 'token': os.getenv('BAO_TOKEN'), 'payload': payload}) + '\\n')\n"
+                "if args[:2] == ['operator', 'init']:\n"
+                "    print(json.dumps({'root_token': 'root-token-canary', 'unseal_keys_b64': ['unseal-canary']}))\n"
+                "elif args[:2] == ['token', 'create']:\n"
+                "    print(json.dumps({'auth': {'client_token': 'scoped-token-canary'}}))\n",
+                encoding="utf-8",
+            )
+            kubectl.chmod(0o755)
+            bao.chmod(0o755)
+            result = run_pwsh_with_stub_path(
+                "$ErrorActionPreference = 'Stop'\n"
+                "function Set-VerificationStage { param($Stage) }\n"
+                ". ./tools/production-deployment-openbao.ps1\n"
+                "$session = Initialize-DisposableOpenBao -CaPem 'test-ca'\n"
+                "Install-OpenBaoReadPolicy -RootToken $session.RootToken -PolicyName 'runtime' -Prefix 'test/runtime'\n"
+                "Set-OpenBaoSecretMap -RootToken $session.RootToken -Prefix 'test/runtime' -SecretName 'credentials' "
+                "-Fields @{ password = \"field-canary=é`nnext line\" }\n"
+                "$token = New-OpenBaoScopedToken -RootToken $session.RootToken -PolicyName 'runtime'\n"
+                "Invoke-OpenBaoPodRaw @('kv', 'get', '-mount=secret', 'test/runtime/credentials') -Token $token | Out-Null\n"
+                "Invoke-OpenBaoPodRaw @('token', 'revoke', '-self') -Token $session.RootToken | Out-Null\n",
+                root,
+            )
+            self.assertEqual(0, result.returncode, result.stderr)
+            records = [json.loads(line) for line in capture.read_text(encoding="utf-8").splitlines()]
+            calls = [record["kubectl"] for record in records if "kubectl" in record]
+            commands = [record for record in records if "bao" in record]
+            self.assertEqual(8, len(calls))
+            self.assertEqual(8, len(commands))
+            self.assertNotIn("-i", calls[0])
+            self.assertTrue(all("-i" in call for call in calls[1:]))
+            for canary in ("root-token-canary", "unseal-canary", "scoped-token-canary", "field-canary"):
+                self.assertNotIn(canary, json.dumps(calls))
+                self.assertNotIn(canary, json.dumps([record["bao"] for record in commands]))
+                self.assertNotIn(canary, result.stdout + result.stderr)
+            self.assertEqual({"key": "unseal-canary"}, json.loads(commands[1]["payload"]))
+            self.assertIn('path "secret/data/test/runtime/*"', commands[3]["payload"])
+            self.assertEqual({"password": "field-canary=é\nnext line"}, json.loads(commands[4]["payload"]))
+            self.assertEqual(
+                [None, None, *["root-token-canary"] * 4, "scoped-token-canary", "root-token-canary"],
+                [command["token"] for command in commands],
+            )
+
+
 class GetHealthResponseExecutionTests(unittest.TestCase):
     """Execute the real Get-HealthResponse.
 

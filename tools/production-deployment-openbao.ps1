@@ -66,26 +66,41 @@ extendedKeyUsage = serverAuth
     }
 }
 
-function Invoke-OpenBaoPod {
-    param([Parameter(Mandatory)][string[]]$BaoArguments)
-
-    $command = @(
-        'exec', '-n', $script:OpenBaoNamespace, 'deploy/hexalith-keys', '--',
-        'env',
-        'BAO_ADDR=https://127.0.0.1:8200',
-        'BAO_CACERT=/openbao/userconfig/openbao-server-tls/ca.crt'
-    ) + $BaoArguments
-    # Invoke-Checked prepends --request-timeout for kubectl.
-    return Invoke-Checked kubectl $command
-}
-
 function Invoke-OpenBaoPodRaw {
-    param([Parameter(Mandatory)][string[]]$BaoArguments)
+    param(
+        [Parameter(Mandatory)][string[]]$BaoArguments,
+        [string]$Token,
+        [AllowEmptyString()][string]$Payload
+    )
 
-    $output = @(
-        & kubectl --request-timeout=12s exec -n $script:OpenBaoNamespace deploy/hexalith-keys -- `
-            env BAO_ADDR=https://127.0.0.1:8200 BAO_CACERT=/openbao/userconfig/openbao-server-tls/ca.crt `
-            @BaoArguments 2>&1)
+    $command = @('--request-timeout=12s', 'exec', '-n', $script:OpenBaoNamespace, 'deploy/hexalith-keys')
+    $hasInput = $PSBoundParameters.ContainsKey('Payload') -or $PSBoundParameters.ContainsKey('Token')
+    if ($hasInput) {
+        $command += '-i'
+    }
+    $command += @('--', 'env', 'BAO_ADDR=https://127.0.0.1:8200',
+        'BAO_CACERT=/openbao/userconfig/openbao-server-tls/ca.crt')
+    if ($PSBoundParameters.ContainsKey('Token')) {
+        if ([string]::IsNullOrWhiteSpace($Token) -or $Token -match '[\r\n]') {
+            throw 'OpenBao pod command needs a nonempty single-line token.'
+        }
+        # The shell reads only the token line. Bao receives any remaining payload on stdin.
+        $command += @('sh', '-ec', 'IFS= read -r BAO_TOKEN; export BAO_TOKEN; exec bao "$@"', 'bao')
+        $Payload = "$Token`n$Payload"
+    }
+    else {
+        $command += 'bao'
+    }
+    $command += $BaoArguments
+
+    $PSNativeCommandUseErrorActionPreference = $false
+    $OutputEncoding = [Text.UTF8Encoding]::new($false)
+    if ($hasInput) {
+        $output = @($Payload | & kubectl @command 2>&1)
+    }
+    else {
+        $output = @(& kubectl @command 2>&1)
+    }
     return @{
         ExitCode = $LASTEXITCODE
         Output = ($output -join [Environment]::NewLine)
@@ -255,7 +270,7 @@ function Initialize-DisposableOpenBao {
     param([Parameter(Mandatory)][string]$CaPem)
 
     Set-VerificationStage 'openbao-initialize'
-    $init = Invoke-OpenBaoPodRaw @('bao', 'operator', 'init', '-key-shares=1', '-key-threshold=1', '-format=json')
+    $init = Invoke-OpenBaoPodRaw @('operator', 'init', '-key-shares=1', '-key-threshold=1', '-format=json')
     if ($init.ExitCode -ne 0) {
         throw "OpenBao initialize failed at stage openbao-initialize (exit $($init.ExitCode))."
     }
@@ -278,15 +293,14 @@ function Initialize-DisposableOpenBao {
     Register-OpenBaoRedactionSecret $unsealKey
 
     Set-VerificationStage 'openbao-unseal'
-    $unseal = Invoke-OpenBaoPodRaw @('bao', 'operator', 'unseal', $unsealKey)
+    $unsealPayload = @{ key = $unsealKey } | ConvertTo-Json -Compress
+    $unseal = Invoke-OpenBaoPodRaw @('write', '-format=json', 'sys/unseal', '-') -Payload $unsealPayload
     if ($unseal.ExitCode -ne 0) {
         throw "OpenBao unseal failed at stage openbao-unseal (exit $($unseal.ExitCode))."
     }
 
     Set-VerificationStage 'openbao-enable-kv'
-    $envRoot = @("BAO_TOKEN=$rootToken")
-    $mount = Invoke-OpenBaoPodRaw (@('env') + $envRoot + @(
-            'bao', 'secrets', 'enable', '-path=secret', 'kv-v2'))
+    $mount = Invoke-OpenBaoPodRaw @('secrets', 'enable', '-path=secret', 'kv-v2') -Token $rootToken
     if ($mount.ExitCode -ne 0 -and $mount.Output -notmatch 'path is already in use') {
         throw "OpenBao KV v2 mount failed at stage openbao-enable-kv (exit $($mount.ExitCode))."
     }
@@ -310,13 +324,7 @@ path "secret/data/$Prefix/*" {
   capabilities = ["read"]
 }
 "@
-    # Encode in-memory and write inside the pod; no host temp file.
-    $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($policy))
-    $write = Invoke-OpenBaoPodRaw @(
-        'env', "BAO_TOKEN=$RootToken",
-        'sh', '-ec',
-        "printf '%s' '$encoded' | base64 -d > /tmp/policy.hcl && bao policy write $PolicyName /tmp/policy.hcl && rm -f /tmp/policy.hcl"
-    )
+    $write = Invoke-OpenBaoPodRaw @('policy', 'write', $PolicyName, '-') -Token $RootToken -Payload $policy
     if ($write.ExitCode -ne 0) {
         throw "OpenBao policy '$PolicyName' installation failed (exit $($write.ExitCode))."
     }
@@ -330,14 +338,15 @@ function Set-OpenBaoSecretMap {
         [Parameter(Mandatory)][hashtable]$Fields
     )
 
-    $pairs = @()
+    $values = @{}
     foreach ($key in $Fields.Keys) {
         $value = [string]$Fields[$key]
         Register-OpenBaoRedactionSecret $value
-        $pairs += "$key=$value"
+        $values[$key] = $value
     }
-    $put = Invoke-OpenBaoPodRaw (@('env', "BAO_TOKEN=$RootToken") + @(
-            'bao', 'kv', 'put', "-mount=secret", "$Prefix/$SecretName") + $pairs)
+    $payload = $values | ConvertTo-Json -Compress
+    $put = Invoke-OpenBaoPodRaw @('kv', 'put', '-mount=secret', "$Prefix/$SecretName", '-') `
+        -Token $RootToken -Payload $payload
     if ($put.ExitCode -ne 0) {
         throw "OpenBao seed of '$Prefix/$SecretName' failed (exit $($put.ExitCode))."
     }
@@ -350,15 +359,14 @@ function New-OpenBaoScopedToken {
     )
 
     $create = Invoke-OpenBaoPodRaw @(
-        'env', "BAO_TOKEN=$RootToken",
-        'bao', 'token', 'create',
+        'token', 'create',
         '-policy', $PolicyName,
         '-orphan',
         '-no-default-policy',
         '-ttl=24h',
         '-explicit-max-ttl=24h',
         '-format=json'
-    )
+    ) -Token $RootToken
     if ($create.ExitCode -ne 0) {
         throw "OpenBao scoped token creation for '$PolicyName' failed (exit $($create.ExitCode))."
     }
@@ -407,32 +415,28 @@ function Assert-OpenBaoPrefixIsolation {
     Set-VerificationStage 'openbao-access-isolation'
 
     $runtimeAllowed = Invoke-OpenBaoPodRaw @(
-        'env', "BAO_TOKEN=$RuntimeToken",
-        'bao', 'kv', 'get', '-mount=secret', '-field=password', "$script:OpenBaoRuntimePrefix/redis-secret")
+        'kv', 'get', '-mount=secret', '-field=password', "$script:OpenBaoRuntimePrefix/redis-secret") -Token $RuntimeToken
     if ($runtimeAllowed.ExitCode -ne 0) {
         throw 'Runtime OpenBao identity could not read the allow-listed runtime redis-secret password field.'
     }
     Register-OpenBaoRedactionSecret $runtimeAllowed.Output.Trim()
 
     $runtimeDenied = Invoke-OpenBaoPodRaw @(
-        'env', "BAO_TOKEN=$RuntimeToken",
-        'bao', 'kv', 'get', '-mount=secret', '-field=access-telemetry-marker-key',
-        "$script:OpenBaoAccessPrefix/access-telemetry-marker-key")
+        'kv', 'get', '-mount=secret', '-field=access-telemetry-marker-key',
+        "$script:OpenBaoAccessPrefix/access-telemetry-marker-key") -Token $RuntimeToken
     Assert-OpenBaoAclDenial -Result $runtimeDenied -Context 'Runtime OpenBao identity cross-prefix access-telemetry read'
 
     $accessAllowed = Invoke-OpenBaoPodRaw @(
-        'env', "BAO_TOKEN=$AccessToken",
-        'bao', 'kv', 'get', '-mount=secret', '-field=access-telemetry-marker-key',
-        "$script:OpenBaoAccessPrefix/access-telemetry-marker-key")
+        'kv', 'get', '-mount=secret', '-field=access-telemetry-marker-key',
+        "$script:OpenBaoAccessPrefix/access-telemetry-marker-key") -Token $AccessToken
     if ($accessAllowed.ExitCode -ne 0) {
         throw 'Access-telemetry OpenBao identity could not read its allow-listed marker secret.'
     }
     Register-OpenBaoRedactionSecret $accessAllowed.Output.Trim()
 
     $accessDenied = Invoke-OpenBaoPodRaw @(
-        'env', "BAO_TOKEN=$AccessToken",
-        'bao', 'kv', 'get', '-mount=secret', '-field=password',
-        "$script:OpenBaoRuntimePrefix/redis-secret")
+        'kv', 'get', '-mount=secret', '-field=password',
+        "$script:OpenBaoRuntimePrefix/redis-secret") -Token $AccessToken
     Assert-OpenBaoAclDenial -Result $accessDenied -Context 'Access-telemetry OpenBao identity cross-prefix runtime read'
 }
 
@@ -584,7 +588,7 @@ function Invoke-DisposableOpenBaoBootstrap {
         $bootstrapRecord.stages += 'bootstrap-secrets'
 
         Set-VerificationStage 'openbao-revoke-root'
-        $revoke = Invoke-OpenBaoPodRaw @('env', "BAO_TOKEN=$($session.RootToken)", 'bao', 'token', 'revoke', '-self')
+        $revoke = Invoke-OpenBaoPodRaw @('token', 'revoke', '-self') -Token $session.RootToken
         if ($revoke.ExitCode -ne 0) {
             throw "OpenBao root-token revoke failed at stage openbao-revoke-root (exit $($revoke.ExitCode))."
         }
