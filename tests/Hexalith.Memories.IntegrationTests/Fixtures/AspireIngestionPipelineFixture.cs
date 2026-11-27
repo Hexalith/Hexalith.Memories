@@ -56,6 +56,9 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     /// <summary>Exception data key containing the owned OpenBao port snapshot from failed Ollama startup.</summary>
     internal const string OllamaStartupOpenBaoPortDataKey = "Owned Ollama startup OpenBao port";
 
+    /// <summary>Exception data key containing the owned backend port snapshots from a failed restart.</summary>
+    internal const string RestartBackendPortsDataKey = "Owned restart backend ports";
+
     private static readonly TimeSpan TopologyStartupTimeout = TimeSpan.FromMinutes(12);
     private static readonly TimeSpan ResourceHealthyTimeout = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan EndpointReadyTimeout = TimeSpan.FromMinutes(5);
@@ -99,6 +102,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     private readonly EmbeddingProviderTestMode _providerMode;
     private readonly EmbeddingProviderSecret? _embeddingProviderSecret;
     private readonly bool _allowPrivateHosts;
+    private readonly Func<DistributedApplication, CancellationToken, Task>? _beforeClientSetup;
     private readonly string _openBaoRuntimeSeedJson;
     private readonly string _openBaoRuntimeCanary = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
     private byte[]? _accessTelemetryMarkerFingerprint;
@@ -140,14 +144,17 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     /// <param name="providerMode">The embedding provider mode to use for this topology.</param>
     /// <param name="embeddingProviderSecret">Optional DAPR secret-store entry for provider-specific tests.</param>
     /// <param name="allowPrivateHosts">Whether URL ingestion may reach test-owned private hosts.</param>
+    /// <param name="beforeClientSetup">Optional test callback after the initial Memories health gate on each topology start.</param>
     internal AspireIngestionPipelineFixture(
         EmbeddingProviderTestMode providerMode,
         EmbeddingProviderSecret? embeddingProviderSecret,
-        bool allowPrivateHosts = true)
+        bool allowPrivateHosts = true,
+        Func<DistributedApplication, CancellationToken, Task>? beforeClientSetup = null)
     {
         _providerMode = providerMode;
         _embeddingProviderSecret = embeddingProviderSecret;
         _allowPrivateHosts = allowPrivateHosts;
+        _beforeClientSetup = beforeClientSetup;
         var runtimeSeeds = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             [OpenBaoRuntimeCanarySecretName] = _openBaoRuntimeCanary,
@@ -472,7 +479,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             await ReportBackendPortsAsync(
                 _app,
                 startupException,
-                "Owned restart backend ports",
+                RestartBackendPortsDataKey,
                 ("memories-vectors", "redis"),
                 ("memories-graphs", "falkordb")).ConfigureAwait(false);
             throw;
@@ -2374,6 +2381,11 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             .WaitAsync(ResourceHealthyTimeout, cancellationToken)
             .ConfigureAwait(false);
 
+        if (_beforeClientSetup is not null)
+        {
+            await _beforeClientSetup(_app, cancellationToken).ConfigureAwait(false);
+        }
+
         // The Memories Server enforces a fallback authentication policy (Story 20.1) plus a per-tenant
         // authorization filter (Story 20.2), so every non-anonymous call needs a server-realm bearer whose
         // tenant claim matches the accessed tenant. Reuse Aspire's endpoint resolution for the base address, then
@@ -2906,7 +2918,12 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         return int.TryParse(firstLine, out int processId) ? processId : 0;
     }
 
-    private static async Task<string> RunProcessCommandAsync(
+    /// <summary>Runs a command and returns its trimmed standard output when successful.</summary>
+    /// <param name="fileName">Executable to start.</param>
+    /// <param name="arguments">Command-line arguments.</param>
+    /// <param name="cancellationToken">Cancellation token for waiting on the command.</param>
+    /// <returns>The command's trimmed standard output.</returns>
+    internal static async Task<string> RunProcessCommandAsync(
         string fileName,
         string arguments,
         CancellationToken cancellationToken)
