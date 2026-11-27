@@ -200,6 +200,33 @@ public sealed class AppHostComponentFileOrderingTests
         mcpComposition.ShouldNotContain("accessTelemetrySecrets");
         mcpComposition.ShouldNotContain("openBao");
 
+        const string redisResource = "memories-vectors";
+        app.ResourceNotifications.TryGetCurrentState(redisResource, out ResourceEvent? originalRedis).ShouldBeTrue();
+        DateTime? originalStart = originalRedis!.Snapshot.StartTimeStamp;
+        originalStart.ShouldNotBeNull();
+
+        // A restart can reuse the same host port. Mark the generated file so we can tell that
+        // a consumer waited for the new generation's rewrite rather than cached readiness.
+        const string priorGenerationMarker = "# prior Redis generation";
+        string pubSubPath = Path.Combine(ownedDirectory, "pubsub.yaml");
+        await File.AppendAllTextAsync(pubSubPath, $"{Environment.NewLine}{priorGenerationMarker}{Environment.NewLine}", cts.Token)
+            .ConfigureAwait(true);
+        ExecuteCommandResult redisRestart = await app.ResourceCommands.ExecuteCommandAsync(
+            redisResource, KnownResourceCommands.RestartCommand, cts.Token).ConfigureAwait(true);
+        redisRestart.Success.ShouldBeTrue(redisRestart.Message);
+        _ = await app.ResourceNotifications.WaitForResourceAsync(
+            redisResource,
+            current => current.Snapshot.State?.Text == KnownResourceStates.Running &&
+                current.Snapshot.StartTimeStamp > originalStart,
+            cts.Token).ConfigureAwait(true);
+
+        ExecuteCommandResult mcpRestart = await app.ResourceCommands.ExecuteCommandAsync(
+            "memories-mcp", KnownResourceCommands.RestartCommand, cts.Token).ConfigureAwait(true);
+        mcpRestart.Success.ShouldBeTrue(mcpRestart.Message);
+        _ = await app.ResourceNotifications.WaitForResourceHealthyAsync("memories-mcp", cts.Token).ConfigureAwait(true);
+        string newPubSub = await File.ReadAllTextAsync(pubSubPath, cts.Token).ConfigureAwait(true);
+        newPubSub.ShouldNotContain(priorGenerationMarker);
+
         await app.StopAsync(cts.Token).ConfigureAwait(true);
     }
 

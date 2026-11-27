@@ -91,13 +91,6 @@ openBao.OnBeforeResourceStarted((resource, @event, cancellationToken) =>
     return Task.CompletedTask;
 });
 
-// Story 15.6 code review: the rewrite signal is refreshable so a transient OnResourceReady fault
-// does not poison every subsequent sidecar start in the same AppHost session. The first
-// OnResourceReady cycle observes the initial signal; once that signal completes (success OR fault),
-// the next OnResourceReady installs a fresh signal before doing work. A lock guards the snapshot
-// vs. replacement race between BeforeResourceStartedEvent and OnResourceReady when Redis restarts.
-TaskCompletionSource redisComponentRewrite = new(TaskCreationOptions.RunContinuationsAsynchronously);
-object redisComponentRewriteGate = new();
 string? daprPlacementHostAddress = ResolveOptionalEnvironmentValue("MEMORIES_DAPR_PLACEMENT_HOST_ADDRESS");
 string? daprSchedulerHostAddress = ResolveOptionalEnvironmentValue("MEMORIES_DAPR_SCHEDULER_HOST_ADDRESS");
 
@@ -126,39 +119,33 @@ IResourceBuilder<ContainerResource> redis = builder
     .WithVolume(redisVolumeName, "/data")
     .WithEndpoint(targetPort: 6379, name: "redis");
 EndpointReference redisEndpoint = redis.GetEndpoint("redis");
-redis.OnResourceReady((resource, _, _) =>
+TimeSpan redisReadinessTimeout = TimeSpan.FromMinutes(2);
+var redisReadiness = new RedisReadinessGate(redisReadinessTimeout);
+redis.OnBeforeResourceStarted((resource, @event, startCancellationToken) =>
 {
-    TaskCompletionSource cycleTcs;
-    lock (redisComponentRewriteGate)
-    {
-        if (redisComponentRewrite.Task.IsCompleted)
+    ResourceNotificationService notifications = @event.Services.GetRequiredService<ResourceNotificationService>();
+    // Aspire publishes Starting before this callback and starts Redis after it returns.
+    // Subscribe here so a delayed ResourceReadyEvent cannot service a later allocation.
+    _ = redisReadiness.StartGenerationAsync(
+        cancellationToken => WaitForRedisRunningAsync(
+            notifications,
+            resource.Name,
+            redisReadinessTimeout,
+            cancellationToken),
+        cancellationToken =>
         {
-            // Previous cycle terminated (success or fault). Install a fresh signal so a transient
-            // earlier failure does not permanently poison subsequent sidecar starts.
-            redisComponentRewrite = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        }
-
-        cycleTcs = redisComponentRewrite;
-    }
-
-    try
-    {
-        (string host, int port) = AllocatedEndpointResolver.Resolve(resource, "redis");
-        DaprRedisComponentFiles.Write(
-            daprComponentPaths.StateStore,
-            daprComponentPaths.PubSub,
-            daprComponentPaths.AccessTelemetryStore,
-            daprComponentPaths.AccessTelemetryConfig,
-            $"{host}:{port}",
-            daprComponentPaths.DaprAppId);
-        cycleTcs.TrySetResult();
-        return Task.CompletedTask;
-    }
-    catch (Exception ex)
-    {
-        cycleTcs.TrySetException(ex);
-        throw;
-    }
+            (string host, int port) = AllocatedEndpointResolver.Resolve(resource, "redis");
+            DaprRedisComponentFiles.Write(
+                daprComponentPaths.StateStore,
+                daprComponentPaths.PubSub,
+                daprComponentPaths.AccessTelemetryStore,
+                daprComponentPaths.AccessTelemetryConfig,
+                $"{host}:{port}",
+                daprComponentPaths.DaprAppId);
+            return WaitForRedisPingAsync(host, port, redisReadinessTimeout, cancellationToken);
+        },
+        @event.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping);
+    return Task.CompletedTask;
 });
 builder.Eventing.Subscribe<BeforeResourceStartedEvent>(async (@event, cancellationToken) =>
 {
@@ -171,21 +158,7 @@ builder.Eventing.Subscribe<BeforeResourceStartedEvent>(async (@event, cancellati
         "memories-access-telemetry-clock-dapr" or "memories-access-telemetry-clock-dapr-cli";
     if (usesRedis)
     {
-        Task rewriteSignal;
-        lock (redisComponentRewriteGate)
-        {
-            rewriteSignal = redisComponentRewrite.Task;
-        }
-
-        await WaitForRedisComponentRewriteAsync(rewriteSignal, TimeSpan.FromMinutes(2), cancellationToken)
-            .ConfigureAwait(false);
-
-        // Resolve the endpoint AFTER awaiting the rewrite signal — if BeforeResourceStartedEvent
-        // ever races allocation, the rewrite-signal wait gives Redis a chance to finish allocating
-        // before the endpoint lookup throws InvalidOperationException.
-        (string host, int port) = AllocatedEndpointResolver.Resolve(redis.Resource, "redis");
-        await WaitForRedisPingAsync(host, port, TimeSpan.FromMinutes(2), cancellationToken)
-            .ConfigureAwait(false);
+        await redisReadiness.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     bool usesOpenBao = @event.Resource.Name is "memories" or
@@ -1193,18 +1166,24 @@ static async Task WaitForOpenBaoGenerationAsync(
     }
 }
 
-static async Task WaitForRedisComponentRewriteAsync(
-    Task rewriteTask,
+static async Task WaitForRedisRunningAsync(
+    ResourceNotificationService notifications,
+    string resourceName,
     TimeSpan timeout,
     CancellationToken cancellationToken)
 {
+    using CancellationTokenSource waitCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+    waitCancellation.CancelAfter(timeout);
     try
     {
-        await rewriteTask.WaitAsync(timeout, cancellationToken).ConfigureAwait(false);
+        await notifications.WaitForResourceAsync(
+            resourceName,
+            KnownResourceStates.Running,
+            waitCancellation.Token).ConfigureAwait(false);
     }
-    catch (TimeoutException ex)
+    catch (OperationCanceledException ex) when (waitCancellation.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
     {
-        throw new TimeoutException($"DAPR Redis component files were not rewritten within {timeout}.", ex);
+        throw new TimeoutException($"Redis resource '{resourceName}' did not reach Running within {timeout}.", ex);
     }
 }
 
