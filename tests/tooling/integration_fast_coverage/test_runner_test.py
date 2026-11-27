@@ -280,14 +280,21 @@ class IntegrationTestRunnerTests(unittest.TestCase):
         git_empty = git_metadata / "objects" / "pack"
         git_empty.mkdir(parents=True)
         git_file.write_text("git managed", encoding="utf-8")
-        for destination in (".git", ".git/objects/pack", ".git/new/nested"):
+        nested_git_empty = self.root / "nested" / "checkout" / ".git" / "objects" / "pack"
+        nested_git_empty.mkdir(parents=True)
+        for destination in (
+            ".git", ".git/objects/pack", ".git/new/nested",
+            "./nested/./checkout/.git/objects/pack", "nested/new-checkout/.git/new/nested",
+        ):
             with self.subTest(destination=destination):
                 refused = self.run_wrapper([*command, destination])
                 self.assertNotEqual(0, refused.returncode)
                 self.assertIn(".git metadata path", refused.stderr)
                 self.assertEqual("git managed", git_file.read_text(encoding="utf-8"))
                 self.assertEqual([], list(git_empty.iterdir()))
+                self.assertEqual([], list(nested_git_empty.iterdir()))
                 self.assertFalse((git_metadata / "new").exists())
+                self.assertFalse((self.root / "nested" / "new-checkout").exists())
                 self.assertFalse(self.calls.exists())
 
         (self.root / "empty").mkdir()

@@ -113,7 +113,7 @@ try {
         }
 
         $components = $resultsRoot.Substring($repoPrefix.Length).Split([System.IO.Path]::DirectorySeparatorChar)
-        if ($components[0] -ieq '.git') {
+        if ($components -icontains '.git') {
             throw "-ResultsDirectory must stay outside the repository's .git metadata path."
         }
 

@@ -203,7 +203,7 @@ def prepare_results(root, results):
     components = results.relative_to(root).parts
     if not components:
         raise ValueError("must resolve beneath the repository root.")
-    if components[0].casefold() == ".git":
+    if any(component.casefold() == ".git" for component in components):
         raise ValueError("must stay outside the repository's .git metadata path.")
     if not shutil.rmtree.avoids_symlink_attacks:
         raise ValueError("requires Python support for symlink-safe directory cleanup.")
