@@ -106,6 +106,50 @@ public sealed class AccessTelemetryDeliveryCheckpointTests
         projectedRecord.ShouldNotBeNull().QueryParams.ShouldBe(record.QueryParams);
     }
 
+    [Theory]
+    [InlineData(-1L, "1-64KiB")]
+    [InlineData(0L, "0")]
+    [InlineData(1L, "1-64KiB")]
+    [InlineData(65_536L, "1-64KiB")]
+    [InlineData(65_537L, "64KiB-1MiB")]
+    [InlineData(1_048_576L, "64KiB-1MiB")]
+    [InlineData(1_048_577L, "1-10MiB")]
+    [InlineData(10_485_760L, "1-10MiB")]
+    [InlineData(10_485_761L, "10MiB+")]
+    public void Sanitizer_IngestByteBucketsUseInclusiveUpperBound(long bytes, string bucket)
+    {
+        var source = CreateEvent(7502, "ingest", null, null, new Dictionary<string, object?>
+        {
+            ["bytes"] = bytes,
+        });
+
+        CreateSanitizer().TrySanitize(LogLevel.Information, new EventId(7502), source, out AccessTelemetryRecord? record, out AccessTelemetryReason reason)
+            .ShouldBeTrue(reason.ToString());
+
+        record.ShouldNotBeNull().QueryParams["contentLengthBucket"].ShouldBe(bucket);
+    }
+
+    [Theory]
+    [InlineData(null, 0)]
+    [InlineData(" , references,  , depends-on ,", 2)]
+    [InlineData("a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p", 16)]
+    [InlineData("a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q", 16)]
+    public void Sanitizer_TraverseCapsNonemptyTokensAtSixteen(string? edgeTypes, int count)
+    {
+        var source = CreateEvent(7503, "traverse", null, 2, new Dictionary<string, object?>
+        {
+            ["depth"] = 3,
+            ["edgeTypes"] = edgeTypes,
+        });
+
+        CreateSanitizer().TrySanitize(LogLevel.Information, new EventId(7503), source, out AccessTelemetryRecord? record, out AccessTelemetryReason reason)
+            .ShouldBeTrue(reason.ToString());
+
+        record.ShouldNotBeNull().QueryParams["edgeTypeCount"].ShouldBe(count);
+        var invalid = new Dictionary<string, object?>(record.QueryParams, StringComparer.Ordinal) { ["edgeTypeCount"] = 17 };
+        Should.Throw<AccessTelemetryContractException>(() => AccessTelemetryCanonicalizer.CanonicalizeRecord(record with { QueryParams = invalid }));
+    }
+
     [Fact]
     public void Sanitizer_TransformsRawFieldsIntoBoundedMarkersAndCatalogs()
     {

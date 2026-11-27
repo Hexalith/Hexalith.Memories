@@ -467,7 +467,9 @@ or metrics. The persisted JSON schema is allowlisted:
 The current logger contract exposes more states than the original persisted V1
 text could represent. The reconciliation below is the ratified complete mapping.
 It replaces every conflicting outcome, nullable-field, and `queryParams` clause
-under **Persisted Schema Bounds** and **Query Parameter Bounds**.
+under **Persisted Schema Bounds** and **Query Parameter Bounds**. The
+[Story 27.2 implementation record](../../_bmad-output/implementation-artifacts/27-2-bounded-retention-ttl-and-purge-implementation.md)
+records the C1 mapping review and ratification on 2026-07-18.
 
 #### Ratification Decision
 
@@ -579,14 +581,28 @@ weight is copied.
 | Operation | Exact current source keys | Proposed exact persisted keys | Proposed transformations and explicit drops |
 | :-------- | :------------------------ | :---------------------------- | :------------------------------------------ |
 | `search` | `axis`, `axes`, `attributeFilterCount`, `explain`, `graphWeight`, `maxResults`, `metadataFilterCount`, `nlWeight`, `offset`, `query`, `semanticWeight`, `sourceType`, `subject`, `syntacticWeight`, `tokenBudget` | `axis`, `caseScope`, `explain`, `queryLengthBucket`, `subjectPresent`, `weightProfile` | `nl` -> `natural-language`; accepted axis catalog is `syntactic`, `semantic`, `graph`, `natural-language`, `hybrid`, `graph-scoped-syntactic`, `graph-scoped-semantic`, `unknown`. Null `caseId` maps as above. `query` length and subject presence are bucketed. `weightProfile` is `configured` when all four weights are null, `request-override` when any supplied combination is finite, non-negative, and has a positive enabled-axis total, otherwise `invalid`. Drop `axes`, both filter counts, `maxResults`, `offset`, `sourceType`, `tokenBudget`, and all numeric weights after classification. |
-| `ingest` | `aggregateType`, `bytes`, `cloudEventId`, `cloudEventType`, `contentType`, `eventOutcome`, `sourceType` | `caseScope`, `contentKind`, `contentLengthBucket`, `eventOutcome`, `sourceKind` | Map source kind to `file`, `url`, `event`, `command`, `projection`, `discussion`, `annotation`, or `unknown`; MIME family to `document`, `text`, `image`, `audio`, or `unknown`; byte length to `0`, `1-64KiB`, `64KiB-1MiB`, `1-10MiB`, or `10MiB+`; event outcome to `not-applicable`, `accepted`, `duplicate`, `rejected`, or `unknown`. Drop CloudEvent and aggregate identifiers. |
-| `traverse` | `depth`, `edgeTypes`, `startNodeId`, `tokenBudget` | `caseScope`, `depthBucket`, `direction`, `edgeTypeCount`, `includeGaps` | Depth bucket is `0`, `1`, `2`, `3`, `4`, `5`, `6-10`, or `invalid`; count at most 16 comma-separated edge-type tokens without storing them; current direction is constant `out` and current `includeGaps` is false. Drop start-node ID and token budget. |
+| `ingest` | `aggregateType`, `bytes`, `cloudEventId`, `cloudEventType`, `contentType`, `eventOutcome`, `sourceType` | `caseScope`, `contentKind`, `contentLengthBucket`, `eventOutcome`, `sourceKind` | Map source kind to `file`, `url`, `event`, `command`, `projection`, `discussion`, `annotation`, or `unknown`; MIME family to `document`, `text`, `image`, `audio`, or `unknown`; byte length to the V1 bucket defined below; event outcome to `not-applicable`, `accepted`, `duplicate`, `rejected`, or `unknown`. Drop CloudEvent and aggregate identifiers. |
+| `traverse` | `depth`, `edgeTypes`, `startNodeId`, `tokenBudget` | `caseScope`, `depthBucket`, `direction`, `edgeTypeCount`, `includeGaps` | Depth bucket is `0`, `1`, `2`, `3`, `4`, `5`, `6-10`, or `invalid`; trim comma-separated edge-type tokens, discard empty entries, and persist the count capped at 16; current direction is constant `out` and current `includeGaps` is false. Drop start-node ID and token budget. |
 | `case-access` | `memoryUnitId`, `sourceUri` | `accessKind`, `projection`, `sourceKind` | `accessKind` is `memory-unit-id` or `source-uri`; current projection is `detail`; source URI scheme maps to `url`, `file`, `other`, or `unknown`, and is `not-applicable` for ID lookup. Drop the memory-unit ID and URI. |
 | `delete` | `memoryUnitIdPrefix`, `operation` | `cascade`, `targetKind` | Map `memory-unit-delete` -> false/`memory-unit`, `case-delete` -> true/`case`, and `tenant-delete` -> true/`tenant`; drop the identifier prefix. |
 | `tenant-lifecycle` | `operation`, `state`, `workflowInstanceIdPrefix` | `action`, `workflowState` | Map `tenant-create`, `tenant-provision-status`, and `tenant-deletion-status` to `provision`, `provision-status`, and `deletion-status`; workflow state maps to `not-applicable`, `pending`, `running`, `completed`, `failed`, `terminated`, or `unknown`. Drop the workflow prefix. |
 | `tenant-config` | `changedFields`, `fieldCount`, `forceReindex`, `operation` | `action`, `changedFieldCountBucket`, `configKind`, `forceReindex` | Current action is `update`; config kind is `embedding` or `display-name`; field count maps to `0`, `1`, `2-3`, `4-8`, or `9+`; drop the `changedFields` array. |
 | `case-member` | `memberIdPrefix`, `operation` | `action`, `role` | Map current operations to `add` or `remove`; current typed state does not carry role, so persist bounded `unknown`; drop the member prefix. |
 | `annotation` | `memoryUnitIdPrefix`, `operation` | `action`, `annotationKind` | Current action is `create`; current typed state does not carry annotation kind, so persist bounded `unknown`; drop the memory-unit prefix. |
+
+The ingest sanitizer maps missing or zero byte length to `0`. Positive byte
+length uses the following intervals. Upper bounds are inclusive, and the
+persisted V1 labels retain their original spelling. The sanitizer also maps
+a negative source length to `1-64KiB` under the current V1 mapping.
+
+- `1-64KiB` covers 1–65,536 bytes.
+- `64KiB-1MiB` covers 65,537–1,048,576 bytes.
+- `1-10MiB` covers 1,048,577–10,485,760 bytes.
+- `10MiB+` covers 10,485,761 bytes and greater.
+
+Traversal persists `16` when the source lists more than 16 nonempty tokens.
+At the persisted-record boundary, the canonicalizer rejects any supplied
+`edgeTypeCount` outside the integer range 0–16.
 
 The ratified mapping keeps the existing six-key maximum and the 1,024-byte record
 ceiling. Re-running the deterministic 90-success/10-error fixture with the
