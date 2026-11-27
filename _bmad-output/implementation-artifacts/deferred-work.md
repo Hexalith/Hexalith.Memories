@@ -5251,21 +5251,34 @@ reason: Evidence §8.8 names NetworkPolicy `deployment-seal-external` with no `.
 status: open
 note: 2026-11-27 — Skipped. Story 31.1 evidence section 9.2 already captured the additive NetworkPolicy and documented its TCP/8200 ingress. A current read-only check found the same rules.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-31-1-openbao-platform-hardening-and-documentation-2.md`
-  summary: Telemetry, consistency, and MCP WebAppFactory hosts omit `Hexalith:Dapr:ApplicationTokenOverride`, so leaked `APP_API_TOKEN` can 401 those in-memory hosts.
-  evidence: Concurrent Dapr-token overlay in this worktree, not Story 31.1. Settled by applying the EventStore/HealthCheck empty overlay to `TelemetryWebAppFactory`, `ConsistencyEndpointFactory`, and both `McpWebAppFactory` classes.
+### DW-756: Telemetry, consistency, and MCP WebAppFactory hosts omit `Hexalith:Dapr:ApplicationTokenOverride`, so leaked `APP_API_TOKEN` can 401 those in-memory hosts.
+
+origin: migrated from attended ledger ("Deferred from: code review of 31-1-openbao-platform-hardening-and-documentation.md (2026-09-07)"), 2026-11-27
+location: tests/Hexalith.Memories.Server.Tests/Telemetry/Infrastructure/TelemetryWebAppFactory.cs; tests/Hexalith.Memories.Server.Tests/Endpoints/ConsistencyEndpointTests.cs; tests/Hexalith.Memories.Mcp.Tests/Authentication/McpEndpointAllowAnonymousPathsTests.cs; tests/Hexalith.Memories.Mcp.Tests/Authentication/McpEndpointChallengeBodyTests.cs
+source_spec: `_bmad-output/implementation-artifacts/spec-31-1-openbao-platform-hardening-and-documentation-2.md`
+severity: medium
+reason: Concurrent Dapr-token overlay in this worktree, not Story 31.1. Settled by applying the EventStore/HealthCheck empty overlay to `TelemetryWebAppFactory`, `ConsistencyEndpointFactory`, and both `McpWebAppFactory` classes.
+status: done 2026-11-27
+resolution: 8761278acccc0190a11ff92d84ed41f16a6e71a8 (follow-up b81c111e167bb9d0968b69df6e99de2c52aa14f3) — The four fixtures isolate the inherited token in their default Development environment. All 42 server and six MCP cases passed with an inherited token. The derived-host test preserved Qualification and Production authentication and proved both missing-token refusals.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-31-1-openbao-platform-hardening-and-documentation-2.md`
   summary: Empty `Hexalith:Dapr:ApplicationTokenOverride` skips Dapr app-token checks in every environment, including Production.
   evidence: Concurrent `DaprApplicationTokenMiddleware` change. Restrict the bypass to test/Development, or document and test missing-overlay vs env fallback.
+  note: 2026-11-27 — Skipped. Already resolved for Production. The middleware ignores the override there and DaprTokenStartupValidator rejects configured overrides at startup. Existing tests prove both outcomes.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-31-1-openbao-platform-hardening-and-documentation-2.md`
   summary: `DaprTokenEnvironmentCollection` comment and duplicate `UseSetting` paths disagree with the overlay design.
   evidence: Concurrent Dapr test-host work. Align the comment, use the collection name constant, and keep a single configuration path.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-31-1-openbao-platform-hardening-and-documentation-2.md`
-  summary: `tools/init-dapr-runtime.sh` starts placement/scheduler without waiting for ports 50005/50006.
-  evidence: Concurrent CI work. Wait for the ports (or container health) before integration tests, and do not `dapr uninstall --all` on a slim-init failure.
+### DW-753: `tools/init-dapr-runtime.sh` starts placement/scheduler without waiting for ports 50005/50006.
+
+origin: migrated from attended ledger ("Deferred from: code review of 31-1-openbao-platform-hardening-and-documentation.md (2026-09-07)"), 2026-11-27
+location: tools/init-dapr-runtime.sh; tests/tooling/integration_fast_coverage/dapr_runtime_test.py
+source_spec: `_bmad-output/implementation-artifacts/spec-31-1-openbao-platform-hardening-and-documentation-2.md`
+severity: medium
+reason: Concurrent CI work. Wait for the ports (or container health) before integration tests, and do not `dapr uninstall --all` on a slim-init failure.
+status: done 2026-11-27
+resolution: 7f69c64822bab06592b8dc437f21ba77e0c54e31 (follow-up 10ba1d0764265f8c2af8cba9110951803e149e60) — The initializer retries slim installation without global uninstall and requires gRPC responses from both IPv4 listeners within one 30-second budget. The focused fixtures passed, both owned Dapr services responded, and a TCP-only listener was refused at the deadline.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-31-1-openbao-platform-hardening-and-documentation-2.md`
   summary: `addendum.md` still treats launch/release dates as assistant assumptions after Jerome confirmed 2027-01-01 / 2026-12-01.
@@ -5279,9 +5292,15 @@ note: 2026-11-27 — Skipped. Story 31.1 evidence section 9.2 already captured t
   summary: G1 is rewritten as a hard protocol with no owning story while FR17/FR25 remain partial.
   evidence: Concurrent PRD rewrite. Add backlog stories or an SCP that G1 is unreachable.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-31-1-openbao-platform-hardening-and-documentation-2.md`
-  summary: After Dapr reconnect, `AspireIngestionPipelineFixture` waits for HTTP listen and does not call the OpenBao sidecar matrix wait.
-  evidence: Concurrent integration-test work. Reuse `WaitForOpenBaoSidecarMatrixReadinessAsync` on that path.
+### DW-757: After Dapr reconnect, `AspireIngestionPipelineFixture` waits for HTTP listen and does not call the OpenBao sidecar matrix wait.
+
+origin: migrated from attended ledger ("Deferred from: code review of 31-1-openbao-platform-hardening-and-documentation.md (2026-09-07)"), 2026-11-27
+location: tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixture.cs; tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixtureTests.cs; tests/Hexalith.Memories.IntegrationTests/Fixtures/OpenBaoTopologyIntegrationTests.Fast.cs
+source_spec: `_bmad-output/implementation-artifacts/spec-31-1-openbao-platform-hardening-and-documentation-2.md`
+severity: medium
+reason: Concurrent integration-test work. Reuse `WaitForOpenBaoSidecarMatrixReadinessAsync` on that path.
+status: done 2026-11-27
+resolution: 99cbcc8d96726d068d236dac0931e6c648801b77 (follow-up ce0f21bd21a24a99c5e017fbf4971a21b017c8ce) — In-place OpenBao recovery now waits for fresh auxiliary listener observations and permitted secret reads after primary Dapr reconnect. All 67 fixture cases and both live OpenBao cases passed. Controlled and live restart checks verified fresh evidence across reused or superseded listeners and rejected incorrect fields and fingerprints.
 
 
 ### DW-730: Production access-telemetry lifecycle qualification (parked full campaign) — reopens only when a Production deployment path enables lifecycle writes.
@@ -5497,17 +5516,30 @@ decision: 2026-11-01 keep-open — parked. Reopens only on the trigger: any Prod
   summary: Deployment Adapter Developer owns separately scoped correction or retirement of the canonical C1.16 EOF-sensitive HTTP transport before relying on it for a future capture.
   evidence: B1: tools/verify-access-telemetry-c1-linkage.ps1:315 pipes completed printf output into BusyBox nc, while Story 27.22's dated actual diagnosis records request cancellation and a reviewed external transport correction. This predates the Story 27.4 resumption. The accepted captured window used separately reviewed external transport, not a repaired canonical packet. Reopen with approved permanent transport scope and executed actual-runtime native-exit/HTTP framing regressions; preserve historical refused packets and neutral gate fields.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-4.md`
-  summary: Deployment Adapter Developer owns binding the disposable SQL-contract lane to its authorized local Docker endpoint before resource creation.
-  evidence: B4: tests/tooling/access_telemetry_c1_sql_contract/linkage_sql_contract_test.py:383 checks daemon OS/architecture but invokes ambient Docker context/environment without an endpoint binding, so remote DOCKER_HOST/context can receive the lane's owned resources. This pre-existing Story 27.22 harness issue was reviewed read-only; no remote daemon was contacted. Reopen with an explicitly authorized endpoint contract, refusal before creation for another endpoint, and owned-resource cleanup regressions.
+### DW-754: Deployment Adapter Developer owns binding the disposable SQL-contract lane to its authorized local Docker endpoint before resource creation.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-4.md`
-  summary: Deployment Adapter Developer owns asserting deployment image identity in the real SQL-contract lane's manifest contract.
-  evidence: B5: an isolated temporary manifest changed to postgres:18.7 with an unapproved digest still passed assert_manifest_contract, while actual SQL execution uses the hardcoded approved 18.6 child. This pre-existing Story 27.22 test contract can validate a changed deployment against the old image. Reopen with exact approved deployment/index/child identity checks and executed image-drift refusal cases; no tracked deployment bytes changed.
+origin: migrated from attended ledger ("Deferred from: offline resumption review of spec-27-4-retention-verification-operations-runbook-and-a41-close-out-4.md (2026-10-07)"), 2026-11-27
+location: tests/tooling/access_telemetry_c1_sql_contract/linkage_sql_contract_test.py; docs/operations/access-telemetry-adapter-production.md
+source_spec: `_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-4.md`
+severity: medium
+reason: B4: tests/tooling/access_telemetry_c1_sql_contract/linkage_sql_contract_test.py:383 checks daemon OS/architecture but invokes ambient Docker context/environment without an endpoint binding, so remote DOCKER_HOST/context can receive the lane's owned resources. This pre-existing Story 27.22 harness issue was reviewed read-only; no remote daemon was contacted. Reopen with an explicitly authorized endpoint contract, refusal before creation for another endpoint, and owned-resource cleanup regressions.
+status: done 2026-11-27
+resolution: d5f92c8a78123f39134c27a1f4b268d8a5a77309 — The SQL lane refuses nonlocal Docker selections before daemon calls and pins setup, the generated observer and cleanup to the approved Unix socket. All 21 cases passed. The receipt verified each bound Docker command and removal of every owned resource.
+
+### DW-758: Deployment Adapter Developer owns asserting deployment image identity in the real SQL-contract lane's manifest contract.
+
+origin: migrated from attended ledger ("Deferred from: offline resumption review of spec-27-4-retention-verification-operations-runbook-and-a41-close-out-4.md (2026-10-07)"), 2026-11-27
+location: tests/tooling/access_telemetry_c1_sql_contract/linkage_sql_contract_test.py
+source_spec: `_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-4.md`
+severity: medium
+reason: B5: an isolated temporary manifest changed to postgres:18.7 with an unapproved digest still passed assert_manifest_contract, while actual SQL execution uses the hardcoded approved 18.6 child. This pre-existing Story 27.22 test contract can validate a changed deployment against the old image. Reopen with exact approved deployment/index/child identity checks and executed image-drift refusal cases; no tracked deployment bytes changed.
+status: done 2026-11-27
+resolution: eac9d4aa3c9218e60ca8c1e6a8450be788791346 (follow-up 98cd0d5998c624fc4c14c05adafead50a665cc21) — The lane requires the approved tag and immutable index of the named StatefulSet container, resolves its approved Linux amd64 child and verifies the image IDs of both running containers. All 25 SQL-contract cases passed and the receipt bound the deployment and executed PostgreSQL 18.6 identities.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-4.md`
   summary: Deployment Adapter Developer owns enrolling the existing real PostgreSQL SQL-contract assertions in an automated verification lane with their pinned prerequisites.
   evidence: V1: .github/workflows/ci.yml:297 discovers access_telemetry_c1 only; its fake transport manufactures normalized clientAddr values. The real valid-session and old-inet-projection regression tests are in the separate manual access_telemetry_c1_sql_contract lane. A restored a.client_addr::text projection can pass CI fixtures while refusing valid actual IPv4 sessions. This predates the Story 27.4 resumption. Reopen with automated isolated discovery and documented Docker/PowerShell/OpenSSL/pinned-image setup, proving the real projection mutation fails the gate.
+  note: 2026-11-27 — Skipped. Already enrolled. The access-telemetry-sql-contract CI job pulls the approved PostgreSQL child and discovers the real SQL suite, including the old-projection regression.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-4.md`
   summary: Deployment Adapter Developer owns a regression proving C1.16 source drift after target observation blocks positive publication.
@@ -5642,6 +5674,7 @@ resolution: The live two-tenant collision proof obtains both graphs with their o
 - source_spec: `_bmad-output/implementation-artifacts/spec-epic-27-retro-62-dapr-app-token-production-guard.md`
   summary: The planned empty-override overlay for `TelemetryWebAppFactory` (`deferred-work.md:5570`) would make that factory's derived Production host fail startup.
   evidence: `AccessTelemetryQualificationWorkloadTests.Program_MapsTheQualificationRouteOnlyInTheQualificationEnvironment` (`:574`) derives a Production host from `TelemetryWebAppFactory` (`:602`). `RemoveInfrastructureHostedServices` keeps `DaprTokenStartupValidator`, which now fails Production startup while the override holds a value. Apply the overlay only to non-Production hosts derived from the factory. This change verified the leak itself as pre-existing: with `APP_API_TOKEN=leaked-process-token`, 5 `ServerEndpointRateLimitTests` cases return 401 because `TelemetryWebAppFactory` never set the override. Owner: Memories test maintainers. Reopen with the `deferred-work.md:5570` fix.
+  note: 2026-11-27 — Skipped. Addressed in DW-756 with the Development-only overlay and a derived Production test that verifies startup and token enforcement. This duplicate case did not receive a separate implementation.
 
 ## Deferred from: Epic 27 retro items 63 and 64 inert disabled-lifecycle change (2026-11-02)
 
@@ -5921,9 +5954,15 @@ resolution: The live two-tenant collision proof obtains both graphs with their o
   summary: Restore the full `org.opencontainers.image.base.name` label on multi-RID image children.
   evidence: Review R6-E1/R6-E2, decision D2 (owner, 2026-11-11: defer and track). The SDK passes generated labels to each inner RID build as `Identity:Value` and rebuilds them with `Split(':')[1]`. In the retained v3.0.26 packet (run 43018206370), both children of every image therefore carry `"org.opencontainers.image.base.name": "mcr.microsoft.com/dotnet/aspnet"`; the declared base is `mcr.microsoft.com/dotnet/aspnet:10.0-alpine` (`Directory.Build.targets:10`). `org.opencontainers.image.base.digest` is intact. Runtime-config parity compares only the six runtime fields, so it cannot detect label drift. Owner reason for deferring: low-severity metadata only; base identity stays provable through base.digest. Owner: Jérôme Piquot. Consequence: tooling that reads `base.name` sees an untagged base reference on v3.0.20 and later multi-RID images, which are immutable. Reopen trigger: the next change to `Directory.Build.targets` container rebinding, or an SDK release that fixes the multi-RID label parser.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-current-dependencies-ci-release.md`
-  summary: Verify mutation sensitivity of the clock startup ordering regression under controlled Redis allocation and readiness delay.
-  evidence: Review could not establish whether fast Redis startup can mask removal of the clock enrollment; actual start-boundary and existing sidecar endpoint checks pass, and production explicitly awaits rewrite and PING.
+### DW-760: Verify mutation sensitivity of the clock startup ordering regression under controlled Redis allocation and readiness delay.
+
+origin: migrated from attended ledger ("Deferred from: code review of spec-30-4-five-image-publication-contract.md round 6 (2026-11-11)"), 2026-11-27
+location: tests/Hexalith.Memories.IntegrationTests/Fixtures/AppHostComponentFileOrderingTests.cs
+source_spec: `_bmad-output/implementation-artifacts/spec-current-dependencies-ci-release.md`
+severity: medium
+reason: Review could not establish whether fast Redis startup can mask removal of the clock enrollment; actual start-boundary and existing sidecar endpoint checks pass, and production explicitly awaits rewrite and PING.
+status: done 2026-11-27
+resolution: 1faf94b28d67ddbf888ae3b9172300be14eff01e (follow-up 39f8acaad2899f3303601c269d50f1cb1c48b17f) — A controlled Redis listener and retry responder drive the real clock start callback through the current allocation gate. The complete live ordering case passed. A disposable clone with only the clock enrollment removed failed at the targeted readiness assertion while its preceding live startup and restart checks passed.
 
 ## Deferred from: Story 30.4 round-6 remediation verification (2026-11-15)
 
@@ -6137,6 +6176,7 @@ note: 2026-11-27 — Skipped. The 100K-unit workload certification, Story 34.39 
 - source_spec: `_bmad-output/implementation-artifacts/spec-31-2-runtime-dapr-secret-store-migration.md`
   summary: Close the Dapr built-in `kubernetes` secret-store path, which gives the memories, memories-mcp and access-telemetry sidecars Kubernetes Secret reads outside OpenBao and the secret allow-lists.
   evidence: Story 31.2 review finding Blind 1 (high, pre-existing deployment defect). At 2026-11-22T15:51:51Z an in-pod metadata-only request listed `kubernetes` / `secretstores.kubernetes` in memories-675fd5d64-5zqpv beside both Vault stores, and as the only secret store in memories-mcp-55d65d86d6-hh6mr. No tracked Configuration (`memories-config`, `memories-mcp-config`, lifecycle or clock) scopes `storeName: kubernetes`, so Dapr allows every name there. No workload sets `dapr.io/disable-builtin-k8s-secret-store`. The memories Role grants get on nine names, including `openbao-runtime-bootstrap`. No read through that store was attempted. Owner: Platform Operations / Memories Maintainer. Consequence: until this is closed, AC1's "outside the DAPR secret-store boundary" clause cannot hold, and the memories application can likely obtain the OpenBao runtime token through its own sidecar. Fix: disable the built-in store on every Dapr workload, or add a `kubernetes` deny scope to each Configuration, then apply and re-probe. Owner decision needed first: the base and production deployment files are PG-ONPREM-2 profile inputs, and component secretKeyRef resolution must be shown to survive the change. Reopen trigger: any change to Dapr workload annotations or Configuration secret scopes, or the next production overlay apply.
+  note: 2026-11-27 — Skipped. Blocked on Platform Operations approval for PG-ONPREM-2 profile inputs and live component resolution proof.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-31-2-runtime-dapr-secret-store-migration.md`
   summary: Run the runtime secret-store probe regression test (`tests/tooling/runtime_secret_store/test_scope_probe.py`) in an automated lane, with a BusyBox that supports `nc -e` on PATH.
@@ -6317,18 +6357,60 @@ resolution: 8e9fa49cf28b86d96233c9ce67639656ea92e4c2 — The harness computes a 
 
 ## Deferred from review of test execution reliability (2026-11-27)
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-deferred-test-execution-reliability.md`
-  summary: Restrict test-results cleanup to runner-owned output directories.
-  evidence: The strict descendant check prevents checkout-root cleanup. An existing tracked descendant selected explicitly still enters recursive cleanup. Add ownership verification that preserves supported report locations.
+### DW-751: Restrict test-results cleanup to runner-owned output directories.
+
+origin: migrated from attended ledger ("Deferred from review of test execution reliability (2026-11-27)"), 2026-11-27
+location: tools/test.sh; tools/test.ps1; tests/tooling/integration_fast_coverage/test_runner_test.py
+source_spec: `_bmad-output/implementation-artifacts/spec-deferred-test-execution-reliability.md`
+severity: high
+reason: The strict descendant check prevents checkout-root cleanup. An existing tracked descendant selected explicitly still enters recursive cleanup. Add ownership verification that preserves supported report locations.
+status: done 2026-11-27
+resolution: f72878f958edc58ec37ef0040cef90e00d6e2926 (follow-up 15ad6120afd63817e3735461286ec3f95a9501a7) — The wrappers claim new or empty results roots with a shared ownership marker and refuse source, Git metadata and unowned report directories. The 21-case Bash and PowerShell tooling run verified nested paths, stale report removal and refusal before cleanup.
+
+### DW-752: Keep Bash results cleanup anchored to the validated directory when parent links change.
+
+origin: migrated from attended ledger ("Deferred from review of test execution reliability (2026-11-27)"), 2026-11-27
+location: tools/test.sh; tests/tooling/integration_fast_coverage/test_runner_test.py
+source_spec: `_bmad-output/implementation-artifacts/spec-deferred-test-execution-reliability.md`
+severity: medium
+reason: The path is resolved for containment before cleanup. Concurrent replacement of an intermediate parent can redirect raw-path deletion. Use a descriptor-anchored operation and verify safe replacement handling.
+status: done 2026-11-27
+resolution: 6cecc43e36f4195f1d3a7b9bd0843097c6dfa4a8 — Bash anchors ownership and cleanup to opened directories. A controlled replacement of an intermediate parent preserves the unrelated file and aborts before dotnet. All 22 tooling cases and a Python 3.9 Bash lane passed.
+
+### DW-755: Reap child processes when the C1.16 test harness capture watchdog expires.
+
+origin: migrated from attended ledger ("Deferred from review of test execution reliability (2026-11-27)"), 2026-11-27
+location: tests/tooling/access_telemetry_c1/gate_c1_16_test.py
+source_spec: `_bmad-output/implementation-artifacts/spec-deferred-test-execution-reliability.md`
+severity: medium
+reason: The outer subprocess watchdog stops PowerShell. Exercise forced expiry with a child still running and verify the caller waits for the complete owned process tree before deleting the workspace.
+status: done 2026-11-27
+resolution: b751cac9dd9f125aad66f0f972932ad83a80d8b4 (follow-up 6abc5f46b8b5e68cf98a6e81c7ca22afee886e53) — The watchdog terminates the capture process group and reaps its descendants before temporary files are removed. All 22 C1.16 cases passed on Linux. The forced-expiry, caller interruption and exited-leader checks proved descendant reaping and preserved redacted timeout diagnostics.
+
+### DW-759: Exercise backend diagnostics on a deliberately failed full Aspire startup and restart.
+
+origin: migrated from attended ledger ("Deferred from review of test execution reliability (2026-11-27)"), 2026-11-27
+location: tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixture.cs; tests/Hexalith.Memories.Integration.NightlyTests/Fixtures/AspireIngestionPipelineFailureIntegrationTests.cs
+source_spec: `_bmad-output/implementation-artifacts/spec-deferred-test-execution-reliability.md`
+severity: medium
+reason: The diagnostic helpers passed simulated endpoint failures and the live topologies passed normal startup. Inject a controlled failure at both full fixture boundaries to prove the original error retains pre-cleanup port evidence.
+status: done 2026-11-27
+resolution: 17d986b3e0951dcbf166d946847895a964186c8f (follow-up 966f16b73bb88b0ff4f2b776edd0961b3b34b99a) — Two live failure cases proved exception identity and exact pre-disposal backend port evidence, followed by owned host, OpenBao container, volume and configuration cleanup. The successful full restart control and 67 helper tests also passed.
+
+## Deferred from the review of test runner and fixture reliability (2026-11-27)
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-deferred-test-execution-reliability.md`
-  summary: Keep Bash results cleanup anchored to the validated directory when parent links change.
-  evidence: The path is resolved for containment before cleanup. Concurrent replacement of an intermediate parent can redirect raw-path deletion. Use a descriptor-anchored operation and verify safe replacement handling.
+  summary: Anchor PowerShell test-results cleanup to the directory that passed ownership validation.
+  evidence: The ownership marker and recursive deletion are separate pathname operations. A concurrent parent replacement can redirect cleanup. Verify that an unrelated destination survives replacement on the PowerShell platforms supported by the runner.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-deferred-test-execution-reliability.md`
-  summary: Reap child processes when the C1.16 test harness capture watchdog expires.
-  evidence: The outer subprocess watchdog stops PowerShell. Exercise forced expiry with a child still running and verify the caller waits for the complete owned process tree before deleting the workspace.
+  summary: Keep Bash report generation bound to the verified results destination after cleanup.
+  evidence: DW-752 anchors recursive cleanup to opened directories. The harness closes those handles before invoking dotnet and later uses pathname-based reports. Test a parent replacement during the handoff before adopting a safe output transfer.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-deferred-test-execution-reliability.md`
-  summary: Exercise backend diagnostics on a deliberately failed full Aspire startup and restart.
-  evidence: The diagnostic helpers passed simulated endpoint failures and the live topologies passed normal startup. Inject a controlled failure at both full fixture boundaries to prove the original error retains pre-cleanup port evidence.
+  summary: Coordinate simultaneous wrapper invocations that select one results directory.
+  evidence: The ownership marker allows repeated use of a directory and carries no active-run lease. Simultaneous Bash or PowerShell executions can clear each other's report files. Preserve repeatable and mixed-wrapper use while testing same-destination overlap.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-deferred-test-execution-reliability.md`
+  summary: Bound the Dapr setup commands that precede the service readiness check.
+  evidence: DW-753 bounds the readiness phase and retry attempts. Slim installation and Docker client commands can still consume the enclosing job deadline if they stall. Qualify command timeouts against a deliberately stalled fake launcher without changing cleanup ownership.
