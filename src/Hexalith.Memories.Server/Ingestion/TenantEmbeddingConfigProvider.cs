@@ -47,6 +47,7 @@ public sealed class TenantEmbeddingConfigProvider : ITenantEmbeddingConfigProvid
     public async Task<TenantEmbeddingConfig> GetAsync(string tenantId, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        cancellationToken.ThrowIfCancellationRequested();
 
         DateTimeOffset now = _timeProvider.GetUtcNow();
         if (_cache.TryGetValue(tenantId, out (TenantEmbeddingConfig Config, DateTimeOffset ExpiresAt) entry) &&
@@ -65,14 +66,17 @@ public sealed class TenantEmbeddingConfigProvider : ITenantEmbeddingConfigProvid
                 nameof(TenantConfigurationActor));
 
         TenantEmbeddingConfig config = await tenantConfigActor
-            .GetEmbeddingConfigAsync()
+            .GetEmbeddingConfigAsync(cancellationToken)
             .ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
 
         if (GetGeneration(tenantId) == generation)
         {
             DateTimeOffset storedAt = _timeProvider.GetUtcNow();
             BoundedCache.PruneIfNeeded(_cache, _options.Value.GetMaxCacheEntries(), storedAt, static e => e.ExpiresAt);
-            _cache[tenantId] = (config, storedAt + GetCacheTtl());
+            DateTimeOffset expiresAt = storedAt + GetCacheTtl();
+            cancellationToken.ThrowIfCancellationRequested();
+            _cache[tenantId] = (config, expiresAt);
         }
 
         return config;

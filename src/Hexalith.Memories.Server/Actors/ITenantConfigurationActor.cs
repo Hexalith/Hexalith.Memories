@@ -13,8 +13,9 @@ using Hexalith.Memories.Contracts.V1;
 public interface ITenantConfigurationActor : IActor
 {
     /// <summary>Gets the tenant's embedding configuration, returning Google defaults if not configured.</summary>
+    /// <param name="cancellationToken">Cancels the actor read.</param>
     /// <returns>The <see cref="TenantEmbeddingConfig"/> for this tenant.</returns>
-    Task<TenantEmbeddingConfig> GetEmbeddingConfigAsync();
+    Task<TenantEmbeddingConfig> GetEmbeddingConfigAsync(CancellationToken cancellationToken = default);
 
     /// <summary>Gets the tenant's hybrid fusion weights, returning defaults when not configured.</summary>
     /// <returns>The <see cref="FusionWeights"/> for this tenant.</returns>

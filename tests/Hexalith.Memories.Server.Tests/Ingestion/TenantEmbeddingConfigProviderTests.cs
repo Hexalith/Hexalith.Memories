@@ -83,6 +83,90 @@ public sealed class TenantEmbeddingConfigProviderTests
     }
 
     [Fact]
+    public async Task GetAsync_WhenCallerCancels_AbortsTheTypedActorRequest()
+    {
+        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cancellation = new CancellationTokenSource();
+        using var transport = new CancellationTrackingActorHandler(budget.Token);
+        var factory = new ActorProxyFactory(new ActorProxyOptions { HttpEndpoint = "http://localhost:3500" }, transport);
+        TenantEmbeddingConfigProvider provider = new(
+            factory,
+            Options.Create(new TenantEmbeddingConfigCacheOptions()),
+            TimeProvider.System);
+
+        Task<TenantEmbeddingConfig> pending = provider.GetAsync("tenant-a", cancellation.Token);
+        string path = await transport.RequestPath.WaitAsync(budget.Token);
+        path.ShouldBe("/v1.0/actors/TenantConfigurationActor/tenant-a/method/GetEmbeddingConfigAsync");
+        await cancellation.CancelAsync();
+
+        await Should.ThrowAsync<OperationCanceledException>(() => pending.WaitAsync(budget.Token));
+        transport.RequestCancelled.ShouldBeTrue();
+        budget.IsCancellationRequested.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task GetAsync_WhenActorReturnsAfterCancellation_DoesNotCacheTheStaleResult()
+    {
+        TenantEmbeddingConfig stale = EmbeddingProviderDefaults.Google() with { RateLimitPerMinute = 500 };
+        TenantEmbeddingConfig fresh = stale with { RateLimitPerMinute = 750 };
+        var lateRead = new TaskCompletionSource<TenantEmbeddingConfig>(TaskCreationOptions.RunContinuationsAsynchronously);
+        ITenantConfigurationActor actor = Substitute.For<ITenantConfigurationActor>();
+        using var cancellation = new CancellationTokenSource();
+        actor.GetEmbeddingConfigAsync(cancellation.Token).Returns(lateRead.Task);
+        actor.GetEmbeddingConfigAsync().Returns(fresh);
+        TenantEmbeddingConfigProvider provider = new(
+            CreateActorProxyFactory("tenant-a", actor),
+            Options.Create(new TenantEmbeddingConfigCacheOptions()),
+            TimeProvider.System);
+
+        Task<TenantEmbeddingConfig> pending = provider.GetAsync("tenant-a", cancellation.Token);
+        _ = actor.Received(1).GetEmbeddingConfigAsync(cancellation.Token);
+        pending.IsCompleted.ShouldBeFalse();
+        await cancellation.CancelAsync();
+        lateRead.SetResult(stale);
+
+        OperationCanceledException cancelled = await Should.ThrowAsync<OperationCanceledException>(() => pending);
+        cancelled.CancellationToken.ShouldBe(cancellation.Token);
+        (await provider.GetAsync("tenant-a")).ShouldBe(fresh);
+        (await provider.GetAsync("tenant-a")).ShouldBe(fresh);
+        await actor.Received(1).GetEmbeddingConfigAsync();
+    }
+
+    [Fact]
+    public async Task GetAsync_WhenCancelledDuringCacheBookkeeping_DoesNotPublishTheResult()
+    {
+        TenantEmbeddingConfig stale = EmbeddingProviderDefaults.Google() with { RateLimitPerMinute = 500 };
+        TenantEmbeddingConfig fresh = stale with { RateLimitPerMinute = 750 };
+        using var cancellation = new CancellationTokenSource();
+        ITenantConfigurationActor actor = Substitute.For<ITenantConfigurationActor>();
+        actor.GetEmbeddingConfigAsync(cancellation.Token).Returns(stale);
+        actor.GetEmbeddingConfigAsync().Returns(fresh);
+        TimeProvider timeProvider = Substitute.For<TimeProvider>();
+        int timeReads = 0;
+        timeProvider.GetUtcNow().Returns(_ =>
+        {
+            if (++timeReads == 2)
+            {
+                cancellation.Cancel();
+            }
+
+            return new DateTimeOffset(2026, 7, 5, 12, 0, 0, TimeSpan.Zero);
+        });
+        TenantEmbeddingConfigProvider provider = new(
+            CreateActorProxyFactory("tenant-a", actor),
+            Options.Create(new TenantEmbeddingConfigCacheOptions()),
+            timeProvider);
+
+        OperationCanceledException cancelled = await Should.ThrowAsync<OperationCanceledException>(
+            () => provider.GetAsync("tenant-a", cancellation.Token));
+
+        cancelled.CancellationToken.ShouldBe(cancellation.Token);
+        (await provider.GetAsync("tenant-a")).ShouldBe(fresh);
+        (await provider.GetAsync("tenant-a")).ShouldBe(fresh);
+        await actor.Received(1).GetEmbeddingConfigAsync();
+    }
+
+    [Fact]
     public async Task Invalidate_RemovesEmbeddingAndFusionWeightsEntries()
     {
         TenantEmbeddingConfig firstConfig = EmbeddingProviderDefaults.Google() with { RateLimitPerMinute = 500 };

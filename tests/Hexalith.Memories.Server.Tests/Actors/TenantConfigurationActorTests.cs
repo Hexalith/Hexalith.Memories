@@ -51,6 +51,25 @@ public class TenantConfigurationActorTests
     }
 
     [Fact]
+    public async Task GetEmbeddingConfigAsync_Cancellation_ReachesStateRead()
+    {
+        (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        using var cancellation = new CancellationTokenSource();
+        stateManager.TryGetStateAsync<StoredTenantEmbeddingConfig>("embeddingConfig", cancellation.Token)
+            .Returns(_ =>
+            {
+                cancellation.Cancel();
+                return Task.FromCanceled<ConditionalValue<StoredTenantEmbeddingConfig>>(cancellation.Token);
+            });
+
+        OperationCanceledException exception = await Should.ThrowAsync<OperationCanceledException>(
+            () => actor.GetEmbeddingConfigAsync(cancellation.Token));
+
+        exception.CancellationToken.ShouldBe(cancellation.Token);
+        await stateManager.Received(1).TryGetStateAsync<StoredTenantEmbeddingConfig>("embeddingConfig", cancellation.Token);
+    }
+
+    [Fact]
     public async Task SetEmbeddingConfigAsync_NewConfig_ShouldPersistToActorState()
     {
         // Arrange

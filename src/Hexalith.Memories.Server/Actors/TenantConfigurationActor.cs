@@ -33,9 +33,9 @@ internal sealed class TenantConfigurationActor : Actor, ITenantConfigurationActo
     }
 
     /// <inheritdoc/>
-    public async Task<TenantEmbeddingConfig> GetEmbeddingConfigAsync()
+    public async Task<TenantEmbeddingConfig> GetEmbeddingConfigAsync(CancellationToken cancellationToken = default)
     {
-        TenantEmbeddingConfig? storedConfig = await TryGetStoredEmbeddingConfigAsync().ConfigureAwait(false);
+        TenantEmbeddingConfig? storedConfig = await TryGetStoredEmbeddingConfigAsync(cancellationToken).ConfigureAwait(false);
         return storedConfig ?? EmbeddingProviderDefaults.Google();
     }
 
@@ -87,12 +87,12 @@ internal sealed class TenantConfigurationActor : Actor, ITenantConfigurationActo
         await StateManager.SetStateAsync(FusionWeightsStateName, PersistenceModelMapper.ToStored(weights)).ConfigureAwait(false);
     }
 
-    private async Task<TenantEmbeddingConfig?> TryGetStoredEmbeddingConfigAsync()
+    private async Task<TenantEmbeddingConfig?> TryGetStoredEmbeddingConfigAsync(CancellationToken cancellationToken = default)
     {
         try
         {
             ConditionalValue<StoredTenantEmbeddingConfig> result = await StateManager
-                .TryGetStateAsync<StoredTenantEmbeddingConfig>(StateName)
+                .TryGetStateAsync<StoredTenantEmbeddingConfig>(StateName, cancellationToken)
                 .ConfigureAwait(false);
 
             if (!result.HasValue)

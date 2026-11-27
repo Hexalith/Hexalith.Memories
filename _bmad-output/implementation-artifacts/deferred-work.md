@@ -4730,6 +4730,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-gr
 location: _bmad-output/implementation-artifacts/24-6-graph-content-level-tenant-isolation-evidence.md
 reason: - **The story embeds the Epic 23 checklist-preservation shell loop.** - ID: 24.6-CR-W9 - Status: carried-forward - Source story: spec-24-6-graph-content-level-tenant-isolation-evidence - Target artifact: _bmad-output/implementation-artifacts/24-6-graph-content-level-tenant-isolation-evidence.md - Rationale: The inline loop is executable and preserves the exact evidence used at review time; replacing it with only a document citation would reduce local reproducibility, while deduplicating governance commands is outside the proof closure. - Re-open trigger: The embedded command diverges from `spec-keep-epic-23-ingestion-invariants-on-epic-24-and-epic-25-review-checklists.md` or becomes non-rerunnable.
 status: open
+note: 2026-11-27 — Skipped. Ran the embedded checklist command against the tracked Epic 24 and 25 contexts. It still passes and preserves the same six invariants as the canonical spec.
 
 ### DW-661: Some traversal response assertions do not prove JSON wire presence.
 
@@ -4765,6 +4766,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-gr
 location: tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixture.cs
 reason: - **Reconnect fires only when the sidecar endpoint changes.** - ID: 24.6-F5-W3 - Status: carried-forward - Source story: 24-6-graph-content-level-tenant-isolation-evidence - Target artifact: tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixture.cs - Rationale: The guard is `if (currentDaprEndpoint != DaprSidecarHttpEndpoint)`, so a sidecar that restarts on the same port skips the reconnect entirely and the fixture keeps pooled connections to the killed process. The correct trigger condition (endpoint change **or** process restart) needs a restart signal the fixture does not currently expose. - Re-open trigger: The restart regression flakes with a connection error on an unchanged port, or a process-restart signal becomes available.
 status: open
+note: 2026-11-27 — Skipped. The in-place identity-rotation flow already rebinds the first generation on an unchanged port. The existing OpenBao restart test checks the client generation and actor recovery.
 
 ### DW-666: Traversal assertions dereference without null guards.
 
@@ -4856,6 +4858,7 @@ origin: migrated from legacy ledger ("Deferred from: bmad-build review of spec-p
 location: _bmad-output/implementation-artifacts/spec-pushall-sync-2026-08-09.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-pushall-sync-2026-08-09.md` summary: Direct origin/main push for authorized /pushall envelopes still trips GitHub branch-protection (PR required, expected status checks). evidence: Push `3e92ca36..8d47a46a` succeeded while GitHub reported a branch-protection bypass. This envelope's remaining task is to push the superproject, matching prior /pushall specs; the protection warning is a standing process tension, not a defect unique to this snapshot.
 status: open
+note: 2026-11-27 — Skipped. GitHub organization branch-protection policy needs an administrator policy decision. This workspace change has no authorized policy edits.
 
 ### DW-678: Builds catalog still pins HexalithMemoriesVersion at 2.20.7 while NuGet Hexalith.Memories.Contracts is 2.20.11.
 
@@ -4869,6 +4872,7 @@ origin: migrated from legacy ledger ("Deferred from: bmad-build review of spec-s
 location: _bmad-output/implementation-artifacts/spec-submodule-bumps-2026-08-11.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-submodule-bumps-2026-08-11.md` summary: Restore/build still surfaces NU1903 for SSH.NET 2025.1.0. evidence: Pre-existing advisory warning observed during the Release package-mode verification of this dependency refresh; unrelated to the submodule gitlink bumps.
 status: open
+note: 2026-11-27 — Skipped. The current Release asset graphs resolve SSH.NET 2026.0.0, and a clean Release solution build produced zero warnings.
 
 ### DW-680: TenantIsolationVerifier constructor leaves the four pre-existing parameters unguarded.
 
@@ -4881,7 +4885,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-7-tenant-configured-vector-dimension-verification (2026-08-13)"), 2026-09-01
 location: src/Hexalith.Memories.Server/Ingestion/TenantEmbeddingConfigProvider.cs
 reason: - **Make the concrete tenant embedding configuration provider stop its actor read when caller cancellation wins.** - ID: 24.7-PROVIDER-CANCELLATION-IGNORED - Status: carried-forward - Source story: 24-7-tenant-configured-vector-dimension-verification - Target artifact: src/Hexalith.Memories.Server/Ingestion/TenantEmbeddingConfigProvider.cs - Re-open trigger: A provider-focused change to `TenantEmbeddingConfigProvider`, or evidence that a cancelled verification populates the cache with a result the caller never observed. - Rationale: `TenantEmbeddingConfigProvider.GetAsync` accepts a cancellation token but awaits `GetEmbeddingConfigAsync()` without applying it, so `TenantIsolationVerifier` can stop waiting through `WaitAsync` while the actor call continues and may populate the cache after the verification request is cancelled. Pre-existing behavior outside Story 24.7's mapped file scope.
-status: open
+status: done 2026-11-27
+resolution: The provider passes caller cancellation through the typed Dapr transport and actor state read and checks cancellation before caching. Tests cover transport cancellation and a late actor result; all nine live configuration tests passed.
 
 ### DW-682: Bound semantic-isolation mismatch evidence returned for large tenant key sets.
 

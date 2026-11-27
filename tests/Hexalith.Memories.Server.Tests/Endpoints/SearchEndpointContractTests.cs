@@ -547,7 +547,7 @@ public sealed class SearchEndpointContractTests : IDisposable
             .Returns(tenantA);
         _factory.RedisMultiplexer.GetEndPoints(Arg.Any<bool>()).Returns([]);
         ITenantConfigurationActor actor = Substitute.For<ITenantConfigurationActor>();
-        actor.GetEmbeddingConfigAsync().Returns(EmbeddingProviderDefaults.Google());
+        actor.GetEmbeddingConfigAsync(Arg.Any<CancellationToken>()).Returns(EmbeddingProviderDefaults.Google());
         _factory.ActorProxyFactory
             .CreateActorProxy<ITenantConfigurationActor>(Arg.Any<ActorId>(), Arg.Any<string>())
             .Returns(actor);
@@ -733,7 +733,7 @@ public sealed class SearchEndpointContractTests : IDisposable
     private void StubSemanticConfigFailure(Exception exception)
     {
         ITenantConfigurationActor actor = Substitute.For<ITenantConfigurationActor>();
-        actor.GetEmbeddingConfigAsync().Returns(Task.FromException<TenantEmbeddingConfig>(exception));
+        actor.GetEmbeddingConfigAsync(Arg.Any<CancellationToken>()).Returns(Task.FromException<TenantEmbeddingConfig>(exception));
         _factory.ActorProxyFactory
             .CreateActorProxy<ITenantConfigurationActor>(Arg.Any<ActorId>(), Arg.Any<string>())
             .Returns(actor);
