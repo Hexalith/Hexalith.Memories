@@ -60,7 +60,7 @@ def capture_gate(command, *, env, timeout):
                                                start_new_session=True) as process:
         try:
             stdout, stderr = process.communicate(timeout=timeout)
-        except subprocess.TimeoutExpired:
+        except BaseException as error:
             # The group can still contain kubectl and its children after PowerShell exits.
             with suppress(ProcessLookupError):
                 os.killpg(process.pid, signal.SIGKILL)
@@ -76,7 +76,9 @@ def capture_gate(command, *, env, timeout):
                     while True:
                         os.killpg(process.pid, 0)
                         time.sleep(0.01)
-            return None
+            if isinstance(error, subprocess.TimeoutExpired):
+                return None
+            raise
         return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
 
 
@@ -726,6 +728,11 @@ class ComponentBackendCaptureTests(unittest.TestCase):
         self.assertEqual('observed', packets[0]['producerStatus'])
 
     def test_outer_harness_reaps_descendants_before_workspace_cleanup(self):
+        for interrupted in (False, True):
+            with self.subTest(interrupted=interrupted):
+                self.assert_capture_reaps_descendants(interrupted=interrupted)
+
+    def assert_capture_reaps_descendants(self, *, interrupted):
         with tempfile.TemporaryDirectory() as directory:
             marker = Path(directory) / 'watchdog.json'
             runner = Path(directory) / RUNNER.name
@@ -734,19 +741,25 @@ class ComponentBackendCaptureTests(unittest.TestCase):
                               '& kubectl config current-context\n')
             scenario = dict(self.base, watchdogMarker=str(marker))
             communicate = subprocess.Popen.communicate
+            interrupt = KeyboardInterrupt()
+            capture_process = None
             pids = []
             workspace = None
             all_reaped = False
 
-            def expire_after_child_starts(process, *args, timeout=None, **kwargs):
-                nonlocal workspace
+            def fail_after_child_starts(process, *args, timeout=None, **kwargs):
+                nonlocal capture_process, workspace
+                capture_process = process
+                pids.append(process.pid)
                 deadline = time.monotonic() + 10
                 while not marker.exists() and time.monotonic() < deadline:
                     time.sleep(0.01)
                 self.assertTrue(marker.exists(), 'The fake kubectl child did not start')
                 ready = json.loads(marker.read_text())
-                pids.extend([process.pid, *ready['pids']])
+                pids.extend(ready['pids'])
                 workspace = Path(ready['workspace'])
+                if interrupted:
+                    raise interrupt
                 try:
                     return communicate(process, *args, timeout=0.2, **kwargs)
                 except subprocess.TimeoutExpired as error:
@@ -756,15 +769,19 @@ class ComponentBackendCaptureTests(unittest.TestCase):
                     raise
 
             try:
-                with mock.patch.object(subprocess.Popen, 'communicate', expire_after_child_starts):
-                    with self.assertRaises(self.failureException) as failure:
+                expected = KeyboardInterrupt if interrupted else self.failureException
+                with mock.patch.object(subprocess.Popen, 'communicate', fail_after_child_starts):
+                    with self.assertRaises(expected) as failure:
                         self.run_gate(scenario, runner=runner)
                 for pid in pids:
                     with self.assertRaises(ProcessLookupError):
                         os.kill(pid, 0)
                 all_reaped = True
-                self.assertEqual('C1.16 PowerShell fixture capture 1 exceeded its 290s budget '
-                                 'with 1 total kubectl launches (30s per command).', str(failure.exception))
+                if interrupted:
+                    self.assertIs(interrupt, failure.exception)
+                else:
+                    self.assertEqual('C1.16 PowerShell fixture capture 1 exceeded its 290s budget '
+                                     'with 1 total kubectl launches (30s per command).', str(failure.exception))
                 self.assertIsNone(failure.exception.__context__)
                 self.assertTrue(workspace.is_dir())
                 self.assertTrue(self.doCleanups())
@@ -774,6 +791,9 @@ class ComponentBackendCaptureTests(unittest.TestCase):
                     for pid in pids[1:]:
                         with suppress(ProcessLookupError):
                             os.kill(pid, signal.SIGKILL)
+                    if capture_process is not None and capture_process.poll() is None:
+                        capture_process.kill()
+                        capture_process.wait()
 
 
     def successor_scenario(self):
