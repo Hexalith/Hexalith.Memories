@@ -2269,6 +2269,26 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         }
     }
 
+    /// <summary>Allocates direct, distinct host ports for the fixture-owned Redis and FalkorDB containers.</summary>
+    /// <param name="resources">The test application model before endpoint allocation.</param>
+    internal static void ConfigureOwnedBackendPorts(IEnumerable<IResource> resources)
+    {
+        Configure("memories-vectors", "redis");
+        Configure("memories-graphs", "falkordb");
+
+        void Configure(string resourceName, string endpointName)
+        {
+            ContainerResource resource = resources.OfType<ContainerResource>()
+                .Single(resource => resource.Name == resourceName);
+            EndpointAnnotation endpoint = resource.Annotations.OfType<EndpointAnnotation>()
+                .Single(endpoint => endpoint.Name == endpointName);
+            // A direct Docker binding avoids a DCP proxy accepting TCP before its replacement route works.
+            // Port zero requests a distinct allocated host port while retaining the container target.
+            endpoint.IsExplicitlyProxied = false;
+            endpoint.Port = 0;
+        }
+    }
+
     private async Task StartTopologyAsync(CancellationToken cancellationToken)
     {
         int logStartIndex = _logProvider.Count;
@@ -2297,6 +2317,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             context.EnvironmentVariables["Ingestion__UrlFetcher__AllowPrivateHosts"] = _allowPrivateHosts ? "true" : "false";
         }));
         ConfigureOwnedDaprPorts(_builder.Resources);
+        ConfigureOwnedBackendPorts(_builder.Resources);
         ParameterResource accessSeedParameter = _builder.Resources
             .OfType<ParameterResource>()
             .Single(resource => resource.Name == "openbao-access-telemetry-seeds");

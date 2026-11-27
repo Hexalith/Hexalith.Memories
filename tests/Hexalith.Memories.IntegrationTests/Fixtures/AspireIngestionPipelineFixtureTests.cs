@@ -156,6 +156,31 @@ public sealed class AspireIngestionPipelineFixtureTests
     }
 
     [Fact]
+    public void OwnedBackendListenersUseDirectDynamicPortsWithoutChangingContainerTargets()
+    {
+        var redis = new ContainerResource("memories-vectors");
+        var falkor = new ContainerResource("memories-graphs");
+        var openBao = new ContainerResource("openbao");
+        var redisEndpoint = new EndpointAnnotation(ProtocolType.Tcp, name: "redis", targetPort: 6379);
+        var falkorEndpoint = new EndpointAnnotation(ProtocolType.Tcp, name: "falkordb", targetPort: 6379);
+        var openBaoEndpoint = new EndpointAnnotation(ProtocolType.Tcp, name: "http", targetPort: 8200);
+        redis.Annotations.Add(redisEndpoint);
+        falkor.Annotations.Add(falkorEndpoint);
+        openBao.Annotations.Add(openBaoEndpoint);
+
+        AspireIngestionPipelineFixture.ConfigureOwnedBackendPorts([redis, falkor, openBao]);
+
+        redisEndpoint.IsExplicitlyProxied.ShouldBe(false);
+        redisEndpoint.Port.ShouldBe(0);
+        redisEndpoint.TargetPort.ShouldBe(6379);
+        falkorEndpoint.IsExplicitlyProxied.ShouldBe(false);
+        falkorEndpoint.Port.ShouldBe(0);
+        falkorEndpoint.TargetPort.ShouldBe(6379);
+        openBaoEndpoint.IsExplicitlyProxied.ShouldBeNull();
+        openBaoEndpoint.Port.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task OwnedGatewaySelectsTheSameSingleSymmetricModeAsTheFixtureTokenFactory()
     {
         var gateway = new Aspire.Hosting.ApplicationModel.ProjectResource("eventstore");
