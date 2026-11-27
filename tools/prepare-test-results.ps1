@@ -186,6 +186,48 @@ public sealed class WindowsTestResultsCleanup : IDisposable
         }
     }
 
+    public void PublishReports(string staging)
+    {
+        try
+        {
+            CopyReports(new DirectoryInfo(staging), handles[handles.Count - 1]);
+        }
+        catch (IOException error)
+        {
+            throw new IOException("-ResultsDirectory could not publish test reports: " + error.Message, error);
+        }
+    }
+
+    private static void CopyReports(DirectoryInfo source, SafeFileHandle destination)
+    {
+        foreach (var entry in source.EnumerateFileSystemInfos())
+        {
+            if (entry.Attributes.HasFlag(FileAttributes.ReparsePoint))
+            {
+                throw new IOException("Staged report '" + entry.FullName + "' is a reparse point.");
+            }
+
+            // Create each child relative to the held parent. A name collision
+            // fails without opening, replacing, or merging into a prior entry.
+            if (entry is DirectoryInfo directory)
+            {
+                using (var child = OpenRelative(destination, entry.Name, ListDirectory, Create, DirectoryFile))
+                {
+                    CopyReports(directory, child);
+                }
+            }
+            else
+            {
+                using (var input = ((FileInfo)entry).OpenRead())
+                using (var child = OpenRelative(destination, entry.Name, WriteData, Create, NonDirectoryFile))
+                using (var output = new FileStream(child, FileAccess.Write))
+                {
+                    input.CopyTo(output);
+                }
+            }
+        }
+    }
+
     private static FileStream OpenMarker(SafeFileHandle directory, string results, bool create)
     {
         // An exclusive open blocks other Windows processes and WSL processes
@@ -489,8 +531,7 @@ try {
     try {
         if ($RunProjects) {
             Invoke-StagedTestProjects $staging {
-                Get-ChildItem -Force -LiteralPath $staging |
-                    Copy-Item -Destination $ResultsRoot -Recurse -Force
+                $owner.PublishReports($staging)
             }
         }
     }
