@@ -161,6 +161,54 @@ class IntegrationTestRunnerTests(unittest.TestCase):
                 self.assertIn("--results-directory must resolve beneath the repository root", result.stderr)
                 self.assertFalse(self.calls.exists())
 
+    def test_bash_preserves_unrelated_results_when_parent_is_replaced_during_cleanup(self):
+        parent = self.root / "reports"
+        results = parent / "nested"
+        moved_parent = self.root / "moved-reports"
+        self.environment["TEST_TRX"] = TRX
+        command = [*self.bash, "--filter", "Category=IntegrationSlow", "--results-directory", "reports/nested"]
+        first = self.run_wrapper(command)
+        self.assertEqual(0, first.returncode, first.stderr)
+        self.calls.unlink()
+        (results / "stale").mkdir()
+        (results / "stale" / "report.txt").write_text("old report", encoding="utf-8")
+
+        outside = tempfile.TemporaryDirectory()
+        self.addCleanup(outside.cleanup)
+        unrelated = Path(outside.name) / "nested" / "stale" / "private.txt"
+        unrelated.parent.mkdir(parents=True)
+        unrelated.write_text("user managed", encoding="utf-8")
+
+        # Replace the parent after the marker check and just before recursive deletion starts.
+        (self.bin / "sitecustomize.py").write_text(
+            "import os\n"
+            "import sys\n"
+            "\n"
+            "def replace_parent(event, args):\n"
+            "    if event == 'shutil.rmtree' and os.path.basename(args[0]) == 'stale':\n"
+            "        parent = os.environ['TEST_RESULTS_PARENT']\n"
+            "        os.rename(parent, os.environ['TEST_MOVED_PARENT'])\n"
+            "        os.symlink(os.environ['TEST_REPLACEMENT_PARENT'], parent)\n"
+            "\n"
+            "sys.addaudithook(replace_parent)\n",
+            encoding="utf-8",
+        )
+        self.environment.update(
+            PYTHONPATH=str(self.bin),
+            TEST_RESULTS_PARENT=str(parent),
+            TEST_MOVED_PARENT=str(moved_parent),
+            TEST_REPLACEMENT_PARENT=outside.name,
+        )
+
+        result = self.run_wrapper(command)
+        self.assertTrue(parent.is_symlink(), result.stderr)
+        self.assertTrue((moved_parent / "nested" / RESULTS_MARKER).is_file())
+        self.assertTrue(unrelated.is_file(), "cleanup removed the unrelated fixture file")
+        self.assertEqual("user managed", unrelated.read_text(encoding="utf-8"))
+        self.assertEqual(1, result.returncode, result.stderr)
+        self.assertIn("path changed during preparation", result.stderr)
+        self.assertFalse(self.calls.exists())
+
     def test_bash_preserves_native_failure_when_reports_are_missing(self):
         self.environment["TEST_DOTNET_EXIT"] = "37"
         command = [*self.bash, "--filter", "Category=IntegrationSlow", "--results-directory", "reports"]

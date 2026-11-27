@@ -149,71 +149,111 @@ if [[ -n "$RESULTS_DIRECTORY" ]]; then
     exit 1
   fi
   RESULTS_ROOT="$REPO_ROOT/${RESULTS_DIRECTORY#./}"
-  # rm refuses a final dot segment, even when it names a valid results directory.
+  # Keep the report path usable by dotnet when the input ends with a dot segment.
   while [[ "$RESULTS_ROOT" == */ || "$RESULTS_ROOT" == */. ]]; do
     RESULTS_ROOT="${RESULTS_ROOT%/}"
     RESULTS_ROOT="${RESULTS_ROOT%/.}"
   done
   python3 - "$REPO_ROOT" "$RESULTS_ROOT" <<'PY'
+from contextlib import ExitStack
+import errno
+import os
 from pathlib import Path
 import shutil
 import stat
 import sys
 
-def is_link(metadata):
-    return stat.S_ISLNK(metadata.st_mode) or (
-        getattr(metadata, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT
-    )
+
+def open_directory(parent, component, flags):
+    try:
+        return os.open(component, flags, dir_fd=parent)
+    except FileNotFoundError:
+        try:
+            os.mkdir(component, dir_fd=parent)
+        except FileExistsError:
+            pass
+        return os.open(component, flags, dir_fd=parent)
+
+
+def require_unchanged(bindings, results):
+    for parent, component, directory in bindings:
+        try:
+            current = os.lstat(component, dir_fd=parent)
+        except FileNotFoundError:
+            current = None
+        if current is None or not os.path.samestat(current, os.fstat(directory)):
+            raise ValueError(f"path changed during preparation. Refusing to use '{results}'.")
+
+
+def has_ownership_marker(directory, marker, signature):
+    try:
+        metadata = os.lstat(marker, dir_fd=directory)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size != len(signature):
+            return False
+        descriptor = os.open(marker, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+    except OSError as error:
+        if error.errno in (errno.ENOENT, errno.ELOOP):
+            return False
+        raise
+    with os.fdopen(descriptor, "rb") as receipt:
+        return os.path.samestat(metadata, os.fstat(descriptor)) and receipt.read(len(signature) + 1) == signature
 
 
 def prepare_results(root, results):
-    if root.resolve() not in results.resolve().parents:
-        raise ValueError("must resolve beneath the repository root.")
-
     components = results.relative_to(root).parts
+    if not components:
+        raise ValueError("must resolve beneath the repository root.")
     if components[0].casefold() == ".git":
         raise ValueError("must stay outside the repository's .git metadata path.")
+    if not shutil.rmtree.avoids_symlink_attacks:
+        raise ValueError("requires Python support for symlink-safe directory cleanup.")
 
-    current = root
-    for component in components:
-        current /= component
-        try:
-            metadata = current.lstat()
-        except FileNotFoundError:
-            break
-        if is_link(metadata):
-            raise ValueError(f"must not traverse a symbolic link or reparse point at '{current}'.")
+    with ExitStack() as descriptors:
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        # Bash already changed into the checkout. Keep each opened directory pinned.
+        directory = os.open(".", flags)
+        descriptors.callback(os.close, directory)
+        current = root
+        bindings = []
+        for component in components:
+            parent = directory
+            current /= component
+            try:
+                directory = open_directory(parent, component, flags)
+            except OSError as error:
+                if error.errno in (errno.ELOOP, errno.ENOTDIR):
+                    raise ValueError(
+                        f"must resolve beneath the repository root without traversing a symbolic link "
+                        f"or non-directory at '{current}'."
+                    ) from error
+                raise
+            descriptors.callback(os.close, directory)
+            bindings.append((parent, component, directory))
 
-    results.mkdir(parents=True, exist_ok=True)
-    # Keep the ownership marker during cleanup so an interrupted rerun remains recoverable.
-    marker = results / ".hexalith-memories-test-results"
-    signature = b"Hexalith.Memories test results v1\n"
-    entries = list(results.iterdir())
-    if not entries:
-        with marker.open("xb") as receipt:
-            receipt.write(signature)
-        return
+        marker = ".hexalith-memories-test-results"
+        signature = b"Hexalith.Memories test results v1\n"
+        entries = os.listdir(directory)
+        if entries and not has_ownership_marker(directory, marker, signature):
+            raise ValueError(f"must name an empty or runner-owned directory. Refusing to clean '{results}'.")
 
-    metadata = marker.lstat() if marker in entries else None
-    if (
-        metadata is None
-        or not stat.S_ISREG(metadata.st_mode)
-        or is_link(metadata)
-        or metadata.st_size != len(signature)
-        or marker.read_bytes() != signature
-    ):
-        raise ValueError(f"must name an empty or runner-owned directory. Refusing to clean '{results}'.")
-
-    for entry in entries:
-        if entry == marker:
-            continue
-        metadata = entry.lstat()
-        if not stat.S_ISDIR(metadata.st_mode):
-            entry.unlink()
-        elif is_link(metadata):
-            entry.rmdir()
+        require_unchanged(bindings, results)
+        if not entries:
+            descriptor = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666, dir_fd=directory)
+            with os.fdopen(descriptor, "wb") as receipt:
+                receipt.write(signature)
         else:
-            shutil.rmtree(entry)
+            # Relative names stay anchored by this process's cwd, including on Python <3.11.
+            os.fchdir(directory)
+            for entry in entries:
+                # Keep the marker so an interrupted rerun remains recoverable.
+                if entry == marker:
+                    continue
+                if stat.S_ISDIR(os.lstat(entry).st_mode):
+                    shutil.rmtree(entry)
+                else:
+                    os.unlink(entry)
+        # Refuse a replaced path before returning it to the shell for report generation.
+        require_unchanged(bindings, results)
 
 
 try:
