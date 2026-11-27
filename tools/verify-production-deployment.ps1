@@ -253,10 +253,10 @@ function Protect-EvidenceText {
         '-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?-----END [^-]*PRIVATE KEY-----',
         '***',
         [Text.RegularExpressions.RegexOptions]::IgnoreCase)
-    $sanitized = [regex]::Replace(
-        $sanitized,
-        '\b(?:hvs|hvb|hvr|s|b|r)\.[A-Za-z0-9_-]{16,}\b',
-        '***')
+    # Legacy service and recovery IDs are Base62. Batch and modern signed IDs
+    # also use Base64URL. Preserve this fallback for unknown tokens in diagnostics.
+    $tokenPattern = '(?<![A-Za-z0-9_])(?:(?:s|r)\.[A-Za-z0-9]{24,}|(?:b|hvs|hvb|hvr)\.[A-Za-z0-9_-]{24,})(?:\.[A-Za-z0-9]{5})?(?![A-Za-z0-9_-])'
+    $sanitized = [regex]::Replace($sanitized, $tokenPattern, '***')
 
     return $sanitized
 }

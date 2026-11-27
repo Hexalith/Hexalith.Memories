@@ -4639,7 +4639,8 @@ resolution: The verifier deletes its own bootstrap Secrets and OpenBao namespace
 origin: migrated from legacy ledger ("Deferred from: code review of 27-3-production-adapter-and-deployment-profile (2026-07-31)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-gh-29804293613-fix-production-deployment-verification.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-gh-29804293613-fix-production-deployment-verification.md` summary: Protect-EvidenceText token regex can redact ordinary s./b./r. substrings in diagnostics. evidence: Blind-hunter noted `\b(?:hvs|hvb|hvr|s|b|r)\.[A-Za-z0-9_-]{16,}\b` is broader than OpenBao/Vault token shapes and can over-redact unrelated diagnostics.
-status: open
+status: done 2026-11-27
+resolution: Fallback redaction uses the documented token length and token-family alphabets. Executable tests prove diagnostics survive and registered, legacy and Base64URL tokens remain redacted.
 
 ### DW-649: Disposable OpenBao container still runs with readOnlyRootFilesystem false despite emptyDir data volume.
 

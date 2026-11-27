@@ -324,6 +324,27 @@ $results | ConvertTo-Json -Depth 6 -Compress
         self.assertTrue(parsed["authErrorDoesNotOverwrite"]["Fired"])
         self.assertIsNone(parsed["authErrorDoesNotOverwrite"]["StatusCode"])
 
+    def test_evidence_redaction_preserves_diagnostic_fragments(self) -> None:
+        verifier = VERIFIER.read_text(encoding="utf-8-sig")
+        diagnostics = "s.redis_connection_refused b.queue_retries_failed r.request_timeout_budget"
+        tokens = (
+            "s." + "Ab012345" * 3,
+            "r." + "Cd678901" * 3,
+            "b." + "Ab012345" * 3 + "_-",
+            "hvs." + "Ab012345" * 3 + "_-",
+            "hvb." + "Ab012345" * 3 + "_-.A1b2C",
+            "hvr." + "Ab012345" * 3,
+            "registered-short-value",
+        )
+        message = diagnostics + " | " + " ".join(f"token={value}" for value in tokens)
+        result = run_pwsh(
+            "function Get-OpenBaoRedactionSecrets { 'registered-short-value' }\n"
+            + extract_ps_function(verifier, "Protect-EvidenceText")
+            + f"\nProtect-EvidenceText '{message}'",
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(diagnostics + " | " + " ".join(["token=***"] * len(tokens)), result.stdout.strip())
+
     def test_redaction_at_write_does_not_corrupt_the_health_decision(self) -> None:
         """Exercise the actual scenario the source-text pins above only describe.
 
