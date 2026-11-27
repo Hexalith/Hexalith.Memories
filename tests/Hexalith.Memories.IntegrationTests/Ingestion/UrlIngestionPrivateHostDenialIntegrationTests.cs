@@ -45,9 +45,10 @@ public sealed class UrlIngestionPrivateHostDenialIntegrationTests
             ICaseIngestionCounterActor counter = fixture.CreateCaseIngestionCounterActorProxy(tenantId, caseId);
             string activityKey = $"{tenantId}:case:{caseId}:activity";
             CaseIngestionCounts countsBefore = await counter.GetCountsAsync().WaitAsync(cancellationToken);
-            const string workflowStatePattern = "*dapr.internal.*.workflow*";
-            string[] workflowKeysBefore = await driver.ListRedisKeysAsync(workflowStatePattern);
-            workflowKeysBefore.ShouldNotBeEmpty("Tenant and case setup established workflow state in this topology.");
+            const string workflowStatePattern = "*||dapr.internal.*.workflow||*||*";
+            HashSet<string> workflowsBefore = (await driver.ListRedisKeysAsync(workflowStatePattern))
+                .Select(GetWorkflowInstanceId).ToHashSet(StringComparer.Ordinal);
+            workflowsBefore.ShouldNotBeEmpty("Tenant and case setup established workflow state in this topology.");
             StreamEntry[] activityBefore = await redis.StreamRangeAsync(activityKey).WaitAsync(cancellationToken);
 
             using HttpResponseMessage response = await fixture.MemoriesClient.PostAsJsonAsync(
@@ -74,7 +75,10 @@ public sealed class UrlIngestionPrivateHostDenialIntegrationTests
                 .WaitAsync(cancellationToken);
             registeredMembers.ShouldNotContain(member => member.Value.ToString().StartsWith(
                 tenantId + RedisIngestionWorkflowInFlightRegistry.MemberSeparator, StringComparison.Ordinal));
-            (await driver.ListRedisKeysAsync(workflowStatePattern)).ShouldBe(workflowKeysBefore);
+            // Setup workflows may finish writing or pruning their own keys after the snapshot.
+            (await driver.ListRedisKeysAsync(workflowStatePattern)).Select(GetWorkflowInstanceId)
+                .Except(workflowsBefore, StringComparer.Ordinal)
+                .ShouldBeEmpty("A rejected URL must not create a new workflow instance.");
             (await redis.KeyExistsAsync(SourceInventoryStore.BuildKey(tenantId, sourceUri)).WaitAsync(cancellationToken)).ShouldBeFalse();
             (await driver.ListRedisKeysAsync($"{tenantId}:mu:*")).ShouldBeEmpty();
             (await driver.ListRedisKeysAsync($"{tenantId}:failed-unit:*")).ShouldBeEmpty();
@@ -85,4 +89,6 @@ public sealed class UrlIngestionPrivateHostDenialIntegrationTests
 
         source.RequestCount.ShouldBe(0);
     }
+
+    private static string GetWorkflowInstanceId(string key) => key.Split("||", 4, StringSplitOptions.None)[2];
 }

@@ -6214,3 +6214,9 @@ status: open
 - source_spec: `_bmad-output/implementation-artifacts/spec-six-deferred-bootstrap-graph-and-mapping.md`
   summary: Verify and document first-index creation during mixed-version Memories rollouts.
   evidence: Dapr Redis 1.19.1 rejects missing-ETag updates to rows marked FirstWrite. A running pre-fix writer can still create an index without the marker between an upgraded writer’s read and creation attempt. Existing rows with an ETag still use compare-and-save. Settle safe initialization while both versions can receive writes.
+
+## Deferred from full test verification of the six-item batch (2026-11-27)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-six-deferred-bootstrap-graph-and-mapping.md`
+  summary: Diagnose intermittent Redis startup timeouts in the isolated Ollama integration fixture.
+  evidence: The full fast suite recorded a two-minute timeout waiting for the AppHost Redis host port before the Ollama proof started. A single fresh focused rerun completed the same proof successfully. Investigate port readiness and collect the Redis allocation and resource states when it recurs.
