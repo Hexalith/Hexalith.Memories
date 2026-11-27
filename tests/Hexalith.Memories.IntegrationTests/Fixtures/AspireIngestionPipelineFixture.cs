@@ -74,7 +74,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     private string _eventStoreMappedTenantId = string.Empty;
     private ActorProxyFactory? _actorProxyFactory;
     private ActorProxyOptions? _actorProxyOptions;
-    private HttpClientHandler? _actorHttpMessageHandler;
+    private HttpMessageHandler? _actorHttpMessageHandler;
     private HttpClient? _daprStateClient;
     private EnvVarScope? _aspNetCoreEnvironmentScope;
     private EnvVarScope? _dotNetEnvironmentScope;
@@ -1205,12 +1205,28 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     }
 
     private void ReconnectPrimaryDaprClients(Uri endpoint)
+        => ReconnectPrimaryDaprClients(
+            endpoint,
+            CreateDaprSidecarClient,
+            static () => new HttpClientHandler(),
+            static (options, handler) => new ActorProxyFactory(options, handler));
+
+    /// <summary>Builds a complete client generation before replacing the active generation.</summary>
+    /// <param name="endpoint">The resolved Dapr sidecar HTTP endpoint.</param>
+    /// <param name="createStateClient">Creates the new state client.</param>
+    /// <param name="createActorHandler">Creates the new actor transport.</param>
+    /// <param name="createActorProxyFactory">Creates the new factory using that transport.</param>
+    internal void ReconnectPrimaryDaprClients(
+        Uri endpoint,
+        Func<Uri, HttpClient> createStateClient,
+        Func<HttpMessageHandler> createActorHandler,
+        Func<ActorProxyOptions, HttpMessageHandler, ActorProxyFactory> createActorProxyFactory)
     {
         ArgumentNullException.ThrowIfNull(endpoint);
 
-        HttpClient nextStateClient = CreateDaprSidecarClient(endpoint);
+        HttpClient nextStateClient = createStateClient(endpoint);
         ActorProxyOptions nextActorOptions;
-        HttpClientHandler? nextActorHttpMessageHandler = null;
+        HttpMessageHandler? nextActorHttpMessageHandler = null;
         ActorProxyFactory nextActorProxyFactory;
         try
         {
@@ -1220,10 +1236,8 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                 RequestTimeout = TimeSpan.FromSeconds(30),
                 JsonSerializerOptions = MemoriesJsonContext.Options,
             };
-            nextActorHttpMessageHandler = new HttpClientHandler();
-            nextActorProxyFactory = new ActorProxyFactory(
-                nextActorOptions,
-                (HttpMessageHandler)nextActorHttpMessageHandler);
+            nextActorHttpMessageHandler = createActorHandler();
+            nextActorProxyFactory = createActorProxyFactory(nextActorOptions, nextActorHttpMessageHandler);
         }
         catch
         {

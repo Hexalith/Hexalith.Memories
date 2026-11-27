@@ -4905,7 +4905,8 @@ archived: 2026-11-23
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence — eighth pass (2026-08-14)"), 2026-09-01
 location: tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixture.cs
 reason: - **The allocation-failure cleanup path in `ReconnectPrimaryDaprClients` has no test in any lane.** - ID: 24.6-F8-W2 - Status: carried-forward - Source story: 24-6-graph-content-level-tenant-isolation-evidence - Target artifact: tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixture.cs - Rationale: The seventh pass added a `try`/`catch` that disposes the partially constructed `HttpClientHandler` and state client on construction failure and rethrows. The ledger records that phase as `+0 test cases / +0 test methods`, and the path is not reachable from any existing test because it requires a client construction failure mid-rotation. Forcing it would mean injecting a fault into fixture startup, which the current fixture design does not expose. - Re-open trigger: The fixture gains a fault-injection seam, or a rotation failure is observed in CI leaving a leaked handler.
-status: open
+status: done 2026-11-27
+resolution: Two fault-injection tests exercise failure both before and after actor transport allocation. Each disposes the allocated candidates and confirms the existing generation and both clients still work.
 
 ### DW-685: The planted-marker negative control leaves its mutation in a provisioned tenant graph and is now a required CI surface.
 

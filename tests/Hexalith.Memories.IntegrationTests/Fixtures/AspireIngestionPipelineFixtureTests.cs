@@ -11,6 +11,8 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using Aspire.Hosting;
 
+using Dapr.Actors.Client;
+
 using Hexalith.Memories.AppHost;
 using Hexalith.Memories.IntegrationTests.Mcp;
 using Hexalith.Memories.IntegrationTests.Telemetry;
@@ -20,10 +22,52 @@ using Microsoft.IdentityModel.JsonWebTokens;
 
 using Shouldly;
 
+using FusionWeights = Hexalith.Memories.Contracts.V1.FusionWeights;
+
 /// <summary>Unit-level guards for <see cref="AspireIngestionPipelineFixture"/> helper methods.</summary>
 [Trait("Category", "Integration")]
 public sealed class AspireIngestionPipelineFixtureTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ReconnectPrimaryDaprClients_WhenAllocationFails_DisposesCandidatesAndPreservesActiveClients(
+        bool failCreatingProxyFactory)
+    {
+        await using var fixture = new AspireIngestionPipelineFixture();
+        Uri activeEndpoint = new("http://127.0.0.1:3501");
+        Uri candidateEndpoint = new("http://127.0.0.1:3502");
+        var activeState = new DaprClientRotationTrackingHandler();
+        var activeActor = new DaprClientRotationTrackingHandler();
+        var candidateState = new DaprClientRotationTrackingHandler();
+        var candidateActor = new DaprClientRotationTrackingHandler();
+        fixture.ReconnectPrimaryDaprClients(
+            activeEndpoint,
+            endpoint => new HttpClient(activeState) { BaseAddress = endpoint },
+            () => activeActor,
+            static (options, handler) => new ActorProxyFactory(options, handler));
+        int activeGeneration = fixture.PrimaryDaprClientGeneration;
+        InvalidOperationException injectedFailure = new("Injected client allocation failure.");
+
+        var observedFailure = Should.Throw<InvalidOperationException>(() => fixture.ReconnectPrimaryDaprClients(
+            candidateEndpoint,
+            endpoint => new HttpClient(candidateState) { BaseAddress = endpoint },
+            () => failCreatingProxyFactory ? candidateActor : throw injectedFailure,
+            (_, _) => throw injectedFailure));
+
+        observedFailure.ShouldBeSameAs(injectedFailure);
+        candidateState.DisposeCount.ShouldBe(1);
+        candidateActor.DisposeCount.ShouldBe(failCreatingProxyFactory ? 1 : 0);
+        fixture.PrimaryDaprClientGeneration.ShouldBe(activeGeneration);
+        fixture.DaprSidecarHttpEndpoint.ShouldBe(activeEndpoint);
+        activeState.DisposeCount.ShouldBe(0);
+        activeActor.DisposeCount.ShouldBe(0);
+        _ = await fixture.GetDaprWorkflowStateDiagnosticAsync("workflow", TestContext.Current.CancellationToken);
+        await fixture.CreateTenantConfigurationActorProxy("tenant-rotation").SetFusionWeightsAsync(new FusionWeights());
+        activeState.RequestCount.ShouldBe(1);
+        activeActor.RequestCount.ShouldBe(1);
+    }
+
     [Fact]
     public void LogCapture_AfterRestart_ReadsOnlyTheCurrentLifetimeAtEitherCursor()
     {
