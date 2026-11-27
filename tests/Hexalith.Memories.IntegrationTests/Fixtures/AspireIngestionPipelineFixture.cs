@@ -50,6 +50,9 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     internal const string FailedInitializationCleanupFailuresDataKey =
         "AspireIngestionPipelineFixture.FailedInitializationCleanupFailures";
 
+    /// <summary>Exception data key containing the owned Redis port snapshot from failed Ollama startup.</summary>
+    internal const string OllamaStartupRedisPortDataKey = "Owned Ollama startup Redis port";
+
     private static readonly TimeSpan TopologyStartupTimeout = TimeSpan.FromMinutes(12);
     private static readonly TimeSpan ResourceHealthyTimeout = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan EndpointReadyTimeout = TimeSpan.FromMinutes(5);
@@ -463,7 +466,8 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         }
         catch (Exception startupException)
         {
-            await ReportRestartBackendPortsAsync(startupException).ConfigureAwait(false);
+            await ReportBackendPortsAsync(_app, startupException, "Owned restart backend ports", includeFalkorDb: true)
+                .ConfigureAwait(false);
             throw;
         }
         finally
@@ -475,22 +479,26 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         return stopwatch.Elapsed;
     }
 
-    private async Task ReportRestartBackendPortsAsync(Exception startupException)
+    private static async Task ReportBackendPortsAsync(
+        DistributedApplication? app,
+        Exception startupException,
+        string diagnosticKey,
+        bool includeFalkorDb)
     {
-        const string diagnosticKey = "Owned restart backend ports";
         try
         {
-            if (_app is not { } app)
+            if (app is null)
             {
                 startupException.Data[diagnosticKey] = "AppHost construction did not complete.";
                 return;
             }
 
             DistributedApplicationModel model = app.Services.GetRequiredService<DistributedApplicationModel>();
-            string[] ports = await Task.WhenAll(
-                DescribeAsync("memories-vectors", "redis"),
-                DescribeAsync("memories-graphs", "falkordb")).ConfigureAwait(false);
-            string diagnostic = string.Join(Environment.NewLine, ports);
+            Task<string> redisPort = DescribeAsync("memories-vectors", "redis");
+            Task<string>[] ports = includeFalkorDb
+                ? [redisPort, DescribeAsync("memories-graphs", "falkordb")]
+                : [redisPort];
+            string diagnostic = string.Join(Environment.NewLine, await Task.WhenAll(ports).ConfigureAwait(false));
             startupException.Data[diagnosticKey] = diagnostic;
             TestContext.Current.TestOutputHelper?.WriteLine($"{diagnosticKey}:{Environment.NewLine}{diagnostic}");
 
@@ -505,13 +513,13 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                 string? state = app.ResourceNotifications.TryGetCurrentState(resourceName, out ResourceEvent? current)
                     ? current.Snapshot.State?.Text
                     : null;
-                return DescribeRestartPortAsync(resource, endpointName, state);
+                return DescribeBackendPortAsync(resource, endpointName, state);
             }
         }
         catch (Exception diagnosticException)
         {
             // Preserve the original startup failure if the partially started AppHost cannot provide diagnostics.
-            startupException.Data["Owned restart diagnostic failure"] = diagnosticException.GetType().Name;
+            startupException.Data[$"{diagnosticKey} diagnostic failure"] = diagnosticException.GetType().Name;
         }
     }
 
@@ -520,7 +528,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     /// <param name="endpointName">The exact backend endpoint.</param>
     /// <param name="state">The latest observed Aspire resource state.</param>
     /// <returns>A diagnostic that contains only state and allocation metadata.</returns>
-    internal static async Task<string> DescribeRestartPortAsync(IResource resource, string endpointName, string? state)
+    internal static async Task<string> DescribeBackendPortAsync(IResource resource, string endpointName, string? state)
     {
         string prefix = $"{resource.Name}/{endpointName}: state={state ?? "unobserved"}";
         EndpointAnnotation? endpoint = resource.Annotations.OfType<EndpointAnnotation>()
@@ -1426,11 +1434,34 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         }
         catch (Exception startupException)
         {
-            await RethrowAfterCleanupAsync(
+            await RethrowAfterInitializationFailureAsync(
                 startupException,
+                _app,
+                _providerMode,
                 CreateFailedInitializationCleanupActions()).ConfigureAwait(false);
             throw;
         }
+    }
+
+    /// <summary>Captures owned Ollama Redis readiness evidence before tearing down failed startup.</summary>
+    /// <param name="startupException">The original fixture startup exception.</param>
+    /// <param name="app">The partially started fixture-owned AppHost, if constructed.</param>
+    /// <param name="providerMode">The provider selected by the fixture.</param>
+    /// <param name="cleanupActions">Ordered best-effort cleanup actions for fixture-owned resources.</param>
+    /// <returns>A task that always rethrows <paramref name="startupException"/> after cleanup.</returns>
+    internal static async Task RethrowAfterInitializationFailureAsync(
+        Exception startupException,
+        DistributedApplication? app,
+        EmbeddingProviderTestMode providerMode,
+        IReadOnlyList<KeyValuePair<string, Func<Task>?>> cleanupActions)
+    {
+        if (providerMode == EmbeddingProviderTestMode.OllamaOidcFake)
+        {
+            await ReportBackendPortsAsync(app, startupException, OllamaStartupRedisPortDataKey, includeFalkorDb: false)
+                .ConfigureAwait(false);
+        }
+
+        await RethrowAfterCleanupAsync(startupException, cleanupActions).ConfigureAwait(false);
     }
 
     /// <summary>Creates the complete ordered cleanup plan for fixture-owned startup resources.</summary>

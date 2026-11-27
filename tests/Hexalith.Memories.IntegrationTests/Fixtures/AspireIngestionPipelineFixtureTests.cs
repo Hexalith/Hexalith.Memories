@@ -110,7 +110,7 @@ public sealed class AspireIngestionPipelineFixtureTests
         endpoint.AllocatedEndpoint = new AllocatedEndpoint(endpoint, "0.0.0.0", port);
         resource.Annotations.Add(endpoint);
 
-        string diagnostic = await AspireIngestionPipelineFixture.DescribeRestartPortAsync(
+        string diagnostic = await AspireIngestionPipelineFixture.DescribeBackendPortAsync(
             resource, "redis", KnownResourceStates.Running);
 
         diagnostic.ShouldContain("memories-vectors/redis: state=Running, proxied=True, containerTargetPort=6379");
@@ -125,12 +125,12 @@ public sealed class AspireIngestionPipelineFixtureTests
         var endpoint = new EndpointAnnotation(ProtocolType.Tcp, name: "falkordb", targetPort: 6379, isProxied: false);
         resource.Annotations.Add(endpoint);
 
-        string pending = await AspireIngestionPipelineFixture.DescribeRestartPortAsync(resource, "falkordb", state: null);
+        string pending = await AspireIngestionPipelineFixture.DescribeBackendPortAsync(resource, "falkordb", state: null);
         pending.ShouldContain("state=unobserved, proxied=False, containerTargetPort=6379");
         pending.ShouldContain("hostPort=unallocated, listener=unprobed");
 
         endpoint.AllocatedEndpoint = new AllocatedEndpoint(endpoint, "192.0.2.1", 16379);
-        string remote = await AspireIngestionPipelineFixture.DescribeRestartPortAsync(resource, "falkordb", "Starting");
+        string remote = await AspireIngestionPipelineFixture.DescribeBackendPortAsync(resource, "falkordb", "Starting");
         remote.ShouldContain("hostPort=16379, listener=unprobed-non-loopback");
         remote.ShouldNotContain("192.0.2.1");
     }
@@ -517,6 +517,62 @@ public sealed class AspireIngestionPipelineFixtureTests
             .GetTypes()
             .Select(static type => type.Name)
             .ShouldNotContain("AccessTelemetryAspireRoutedCollection");
+    }
+
+    [Theory]
+    [InlineData(EmbeddingProviderTestMode.OllamaOidcFake)]
+    [InlineData(EmbeddingProviderTestMode.GoogleFake)]
+    public async Task FailedInitialization_CapturesOllamaRedisPortBeforeCleanup(EmbeddingProviderTestMode providerMode)
+    {
+        using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        socket.Bind(new IPEndPoint(IPAddress.Loopback, port: 0));
+        socket.Listen(backlog: 1);
+        int port = ((IPEndPoint)socket.LocalEndPoint!).Port;
+
+        var builder = DistributedApplication.CreateBuilder(new DistributedApplicationOptions { DisableDashboard = true });
+        ContainerResource redis = builder.AddContainer("memories-vectors", "redis").Resource;
+        var endpoint = new EndpointAnnotation(ProtocolType.Tcp, name: "redis", targetPort: 6379);
+        endpoint.AllocatedEndpoint = new AllocatedEndpoint(endpoint, "127.0.0.1", port);
+        redis.Annotations.Add(endpoint);
+
+        await using DistributedApplication app = builder.Build();
+        await app.ResourceNotifications.PublishUpdateAsync(
+            redis,
+            static snapshot => snapshot with { State = new ResourceStateSnapshot(KnownResourceStates.Running, Style: null) });
+        var startupException = new TimeoutException("owned Redis startup failed");
+        string? capturedBeforeCleanup = null;
+        bool cleanupRan = false;
+
+        TimeoutException thrown = await Should.ThrowAsync<TimeoutException>(() =>
+            AspireIngestionPipelineFixture.RethrowAfterInitializationFailureAsync(
+                startupException,
+                app,
+                providerMode,
+                [
+                    new("topology", () =>
+                    {
+                        capturedBeforeCleanup =
+                            startupException.Data[AspireIngestionPipelineFixture.OllamaStartupRedisPortDataKey] as string;
+                        socket.Dispose();
+                        cleanupRan = true;
+                        return Task.CompletedTask;
+                    }),
+                ]));
+
+        thrown.ShouldBeSameAs(startupException);
+        cleanupRan.ShouldBeTrue();
+        if (providerMode == EmbeddingProviderTestMode.OllamaOidcFake)
+        {
+            capturedBeforeCleanup.ShouldNotBeNull();
+            capturedBeforeCleanup.ShouldContain(
+                "memories-vectors/redis: state=Running, proxied=True, containerTargetPort=6379");
+            capturedBeforeCleanup.ShouldContain($"hostPort=127.0.0.1:{port}, listener=reachable");
+            capturedBeforeCleanup.ShouldNotContain("memories-graphs");
+        }
+        else
+        {
+            capturedBeforeCleanup.ShouldBeNull();
+        }
     }
 
     [Fact]
