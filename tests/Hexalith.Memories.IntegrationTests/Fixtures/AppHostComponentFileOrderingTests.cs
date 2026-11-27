@@ -266,6 +266,9 @@ public sealed class AppHostComponentFileOrderingTests
         using TcpListener listener = new(IPAddress.Loopback, 0);
         listener.Start();
         var controlled = new AllocatedEndpoint(endpoint, IPAddress.Loopback.ToString(), ((IPEndPoint)listener.LocalEndpoint).Port);
+        using var probeCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var probeReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseReply = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         Task PublishStartAsync(IResource resource) => eventing.PublishAsync(
             new BeforeResourceStartedEvent(resource, app.Services),
@@ -275,21 +278,18 @@ public sealed class AppHostComponentFileOrderingTests
         // The topology is already up. Publish the real startup callbacks on a fresh Redis
         // generation while the healthy OpenBao generation and the running services stay in place.
         endpoint.AllocatedEndpoint = controlled;
+        Task responses = ReplyToRedisProbesAsync(probeCancellation.Token);
         try
         {
             await PublishStartAsync(redis).ConfigureAwait(true);
-            using TcpClient probe = await listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(true);
-            using NetworkStream stream = probe.GetStream();
-            byte[] ping = new byte["*1\r\n$4\r\nPING\r\n"u8.Length];
-            await stream.ReadExactlyAsync(ping, cancellationToken).ConfigureAwait(true);
-            ping.ShouldBe("*1\r\n$4\r\nPING\r\n"u8.ToArray());
+            await Task.WhenAny(probeReceived.Task, responses).Unwrap().WaitAsync(cancellationToken).ConfigureAwait(true);
 
             Task clockStart = PublishStartAsync(clock);
             // The only way for the clock callback to see this exact error is to await its
             // Redis gate. A clock with no enrollment can return while the reply is withheld.
-            await stream.WriteAsync(System.Text.Encoding.ASCII.GetBytes(rejection + "\r\n"), cancellationToken)
-                .ConfigureAwait(true);
-            Exception? failure = await Record.ExceptionAsync(() => clockStart.WaitAsync(cancellationToken)).ConfigureAwait(true);
+            releaseReply.SetResult();
+            Exception? failure = await Record.ExceptionAsync(() =>
+                Task.WhenAny(clockStart, responses).Unwrap().WaitAsync(cancellationToken)).ConfigureAwait(true);
             failure.ShouldBeOfType<RedisProbeNonRetryableException>(
                 "Clock startup must await the readiness probe for its current Redis allocation.");
             failure!.Message.ShouldContain(rejection);
@@ -299,10 +299,42 @@ public sealed class AppHostComponentFileOrderingTests
         finally
         {
             endpoint.AllocatedEndpoint = original;
+            await probeCancellation.CancelAsync().ConfigureAwait(true);
+            await responses.ConfigureAwait(true);
         }
 
         await PublishStartAsync(redis).ConfigureAwait(true);
         await PublishStartAsync(clock).WaitAsync(cancellationToken).ConfigureAwait(true);
+
+        async Task ReplyToRedisProbesAsync(CancellationToken stopToken)
+        {
+            byte[] expectedPing = "*1\r\n$4\r\nPING\r\n"u8.ToArray();
+            byte[] ping = new byte[expectedPing.Length];
+            byte[] reply = System.Text.Encoding.ASCII.GetBytes(rejection + "\r\n");
+            try
+            {
+                while (true)
+                {
+                    using TcpClient probe = await listener.AcceptTcpClientAsync(stopToken).ConfigureAwait(true);
+                    using NetworkStream stream = probe.GetStream();
+                    try
+                    {
+                        await stream.ReadExactlyAsync(ping, stopToken).ConfigureAwait(true);
+                        ping.ShouldBe(expectedPing);
+                        probeReceived.TrySetResult();
+                        await releaseReply.Task.WaitAsync(stopToken).ConfigureAwait(true);
+                        await stream.WriteAsync(reply, stopToken).ConfigureAwait(true);
+                    }
+                    catch (IOException)
+                    {
+                        // Redis may close an expired attempt while the clock callback is being dispatched.
+                    }
+                }
+            }
+            catch (OperationCanceledException) when (stopToken.IsCancellationRequested)
+            {
+            }
+        }
     }
 
     private static string ResolveRepoRoot()
