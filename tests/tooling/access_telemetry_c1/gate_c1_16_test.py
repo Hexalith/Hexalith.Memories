@@ -92,6 +92,8 @@ def write_fake_kubectl(directory: Path) -> None:
             raise SystemExit(98)
         if scenario.get('hangPurpose') == purpose:
             time.sleep(5)
+        if 'commandDelaySeconds' in scenario:
+            time.sleep(scenario['commandDelaySeconds'])
         if scenario.get('excessPurpose') == purpose:
             print('x' * (1024 * 1024 + 32), file=sys.stderr if scenario.get('excessStderr') else sys.stdout)
             raise SystemExit(0)
@@ -151,13 +153,22 @@ class ComponentBackendCaptureTests(unittest.TestCase):
         env = os.environ.copy()
         env.update(PATH=str(fake_bin) + os.pathsep + env.get('PATH', ''),
                    C1_SCENARIO=str(scenario_path), C1_KUBECTL_LOG=str(log), DAPR_API_TOKEN=TOKEN_CANARY)
-        command = ['pwsh', str(runner), '-Gate', gate, '-ProfileId', profile,
+        command = ['pwsh', '-NoProfile', '-NonInteractive', '-File', str(runner), '-Gate', gate, '-ProfileId', profile,
                    '-EvidenceDirectory', str(evidence), '-CommandTimeoutSeconds', str(timeout)]
         if opt_in:
             command.append('-AllowHistoricalProfileCapture')
-        for _ in range(repeat):
-            result = subprocess.run(command, cwd=REPO_ROOT, env=env, text=True, capture_output=True,
-                                    check=False, timeout=max(12, timeout + 5))
+        # The collector can run eight fixed observations and one metadata observation per
+        # lifecycle pod in sequence. Allow every child deadline plus launch and capture overhead.
+        observation_count = 8 + len(scenario['pods']['items'])
+        capture_timeout = observation_count * timeout + 20
+        for capture in range(1, repeat + 1):
+            try:
+                result = subprocess.run(command, cwd=REPO_ROOT, env=env, text=True, capture_output=True,
+                                        check=False, timeout=capture_timeout)
+            except subprocess.TimeoutExpired:
+                launched = len(log.read_text().splitlines()) if log.exists() else 0
+                self.fail(f'{gate} PowerShell fixture capture {capture} exceeded its {capture_timeout}s budget '
+                          f'with {launched} total kubectl launches ({timeout}s per command).')
             if result.returncode:
                 break
         packets = [json.loads(path.read_text()) for path in sorted(evidence.glob('*.json'))]
@@ -642,6 +653,15 @@ class ComponentBackendCaptureTests(unittest.TestCase):
         self.assert_blocked(conflicting, 'running-target-image-drift')
         scenario['metadata'][second['metadata']['name']]['components'][0]['capabilities'].pop()
         self.assert_blocked(scenario, 'metadata-component-capabilities-mismatch')
+
+    def test_outer_harness_allows_sequential_observations_within_command_deadline(self):
+        scenario = copy.deepcopy(self.base)
+        # Nine successful observations alone take 13.5s, beyond the former 12s outer deadline.
+        scenario['commandDelaySeconds'] = 1.5
+        result, packets, calls, _ = self.run_gate(scenario, timeout=5)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(9, len(calls))
+        self.assertEqual('observed', packets[0]['producerStatus'])
 
 
     def successor_scenario(self):
