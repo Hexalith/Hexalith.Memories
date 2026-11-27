@@ -457,16 +457,20 @@ public sealed partial class AccessTelemetryRetentionDecisionTests
             Case.Sensitive);
         security.ShouldNotContain("MVP: structured log file", Case.Sensitive);
 
-        // The approved 2026-08-01 ownership correction retained Story 27.3's
-        // independent qualification work but removed its ownership of the exact
-        // running-target C1 qualification. Guard both sides of that correction so
-        // the architecture cannot silently revert to the superseded assignment.
         security.ShouldContain(
             "Story 27.3 owns C0 and independent C2/C3/C4 adapter qualification",
             Case.Sensitive);
         security.ShouldContain(
-            "Exact running-target C1 qualification is held without a registered story owner",
+            "Historical Story 27.21 owns only C1.15 runtime/control-plane identity capture.",
             Case.Sensitive);
+        security.ShouldContain(
+            "Closed-window Story 27.22 owns only C1.16 component/backend identity capture.",
+            Case.Sensitive);
+        security.ShouldContain("The other twenty-three C1 gates remain held and unregistered.", Case.Sensitive);
+        security.ShouldContain(
+            "Neither capture grants current PG-ONPREM-2, Production, other-gate, or A41 credit.",
+            Case.Sensitive);
+        security.ShouldNotContain("held without a registered story owner", Case.Sensitive);
         security.ShouldNotContain("Story 27.3 now qualifies `PG-ONPREM-1`", Case.Sensitive);
         security.ShouldContain(
             "in-profile zero-loss fault is PostgreSQL pod/process replacement",

@@ -4613,7 +4613,8 @@ resolution: The REST route contract links to Directory Ingestion Operations for 
 origin: migrated from legacy ledger ("Deferred from: code review of 27-3-production-adapter-and-deployment-profile (2026-07-31)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-epic-23-documentation-verification.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-epic-23-documentation-verification.md` summary: Reconcile AccessTelemetry C1 ownership guard text with Story 27.21 C1.15 registration and the frozen Never/test File Scope carve-out. evidence: This story co-shipped AccessTelemetryRetentionDecisionTests pinning unowned C1 text; later 27.21 registration and planning copies partially supersede that pin without updating the guard.
-status: open
+status: done 2026-11-27
+resolution: The Security Architecture and its section-scoped test recognize the limited C1.15 and C1.16 owners and the 23 unregistered gates. The frozen Epic 23 scope record was preserved. All 12 AccessTelemetryRetentionDecisionTests passed.
 decision: 2026-09-01 Update the guard — Recognize Story 27.21 and C1.15 ownership while preserving the frozen-artifact carve-out.
 decision: 2026-09-01 Update the guard — Recognize Story 27.21 and C1.15 ownership while preserving the frozen-artifact carve-out.
 
