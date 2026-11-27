@@ -1,4 +1,4 @@
-"""Exercise the integration selectors and Bash report prerequisites without Docker."""
+"""Exercise integration selectors and report handling without Docker."""
 
 import os
 from pathlib import Path
@@ -9,6 +9,8 @@ import unittest
 
 
 TOOLS = Path(__file__).resolve().parents[3] / "tools"
+RESULTS_MARKER = ".hexalith-memories-test-results"
+TRX = '<TestRun><ResultSummary><Counters executed="1" /></ResultSummary></TestRun>'
 DOTNET_FIXTURE = """#!/bin/sh
 if [ "$1" != test ]; then
     printf 'Unexpected dotnet invocation: %s\\n' "$*" >&2
@@ -58,24 +60,44 @@ class IntegrationTestRunnerTests(unittest.TestCase):
         self.environment = dict(os.environ, DOTNET_CALLS=str(self.calls))
         self.environment["PATH"] = os.pathsep.join((str(self.bin), os.environ["PATH"]))
         self.bash = [shutil.which("bash"), "tools/test.sh"]
+        launcher = self.root / "run-powershell.ps1"
+        launcher.write_text(
+            'param([string]$Filter, [string]$ResultsDirectory, [switch]$Coverage)\n'
+            '$ErrorActionPreference = "Stop"\n'
+            '$env:PATH = $env:TEST_WRAPPER_PATH\n'
+            '& "$PSScriptRoot/tools/test.ps1" @PSBoundParameters\n',
+            encoding="utf-8",
+        )
+        self.powershell = [shutil.which("pwsh"), "-NoProfile", "-File", str(launcher)]
 
     def test_bash_integration_selectors_choose_the_expected_projects(self):
         self.assert_integration_routes(self.bash, "--filter")
 
     @unittest.skipUnless(shutil.which("pwsh"), "requires PowerShell 7")
     def test_powershell_integration_selectors_choose_the_expected_projects(self):
-        # A global-tool pwsh launcher may need real dotnet before the shell starts.
-        self.environment["TEST_WRAPPER_PATH"] = self.environment["PATH"]
-        self.environment["PATH"] = os.environ["PATH"]
-        launcher = self.root / "run-powershell.ps1"
-        launcher.write_text(
-            'param([string]$Filter)\n'
-            '$ErrorActionPreference = "Stop"\n'
-            '$env:PATH = $env:TEST_WRAPPER_PATH\n'
-            '& "$PSScriptRoot/tools/test.ps1" -Filter $Filter\n',
-            encoding="utf-8",
-        )
-        self.assert_integration_routes([shutil.which("pwsh"), "-NoProfile", "-File", str(launcher)], "-Filter")
+        self.assert_integration_routes(self.powershell, "-Filter")
+
+    def test_bash_requires_owned_results_directories(self):
+        command = [*self.bash, "--filter", "Category=IntegrationSlow", "--results-directory"]
+        self.assert_results_ownership(command, "--coverage")
+
+    @unittest.skipUnless(shutil.which("pwsh"), "requires PowerShell 7")
+    def test_powershell_requires_owned_results_directories(self):
+        command = [*self.powershell, "-Filter", "Category=IntegrationSlow", "-ResultsDirectory"]
+        self.assert_results_ownership(command, "-Coverage")
+
+    @unittest.skipUnless(shutil.which("pwsh"), "requires PowerShell 7")
+    def test_wrappers_share_results_ownership(self):
+        self.environment["TEST_TRX"] = TRX
+        bash = [*self.bash, "--filter", "Category=IntegrationSlow", "--results-directory", "reports"]
+        powershell = [*self.powershell, "-Filter", "Category=IntegrationSlow", "-ResultsDirectory", "reports"]
+        receipt = self.root / "reports" / "old-report.txt"
+
+        for command in (bash, powershell, bash):
+            result = self.run_wrapper(command)
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertFalse(receipt.exists())
+            receipt.write_text("stale report", encoding="utf-8")
 
     def test_bash_requires_python_only_for_reports_and_preserves_previous_results(self):
         for command in ("dirname", "grep", "sed", "rm", "mkdir", "basename"):
@@ -191,6 +213,83 @@ class IntegrationTestRunnerTests(unittest.TestCase):
         self.assertEqual(1, missing_coverage.returncode, missing_coverage.stderr)
         self.assertIn("produced no Cobertura report", missing_coverage.stderr)
 
+    def assert_results_ownership(self, command, coverage_flag):
+        self.environment["TEST_TRX"] = TRX
+        self.environment["TEST_COVERAGE"] = "<coverage/>"
+        for destination, relative_file in (("src", "Project.cs"), ("private", ".hidden")):
+            with self.subTest(destination=destination):
+                sentinel = self.root / destination / relative_file
+                sentinel.parent.mkdir(parents=True)
+                sentinel.write_text("user managed", encoding="utf-8")
+                refused = self.run_wrapper([*command, destination])
+                self.assertNotEqual(0, refused.returncode)
+                self.assertIn("empty or runner-owned directory", refused.stderr)
+                self.assertEqual("user managed", sentinel.read_text(encoding="utf-8"))
+                self.assertFalse(self.calls.exists())
+
+        git_metadata = self.root / ".git"
+        git_file = git_metadata / "config"
+        git_empty = git_metadata / "objects" / "pack"
+        git_empty.mkdir(parents=True)
+        git_file.write_text("git managed", encoding="utf-8")
+        for destination in (".git", ".git/objects/pack", ".git/new/nested"):
+            with self.subTest(destination=destination):
+                refused = self.run_wrapper([*command, destination])
+                self.assertNotEqual(0, refused.returncode)
+                self.assertIn(".git metadata path", refused.stderr)
+                self.assertEqual("git managed", git_file.read_text(encoding="utf-8"))
+                self.assertEqual([], list(git_empty.iterdir()))
+                self.assertFalse((git_metadata / "new").exists())
+                self.assertFalse(self.calls.exists())
+
+        (self.root / "empty").mkdir()
+        for destination in ("./reports/./nested results/./", "empty"):
+            with self.subTest(destination=destination):
+                results = self.root / destination
+                first = self.run_wrapper([*command, destination, coverage_flag])
+                self.assertEqual(0, first.returncode, first.stderr)
+                self.assertTrue(list(results.glob("*/*.trx")))
+                self.assertTrue(list(results.glob("*/coverage.cobertura.xml")))
+
+                stale = results / ".stale" / "old-report.xml"
+                stale.parent.mkdir()
+                stale.write_text("previous report", encoding="utf-8")
+                (stale.parent / "nested-link").symlink_to(self.root / "src", target_is_directory=True)
+                direct_link = results / "directory-link"
+                direct_link.symlink_to(git_metadata, target_is_directory=True)
+
+                rerun = self.run_wrapper([*command, destination, coverage_flag])
+                self.assertEqual(0, rerun.returncode, rerun.stderr)
+                self.assertFalse(stale.parent.exists())
+                self.assertFalse(direct_link.is_symlink())
+                self.assertEqual("user managed", (self.root / "src" / "Project.cs").read_text(encoding="utf-8"))
+                self.assertEqual("git managed", git_file.read_text(encoding="utf-8"))
+                self.assertTrue(list(results.glob("*/*.trx")))
+
+        self.calls.unlink()
+        owned = self.root / "reports" / "nested results"
+        sentinel = owned / "keep-on-refusal.txt"
+        sentinel.write_text("owned via real path", encoding="utf-8")
+        (self.root / "root-link").symlink_to(owned, target_is_directory=True)
+        (self.root / "parent-link").symlink_to(owned.parent, target_is_directory=True)
+        (self.root / "dangling-link").symlink_to(self.root / "missing", target_is_directory=True)
+        unowned = self.root / "unowned"
+        unowned.mkdir()
+        unowned_file = unowned / "private.txt"
+        unowned_file.write_text("user managed", encoding="utf-8")
+        marker_link = unowned / RESULTS_MARKER
+        marker_link.symlink_to(owned / RESULTS_MARKER)
+
+        for destination in ("root-link", "parent-link/nested results", "dangling-link", "unowned", "reports"):
+            with self.subTest(destination=destination):
+                refused = self.run_wrapper([*command, destination])
+                self.assertNotEqual(0, refused.returncode)
+                self.assertRegex(refused.stderr, r"symbolic link|empty or runner-owned directory")
+                self.assertEqual("owned via real path", sentinel.read_text(encoding="utf-8"))
+                self.assertEqual("user managed", unowned_file.read_text(encoding="utf-8"))
+                self.assertTrue(marker_link.is_symlink())
+                self.assertFalse(self.calls.exists())
+
     def assert_integration_routes(self, wrapper, filter_flag):
         fast = self.read_inventory("integration-fast")
         slow = self.read_inventory("integration-slow")
@@ -222,7 +321,12 @@ class IntegrationTestRunnerTests(unittest.TestCase):
         return [line for line in map(str.strip, contents.splitlines()) if line and not line.startswith("#")]
 
     def run_wrapper(self, command):
-        # This fixture checks routing. Allow the PowerShell runtime to start on a busy build host.
+        environment = self.environment.copy()
+        if command[0] == self.powershell[0]:
+            # The global-tool launcher may need real dotnet before the shell starts.
+            environment["TEST_WRAPPER_PATH"] = environment["PATH"]
+            environment["PATH"] = os.environ["PATH"]
+        # Allow the PowerShell runtime to start on a busy build host.
         return subprocess.run(
-            command, cwd=self.root, env=self.environment, text=True, capture_output=True, check=False, timeout=120,
+            command, cwd=self.root, env=environment, text=True, capture_output=True, check=False, timeout=120,
         )

@@ -130,9 +130,11 @@ python tools/validate-coverage.py --results-directory TestResults/test-unit-cont
 ```
 
 `tests/tooling/coverage_gate/line-coverage-gate.json` is the single source for the **76.5%** minimum, production source
-scope, required assemblies, nine required project reports, and Server/CLI/MCP composition-root evidence. Each wrapper
-removes the requested repository-local results directory before starting, so repeated runs cannot union stale
-attachments. The validator unions
+scope, required assemblies, nine required project reports, and Server/CLI/MCP composition-root evidence.
+Choose a dedicated, new or empty repository-local results directory for the first run. Both wrappers claim it
+by writing `.hexalith-memories-test-results` and clear its contents on reruns while keeping that marker.
+If an older results directory lacks the marker, choose a new path. Results paths must use real directories
+beneath the checkout and outside `.git`. The validator unions
 Cobertura lines by normalized repository path and line number, deduplicates collector attachment
 copies, and fails on missing, malformed, incomplete, or below-threshold evidence. CI retains the TRX
 and per-project Cobertura files together in the `test-unit-contract-results` artifact for 14 days.

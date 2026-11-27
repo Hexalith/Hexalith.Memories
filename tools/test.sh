@@ -154,25 +154,73 @@ if [[ -n "$RESULTS_DIRECTORY" ]]; then
     RESULTS_ROOT="${RESULTS_ROOT%/}"
     RESULTS_ROOT="${RESULTS_ROOT%/.}"
   done
-  # Resolve symlinks for containment without redirecting cleanup to their targets.
-  if ! python3 - "$REPO_ROOT" "$RESULTS_ROOT" <<'PY'
+  python3 - "$REPO_ROOT" "$RESULTS_ROOT" <<'PY'
 from pathlib import Path
+import shutil
+import stat
 import sys
 
-try:
-    root, results = (Path(path).resolve() for path in sys.argv[1:])
-except (OSError, RuntimeError):
-    raise SystemExit(1)
+def is_link(metadata):
+    return stat.S_ISLNK(metadata.st_mode) or (
+        getattr(metadata, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT
+    )
 
-if root not in results.parents:
-    raise SystemExit(1)
+
+def prepare_results(root, results):
+    if root.resolve() not in results.resolve().parents:
+        raise ValueError("must resolve beneath the repository root.")
+
+    components = results.relative_to(root).parts
+    if components[0].casefold() == ".git":
+        raise ValueError("must stay outside the repository's .git metadata path.")
+
+    current = root
+    for component in components:
+        current /= component
+        try:
+            metadata = current.lstat()
+        except FileNotFoundError:
+            break
+        if is_link(metadata):
+            raise ValueError(f"must not traverse a symbolic link or reparse point at '{current}'.")
+
+    results.mkdir(parents=True, exist_ok=True)
+    # Keep the ownership marker during cleanup so an interrupted rerun remains recoverable.
+    marker = results / ".hexalith-memories-test-results"
+    signature = b"Hexalith.Memories test results v1\n"
+    entries = list(results.iterdir())
+    if not entries:
+        with marker.open("xb") as receipt:
+            receipt.write(signature)
+        return
+
+    metadata = marker.lstat() if marker in entries else None
+    if (
+        metadata is None
+        or not stat.S_ISREG(metadata.st_mode)
+        or is_link(metadata)
+        or metadata.st_size != len(signature)
+        or marker.read_bytes() != signature
+    ):
+        raise ValueError(f"must name an empty or runner-owned directory. Refusing to clean '{results}'.")
+
+    for entry in entries:
+        if entry == marker:
+            continue
+        metadata = entry.lstat()
+        if not stat.S_ISDIR(metadata.st_mode):
+            entry.unlink()
+        elif is_link(metadata):
+            entry.rmdir()
+        else:
+            shutil.rmtree(entry)
+
+
+try:
+    prepare_results(*(Path(path) for path in sys.argv[1:]))
+except (OSError, RuntimeError, ValueError) as error:
+    raise SystemExit(f"--results-directory {error}") from None
 PY
-  then
-    echo "--results-directory must resolve beneath the repository root." >&2
-    exit 1
-  fi
-  rm -rf -- "$RESULTS_ROOT"
-  mkdir -p "$RESULTS_ROOT"
 fi
 
 for project in "${PROJECTS[@]}"; do

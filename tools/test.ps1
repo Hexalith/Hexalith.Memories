@@ -98,20 +98,73 @@ try {
 
     $resultsRoot = $null
     if (-not [string]::IsNullOrWhiteSpace($ResultsDirectory)) {
+        if ([System.IO.Path]::IsPathRooted($ResultsDirectory)) {
+            throw '-ResultsDirectory must be a repository-relative path.'
+        }
         $repoRootFull = [System.IO.Path]::GetFullPath($repoRoot).TrimEnd(
             [System.IO.Path]::DirectorySeparatorChar,
             [System.IO.Path]::AltDirectorySeparatorChar)
         $resultsRoot = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $ResultsDirectory))
         $repoPrefix = $repoRootFull + [System.IO.Path]::DirectorySeparatorChar
-        if ($resultsRoot -eq $repoRootFull -or
-            -not $resultsRoot.StartsWith($repoPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $comparison = if ($IsWindows) { [System.StringComparison]::OrdinalIgnoreCase } else { [System.StringComparison]::Ordinal }
+        $resultsRoot = [System.IO.Path]::TrimEndingDirectorySeparator($resultsRoot)
+        if ($resultsRoot.Length -le $repoPrefix.Length -or -not $resultsRoot.StartsWith($repoPrefix, $comparison)) {
             throw "-ResultsDirectory must resolve beneath the repository root."
         }
 
-        if (Test-Path -LiteralPath $resultsRoot) {
-            Remove-Item -LiteralPath $resultsRoot -Recurse -Force
+        $components = $resultsRoot.Substring($repoPrefix.Length).Split([System.IO.Path]::DirectorySeparatorChar)
+        if ($components[0] -ieq '.git') {
+            throw "-ResultsDirectory must stay outside the repository's .git metadata path."
         }
-        New-Item -ItemType Directory -Force -Path $resultsRoot | Out-Null
+
+        $current = $repoRootFull
+        foreach ($component in $components) {
+            $current = [System.IO.Path]::Combine($current, $component)
+            try {
+                $attributes = [System.IO.File]::GetAttributes($current)
+            }
+            catch [System.IO.FileNotFoundException], [System.IO.DirectoryNotFoundException] {
+                $attributes = [System.IO.Directory]::CreateDirectory($current).Attributes
+            }
+
+            if ($attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+                throw "-ResultsDirectory must not traverse a symbolic link or reparse point at '$current'."
+            }
+            if (-not ($attributes -band [System.IO.FileAttributes]::Directory)) {
+                throw "-ResultsDirectory component '$current' is not a directory."
+            }
+        }
+
+        # Use the same ownership marker as tools/test.sh and keep it during cleanup.
+        $markerName = '.hexalith-memories-test-results'
+        $signature = "Hexalith.Memories test results v1`n"
+        $entries = @(Get-ChildItem -LiteralPath $resultsRoot -Force)
+        if ($entries.Count -eq 0) {
+            $markerPath = [System.IO.Path]::Combine($resultsRoot, $markerName)
+            $markerStream = [System.IO.File]::Open($markerPath, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write)
+            try {
+                $bytes = [System.Text.Encoding]::UTF8.GetBytes($signature)
+                $markerStream.Write($bytes, 0, $bytes.Length)
+            }
+            finally {
+                $markerStream.Dispose()
+            }
+        }
+        else {
+            $marker = $entries | Where-Object { $_.Name -ceq $markerName }
+            if ($marker -isnot [System.IO.FileInfo] -or
+                ($marker.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -or
+                $marker.Length -ne $signature.Length -or
+                [System.IO.File]::ReadAllText($marker.FullName) -cne $signature) {
+                throw "-ResultsDirectory must name an empty or runner-owned directory. Refusing to clean '$resultsRoot'."
+            }
+
+            foreach ($entry in $entries) {
+                if ($entry.Name -cne $markerName) {
+                    Remove-Item -LiteralPath $entry.FullName -Recurse -Force
+                }
+            }
+        }
     }
 
     foreach ($projectPath in $projectPaths) {
