@@ -704,56 +704,108 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     internal Task WaitForOpenBaoSidecarMatrixReadinessAsync(CancellationToken cancellationToken)
         => WaitForOpenBaoSidecarMatrixReadinessAsync(_topologyLogStartIndex, cancellationToken);
 
-    private Task WaitForOpenBaoSidecarMatrixReadinessAsync(int logStartIndex, CancellationToken cancellationToken)
-        => WaitForOpenBaoSidecarMatrixReadinessCoreAsync(
-            (sidecarResourceName, token) => WaitForDaprSidecarHttpEndpointAsync(
-                sidecarResourceName,
-                () => _logProvider.GetEntriesSince(logStartIndex),
+    private async Task WaitForOpenBaoSidecarMatrixReadinessAsync(int logStartIndex, CancellationToken cancellationToken)
+    {
+        CancellationToken appStopping = _app?.Services.GetService<IHostApplicationLifetime>()?.ApplicationStopping
+            ?? CancellationToken.None;
+        using var waitCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, appStopping);
+        try
+        {
+            await WaitForOpenBaoSidecarMatrixReadinessCoreAsync(
+                _logProvider,
+                logStartIndex,
+                CreateDaprSidecarClient,
+                AccessTelemetryClockFingerprint,
+                AccessTelemetryMarkerFingerprint,
                 EndpointReadyTimeout,
                 EndpointPollInterval,
-                token),
-            async (endpoint, secretName, token) =>
-            {
-                using HttpClient secretProbe = CreateDaprSidecarClient(endpoint);
-                await WaitForEndpointAsync(
-                    secretProbe,
-                    $"/v1.0/secrets/access-telemetry-secrets/{secretName}",
-                    [HttpStatusCode.OK],
-                    EndpointReadyTimeout,
-                    EndpointPollInterval,
-                    logStartIndex,
-                    token,
-                    DaprSecretProbeTimeout,
-                    DaprSecretFailClosedStatusCodes).ConfigureAwait(false);
-            },
-            cancellationToken);
+                waitCts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException exception) when (
+            appStopping.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            throw new InvalidOperationException(
+                "The AppHost stopped while auxiliary Dapr sidecar OpenBao secret reads were converging." +
+                $"{Environment.NewLine}{FormatRecentLogs(_logProvider.GetEntriesSince(logStartIndex), maxLines: 40)}",
+                exception);
+        }
+        catch (TimeoutException exception)
+        {
+            throw new TimeoutException(
+                $"{exception.Message}{Environment.NewLine}{FormatRecentLogs(_logProvider.GetEntriesSince(logStartIndex), maxLines: 40)}",
+                exception);
+        }
+    }
 
     /// <summary>Executes the exact auxiliary-sidecar readiness sequence owned by the OpenBao matrix.</summary>
-    /// <param name="waitForSidecarAsync">Waits for and resolves one exact Dapr CLI sidecar endpoint.</param>
-    /// <param name="waitForSecretAsync">Waits for one permitted secret read through the resolved endpoint.</param>
+    /// <param name="logProvider">Captures the fixture-owned sidecar endpoints.</param>
+    /// <param name="logStartIndex">The first log entry in the current generation window.</param>
+    /// <param name="createClient">Creates a client for a resolved Dapr HTTP listener.</param>
+    /// <param name="clockFingerprint">Expected fingerprint of the clock signing key.</param>
+    /// <param name="markerFingerprint">Expected fingerprint of the lifecycle marker key.</param>
+    /// <param name="timeout">The readiness budget per sidecar.</param>
+    /// <param name="pollInterval">The delay between transient attempts.</param>
     /// <param name="cancellationToken">Cooperative cancellation.</param>
     /// <returns>A task that completes after both sidecars and their permitted keys are ready.</returns>
     internal static async Task WaitForOpenBaoSidecarMatrixReadinessCoreAsync(
-        Func<string, CancellationToken, Task<Uri>> waitForSidecarAsync,
-        Func<Uri, string, CancellationToken, Task> waitForSecretAsync,
+        TestLogProvider logProvider,
+        int logStartIndex,
+        Func<Uri, HttpClient> createClient,
+        byte[] clockFingerprint,
+        byte[] markerFingerprint,
+        TimeSpan timeout,
+        TimeSpan pollInterval,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(waitForSidecarAsync);
-        ArgumentNullException.ThrowIfNull(waitForSecretAsync);
-
-        Uri clockEndpoint = await waitForSidecarAsync("memories-access-telemetry-clock-dapr-cli", cancellationToken)
-            .ConfigureAwait(false);
-        await waitForSecretAsync(
-            clockEndpoint,
+        await WaitForSecretAsync(
+            "memories-access-telemetry-clock-dapr-cli",
             "access-telemetry-clock-key",
-            cancellationToken).ConfigureAwait(false);
-
-        Uri lifecycleEndpoint = await waitForSidecarAsync("memories-access-telemetry-dapr-cli", cancellationToken)
-            .ConfigureAwait(false);
-        await waitForSecretAsync(
-            lifecycleEndpoint,
+            "signing-key-pkcs8",
+            clockFingerprint).ConfigureAwait(false);
+        await WaitForSecretAsync(
+            "memories-access-telemetry-dapr-cli",
             "access-telemetry-marker-key",
-            cancellationToken).ConfigureAwait(false);
+            "access-telemetry-marker-key",
+            markerFingerprint).ConfigureAwait(false);
+
+        Task WaitForSecretAsync(string sidecarName, string secretName, string fieldName, byte[] fingerprint)
+        {
+            string path = $"/v1.0/secrets/access-telemetry-secrets/{secretName}";
+            return WaitForEndpointProbeAsync(
+                async probeToken =>
+                {
+                    Uri endpoint = await WaitForDaprSidecarHttpEndpointAsync(
+                        sidecarName,
+                        () => logProvider.GetEntriesSince(logStartIndex),
+                        timeout,
+                        pollInterval,
+                        probeToken).ConfigureAwait(false);
+                    using HttpClient client = createClient(endpoint);
+                    using HttpResponseMessage response = await client.GetAsync(
+                        path, HttpCompletionOption.ResponseHeadersRead, probeToken).ConfigureAwait(false);
+                    bool matches = response.StatusCode == HttpStatusCode.OK &&
+                        await MatchesDaprSecretFingerprintAsync(response.Content, fieldName, fingerprint, probeToken)
+                            .ConfigureAwait(false);
+                    if (endpoint != ResolveDaprSidecarHttpEndpoint(sidecarName, logProvider.GetEntriesSince(logStartIndex)))
+                    {
+                        throw new HttpRequestException("The Dapr HTTP listener changed during the scoped secret probe.");
+                    }
+
+                    if (response.StatusCode == HttpStatusCode.OK && !matches)
+                    {
+                        throw new HttpRequestException("The Dapr response did not contain the expected scoped secret field and fingerprint.");
+                    }
+
+                    return response.StatusCode;
+                },
+                $"{sidecarName}{path}",
+                [HttpStatusCode.OK],
+                DaprSecretFailClosedStatusCodes,
+                timeout,
+                DaprSecretProbeTimeout,
+                pollInterval,
+                cancellationToken);
+        }
     }
 
     /// <summary>Gets the fingerprint of the configured access-telemetry clock secret.</summary>
@@ -1221,19 +1273,9 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                 return false;
             }
 
-            await using Stream stream = await response.Content.ReadAsStreamAsync(
-                TestContext.Current.CancellationToken).ConfigureAwait(false);
-            using JsonDocument document = await JsonDocument.ParseAsync(
-                stream,
-                cancellationToken: TestContext.Current.CancellationToken).ConfigureAwait(false);
-            if (!document.RootElement.TryGetProperty(fieldName, out JsonElement valueElement) ||
-                valueElement.ValueKind != JsonValueKind.String)
-            {
-                return false;
-            }
-
-            byte[] actualFingerprint = FingerprintBytes(valueElement.GetString()!);
-            return CryptographicOperations.FixedTimeEquals(actualFingerprint, expectedFingerprint);
+            return await MatchesDaprSecretFingerprintAsync(
+                response.Content, fieldName, expectedFingerprint, TestContext.Current.CancellationToken)
+                .ConfigureAwait(false);
         }
         finally
         {
@@ -1241,6 +1283,28 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             {
                 client.Dispose();
             }
+        }
+    }
+
+    private static async Task<bool> MatchesDaprSecretFingerprintAsync(
+        HttpContent content,
+        string fieldName,
+        byte[] expectedFingerprint,
+        CancellationToken cancellationToken)
+    {
+        await using Stream stream = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            using JsonDocument document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+            return document.RootElement.ValueKind == JsonValueKind.Object &&
+                document.RootElement.TryGetProperty(fieldName, out JsonElement value) &&
+                value.ValueKind == JsonValueKind.String &&
+                CryptographicOperations.FixedTimeEquals(FingerprintBytes(value.GetString()!), expectedFingerprint);
+        }
+        catch (JsonException)
+        {
+            return false;
         }
     }
 

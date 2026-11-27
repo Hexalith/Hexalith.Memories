@@ -8,7 +8,9 @@ namespace Hexalith.Memories.IntegrationTests.Fixtures;
 using System.Net;
 
 /// <summary>Tracks requests and disposal without opening a Dapr connection.</summary>
-internal sealed class DaprClientRotationTrackingHandler : HttpMessageHandler
+/// <param name="respondAsync">Optional response to send for a tracked request.</param>
+internal sealed class DaprClientRotationTrackingHandler(
+    Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>>? respondAsync = null) : HttpMessageHandler
 {
     /// <summary>Gets the number of requests sent through this handler.</summary>
     internal int RequestCount { get; private set; }
@@ -21,7 +23,8 @@ internal sealed class DaprClientRotationTrackingHandler : HttpMessageHandler
     {
         ObjectDisposedException.ThrowIf(DisposeCount != 0, this);
         RequestCount++;
-        return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent));
+        return respondAsync?.Invoke(request, cancellationToken)
+            ?? Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent));
     }
 
     /// <inheritdoc/>

@@ -5,11 +5,13 @@
 
 namespace Hexalith.Memories.IntegrationTests.Fixtures;
 
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 
@@ -397,81 +399,118 @@ public sealed class AspireIngestionPipelineFixtureTests
     }
 
     [Fact]
-    public async Task WaitForOpenBaoSidecarMatrixReadinessCoreAsync_UsesOnlyExactAuxiliarySidecarProbes()
+    public async Task WaitForOpenBaoSidecarMatrixReadinessCoreAsync_UsesFreshListenersAndExactScopedResponses()
     {
-        List<string> probes = [];
-        Uri clockEndpoint = new("http://127.0.0.1:44001");
-        Uri lifecycleEndpoint = new("http://127.0.0.1:44002");
+        using var logs = new AspireIngestionPipelineFixture.TestLogProvider(0);
+        ILogger clock = ((ILoggerProvider)logs).CreateLogger("memories-access-telemetry-clock-dapr-cli");
+        ILogger lifecycle = ((ILoggerProvider)logs).CreateLogger("memories-access-telemetry-dapr-cli");
+        clock.LogInformation("HTTP server listening on TCP address: :44001");
+        lifecycle.LogInformation("HTTP server listening on TCP address: :44003");
+        int restartCursor = logs.Count;
+        var probes = new ConcurrentQueue<(int Port, string Path)>();
+        int probeCount = 0;
+        const string clockPath = "/v1.0/secrets/access-telemetry-secrets/access-telemetry-clock-key";
+        const string lifecyclePath = "/v1.0/secrets/access-telemetry-secrets/access-telemetry-marker-key";
 
-        await AspireIngestionPipelineFixture.WaitForOpenBaoSidecarMatrixReadinessCoreAsync(
-            (sidecarResourceName, _) =>
-            {
-                probes.Add($"sidecar:{sidecarResourceName}");
-                return Task.FromResult(sidecarResourceName == "memories-access-telemetry-clock-dapr-cli"
-                    ? clockEndpoint
-                    : lifecycleEndpoint);
-            },
-            (endpoint, secretName, _) =>
-            {
-                probes.Add($"secret:{endpoint.Port}:{secretName}");
-                return Task.CompletedTask;
-            },
-            CancellationToken.None);
+        Task readiness = AspireIngestionPipelineFixture.WaitForOpenBaoSidecarMatrixReadinessCoreAsync(
+            logs,
+            restartCursor,
+            endpoint => new HttpClient(new DaprClientRotationTrackingHandler(RespondAsync)) { BaseAddress = endpoint },
+            SHA256.HashData("clock-fixture"u8),
+            SHA256.HashData("marker-fixture"u8),
+            TimeSpan.FromSeconds(2),
+            TimeSpan.FromMilliseconds(5),
+            TestContext.Current.CancellationToken);
 
-        probes.ShouldBe(
+        probes.ShouldBeEmpty();
+        readiness.IsCompleted.ShouldBeFalse();
+        lifecycle.LogInformation("HTTP server listening on TCP address: :44003");
+        clock.LogInformation("HTTP server listening on TCP address: :44001");
+        await readiness;
+
+        probes.ToArray().ShouldBe(
         [
-            "sidecar:memories-access-telemetry-clock-dapr-cli",
-            "secret:44001:access-telemetry-clock-key",
-            "sidecar:memories-access-telemetry-dapr-cli",
-            "secret:44002:access-telemetry-marker-key",
+            (44001, clockPath),
+            (44002, clockPath),
+            (44002, clockPath),
+            (44002, clockPath),
+            (44003, lifecyclePath),
         ]);
+
+        Task<HttpResponseMessage> RespondAsync(HttpRequestMessage request, CancellationToken _)
+        {
+            Uri requestUri = request.RequestUri.ShouldNotBeNull();
+            probes.Enqueue((requestUri.Port, requestUri.AbsolutePath));
+            int attempt = ++probeCount;
+            if (attempt == 1)
+            {
+                clock.LogInformation("HTTP server listening on TCP address: :44002");
+            }
+
+            string body = attempt switch
+            {
+                2 => "{\"access-telemetry-clock-key\":\"clock-fixture\"}",
+                3 => "{\"signing-key-pkcs8\":\"incorrect-fixture\"}",
+                5 => "{\"access-telemetry-marker-key\":\"marker-fixture\"}",
+                _ => "{\"signing-key-pkcs8\":\"clock-fixture\"}",
+            };
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body) });
+        }
     }
 
     [Fact]
-    public async Task WaitForOpenBaoSidecarMatrixReadinessCoreAsync_ForwardsCallerCancellationTokenToEveryProbe()
+    public async Task WaitForOpenBaoSidecarMatrixReadinessCoreAsync_CallerCancellationStopsAnActiveProbe()
     {
-        using var cts = new CancellationTokenSource();
-        List<CancellationToken> observedTokens = [];
-        Uri endpoint = new("http://127.0.0.1:44001");
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        using var logs = new AspireIngestionPipelineFixture.TestLogProvider(0);
+        ((ILoggerProvider)logs).CreateLogger("memories-access-telemetry-clock-dapr-cli")
+            .LogInformation("HTTP server listening on TCP address: :44001");
+        var probeStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        await AspireIngestionPipelineFixture.WaitForOpenBaoSidecarMatrixReadinessCoreAsync(
-            (_, token) =>
-            {
-                observedTokens.Add(token);
-                return Task.FromResult(endpoint);
-            },
-            (_, _, token) =>
-            {
-                observedTokens.Add(token);
-                return Task.CompletedTask;
-            },
+        Task readiness = AspireIngestionPipelineFixture.WaitForOpenBaoSidecarMatrixReadinessCoreAsync(
+            logs,
+            0,
+            endpoint => new HttpClient(new DaprClientRotationTrackingHandler(RespondAsync)) { BaseAddress = endpoint },
+            SHA256.HashData("clock-fixture"u8),
+            SHA256.HashData("marker-fixture"u8),
+            TimeSpan.FromSeconds(5),
+            TimeSpan.Zero,
             cts.Token);
 
-        observedTokens.Count.ShouldBe(4);
-        observedTokens.ShouldAllBe(token => token == cts.Token);
+        await probeStarted.Task.WaitAsync(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+        await cts.CancelAsync();
+        await Should.ThrowAsync<OperationCanceledException>(() => readiness);
+
+        async Task<HttpResponseMessage> RespondAsync(HttpRequestMessage _, CancellationToken token)
+        {
+            probeStarted.SetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, token);
+            throw new InvalidOperationException("Cancellation should stop this probe.");
+        }
     }
 
     [Fact]
     public async Task WaitForOpenBaoSidecarMatrixReadinessCoreAsync_ClockSidecarFailure_StopsRemainingProbes()
     {
-        List<string> probes = [];
+        using var logs = new AspireIngestionPipelineFixture.TestLogProvider(0);
+        ((ILoggerProvider)logs).CreateLogger("memories-access-telemetry-clock-dapr-cli")
+            .LogInformation("HTTP server listening on TCP address: :44001");
+        using var handler = new DaprClientRotationTrackingHandler(static (_, _) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.Forbidden)));
 
-        IOException exception = await Should.ThrowAsync<IOException>(() =>
+        InvalidOperationException exception = await Should.ThrowAsync<InvalidOperationException>(() =>
             AspireIngestionPipelineFixture.WaitForOpenBaoSidecarMatrixReadinessCoreAsync(
-                (sidecarResourceName, _) =>
-                {
-                    probes.Add($"sidecar:{sidecarResourceName}");
-                    return Task.FromException<Uri>(new IOException("clock sidecar unavailable"));
-                },
-                (endpoint, secretName, _) =>
-                {
-                    probes.Add($"secret:{endpoint.Port}:{secretName}");
-                    return Task.CompletedTask;
-                },
-                CancellationToken.None));
+                logs,
+                0,
+                endpoint => new HttpClient(handler, disposeHandler: false) { BaseAddress = endpoint },
+                SHA256.HashData("clock-fixture"u8),
+                SHA256.HashData("marker-fixture"u8),
+                TimeSpan.FromSeconds(1),
+                TimeSpan.Zero,
+                TestContext.Current.CancellationToken));
 
-        exception.Message.ShouldBe("clock sidecar unavailable");
-        probes.ShouldBe(["sidecar:memories-access-telemetry-clock-dapr-cli"]);
+        exception.Message.ShouldContain("403 Forbidden");
+        handler.RequestCount.ShouldBe(1);
     }
 
     [Fact]
