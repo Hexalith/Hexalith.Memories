@@ -6,12 +6,14 @@
 namespace Hexalith.Memories.IntegrationTests.Tenants;
 
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.IntegrationTests.Fixtures;
+using Hexalith.Memories.ServiceDefaults.Security;
 
 using Shouldly;
 
@@ -226,6 +228,67 @@ public sealed class TenantContextEnforcementIntegrationTests
         else
         {
             response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        }
+    }
+
+    /// <summary>Verifies application-token enforcement on a direct authenticated memory read.</summary>
+    /// <returns>A task that completes when the live endpoint checks finish.</returns>
+    [Fact]
+    public async Task DaprApplication_ProtectedRequest_EnforcesConfiguredAppToken()
+    {
+        string tenantId = await _fixture.ProvisionActiveTenantAsync($"tenant-app-token-{Guid.NewGuid():N}");
+        const string CaseId = "case-app-token";
+        const string MemoryUnitId = "mu-app-token";
+        const string Content = "Owned application-token regression payload.";
+        await SeedMemoryUnitHashAsync(tenantId, CaseId, MemoryUnitId, Content, storedTenantId: tenantId);
+
+        // The fixture client automatically adds the correct application token when enabled.
+        Uri applicationEndpoint = _fixture.MemoriesClient.BaseAddress
+            ?? throw new InvalidOperationException("The fixture did not expose the Memories application endpoint.");
+        applicationEndpoint.IsLoopback.ShouldBeTrue();
+        using var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false })
+        {
+            BaseAddress = applicationEndpoint,
+        };
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", AspireIngestionPipelineFixture.MintServerBearer(tenantId));
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        string? appToken = null;
+        if (string.Equals(Environment.GetEnvironmentVariable("DAPR_API_TOKEN_MODE"), "enabled", StringComparison.OrdinalIgnoreCase))
+        {
+            appToken = Environment.GetEnvironmentVariable(DaprApplicationTokenMiddleware.AppApiTokenEnvironmentVariable);
+            appToken.ShouldNotBeNullOrWhiteSpace();
+
+            foreach (string? deniedToken in new string?[] { null, $"incorrect-{Guid.NewGuid():N}" })
+            {
+                using HttpResponseMessage denied = await ReadMemoryAsync(deniedToken);
+                denied.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+                JsonElement problem = await denied.Content.ReadFromJsonAsync<JsonElement>(cancellationToken);
+                problem.GetProperty("type").GetString().ShouldBe("https://hexalith.io/problems/dapr-application-token");
+            }
+        }
+
+        using HttpResponseMessage allowed = await ReadMemoryAsync(appToken);
+        allowed.StatusCode.ShouldBe(HttpStatusCode.OK);
+        MemoryUnit? unit = await allowed.Content.ReadFromJsonAsync<MemoryUnit>(MemoriesJsonContext.Options, cancellationToken);
+        unit.ShouldNotBeNull();
+        unit.TenantId.ShouldBe(tenantId);
+        unit.Content.ShouldBe(Content);
+
+        RedisValue stored = await _fixture.RedisConnection.GetDatabase().HashGetAsync($"{tenantId}:mu:{MemoryUnitId}", "content");
+        ((string?)stored).ShouldBe(Content);
+
+        async Task<HttpResponseMessage> ReadMemoryAsync(string? token)
+        {
+            using var request = new HttpRequestMessage(
+                HttpMethod.Get, $"/api/v1/tenants/{tenantId}/cases/{CaseId}/memory-units/{MemoryUnitId}");
+            if (token is not null)
+            {
+                request.Headers.Add(DaprApplicationTokenMiddleware.DaprApiTokenHeader, token);
+            }
+
+            return await client.SendAsync(request, cancellationToken);
         }
     }
 
