@@ -8,7 +8,10 @@ namespace Hexalith.Memories.Server.Hosting;
 using Dapr.Workflow;
 using Dapr.Workflow.Client;
 
+using Grpc.Core;
+
 using Hexalith.Memories.Server.Ingestion;
+using Hexalith.Memories.Server.Workflows;
 
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -19,8 +22,8 @@ using Microsoft.Extensions.Logging;
 /// before any other hosted service (per Spike 0.4 — ordering is DI-registration-order-independent).
 ///
 /// Story 24.5 replaced recurring broad workflow enumeration with an app-owned in-flight registry. The
-/// gate reads instance ids that the ingestion scheduler tracked, prunes terminal or missing entries, and
-/// delays startup while any tracked workflow remains active. Once tracked work drains, public SDK
+/// gate reads tracked ingestion and annotation parent IDs, prunes settled entries, and delays startup
+/// while tracked ingestion work remains active. Once tracked work drains, public SDK
 /// enumeration checks for older untracked workflows until the gate records a confirmed legacy drain.
 /// Spike 0.4 chose <see cref="IHostedLifecycleService"/> over
 /// <c>IStartupFilter</c> so the gate does NOT depend on DAPR's own hosted-service registration
@@ -129,23 +132,39 @@ internal sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecyc
                     token => _workflowClient.GetWorkflowStateAsync(entry.InstanceId, false, token),
                     cancellationToken).ConfigureAwait(false);
 
-                if (state is null || !state.Exists || !IsActive(state.RuntimeStatus))
+                if (state is { Exists: true } && IsActive(state.RuntimeStatus))
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    await _inFlightRegistry.RemoveAsync(entry.InstanceId, cancellationToken)
-                        .WaitAsync(cancellationToken).ConfigureAwait(false);
+                    count++;
                     continue;
                 }
 
-                count++;
+                if (AnnotationProjectionWorkflow.GetIngestionInstanceId(entry.InstanceId) is string childId)
+                {
+                    (bool active, bool retain) = await CheckAnnotationChildAsync(
+                        entry.InstanceId, entry.TrackedAt, state, childId, cancellationToken)
+                        .ConfigureAwait(false);
+                    if (active)
+                    {
+                        count++;
+                    }
+
+                    if (retain)
+                    {
+                        continue;
+                    }
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
+                await _inFlightRegistry.RemoveAsync(entry.InstanceId, cancellationToken)
+                    .WaitAsync(cancellationToken).ConfigureAwait(false);
             }
 
             if (count == 0
                 && !await _inFlightRegistry.IsInitializedAsync(cancellationToken)
                     .WaitAsync(cancellationToken).ConfigureAwait(false))
             {
-                int fallbackCount = await CountInFlightByEnumerationFallbackAsync(cancellationToken).ConfigureAwait(false);
-                if (fallbackCount == 0)
+                (int fallbackCount, bool canConfirm) = await CountInFlightByEnumerationFallbackAsync(cancellationToken).ConfigureAwait(false);
+                if (fallbackCount == 0 && canConfirm)
                 {
                     // Upgrades must keep intake quiesced until legacy writers are retired.
                     cancellationToken.ThrowIfCancellationRequested();
@@ -180,16 +199,62 @@ internal sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecyc
 
     internal static bool ShouldCountWorkflow(string? workflowName, bool exists, WorkflowRuntimeStatus status)
         => exists
-            && string.Equals(workflowName, "IngestionWorkflow", StringComparison.Ordinal)
+            && (workflowName == nameof(IngestionWorkflow) || workflowName == nameof(AnnotationProjectionWorkflow))
             && IsActive(status);
 
     internal static bool ShouldBlockForUnreadableWorkflowName(bool exists, WorkflowRuntimeStatus status)
         => exists && IsActive(status);
 
-    private async Task<int> CountInFlightByEnumerationFallbackAsync(CancellationToken cancellationToken)
+    private async Task<(bool Active, bool Retain)> CheckAnnotationChildAsync(
+        string parentId,
+        DateTimeOffset trackedAt,
+        WorkflowState? parentState,
+        string childId,
+        CancellationToken cancellationToken)
+    {
+        WorkflowState? childState = await QuerySidecarAsync(
+            token => _workflowClient.GetWorkflowStateAsync(childId, false, token), cancellationToken).ConfigureAwait(false);
+        if (childState is { Exists: true })
+        {
+            bool active = IsActive(childState.RuntimeStatus);
+            return (active, active);
+        }
+
+        if (parentState is not { Exists: true })
+        {
+            // The scheduler persists the row before Dapr receives the parent. Retain an ambiguous
+            // submission for later checks even after it stops delaying startup.
+            return (IsWithinVisibilityWindow(trackedAt), true);
+        }
+
+        IReadOnlyList<WorkflowHistoryEvent> history;
+        try
+        {
+            history = await QuerySidecarAsync(
+                token => _workflowClient.GetInstanceHistoryAsync(parentId, token), cancellationToken).ConfigureAwait(false);
+        }
+        catch (RpcException exception) when (exception.StatusCode == StatusCode.NotFound)
+        {
+            // A parent can disappear between the state and history reads. That is not evidence
+            // that its child cannot appear later.
+            return (IsWithinVisibilityWindow(parentState.LastUpdatedAt), true);
+        }
+        bool childDispatched = history.Any(e => e.EventType == WorkflowHistoryEventType.SubOrchestrationInstanceCreated);
+        bool childSettled = history.Any(e => e.EventType is WorkflowHistoryEventType.SubOrchestrationInstanceCompleted
+            or WorkflowHistoryEventType.SubOrchestrationInstanceFailed);
+        bool hasTerminalHistory = history.Any(e => e.EventType is WorkflowHistoryEventType.ExecutionCompleted
+            or WorkflowHistoryEventType.ExecutionTerminated);
+        bool retainUnsettledChild = !hasTerminalHistory || (childDispatched && !childSettled);
+        return (retainUnsettledChild && IsWithinVisibilityWindow(parentState.LastUpdatedAt), retainUnsettledChild);
+    }
+
+    private bool IsWithinVisibilityWindow(DateTimeOffset lastActivity) => _timeProvider.GetUtcNow() - lastActivity < TotalTimeout;
+
+    private async Task<(int Count, bool CanConfirm)> CountInFlightByEnumerationFallbackAsync(CancellationToken cancellationToken)
     {
         string? continuationToken = null;
-        int count = 0;
+        HashSet<string> activeInstances = new(StringComparer.Ordinal);
+        bool canConfirm = true;
 
         do
         {
@@ -209,11 +274,27 @@ internal sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecyc
                     continue;
                 }
 
+                string? childId = state.WorkflowName == nameof(AnnotationProjectionWorkflow)
+                    ? AnnotationProjectionWorkflow.GetIngestionInstanceId(instanceId)
+                    : null;
                 if (ShouldCountWorkflow(state.WorkflowName, state.Exists, state.RuntimeStatus)
                     || (string.IsNullOrWhiteSpace(state.WorkflowName)
                         && ShouldBlockForUnreadableWorkflowName(state.Exists, state.RuntimeStatus)))
                 {
-                    count++;
+                    _ = activeInstances.Add(childId ?? instanceId);
+                }
+                else if (childId is not null && state.Exists)
+                {
+                    (bool active, bool retain) = await CheckAnnotationChildAsync(
+                        instanceId, state.CreatedAt, state, childId, cancellationToken).ConfigureAwait(false);
+                    if (active)
+                    {
+                        _ = activeInstances.Add(childId);
+                    }
+
+                    // Legacy parents have no registry row. Retest unresolved evidence on the next
+                    // startup even after the bounded visibility window stops delaying this startup.
+                    canConfirm &= !retain;
                 }
             }
 
@@ -221,7 +302,7 @@ internal sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecyc
         }
         while (!string.IsNullOrEmpty(continuationToken));
 
-        return count;
+        return (activeInstances.Count, canConfirm);
     }
 
     private async Task<T> QuerySidecarAsync<T>(Func<CancellationToken, Task<T>> query, CancellationToken cancellationToken)
@@ -255,7 +336,7 @@ internal sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecyc
     [LoggerMessage(EventId = 9171, Level = LogLevel.Warning, Message = "Replay-safety gate: {InFlightCount} in-flight IngestionWorkflow instance(s) detected — delaying startup (event 9171).")]
     private static partial void LogDraining(ILogger logger, int inFlightCount);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Replay-safety gate: no in-flight IngestionWorkflow instances — proceeding.")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Replay-safety gate: no active ingestion workflows detected — proceeding.")]
     private static partial void LogDrained(ILogger logger);
 
     [LoggerMessage(EventId = 9172, Level = LogLevel.Critical, Message = "Replay-safety gate: timed out — proceeding anyway (event 9172). Last completed active count: {RemainingCount}.")]

@@ -75,7 +75,7 @@ internal sealed partial class CaseService
         _projectionWorkflowScheduler = projectionWorkflowScheduler
             ?? (workflowClient is null
                 ? new InMemoryCaseProjectionWorkflowScheduler()
-                : new DaprCaseProjectionWorkflowScheduler(workflowClient));
+                : new DaprCaseProjectionWorkflowScheduler(workflowClient, new RedisIngestionWorkflowInFlightRegistry(redis), TimeProvider.System));
         _workflowConfigurationCapture = workflowConfigurationCapture;
         _workflowTraceContextCapture = workflowTraceContextCapture;
         _logger = logger;
@@ -181,7 +181,7 @@ internal sealed partial class CaseService
 
         string workflowInstanceId = await _projectionWorkflowScheduler.ScheduleAsync(
             nameof(AnnotationProjectionWorkflow),
-            $"annotation-project-{annotationMuId}",
+            AnnotationProjectionWorkflow.GetInstanceId(annotationMuId),
             new AnnotationProjectionInput(
                 input.TenantId,
                 input.CaseId,

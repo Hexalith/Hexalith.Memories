@@ -213,14 +213,15 @@ public sealed class IngestionWorkflowInFlightRegistryTests
     }
 
     [Fact]
-    public async Task IsInitializedAsync_IgnoresLegacyMarkerWrittenByTracking()
+    public async Task IsInitializedAsync_IgnoresMarkersThatPredateAnnotationTracking()
     {
         (IConnectionMultiplexer redis, IDatabase db) = CreateRedis();
         db.KeyExistsAsync("ingestion-workflow:in-flight:initialized", Arg.Any<CommandFlags>()).Returns(true);
+        db.KeyExistsAsync("ingestion-workflow:in-flight:drain-confirmed", Arg.Any<CommandFlags>()).Returns(true);
         RedisIngestionWorkflowInFlightRegistry registry = CreateRegistry(redis);
 
         (await registry.IsInitializedAsync(CancellationToken.None)).ShouldBeFalse();
-        await db.Received(1).KeyExistsAsync("ingestion-workflow:in-flight:drain-confirmed", Arg.Any<CommandFlags>());
+        await db.Received(1).KeyExistsAsync("ingestion-workflow:in-flight:drain-confirmed-v2", Arg.Any<CommandFlags>());
     }
 
     [Fact]

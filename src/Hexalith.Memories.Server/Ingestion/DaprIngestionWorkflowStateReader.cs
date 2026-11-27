@@ -7,6 +7,8 @@ namespace Hexalith.Memories.Server.Ingestion;
 
 using Dapr.Workflow;
 
+using Hexalith.Memories.Server.Workflows;
+
 using Microsoft.Extensions.Logging;
 
 /// <summary>Dapr-backed ingestion workflow state reader.</summary>
@@ -26,7 +28,11 @@ internal sealed partial class DaprIngestionWorkflowStateReader(
             .GetWorkflowStateAsync(instanceId, includeInputsAndOutputs, cancellationToken)
             .ConfigureAwait(false);
 
-        if (state is null || !state.Exists || IsTerminalStatus(state.RuntimeStatus))
+        bool annotationParent = AnnotationProjectionWorkflow.GetIngestionInstanceId(instanceId) is not null;
+        bool canPrune = annotationParent
+            ? state is { Exists: true, RuntimeStatus: WorkflowRuntimeStatus.Completed }
+            : state is null || !state.Exists || IsTerminalStatus(state.RuntimeStatus);
+        if (canPrune)
         {
             await TryRemoveTrackedInstanceAsync(instanceId, cancellationToken).ConfigureAwait(false);
         }

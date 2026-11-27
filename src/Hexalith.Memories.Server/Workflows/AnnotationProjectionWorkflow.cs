@@ -116,4 +116,15 @@ internal sealed class AnnotationProjectionWorkflow : Workflow<AnnotationProjecti
             WorkflowConfiguration = input.WorkflowConfiguration,
             TraceContext = input.TraceContext,
         };
+
+    private const string InstanceIdPrefix = "annotation-project-";
+
+    /// <summary>Returns the parent instance identifier for the deterministic ingestion child.</summary>
+    internal static string GetInstanceId(string ingestionInstanceId) => InstanceIdPrefix + ingestionInstanceId;
+
+    /// <summary>Finds the ingestion child identifier from its tracked parent identifier.</summary>
+    internal static string? GetIngestionInstanceId(string instanceId)
+        => instanceId.StartsWith(InstanceIdPrefix, StringComparison.Ordinal) && instanceId.Length > InstanceIdPrefix.Length
+            ? instanceId[InstanceIdPrefix.Length..]
+            : null;
 }

@@ -260,9 +260,16 @@ rollback, verify sidecar/runtime compatibility and all canary/control checks.
 
 A scoped Deployment rollback does not reverse CRDs, workflow history, index/schema changes,
 Redis/FalkorDB data layouts, configuration written to durable state, or PVC contents. If the rollback
-restores a binary that can schedule untracked ingestion, invalidate only the Redis
-`ingestion-workflow:in-flight:drain-confirmed` key while intake is paused. A subsequent upgrade will
-then enumerate Dapr workflows before recording a new confirmation.
+restores a binary that can schedule untracked ingestion, invalidate the Redis confirmation key for
+the build you plan to upgrade to while intake is paused. Use
+`ingestion-workflow:in-flight:drain-confirmed-v2` for builds that track annotation projection parents
+and `ingestion-workflow:in-flight:drain-confirmed` for earlier builds. A subsequent upgrade enumerates
+Dapr workflows before recording a new confirmation.
+
+The annotation-aware gate checks the deterministic ingestion child when a tracked annotation parent
+is terminal or missing. It retains records for ambiguous submissions and unsettled child dispatches.
+A record whose parent and child remain absent stops delaying startup after the five-minute visibility
+window. Keep annotation intake paused and confirm workflow state before approving a rollout.
 
 Durable-data recovery uses retained logical exports and paired snapshots through
 [Backup and Restore](./backup-restore.md) and [Disaster Recovery](./disaster-recovery.md). Never delete

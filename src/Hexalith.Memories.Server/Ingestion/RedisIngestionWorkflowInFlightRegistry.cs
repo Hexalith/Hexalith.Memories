@@ -12,8 +12,8 @@ internal sealed class RedisIngestionWorkflowInFlightRegistry : IIngestionWorkflo
 {
     internal const string RegistryKey = "ingestion-workflow:in-flight";
     internal const string InstanceMemberLookupKey = "ingestion-workflow:in-flight:members";
-    // Old writers set :initialized when tracking work. Only a confirmed replay drain may set this key.
-    internal const string InitializedKey = "ingestion-workflow:in-flight:drain-confirmed";
+    // The first annotation-aware startup must enumerate old parent and child histories once.
+    internal const string InitializedKey = "ingestion-workflow:in-flight:drain-confirmed-v2";
     internal const char MemberSeparator = '\u001f';
 
     private readonly IConnectionMultiplexer _redis;

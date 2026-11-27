@@ -45,8 +45,13 @@ public class WorkflowReplaySafetyHostedServiceTests
     }
 
     [Fact]
-    public void ShouldCountWorkflow_OnlyTracksIngestionWorkflow()
+    public void ShouldCountWorkflow_TracksIngestionAndAnnotationProjection()
     {
+        WorkflowReplaySafetyHostedService.ShouldCountWorkflow(
+            workflowName: nameof(AnnotationProjectionWorkflow),
+            exists: true,
+            status: WorkflowRuntimeStatus.Pending).ShouldBeTrue();
+
         WorkflowReplaySafetyHostedService.ShouldCountWorkflow(
             workflowName: "IngestionWorkflow",
             exists: true,
@@ -364,6 +369,154 @@ public class WorkflowReplaySafetyHostedServiceTests
         {
             pending.TrySetResult(CreateState(ids[completedQueries], WorkflowRuntimeStatus.Running));
         }
+    }
+
+    [Fact]
+    public async Task TryCountInFlightAsync_KeepsAnnotationReservationBeforeTheSidecarShowsTheParent()
+    {
+        const string childId = "annotation-unit";
+        string parentId = AnnotationProjectionWorkflow.GetInstanceId(childId);
+        FakeTimeProvider clock = new(DateTimeOffset.UnixEpoch);
+        IIngestionWorkflowInFlightRegistry registry = Substitute.For<IIngestionWorkflowInFlightRegistry>();
+        registry.ListAsync(Arg.Any<CancellationToken>()).Returns([new("tenant-a", parentId, clock.GetUtcNow())]);
+        registry.IsInitializedAsync(Arg.Any<CancellationToken>()).Returns(true);
+        IDaprWorkflowClient workflowClient = Substitute.For<IDaprWorkflowClient>();
+        workflowClient.GetWorkflowStateAsync(parentId, false, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<WorkflowState>(null!));
+        workflowClient.GetWorkflowStateAsync(childId, false, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<WorkflowState>(null!));
+        WorkflowReplaySafetyHostedService service = new(
+            workflowClient, registry, NullLogger<WorkflowReplaySafetyHostedService>.Instance, clock);
+
+        (await service.TryCountInFlightAsync(CancellationToken.None)).Count.ShouldBe(1);
+        clock.Advance(WorkflowReplaySafetyHostedService.TotalTimeout);
+        (await service.TryCountInFlightAsync(CancellationToken.None)).Count.ShouldBe(0);
+        await registry.DidNotReceive().RemoveAsync(parentId, Arg.Any<CancellationToken>());
+
+        // A parent lost to history cleanup cannot hide a later-visible child, even after the window.
+        workflowClient.GetWorkflowStateAsync(childId, false, Arg.Any<CancellationToken>())
+            .Returns(CreateState(childId, WorkflowRuntimeStatus.Running));
+        (await service.TryCountInFlightAsync(CancellationToken.None)).Count.ShouldBe(1);
+        await registry.DidNotReceive().RemoveAsync(parentId, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task TryCountInFlightAsync_DrainsAnnotationChildEvenWhenItsParentHasTerminated()
+    {
+        const string childId = "annotation-unit";
+        string parentId = AnnotationProjectionWorkflow.GetInstanceId(childId);
+        IIngestionWorkflowInFlightRegistry registry = Substitute.For<IIngestionWorkflowInFlightRegistry>();
+        registry.ListAsync(Arg.Any<CancellationToken>()).Returns([new("tenant-a", parentId, DateTimeOffset.UtcNow)]);
+        registry.IsInitializedAsync(Arg.Any<CancellationToken>()).Returns(true);
+        IDaprWorkflowClient workflowClient = Substitute.For<IDaprWorkflowClient>();
+        workflowClient.GetWorkflowStateAsync(parentId, false, Arg.Any<CancellationToken>())
+            .Returns(CreateState(parentId, WorkflowRuntimeStatus.Terminated, nameof(AnnotationProjectionWorkflow)));
+        workflowClient.GetWorkflowStateAsync(childId, false, Arg.Any<CancellationToken>())
+            .Returns(CreateState(childId, WorkflowRuntimeStatus.Running), CreateState(childId, WorkflowRuntimeStatus.Completed));
+        WorkflowReplaySafetyHostedService service = CreateService(workflowClient, registry);
+
+        (await service.TryCountInFlightAsync(CancellationToken.None)).Count.ShouldBe(1);
+        await registry.DidNotReceive().RemoveAsync(parentId, Arg.Any<CancellationToken>());
+
+        (await service.TryCountInFlightAsync(CancellationToken.None)).Count.ShouldBe(0);
+        await registry.Received(1).RemoveAsync(parentId, Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData(WorkflowRuntimeStatus.Failed, true, false, false)]
+    [InlineData(WorkflowRuntimeStatus.Terminated, true, true, true)]
+    [InlineData(WorkflowRuntimeStatus.Completed, false, false, true)]
+    public async Task TryCountInFlightAsync_UsesParentHistoryBeforePruningMissingChild(
+        WorkflowRuntimeStatus parentStatus,
+        bool terminalHistoryAvailable,
+        bool childDispatched,
+        bool shouldRetain)
+    {
+        const string childId = "annotation-unit";
+        string parentId = AnnotationProjectionWorkflow.GetInstanceId(childId);
+        IIngestionWorkflowInFlightRegistry registry = Substitute.For<IIngestionWorkflowInFlightRegistry>();
+        registry.ListAsync(Arg.Any<CancellationToken>()).Returns([new("tenant-a", parentId, DateTimeOffset.UtcNow)]);
+        registry.IsInitializedAsync(Arg.Any<CancellationToken>()).Returns(true);
+        IDaprWorkflowClient workflowClient = Substitute.For<IDaprWorkflowClient>();
+        workflowClient.GetWorkflowStateAsync(parentId, false, Arg.Any<CancellationToken>())
+            .Returns(CreateState(parentId, parentStatus, nameof(AnnotationProjectionWorkflow)));
+        workflowClient.GetWorkflowStateAsync(childId, false, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<WorkflowState>(null!));
+        List<WorkflowHistoryEvent> history = [];
+        if (childDispatched)
+        {
+            history.Add(new WorkflowHistoryEvent(1, WorkflowHistoryEventType.SubOrchestrationInstanceCreated, DateTime.UtcNow));
+        }
+
+        if (terminalHistoryAvailable)
+        {
+            history.Add(new WorkflowHistoryEvent(2, WorkflowHistoryEventType.ExecutionCompleted, DateTime.UtcNow));
+        }
+
+        workflowClient.GetInstanceHistoryAsync(parentId, Arg.Any<CancellationToken>()).Returns(history);
+        WorkflowReplaySafetyHostedService service = CreateService(workflowClient, registry);
+
+        (await service.TryCountInFlightAsync(CancellationToken.None)).Count.ShouldBe(shouldRetain ? 1 : 0);
+        await registry.Received(shouldRetain ? 0 : 1).RemoveAsync(parentId, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task TryCountInFlightAsync_InitialDrainIncludesLegacyAnnotationParents()
+    {
+        const string parentId = "legacy-annotation-parent";
+        IDaprWorkflowClient workflowClient = Substitute.For<IDaprWorkflowClient>();
+        IIngestionWorkflowInFlightRegistry registry = Substitute.For<IIngestionWorkflowInFlightRegistry>();
+        registry.ListAsync(Arg.Any<CancellationToken>()).Returns([]);
+        workflowClient.ListInstanceIdsAsync(null, 100, Arg.Any<CancellationToken>())
+            .Returns(new WorkflowInstancePage([parentId], null));
+        workflowClient.GetWorkflowStateAsync(parentId, false, Arg.Any<CancellationToken>())
+            .Returns(CreateState(parentId, WorkflowRuntimeStatus.Pending, nameof(AnnotationProjectionWorkflow)),
+                CreateState(parentId, WorkflowRuntimeStatus.Completed, nameof(AnnotationProjectionWorkflow)));
+        WorkflowReplaySafetyHostedService service = CreateService(workflowClient, registry);
+
+        (await service.TryCountInFlightAsync(CancellationToken.None)).Count.ShouldBe(1);
+        await registry.DidNotReceiveWithAnyArgs().MarkInitializedAsync(default);
+        (await service.TryCountInFlightAsync(CancellationToken.None)).Count.ShouldBe(0);
+        await registry.Received(1).MarkInitializedAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task TryCountInFlightAsync_LegacyDrainRemainsUnconfirmedUntilDelayedChildSettles()
+    {
+        const string childId = "legacy-annotation-unit";
+        string parentId = AnnotationProjectionWorkflow.GetInstanceId(childId);
+        IDaprWorkflowClient workflowClient = Substitute.For<IDaprWorkflowClient>();
+        IIngestionWorkflowInFlightRegistry registry = Substitute.For<IIngestionWorkflowInFlightRegistry>();
+        FakeTimeProvider clock = new(DateTimeOffset.UtcNow);
+        registry.ListAsync(Arg.Any<CancellationToken>()).Returns([]);
+        workflowClient.ListInstanceIdsAsync(null, 100, Arg.Any<CancellationToken>())
+            .Returns(new WorkflowInstancePage([parentId], null));
+        workflowClient.GetWorkflowStateAsync(parentId, false, Arg.Any<CancellationToken>())
+            .Returns(CreateState(parentId, WorkflowRuntimeStatus.Terminated, nameof(AnnotationProjectionWorkflow)));
+        workflowClient.GetWorkflowStateAsync(childId, false, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<WorkflowState>(null!));
+        workflowClient.GetInstanceHistoryAsync(parentId, Arg.Any<CancellationToken>()).Returns(
+            [new WorkflowHistoryEvent(1, WorkflowHistoryEventType.SubOrchestrationInstanceCreated, DateTime.UtcNow),
+             new WorkflowHistoryEvent(2, WorkflowHistoryEventType.ExecutionTerminated, DateTime.UtcNow)]);
+        WorkflowReplaySafetyHostedService service = new(
+            workflowClient, registry, NullLogger<WorkflowReplaySafetyHostedService>.Instance, clock);
+
+        (await service.TryCountInFlightAsync(CancellationToken.None)).Count.ShouldBe(1);
+        clock.Advance(WorkflowReplaySafetyHostedService.TotalTimeout + TimeSpan.FromSeconds(1));
+        (await service.TryCountInFlightAsync(CancellationToken.None)).Count.ShouldBe(0);
+        await registry.DidNotReceiveWithAnyArgs().MarkInitializedAsync(default);
+
+        workflowClient.ListInstanceIdsAsync(null, 100, Arg.Any<CancellationToken>())
+            .Returns(new WorkflowInstancePage([parentId, childId], null));
+        workflowClient.GetWorkflowStateAsync(childId, false, Arg.Any<CancellationToken>())
+            .Returns(CreateState(childId, WorkflowRuntimeStatus.Running));
+        (await service.TryCountInFlightAsync(CancellationToken.None)).Count.ShouldBe(1);
+        await registry.DidNotReceiveWithAnyArgs().MarkInitializedAsync(default);
+
+        workflowClient.GetWorkflowStateAsync(childId, false, Arg.Any<CancellationToken>())
+            .Returns(CreateState(childId, WorkflowRuntimeStatus.Completed));
+        (await service.TryCountInFlightAsync(CancellationToken.None)).Count.ShouldBe(0);
+        await registry.Received(1).MarkInitializedAsync(Arg.Any<CancellationToken>());
     }
 
     private static WorkflowReplaySafetyHostedService CreateService(

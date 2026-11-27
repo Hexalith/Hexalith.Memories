@@ -87,6 +87,27 @@ public sealed class DaprIngestionWorkflowStateReaderTests
         await registry.DidNotReceiveWithAnyArgs().RemoveAsync(default!, default);
     }
 
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData(WorkflowRuntimeStatus.Terminated, false)]
+    [InlineData(WorkflowRuntimeStatus.Completed, true)]
+    public async Task GetWorkflowStateAsync_LeavesUnsettledAnnotationParentsForTheReplayGate(
+        WorkflowRuntimeStatus? status,
+        bool shouldPrune)
+    {
+        string parentId = AnnotationProjectionWorkflow.GetInstanceId("annotation-unit");
+        IDaprWorkflowClient workflowClient = Substitute.For<IDaprWorkflowClient>();
+        workflowClient.GetWorkflowStateAsync(parentId, true, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(status is WorkflowRuntimeStatus value ? CreateState(parentId, value) : null!));
+        IIngestionWorkflowInFlightRegistry registry = Substitute.For<IIngestionWorkflowInFlightRegistry>();
+        DaprIngestionWorkflowStateReader reader = new(
+            workflowClient, registry, NullLogger<DaprIngestionWorkflowStateReader>.Instance);
+
+        _ = await reader.GetWorkflowStateAsync(parentId, true, CancellationToken.None);
+
+        await registry.Received(shouldPrune ? 1 : 0).RemoveAsync(parentId, Arg.Any<CancellationToken>());
+    }
+
     private static WorkflowState CreateState(string instanceId, WorkflowRuntimeStatus status)
     {
         Type metadataType = typeof(WorkflowState).Assembly.GetType("Dapr.Workflow.Client.WorkflowMetadata")!;
