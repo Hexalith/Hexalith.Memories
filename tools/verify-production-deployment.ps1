@@ -74,6 +74,9 @@ $ownedEvidenceNames = @(
     # substitution it never performed.
     'secret-store-substitution.json',
     'openbao-bootstrap.json',
+    'openbao-pods.txt',
+    'openbao-events.txt',
+    'openbao-server.log',
     'last-stage.txt',
     'pods.txt',
     'events.txt',
@@ -833,22 +836,32 @@ function Save-KubectlEvidence {
     Protect-EvidenceText $output | Set-Content -LiteralPath (Join-Path $evidencePath $Name) -Encoding utf8
 }
 
-function Write-ClusterDiagnostics {
-    param([Parameter(Mandatory)][string]$Status)
+function Write-VerificationResult {
+    param(
+        [Parameter(Mandatory)][string]$Status,
+        [AllowNull()][string]$ErrorMessage
+    )
 
     $result = [ordered]@{
         schemaVersion = 1
         status = $Status
         stage = $verificationStage
         capturedAt = [DateTime]::UtcNow.ToString('o')
-        error = if ($null -eq $verificationError) { $null } else { Protect-EvidenceText $verificationError.Exception.Message }
+        error = if ($ErrorMessage) { Protect-EvidenceText $ErrorMessage } else { $null }
     }
     $result | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $evidencePath 'verification-result.json') -Encoding utf8
+}
 
+function Write-ClusterDiagnostics {
     if (-not $clusterCreated) {
         return
     }
 
+    if ($openBaoOwnership.NamespaceCreated) {
+        Save-KubectlEvidence 'openbao-pods.txt' @('get', 'pods', '-n', $script:OpenBaoNamespace, '-o', 'wide')
+        Save-KubectlEvidence 'openbao-events.txt' @('get', 'events', '-n', $script:OpenBaoNamespace, '--sort-by=.lastTimestamp')
+        Save-KubectlEvidence 'openbao-server.log' @('logs', '-n', $script:OpenBaoNamespace, 'deployment/hexalith-keys', '--tail=200')
+    }
     Save-KubectlEvidence 'pods.txt' @('get', 'pods', '-n', $namespace, '-o', 'wide')
     Save-KubectlEvidence 'events.txt' @('get', 'events', '-n', $namespace, '--sort-by=.lastTimestamp')
     Save-KubectlEvidence 'describe-pods.txt' @('describe', 'pods', '-n', $namespace)
@@ -1336,7 +1349,7 @@ finally {
     try {
         # Capture the live post-cleanup cluster while retaining the terminal verification stage.
         Set-VerificationStage $terminalStage
-        Write-ClusterDiagnostics $(if ($verificationSucceeded) { 'succeeded' } else { 'failed' })
+        Write-ClusterDiagnostics
     }
     catch {
         Write-Warning "Unable to persist complete production deployment diagnostics: $(Protect-EvidenceText $_.Exception.Message)"
@@ -1366,6 +1379,14 @@ finally {
         }
     }
     finally {
+        try {
+            $terminalError = if ($verificationError) { $verificationError.Exception.Message } else { $cleanupError }
+            $terminalStatus = if ($verificationSucceeded -and -not $cleanupError) { 'succeeded' } else { 'failed' }
+            Write-VerificationResult -Status $terminalStatus -ErrorMessage $terminalError
+        }
+        catch {
+            Write-Warning "Unable to persist the terminal verification result: $(Protect-EvidenceText $_.Exception.Message)"
+        }
         $script:OpenBaoRedactionSecrets.Clear()
         $env:KUBECONFIG = $originalKubeconfig
         if (Test-Path -LiteralPath $manifestPath) {

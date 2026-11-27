@@ -1463,6 +1463,35 @@ class OpenBaoSecretTransportTests(unittest.TestCase):
 
 
 class OpenBaoCleanupExecutionTests(unittest.TestCase):
+    def test_cleanup_failure_cannot_leave_a_successful_verification_receipt(self) -> None:
+        verifier = VERIFIER.read_text(encoding="utf-8-sig")
+        finish = verifier.rsplit("\nfinally {", 1)[1]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            result = run_pwsh(
+                "$ErrorActionPreference = 'Stop'\n"
+                ". ./tools/production-deployment-openbao.ps1\n"
+                + extract_ps_function(verifier, "Write-VerificationResult") + "\n"
+                "$verificationStage = 'required-server-mcp-restored'\n"
+                "$clusterCreated = $true; $KeepCluster = $true; $verificationSucceeded = $true\n"
+                "$daprTokenFaultInjected = $false; $memoriesDeploymentStateChanged = $false\n"
+                "$namespace = 'app'; $ClusterName = 'test'; $openBaoOwnership = @{}\n"
+                f"$evidencePath = '{root}'\n"
+                f"$manifestPath = '{root / 'missing-manifest'}'\n"
+                "function Protect-EvidenceText { param($Text) $Text }\n"
+                "function Set-VerificationStage { param($Stage) $script:verificationStage = $Stage }\n"
+                "function Write-ClusterDiagnostics { Write-Output 'captured diagnostics' }\n"
+                "function Remove-DisposableOpenBao { throw 'owned OpenBao cleanup failed' }\n"
+                "try {} finally {" + finish,
+            )
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("captured diagnostics", result.stdout)
+            self.assertIn("owned OpenBao cleanup failed", result.stderr)
+            evidence = json.loads((root / "verification-result.json").read_text(encoding="utf-8"))
+            self.assertEqual("failed", evidence["status"])
+            self.assertEqual("required-server-mcp-restored", evidence["stage"])
+            self.assertEqual("owned OpenBao cleanup failed", evidence["error"])
+
     def test_disposable_manifest_mounts_data_on_a_read_only_root(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

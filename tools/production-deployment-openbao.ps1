@@ -468,12 +468,16 @@ function Publish-OpenBaoBootstrapSecrets {
             # Create only. An existing Secret belongs to another owner.
             $arguments = @(
                 'create', 'secret', 'generic', $pair.Name,
-                '--namespace', $ApplicationNamespace,
+                '--namespace', $ApplicationNamespace, '--request-timeout=15s',
                 ('--from-file=token=' + $pair.TokenPath),
                 ('--from-file=ca.pem=' + $caPath))
-            & kubectl @arguments 2>&1 | Out-Null
+            $createOutput = @(& kubectl @arguments 2>&1)
             if ($LASTEXITCODE -ne 0) {
-                throw "Failed to create bootstrap Secret/$($pair.Name) (exit $LASTEXITCODE)."
+                # Keep the API status reason without recording a response that may
+                # echo encoded Secret fields.
+                $reason = [regex]::Match(($createOutput -join ' '), '\((AlreadyExists|Forbidden|Unauthorized|Timeout|ServerTimeout)\)')
+                $detail = if ($reason.Success) { ", $($reason.Groups[1].Value)" } else { '' }
+                throw "Failed to create bootstrap Secret/$($pair.Name) (exit $LASTEXITCODE$detail)."
             }
             $Ownership.BootstrapSecrets.Add($pair.Name)
         }
