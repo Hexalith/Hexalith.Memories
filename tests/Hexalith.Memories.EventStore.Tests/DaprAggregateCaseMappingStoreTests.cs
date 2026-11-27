@@ -155,6 +155,39 @@ public sealed class DaprAggregateCaseMappingStoreTests
     }
 
     [Fact]
+    public async Task GetAggregateCountAsync_WhenBulkReadCannotResolveMapping_RechecksOrSurfacesFailure()
+    {
+        const string activeMapKey = "tenant-1:eventstore:aggregate-case-map:Claims";
+        const string retiredMapKey = "tenant-1:eventstore:aggregate-case-map:Invoices";
+        FakeDaprStateStore fake = new();
+        fake.Seed(IndexKey, new List<string> { "Claims", "Invoices", "Missing" });
+        fake.Seed(activeMapKey, "case-active");
+        fake.Seed(retiredMapKey, string.Empty);
+        DaprClient client = fake.CreateClient();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        _ = client.GetBulkStateAsync<string>(
+                Store, Arg.Any<IReadOnlyList<string>>(), Arg.Any<int?>(),
+                Arg.Any<IReadOnlyDictionary<string, string>?>(), cancellationToken)
+            .Returns(new BulkStateItem<string>[]
+            {
+                new(activeMapKey, null!, string.Empty),
+                new(retiredMapKey, string.Empty, "1"),
+            });
+        DaprAggregateCaseMappingStore store = new(client, Options.Create(new EventStoreStateStoreOptions { StateStoreName = Store }));
+
+        (await store.GetAggregateCountAsync("tenant-1", cancellationToken)).ShouldBe(1);
+
+        DaprException unavailable = new("Injected active map read failure.");
+        _ = client.GetStateAsync<string?>(
+                Store, activeMapKey, Arg.Any<ConsistencyMode?>(),
+                Arg.Any<IReadOnlyDictionary<string, string>?>(), cancellationToken)
+            .Returns(Task.FromException<string?>(unavailable));
+
+        DaprException failure = await Should.ThrowAsync<DaprException>(() => store.GetAggregateCountAsync("tenant-1", cancellationToken));
+        failure.ShouldBeSameAs(unavailable);
+    }
+
+    [Fact]
     public async Task DeleteCaseMappingsAsync_RemovesOnlyFieldsPointingAtCase()
     {
         FakeDaprStateStore fake = new();
@@ -209,7 +242,7 @@ public sealed class DaprAggregateCaseMappingStoreTests
         _ = await Should.ThrowAsync<ArgumentException>(
             () => store.DeleteCaseMappingsAsync(tenantId, caseId, CancellationToken.None));
 
-        _ = client.DidNotReceive().GetStateAndETagAsync<List<string>?>(
+        _ = client.DidNotReceive().GetStateAsync<List<string>?>(
             Arg.Any<string>(), Arg.Any<string>(), Arg.Any<ConsistencyMode?>(),
             Arg.Any<IReadOnlyDictionary<string, string>?>(), Arg.Any<CancellationToken>());
     }
@@ -221,12 +254,15 @@ public sealed class DaprAggregateCaseMappingStoreTests
         DaprAggregateCaseMappingStore store = CreateStore(fake);
         _ = await store.TryStoreCaseIdAsync("tenant-1", "Claims", "case-1", CancellationToken.None);
         _ = await store.TryAcquireCreationLockAsync("tenant-1", "Claims", TimeSpan.FromSeconds(30), CancellationToken.None);
+        _ = await store.DeleteCaseMappingsAsync("tenant-1", "case-1", CancellationToken.None);
+        fake.ContainsKey("tenant-1:eventstore:aggregate-case-map:Claims").ShouldBeTrue();
 
         await store.DeleteAllTenantDataAsync("tenant-1", CancellationToken.None);
 
         (await store.GetCaseIdAsync("tenant-1", "Claims", CancellationToken.None)).ShouldBeNull();
         (await store.GetAggregateCountAsync("tenant-1", CancellationToken.None)).ShouldBe(0);
         fake.ContainsKey(IndexKey).ShouldBeFalse();
+        fake.ContainsKey("tenant-1:eventstore:aggregate-case-map:Claims").ShouldBeFalse();
         fake.ContainsKey("tenant-1:eventstore:aggregate-case-lock:Claims").ShouldBeFalse();
     }
 
@@ -361,21 +397,59 @@ public sealed class DaprAggregateCaseMappingStoreTests
     }
 
     [Fact]
-    public async Task DeleteCaseMappingsAsync_WhenIndexCasExhausted_KeepsMapKeysAndThrows()
+    public async Task DeleteCaseMappingsAsync_WhenMapCasExhausted_KeepsMappingIndexedForRetry()
     {
-        // review patch #1/#7: map deletes are deferred until index save succeeds.
+        const string mapKey = "tenant-1:eventstore:aggregate-case-map:Claims";
         FakeDaprStateStore fake = new();
         DaprAggregateCaseMappingStore store = CreateStore(fake);
-        _ = await store.TryStoreCaseIdAsync("tenant-1", "Claims", "case-delete", CancellationToken.None);
-        _ = await store.TryStoreCaseIdAsync("tenant-1", "Orders", "case-keep", CancellationToken.None);
-        fake.FailNextSaves(IndexKey, count: 16);
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        (await store.TryStoreCaseIdAsync("tenant-1", "Claims", "case-delete", cancellationToken)).ShouldBeTrue();
+        fake.FailNextSaves(mapKey, count: 8);
 
-        InvalidOperationException ex = await Should.ThrowAsync<InvalidOperationException>(
-            () => store.DeleteCaseMappingsAsync("tenant-1", "case-delete", CancellationToken.None));
+        InvalidOperationException failure = await Should.ThrowAsync<InvalidOperationException>(
+            () => store.DeleteCaseMappingsAsync("tenant-1", "case-delete", cancellationToken));
 
-        ex.Message.ShouldContain("Failed to delete");
-        (await store.GetCaseIdAsync("tenant-1", "Claims", CancellationToken.None)).ShouldBe("case-delete");
-        (await store.GetCaseIdAsync("tenant-1", "Orders", CancellationToken.None)).ShouldBe("case-keep");
+        failure.Message.ShouldContain("Failed to delete");
+        (await store.GetCaseIdAsync("tenant-1", "Claims", cancellationToken)).ShouldBe("case-delete");
+        (await store.GetAggregateCountAsync("tenant-1", cancellationToken)).ShouldBe(1);
+
+        (await store.DeleteCaseMappingsAsync("tenant-1", "case-delete", cancellationToken)).ShouldBe(1);
+        (await store.GetAggregateCountAsync("tenant-1", cancellationToken)).ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task DeleteCaseMappingsAsync_WhenAnotherRetirementFails_RetryFindsRemainingMapping()
+    {
+        const string mapKey = "tenant-1:eventstore:aggregate-case-map:Invoices";
+        FakeDaprStateStore fake = new();
+        DaprClient client = fake.CreateClient();
+        DaprAggregateCaseMappingStore firstInstance = new(client, Options.Create(new EventStoreStateStoreOptions { StateStoreName = Store }));
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        (await firstInstance.TryStoreCaseIdAsync("tenant-1", "Claims", "case-delete", cancellationToken)).ShouldBeTrue();
+        (await firstInstance.TryStoreCaseIdAsync("tenant-1", "Invoices", "case-delete", cancellationToken)).ShouldBeTrue();
+        (await firstInstance.TryStoreCaseIdAsync("tenant-1", "Orders", "case-keep", cancellationToken)).ShouldBeTrue();
+        (await firstInstance.TryStoreCaseIdAsync("tenant-2", "Invoices", "case-delete", cancellationToken)).ShouldBeTrue();
+        _ = client.TrySaveStateAsync(
+                Store, mapKey, string.Empty, Arg.Any<string>(), Arg.Any<StateOptions?>(),
+                Arg.Any<IReadOnlyDictionary<string, string>?>(), cancellationToken)
+            .Returns(_ => Task.FromException<bool>(new DaprException("Injected mapping save failure.")));
+
+        await Should.ThrowAsync<DaprException>(() => firstInstance.DeleteCaseMappingsAsync("tenant-1", "case-delete", cancellationToken));
+
+        fake.TryGet(IndexKey, out List<string>? index).ShouldBeTrue();
+        index.ShouldBe(["Claims", "Invoices", "Orders"]);
+        (await firstInstance.GetCaseIdAsync("tenant-1", "Claims", cancellationToken)).ShouldBeNull();
+        (await firstInstance.GetCaseIdAsync("tenant-1", "Invoices", cancellationToken)).ShouldBe("case-delete");
+
+        DaprAggregateCaseMappingStore secondInstance = CreateStore(fake);
+        (await secondInstance.DeleteCaseMappingsAsync("tenant-1", "case-delete", cancellationToken)).ShouldBe(1);
+        (await secondInstance.DeleteCaseMappingsAsync("tenant-1", "case-delete", cancellationToken)).ShouldBe(0);
+        (await secondInstance.GetCaseIdAsync("tenant-1", "Claims", cancellationToken)).ShouldBeNull();
+        (await secondInstance.GetCaseIdAsync("tenant-1", "Invoices", cancellationToken)).ShouldBeNull();
+        (await secondInstance.GetCaseIdAsync("tenant-1", "Orders", cancellationToken)).ShouldBe("case-keep");
+        (await secondInstance.GetCaseIdAsync("tenant-2", "Invoices", cancellationToken)).ShouldBe("case-delete");
+        (await secondInstance.GetAggregateCountAsync("tenant-1", cancellationToken)).ShouldBe(1);
+        (await secondInstance.GetAggregateCountAsync("tenant-2", cancellationToken)).ShouldBe(1);
     }
 
     [Theory]
