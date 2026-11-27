@@ -7,7 +7,9 @@ namespace Hexalith.Memories.IntegrationTests.Fixtures;
 
 using System.Net;
 using Aspire.Hosting;
+using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Testing;
+using Hexalith.Memories.AppHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Shouldly;
@@ -19,6 +21,7 @@ public sealed class AspireIngestionPipelineFailureIntegrationTests
     private readonly (string? RedisVolume, string? FalkorVolume, string? DaprConfig) _originalEnvironment = ReadFixtureEnvironment();
     private (string RedisVolume, string FalkorVolume, string DaprConfig) _ownedEnvironment;
     private CancellationToken _applicationStopped;
+    private string _openBaoContainerId = string.Empty;
 
     [Fact]
     public async Task FailedOllamaStartup_AttachesLiveBackendDiagnosticsBeforeFixtureCleanup()
@@ -115,11 +118,18 @@ public sealed class AspireIngestionPipelineFailureIntegrationTests
 
     private static async Task<bool> IsDockerVolumePresentAsync(string volumeName, CancellationToken cancellationToken)
     {
+        string volumes = await RunDockerCommandAsync($"volume ls --quiet --filter name={volumeName}", cancellationToken);
+        return volumes.Split('\n', StringSplitOptions.TrimEntries).Contains(volumeName, StringComparer.Ordinal);
+    }
+
+    private static Task<string> FindDockerContainerAsync(string containerId, CancellationToken cancellationToken)
+        => RunDockerCommandAsync($"container ls --all --quiet --no-trunc --filter id={containerId}", cancellationToken);
+
+    private static async Task<string> RunDockerCommandAsync(string arguments, CancellationToken cancellationToken)
+    {
         using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         budget.CancelAfter(TimeSpan.FromSeconds(30));
-        string volumes = await AspireIngestionPipelineFixture.RunProcessCommandAsync(
-            "docker", $"volume ls --quiet --filter name={volumeName}", budget.Token);
-        return volumes.Split('\n', StringSplitOptions.TrimEntries).Contains(volumeName, StringComparer.Ordinal);
+        return await AspireIngestionPipelineFixture.RunProcessCommandAsync("docker", arguments, budget.Token);
     }
 
     private async Task CaptureOwnedTopologyAsync(DistributedApplication app, CancellationToken cancellationToken)
@@ -131,6 +141,13 @@ public sealed class AspireIngestionPipelineFailureIntegrationTests
         File.Exists(_ownedEnvironment.DaprConfig).ShouldBeTrue();
         (await IsDockerVolumePresentAsync(_ownedEnvironment.RedisVolume, cancellationToken)).ShouldBeTrue();
         (await IsDockerVolumePresentAsync(_ownedEnvironment.FalkorVolume, cancellationToken)).ShouldBeTrue();
+
+        app.ResourceNotifications.TryGetCurrentState(OpenBaoDevelopmentProfile.ResourceName, out ResourceEvent? openBao)
+            .ShouldBeTrue();
+        _openBaoContainerId = openBao.ShouldNotBeNull().Snapshot.Properties
+            .Single(property => property.Name == "container.id").Value.ShouldBeOfType<string>();
+        _openBaoContainerId.ShouldMatch("^[a-f0-9]{64}$");
+        (await FindDockerContainerAsync(_openBaoContainerId, cancellationToken)).ShouldBe(_openBaoContainerId);
     }
 
     private async Task AssertOwnedTopologyWasRemovedAsync()
@@ -142,5 +159,6 @@ public sealed class AspireIngestionPipelineFailureIntegrationTests
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
         (await IsDockerVolumePresentAsync(_ownedEnvironment.RedisVolume, cancellationToken)).ShouldBeFalse();
         (await IsDockerVolumePresentAsync(_ownedEnvironment.FalkorVolume, cancellationToken)).ShouldBeFalse();
+        (await FindDockerContainerAsync(_openBaoContainerId, cancellationToken)).ShouldBeEmpty();
     }
 }
