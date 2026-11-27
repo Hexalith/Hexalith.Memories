@@ -1441,6 +1441,69 @@ class OpenBaoSecretTransportTests(unittest.TestCase):
             )
 
 
+class OpenBaoCleanupExecutionTests(unittest.TestCase):
+    def test_partial_bootstrap_and_failed_delete_only_retire_owned_resources(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            capture = root / "commands.jsonl"
+            kubectl = root / "kubectl"
+            kubectl.write_text(
+                "#!/usr/bin/env python3\n"
+                "import json, os, sys\n"
+                "args = sys.argv[1:]\n"
+                f"with open({str(capture)!r}, 'a', encoding='utf-8') as output:\n"
+                "    output.write(json.dumps(args) + '\\n')\n"
+                "if args == ['config', 'current-context']:\n"
+                "    print(os.environ['STUB_OPENBAO_CONTEXT'])\n"
+                "if args[:3] == ['create', 'secret', 'generic'] and 'access-telemetry' in args[3]:\n"
+                "    sys.exit(1)\n"
+                "if args[:2] == ['delete', 'secret'] and os.environ.get('STUB_OPENBAO_DELETE_FAILURE'):\n"
+                "    sys.exit(1)\n",
+                encoding="utf-8",
+            )
+            kubectl.chmod(0o755)
+            verifier = VERIFIER.read_text(encoding="utf-8-sig")
+            result = run_pwsh_with_stub_path(
+                "$ErrorActionPreference = 'Stop'\n"
+                ". ./tools/production-deployment-openbao.ps1\n"
+                "function Set-VerificationStage { param($Stage) }\n"
+                + extract_ps_function(verifier, "Assert-DisposableClusterContext") + "\n"
+                + extract_ps_function(verifier, "Invoke-Checked") + "\n"
+                "$ownership = @{ NamespaceCreated = $true; BootstrapSecrets = [Collections.Generic.List[string]]::new() }\n"
+                "try { Publish-OpenBaoBootstrapSecrets -ApplicationNamespace 'app' -RuntimeToken 'runtime-canary' "
+                "-AccessToken 'access-canary' -CaPem 'test-ca' -Ownership $ownership; throw 'expected conflict' }\n"
+                "catch { if ($_.Exception.Message -notlike 'Failed to create bootstrap Secret/*') { throw } }\n"
+                "$env:STUB_OPENBAO_CONTEXT = 'production'\n"
+                "$remove = { Remove-DisposableOpenBao -ApplicationNamespace 'app' -ClusterName 'test' -Ownership $ownership }\n"
+                "try { & $remove; throw 'expected context refusal' }\n"
+                "catch { if ($_.Exception.Message -notlike 'Refusing to clean up*') { throw } }\n"
+                "$env:STUB_OPENBAO_CONTEXT = 'kind-test'\n"
+                "$env:STUB_OPENBAO_DELETE_FAILURE = '1'\n"
+                "try { & $remove; throw 'expected delete failure' }\n"
+                "catch { if ($_.Exception.Message -notlike 'Failed to clean up*') { throw } }\n"
+                "if ($ownership.NamespaceCreated -or $ownership.BootstrapSecrets.Count -ne 1) { throw 'wrong retry state' }\n"
+                "Remove-Item Env:STUB_OPENBAO_DELETE_FAILURE\n"
+                "& $remove\n"
+                "& $remove\n",
+                root,
+            )
+            self.assertEqual(0, result.returncode, result.stderr)
+            actions = [json.loads(line) for line in capture.read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(
+                [
+                    ["create", "secret", "generic", "openbao-runtime-bootstrap"],
+                    ["create", "secret", "generic", "openbao-access-telemetry-bootstrap"],
+                    ["config", "current-context"],
+                    ["config", "current-context"],
+                    ["delete", "secret", "openbao-runtime-bootstrap", "-n"],
+                    ["delete", "namespace", "openbao", "--ignore-not-found"],
+                    ["config", "current-context"],
+                    ["delete", "secret", "openbao-runtime-bootstrap", "-n"],
+                ],
+                [action[:4] for action in actions],
+            )
+
+
 class GetHealthResponseExecutionTests(unittest.TestCase):
     """Execute the real Get-HealthResponse.
 

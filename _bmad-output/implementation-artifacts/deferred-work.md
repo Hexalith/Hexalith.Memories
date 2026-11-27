@@ -4631,7 +4631,8 @@ resolution: The disposable bootstrap sends root and scoped tokens, unseal JSON, 
 origin: migrated from legacy ledger ("Deferred from: code review of 27-3-production-adapter-and-deployment-profile (2026-07-31)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-gh-29804293613-fix-production-deployment-verification.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-gh-29804293613-fix-production-deployment-verification.md` summary: Disposable OpenBao namespace objects and unseal material are not retired by OpenBao helper code beyond local work-dir deletion. evidence: Review noted only the local TLS/work directory is deleted; cluster-scoped OpenBao Deployment/Secrets/ConfigMaps and unseal keys rely on kind cluster teardown rather than an explicit OpenBao cleanup stage.
-status: open
+status: done 2026-11-27
+resolution: The verifier deletes its own bootstrap Secrets and OpenBao namespace after capturing diagnostics, including on partial failure and in retained kind clusters. Cleanup tests cover context refusal, partial ownership and retry.
 
 ### DW-648: Protect-EvidenceText token regex can redact ordinary s./b./r. substrings in diagnostics.
 

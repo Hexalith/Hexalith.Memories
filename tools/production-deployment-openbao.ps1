@@ -110,7 +110,8 @@ function Invoke-OpenBaoPodRaw {
 function Deploy-DisposableOpenBaoService {
     param(
         [Parameter(Mandatory)]$TlsMaterial,
-        [Parameter(Mandatory)][string]$Image
+        [Parameter(Mandatory)][string]$Image,
+        [Parameter(Mandatory)][hashtable]$Ownership
     )
 
     if ($Image -cne $script:OpenBaoPinnedImage) {
@@ -118,6 +119,7 @@ function Deploy-DisposableOpenBaoService {
     }
 
     Invoke-Checked kubectl @('create', 'namespace', $script:OpenBaoNamespace) | Out-Null
+    $Ownership.NamespaceCreated = $true
 
     $tlsArgs = @(
         'create', 'secret', 'generic', 'openbao-server-tls',
@@ -307,7 +309,6 @@ function Initialize-DisposableOpenBao {
 
     return [ordered]@{
         RootToken = $rootToken
-        UnsealKey = $unsealKey
         CaPem = $CaPem
     }
 }
@@ -445,7 +446,8 @@ function Publish-OpenBaoBootstrapSecrets {
         [Parameter(Mandatory)][string]$ApplicationNamespace,
         [Parameter(Mandatory)][string]$RuntimeToken,
         [Parameter(Mandatory)][string]$AccessToken,
-        [Parameter(Mandatory)][string]$CaPem
+        [Parameter(Mandatory)][string]$CaPem,
+        [Parameter(Mandatory)][hashtable]$Ownership
     )
 
     Set-VerificationStage 'openbao-bootstrap-secrets'
@@ -463,16 +465,17 @@ function Publish-OpenBaoBootstrapSecrets {
                 @{ Name = 'openbao-runtime-bootstrap'; TokenPath = $runtimeTokenPath },
                 @{ Name = 'openbao-access-telemetry-bootstrap'; TokenPath = $accessTokenPath }
             )) {
-            $yaml = Invoke-Checked kubectl @(
+            # Create only. An existing Secret belongs to another owner.
+            $arguments = @(
                 'create', 'secret', 'generic', $pair.Name,
                 '--namespace', $ApplicationNamespace,
                 ('--from-file=token=' + $pair.TokenPath),
-                ('--from-file=ca.pem=' + $caPath),
-                '--dry-run=client', '-o', 'yaml')
-            $yaml | & kubectl apply -f - | Out-Null
+                ('--from-file=ca.pem=' + $caPath))
+            & kubectl @arguments 2>&1 | Out-Null
             if ($LASTEXITCODE -ne 0) {
-                throw "Failed to apply bootstrap Secret/$($pair.Name)."
+                throw "Failed to create bootstrap Secret/$($pair.Name) (exit $LASTEXITCODE)."
             }
+            $Ownership.BootstrapSecrets.Add($pair.Name)
         }
     }
     finally {
@@ -487,6 +490,7 @@ function Invoke-DisposableOpenBaoBootstrap {
         [Parameter(Mandatory)][string]$ApplicationNamespace,
         [Parameter(Mandatory)][string]$ClusterName,
         [Parameter(Mandatory)][string]$EvidencePath,
+        [Parameter(Mandatory)][hashtable]$Ownership,
         [string]$Image = $script:OpenBaoPinnedImage
     )
 
@@ -527,7 +531,7 @@ function Invoke-DisposableOpenBaoBootstrap {
 
     try {
         $tls = New-OpenBaoTlsMaterial -WorkDirectory $workDirectory
-        Deploy-DisposableOpenBaoService -TlsMaterial $tls -Image $Image
+        Deploy-DisposableOpenBaoService -TlsMaterial $tls -Image $Image -Ownership $Ownership
         $bootstrapRecord.stages += 'service-ready'
 
         $session = Initialize-DisposableOpenBao -CaPem $tls.CaPem
@@ -584,7 +588,8 @@ function Invoke-DisposableOpenBaoBootstrap {
             -ApplicationNamespace $ApplicationNamespace `
             -RuntimeToken $runtimeToken `
             -AccessToken $accessToken `
-            -CaPem $session.CaPem
+            -CaPem $session.CaPem `
+            -Ownership $Ownership
         $bootstrapRecord.stages += 'bootstrap-secrets'
 
         Set-VerificationStage 'openbao-revoke-root'
@@ -614,5 +619,43 @@ function Invoke-DisposableOpenBaoBootstrap {
         if (Test-Path -LiteralPath $workDirectory) {
             Remove-Item -LiteralPath $workDirectory -Recurse -Force -ErrorAction SilentlyContinue
         }
+    }
+}
+
+function Remove-DisposableOpenBao {
+    param(
+        [Parameter(Mandatory)][string]$ApplicationNamespace,
+        [Parameter(Mandatory)][string]$ClusterName,
+        [Parameter(Mandatory)][hashtable]$Ownership
+    )
+
+    if (-not $Ownership.NamespaceCreated -and $Ownership.BootstrapSecrets.Count -eq 0) {
+        return
+    }
+
+    Assert-DisposableClusterContext $ClusterName -RefusalPrefix 'Refusing to clean up disposable OpenBao'
+    $failures = @()
+    foreach ($name in @($Ownership.BootstrapSecrets.ToArray())) {
+        try {
+            Invoke-Checked kubectl @('delete', 'secret', $name, '-n', $ApplicationNamespace,
+                '--ignore-not-found', '--timeout=45s', '--request-timeout=50s') | Out-Null
+            [void]$Ownership.BootstrapSecrets.Remove($name)
+        }
+        catch {
+            $failures += "Secret/$name"
+        }
+    }
+    if ($Ownership.NamespaceCreated) {
+        try {
+            Invoke-Checked kubectl @('delete', 'namespace', $script:OpenBaoNamespace,
+                '--ignore-not-found', '--timeout=45s', '--request-timeout=50s') | Out-Null
+            $Ownership.NamespaceCreated = $false
+        }
+        catch {
+            $failures += "Namespace/$script:OpenBaoNamespace"
+        }
+    }
+    if ($failures.Count -gt 0) {
+        throw "Failed to clean up disposable OpenBao resources: $($failures -join ', ')."
     }
 }

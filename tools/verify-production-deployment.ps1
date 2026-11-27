@@ -23,6 +23,7 @@ param(
 
     [string]$EvidenceDirectory = "artifacts/production-deployment-verification",
 
+    # Retain the cluster for inspection after disposing of OpenBao credentials and storage.
     [switch]$KeepCluster
 )
 
@@ -48,6 +49,10 @@ $manifestPath = Join-Path ([System.IO.Path]::GetTempPath()) "hexalith-memories-p
 $kubeconfigPath = Join-Path ([System.IO.Path]::GetTempPath()) "hexalith-memories-kubeconfig-$([Guid]::NewGuid().ToString('N'))"
 $originalKubeconfig = $env:KUBECONFIG
 $clusterCreated = $false
+$openBaoOwnership = @{
+    NamespaceCreated = $false
+    BootstrapSecrets = [System.Collections.Generic.List[string]]::new()
+}
 $healthEvidenceAttempts = @{}
 $daprTokenFaultInjected = $false
 $originalMemoriesDeploymentState = $null
@@ -1069,6 +1074,7 @@ try {
         -ApplicationNamespace $namespace `
         -ClusterName $ClusterName `
         -EvidencePath $evidencePath `
+        -Ownership $openBaoOwnership `
         -Image $script:OpenBaoPinnedImage
 
     Invoke-Checked pwsh @(
@@ -1336,16 +1342,40 @@ finally {
         Write-Warning "Unable to persist complete production deployment diagnostics: $(Protect-EvidenceText $_.Exception.Message)"
     }
 
-    if (Test-Path -LiteralPath $manifestPath) {
-        Remove-Item -LiteralPath $manifestPath -Force
-    }
+    $cleanupError = $null
+    try {
+        if ($clusterCreated) {
+            try {
+                Remove-DisposableOpenBao -ApplicationNamespace $namespace -ClusterName $ClusterName -Ownership $openBaoOwnership
+            }
+            catch {
+                $cleanupError = Protect-EvidenceText $_.Exception.Message
+                Write-Warning $cleanupError
+            }
 
-    if ($clusterCreated -and -not $KeepCluster) {
-        & kind delete cluster --name $ClusterName | Out-Host
+            if (-not $KeepCluster) {
+                & kind delete cluster --name $ClusterName | Out-Host
+                if ($LASTEXITCODE -eq 0) {
+                    $cleanupError = $null
+                }
+                else {
+                    $cleanupError = "Failed to delete disposable kind cluster '$ClusterName' (exit $LASTEXITCODE)."
+                    Write-Warning $cleanupError
+                }
+            }
+        }
     }
-
-    $env:KUBECONFIG = $originalKubeconfig
-    if (-not $KeepCluster -and (Test-Path -LiteralPath $kubeconfigPath)) {
-        Remove-Item -LiteralPath $kubeconfigPath -Force
+    finally {
+        $script:OpenBaoRedactionSecrets.Clear()
+        $env:KUBECONFIG = $originalKubeconfig
+        if (Test-Path -LiteralPath $manifestPath) {
+            Remove-Item -LiteralPath $manifestPath -Force
+        }
+        if (-not $KeepCluster -and (Test-Path -LiteralPath $kubeconfigPath)) {
+            Remove-Item -LiteralPath $kubeconfigPath -Force
+        }
+    }
+    if ($cleanupError -and $verificationSucceeded) {
+        throw $cleanupError
     }
 }
