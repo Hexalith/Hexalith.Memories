@@ -5,6 +5,7 @@
 
 namespace Hexalith.Memories.IntegrationTests.Fixtures;
 
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 
@@ -27,6 +28,60 @@ public sealed class RedisStackFixtureConnectWhenReadyTests
             () => RedisStackFixture.ConnectWhenReadyAsync("127.0.0.1:59999", timeout: TimeSpan.FromSeconds(3)));
 
         error.FailureType.ShouldBe(ConnectionFailureType.UnableToConnect);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AwaitConnectionAsync_AbandonedAttempt_DisposesLateConnection(bool cancel)
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        using var caller = CancellationTokenSource.CreateLinkedTokenSource(token);
+        var pending = new TaskCompletionSource<IConnectionMultiplexer>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var disposed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        IConnectionMultiplexer connection = Substitute.For<IConnectionMultiplexer>();
+        connection.When(candidate => candidate.Dispose()).Do(_ => disposed.TrySetResult());
+        TimeSpan limit = cancel ? TimeSpan.FromMinutes(1) : TimeSpan.FromMilliseconds(100);
+        Task<IConnectionMultiplexer> wait = RedisStackFixture.AwaitConnectionAsync(pending.Task, Stopwatch.StartNew(), limit, caller.Token);
+
+        try
+        {
+            if (cancel)
+            {
+                caller.Cancel();
+                await Should.ThrowAsync<OperationCanceledException>(() => wait.WaitAsync(TimeSpan.FromSeconds(5), token));
+            }
+            else
+            {
+                await Should.ThrowAsync<TimeoutException>(() => wait.WaitAsync(TimeSpan.FromSeconds(5), token));
+                wait.IsCompleted.ShouldBeTrue("the handshake deadline must expire before the test deadline");
+            }
+        }
+        finally
+        {
+            pending.SetResult(connection);
+        }
+
+        await disposed.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+        connection.Received(1).Dispose();
+    }
+
+    [Fact]
+    public async Task AwaitConnectionAsync_ExpiredDeadline_ClosesAlreadyCompletedConnection()
+    {
+        var disposed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        IConnectionMultiplexer connection = Substitute.For<IConnectionMultiplexer>();
+        connection.When(candidate => candidate.Dispose()).Do(_ => disposed.TrySetResult());
+        CancellationToken token = TestContext.Current.CancellationToken;
+
+        await Should.ThrowAsync<TimeoutException>(() => RedisStackFixture.AwaitConnectionAsync(
+            Task.FromResult(connection),
+            Stopwatch.StartNew(),
+            TimeSpan.Zero,
+            token));
+
+        await disposed.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+        connection.Received(1).Dispose();
     }
 
     [Fact]

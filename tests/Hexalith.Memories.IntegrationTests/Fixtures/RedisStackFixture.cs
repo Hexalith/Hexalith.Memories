@@ -115,14 +115,11 @@ public sealed class RedisStackFixture : IAsyncLifetime
             options.ConnectTimeout = (int)Math.Clamp(remaining.TotalMilliseconds, 1, 2000);
             try
             {
-                ConnectionMultiplexer connection = await ConnectionMultiplexer.ConnectAsync(options);
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    connection.Dispose();
-                    cancellationToken.ThrowIfCancellationRequested();
-                }
-
-                return connection;
+                return await AwaitConnectionAsync(ConnectionMultiplexer.ConnectAsync(options), elapsed, limit, cancellationToken);
+            }
+            catch (TimeoutException)
+            {
+                break;
             }
             catch (RedisConnectionException ex)
             {
@@ -147,6 +144,59 @@ public sealed class RedisStackFixture : IAsyncLifetime
             ConnectionFailureType.UnableToConnect,
             CommandFlags.None,
             "Redis did not accept a client handshake before the readiness deadline.");
+    }
+
+    /// <summary>Waits for a connection attempt within the handshake deadline and closes abandoned results.</summary>
+    /// <typeparam name="TConnection">The disposable connection returned by the attempt.</typeparam>
+    /// <param name="pending">The Redis connection attempt, which does not accept cancellation.</param>
+    /// <param name="elapsed">The clock started at the beginning of the handshake.</param>
+    /// <param name="limit">The total handshake budget.</param>
+    /// <param name="cancellationToken">Cancellation requested by the caller.</param>
+    /// <returns>The connection when established within the deadline.</returns>
+    internal static async Task<TConnection> AwaitConnectionAsync<TConnection>(
+        Task<TConnection> pending,
+        Stopwatch elapsed,
+        TimeSpan limit,
+        CancellationToken cancellationToken)
+        where TConnection : IDisposable
+    {
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            TimeSpan remaining = limit - elapsed.Elapsed;
+            if (remaining <= TimeSpan.Zero)
+            {
+                throw new TimeoutException();
+            }
+
+            TConnection connection = await pending.WaitAsync(remaining, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (elapsed.Elapsed >= limit)
+            {
+                throw new TimeoutException();
+            }
+
+            return connection;
+        }
+        catch (Exception ex) when (ex is TimeoutException or OperationCanceledException)
+        {
+            // A connection can finish at the deadline. Do not let its synchronous disposal delay the caller.
+            _ = Task.Run(() => DisposeAbandonedConnectionAsync(pending));
+            throw;
+        }
+    }
+
+    private static async Task DisposeAbandonedConnectionAsync<TConnection>(Task<TConnection> pending)
+        where TConnection : IDisposable
+    {
+        try
+        {
+            using TConnection connection = await pending.ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // Observe an eventual fault after the caller's timeout or cancellation has been reported.
+        }
     }
 
     public async ValueTask InitializeAsync()
