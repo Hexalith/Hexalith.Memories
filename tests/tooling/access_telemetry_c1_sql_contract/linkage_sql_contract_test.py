@@ -28,6 +28,8 @@ COLLECTOR = ROOT / 'tools/verify-access-telemetry-c1-linkage.ps1'
 HELPER = ROOT / 'tools/access-telemetry-c1-component-backend.ps1'
 DEPLOYMENT = ROOT / 'deploy/kubernetes/base/access-telemetry-postgresql.yaml'
 IMAGE = 'docker.io/library/postgres@sha256:0377e72c5289ed2f98cf61b1a9c2db9eb9d300317fe14244492fbc94343b3d04'
+DOCKER_ENDPOINT = 'unix:///var/run/docker.sock'
+DOCKER_ENDPOINT_VARIABLES = ('DOCKER_HOST', 'DOCKER_CONTEXT', 'DOCKER_TLS', 'DOCKER_TLS_VERIFY', 'DOCKER_CERT_PATH')
 HOST = 'access-telemetry-postgresql.hexalith-memories.svc.cluster.local'
 DATABASE = 'memories_access_telemetry'
 ROLE = 'memories_access_telemetry_runtime'
@@ -46,7 +48,7 @@ class CommandFailure(RuntimeError):
         self.result = result
 
 
-def bounded(command, *, input_bytes=None, timeout=15, check=True):
+def bounded(command, *, input_bytes=None, timeout=15, check=True, env=None):
     """Retain bounded diagnostics for exits, timeouts and output-limit failures."""
     result = {'command': command, 'exitCode': None, 'stdout': '', 'stderr': ''}
     streams = {'stdout': bytearray(), 'stderr': bytearray()}
@@ -54,7 +56,7 @@ def bounded(command, *, input_bytes=None, timeout=15, check=True):
     deadline = time.monotonic() + timeout
     try:
         process = subprocess.Popen(command, stdin=subprocess.PIPE if input_bytes is not None else subprocess.DEVNULL,
-                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True, env=env)
         if input_bytes is not None:
             process.stdin.write(input_bytes)
             process.stdin.close()
@@ -107,6 +109,35 @@ def recorded_command(state, command, **kwargs):
     return result
 
 
+def assert_local_docker_selection(docker):
+    host = os.environ.get('DOCKER_HOST')
+    if host and host != DOCKER_ENDPOINT:
+        raise RuntimeError('docker-endpoint-not-approved')
+    # Context inspection reads client metadata without contacting the daemon.
+    command = [docker, 'context', 'inspect', '--format', '{{json .Endpoints.docker.Host}}']
+    context = os.environ.get('DOCKER_CONTEXT')
+    if context:
+        # Check this override explicitly even on clients where DOCKER_HOST takes precedence.
+        command.extend(['--', context])
+    try:
+        endpoint = json.loads(bounded(command)['stdout'])
+    except (CommandFailure, json.JSONDecodeError):
+        raise RuntimeError('docker-endpoint-unresolved') from None
+    if endpoint != DOCKER_ENDPOINT:
+        raise RuntimeError('docker-endpoint-not-approved')
+
+
+def docker_command(docker, *arguments):
+    return [docker, '--host', DOCKER_ENDPOINT, *arguments]
+
+
+def docker_environment():
+    environment = os.environ.copy()
+    for variable in DOCKER_ENDPOINT_VARIABLES:
+        environment.pop(variable, None)
+    return environment
+
+
 def read_session_response(stream, timeout=8):
     response = bytearray()
     deadline = time.monotonic() + timeout
@@ -157,9 +188,9 @@ def assert_manifest_contract(path=DEPLOYMENT):
 
 
 def inspect_owned_resource(state, kind, name):
-    result = state.run_command([state.docker, kind, 'inspect', name, '--format',
-                               '{{index .Labels "' + LABEL + '"}}' if kind == 'network' else
-                               '{{index .Config.Labels "' + LABEL + '"}}'], check=False)
+    labels = '.Labels' if kind == 'network' else '.Config.Labels'
+    result = state.run_docker(kind, 'inspect', name, '--format',
+                              '{{index ' + labels + ' "' + LABEL + '"}}', check=False)
     if result['exitCode']:
         absent = {'Error response from daemon: No such container: ' + name,
                   'Error: No such container: ' + name} if kind == 'container' else {
@@ -175,8 +206,8 @@ def inspect_owned_resource(state, kind, name):
 
 def remove_owned_resource(state, kind, name):
     if inspect_owned_resource(state, kind, name):
-        command = [state.docker, kind, 'rm'] + (['--force', '--volumes'] if kind == 'container' else []) + [name]
-        state.cleanup_results.append(state.run_command(command))
+        options = ['--force', '--volumes'] if kind == 'container' else []
+        state.cleanup_results.append(state.run_docker(kind, 'rm', *options, name))
 
 
 def receipt_status(state, errors):
@@ -336,7 +367,8 @@ def execute_emitted_command(config_path):
         local[index] = flag + '=' + value
     failure = None
     try:
-        result = bounded([config['docker'], 'exec', '--user', 'postgres', config['server'], *local])
+        result = bounded(docker_command(config['docker'], 'exec', '--user', 'postgres', config['server'], *local),
+                         env=docker_environment())
     except CommandFailure as error:
         result = error.result
         failure = error
@@ -380,11 +412,11 @@ class LinkageSqlContractTests(ReceiptOutcomeCase):
         cls.openssl = shutil.which('openssl')
         if not all((cls.docker, cls.pwsh, cls.openssl)):
             raise RuntimeError('missing-required-docker-pwsh-or-openssl')
-        version = cls.run_command([cls.docker, 'version', '--format', '{{.Server.Os}}/{{.Server.Arch}}'])
+        assert_local_docker_selection(cls.docker)
+        version = cls.run_docker('version', '--format', '{{.Server.Os}}/{{.Server.Arch}}')
         if version['stdout'].strip() != 'linux/amd64':
             raise RuntimeError('docker-linux-amd64-required')
-        identity = json.loads(cls.run_command([cls.docker, 'image', 'inspect', IMAGE, '--format',
-                                      '{{json .}}'])['stdout'])
+        identity = json.loads(cls.run_docker('image', 'inspect', IMAGE, '--format', '{{json .}}')['stdout'])
         if (identity['Os'], identity['Architecture']) != ('linux', 'amd64') or not any(value in identity['RepoDigests'] for value in
                 (IMAGE, IMAGE.removeprefix('docker.io/library/'))):
             raise RuntimeError('approved-child-image-required')
@@ -393,7 +425,7 @@ class LinkageSqlContractTests(ReceiptOutcomeCase):
         cls.started_at = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
         cls.prepare_files()
         cls.owned_resources.append(('network', cls.network))
-        cls.run_command([cls.docker, 'network', 'create', '--internal', '--label', LABEL + '=' + cls.run_id, cls.network])
+        cls.run_docker('network', 'create', '--internal', '--label', LABEL + '=' + cls.run_id, cls.network)
         server_start = ('mkdir -p /run/postgresql-tls /run/secrets/postgresql /etc/postgresql; '
                         'cp /contract/tls/ca.crt /contract/tls/tls.crt /contract/tls/tls.key /run/postgresql-tls/; '
                         'cp /contract/*-password /run/secrets/postgresql/; '
@@ -406,7 +438,7 @@ class LinkageSqlContractTests(ReceiptOutcomeCase):
                         '-c ssl_ca_file=/run/postgresql-tls/ca.crt -c password_encryption=scram-sha-256 '
                         '-c log_statement=none')
         cls.owned_resources.append(('container', cls.server))
-        cls.run_command([cls.docker, 'run', '--detach', '--pull=never', '--platform=linux/amd64',
+        cls.run_docker('run', '--detach', '--pull=never', '--platform=linux/amd64',
                  '--name', cls.server, '--label', LABEL + '=' + cls.run_id, '--network', cls.network,
                  '--network-alias', HOST, '--network-alias', 'wrong.' + HOST,
                  '--mount', 'type=bind,src=' + str(cls.work) + ',dst=/contract,readonly',
@@ -416,15 +448,15 @@ class LinkageSqlContractTests(ReceiptOutcomeCase):
                  '--tmpfs', '/run/secrets/postgresql:rw,size=4m', '--env', 'POSTGRES_USER=memories_admin',
                  '--env', 'POSTGRES_DB=' + DATABASE, '--env', 'POSTGRES_PASSWORD_FILE=/run/secrets/postgresql/admin-password',
                  '--env', 'POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256 --auth-local=peer --data-checksums',
-                 '--entrypoint', '/bin/sh', IMAGE, '-ec', server_start])
+                 '--entrypoint', '/bin/sh', IMAGE, '-ec', server_start)
         deadline = time.monotonic() + 45
         while True:
-            result = cls.run_command([cls.docker, 'exec', '--user', 'postgres', cls.server,
+            result = cls.run_docker('exec', '--user', 'postgres', cls.server,
                               'pg_isready', '--quiet', '--host=/var/run/postgresql',
-                              '--username=memories_admin', '--dbname=' + DATABASE], check=False)
+                              '--username=memories_admin', '--dbname=' + DATABASE, check=False)
             if result['exitCode'] == 0:
                 # initdb's temporary server can be ready; wait for final entrypoint completion.
-                logs = cls.run_command([cls.docker, 'logs', cls.server])
+                logs = cls.run_docker('logs', cls.server)
                 if 'PostgreSQL init process complete; ready for start up.' in logs['stdout']:
                     break
             if time.monotonic() >= deadline:
@@ -434,15 +466,15 @@ class LinkageSqlContractTests(ReceiptOutcomeCase):
                         'cp /contract/tls/ca.crt /run/c1/ca.crt; chown -R postgres:postgres /run/c1; '
                         'chmod 600 /run/c1/pgpass; exec sleep 600')
         cls.owned_resources.append(('container', cls.client))
-        cls.run_command([cls.docker, 'run', '--detach', '--pull=never', '--platform=linux/amd64',
+        cls.run_docker('run', '--detach', '--pull=never', '--platform=linux/amd64',
                  '--name', cls.client, '--label', LABEL + '=' + cls.run_id, '--network', cls.network,
                  '--mount', 'type=bind,src=' + str(cls.work) + ',dst=/contract,readonly',
-                 '--tmpfs', '/var/lib/postgresql:rw,size=4m', '--tmpfs', '/run/c1:rw,size=4m', '--entrypoint', '/bin/sh', IMAGE, '-ec', client_start])
-        cls.client_ip = cls.run_command([cls.docker, 'inspect', cls.client, '--format',
-                                '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'])['stdout'].strip()
+                 '--tmpfs', '/var/lib/postgresql:rw,size=4m', '--tmpfs', '/run/c1:rw,size=4m', '--entrypoint', '/bin/sh', IMAGE, '-ec', client_start)
+        cls.client_ip = cls.run_docker('inspect', cls.client, '--format',
+                                      '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')['stdout'].strip()
         for container in (cls.server, cls.client):
-            inspection = json.loads(cls.run_command([cls.docker, 'inspect', container, '--format',
-                                            '{{json .HostConfig.PortBindings}}'])['stdout'])
+            inspection = json.loads(cls.run_docker('inspect', container, '--format',
+                                                   '{{json .HostConfig.PortBindings}}')['stdout'])
             if inspection:
                 raise RuntimeError('published-ports-prohibited')
         cls.driver = cls.work / 'driver.ps1'
@@ -451,6 +483,10 @@ class LinkageSqlContractTests(ReceiptOutcomeCase):
     @classmethod
     def run_command(cls, command, **kwargs):
         return recorded_command(cls, command, **kwargs)
+
+    @classmethod
+    def run_docker(cls, *arguments, **kwargs):
+        return cls.run_command(docker_command(cls.docker, *arguments), env=docker_environment(), **kwargs)
 
     @classmethod
     def prepare_files(cls):
@@ -505,16 +541,17 @@ class LinkageSqlContractTests(ReceiptOutcomeCase):
                 stream.close()
         cls.sessions.clear()
 
-    def client_command(self, role=ROLE, database=DATABASE, sslmode='verify-full', host=HOST):
-        return [self.docker, 'exec', '-i', '--user', 'postgres', self.client, 'env',
+    def client_arguments(self, role=ROLE, database=DATABASE, sslmode='verify-full', host=HOST):
+        return ('exec', '-i', '--user', 'postgres', self.client, 'env',
                 'PGPASSFILE=/run/c1/pgpass', 'PGCONNECT_TIMEOUT=5', 'PGSSLROOTCERT=/run/c1/ca.crt',
                 'PGSSLMODE=' + sslmode, 'PGOPTIONS=-c default_transaction_read_only=on -c statement_timeout=5000',
                 'psql', '-X', '--no-password', '--set=ON_ERROR_STOP=1', '--host=' + host,
-                '--port=5432', '--username=' + role, '--dbname=' + database, '--tuples-only', '--no-align']
+                '--port=5432', '--username=' + role, '--dbname=' + database, '--tuples-only', '--no-align')
 
     def start_session(self, **kwargs):
-        command = self.client_command(**kwargs)
-        process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        command = docker_command(self.docker, *self.client_arguments(**kwargs))
+        process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   env=docker_environment())
         self.sessions.append(process)
         process.stdin.write(b'SELECT 1;\n')
         process.stdin.flush()
@@ -610,23 +647,22 @@ class LinkageSqlContractTests(ReceiptOutcomeCase):
         hba = self.work / 'pg_hba.conf'
         try:
             hba.write_text('hostnossl all all ' + self.client_ip + '/32 scram-sha-256\n' + self.hba)
-            self.run_command([self.docker, 'exec', '--user', 'root', self.server, 'cp',
-                      '/contract/pg_hba.conf', '/etc/postgresql/pg_hba.conf'])
-            self.run_command([self.docker, 'exec', '--user', 'postgres', self.server, 'pg_ctl', 'reload',
-                      '-D', '/var/lib/postgresql/18/docker'])
+            self.run_docker('exec', '--user', 'root', self.server, 'cp',
+                            '/contract/pg_hba.conf', '/etc/postgresql/pg_hba.conf')
+            self.run_docker('exec', '--user', 'postgres', self.server, 'pg_ctl', 'reload',
+                            '-D', '/var/lib/postgresql/18/docker')
             self.start_session(sslmode='disable')
             self.assert_denial('session-identity-or-tls-invalid')
         finally:
             self.stop_sessions()
             hba.write_text(self.hba)
-            self.run_command([self.docker, 'exec', '--user', 'root', self.server, 'cp',
-                      '/contract/pg_hba.conf', '/etc/postgresql/pg_hba.conf'])
-            self.run_command([self.docker, 'exec', '--user', 'postgres', self.server, 'pg_ctl', 'reload',
-                      '-D', '/var/lib/postgresql/18/docker'])
+            self.run_docker('exec', '--user', 'root', self.server, 'cp',
+                            '/contract/pg_hba.conf', '/etc/postgresql/pg_hba.conf')
+            self.run_docker('exec', '--user', 'postgres', self.server, 'pg_ctl', 'reload',
+                            '-D', '/var/lib/postgresql/18/docker')
 
     def test_tls_requires_matching_service_dns(self):
-        command = self.client_command(host='wrong.' + HOST) + ['--command', 'SELECT 1;']
-        result = self.run_command(command, check=False)
+        result = self.run_docker(*self.client_arguments(host='wrong.' + HOST), '--command', 'SELECT 1;', check=False)
         self.assertNotEqual(0, result['exitCode'])
         self.assertIn('does not match host name', result['stderr'])
         self.assert_denial('session-attribution-ambiguous')
@@ -674,12 +710,12 @@ class LinkageSqlContractTests(ReceiptOutcomeCase):
         name = 'c1-sql-timeout-' + self.run_id
         self.owned_resources.append(('container', name))
         try:
-            self.run_command([self.docker, 'run', '--detach', '--pull=never', '--name', name,
+            self.run_docker('run', '--detach', '--pull=never', '--name', name,
                               '--network', self.network, '--label', LABEL + '=' + self.run_id,
                               '--tmpfs', '/var/lib/postgresql:rw,size=4m',
-                              '--entrypoint', 'sleep', IMAGE, '60'])
+                              '--entrypoint', 'sleep', IMAGE, '60')
             with self.assertRaisesRegex(RuntimeError, '^local-command-timeout$'):
-                self.run_command([self.docker, 'exec', name, 'sleep', '30'], timeout=0.2)
+                self.run_docker('exec', name, 'sleep', '30', timeout=0.2)
         finally:
             remove_owned_resource(self, 'container', name)
         self.assertFalse(inspect_owned_resource(self, 'container', name))
@@ -763,7 +799,7 @@ class HarnessFailureTests(ReceiptOutcomeCase):
                 result = {'exitCode': 1, 'stdout': '', 'stderr':
                           'Error response from daemon: No such container: ' + name if absent else
                           'Cannot connect to the Docker daemon'}
-                state.run_command = lambda *args, **kwargs: result
+                state.run_docker = lambda *args, **kwargs: result
                 if absent:
                     finish_receipt(state)
                 else:
@@ -819,12 +855,78 @@ class HarnessFailureTests(ReceiptOutcomeCase):
         arguments.write_text(json.dumps(['--context', 'jpiquot@local', '-n', 'hexalith-memories',
                                          'exec', 'owned-server', '-c', 'postgresql', '--',
                                          'env', 'psql', '--command', 'query-not-executed']))
-        failure = {'command': ['docker', 'exec'], 'exitCode': 2, 'stdout': '',
+        command = ['docker', '--host', DOCKER_ENDPOINT, 'exec', '--user', 'postgres', 'owned-server',
+                   'env', 'psql', '--command', 'query-not-executed']
+        failure = {'command': command, 'exitCode': 2, 'stdout': '',
                    'stderr': 'psql: database refused', 'failure': 'local-command-failed'}
-        with mock.patch(__name__ + '.bounded', side_effect=CommandFailure(failure)):
+        with (mock.patch.dict(os.environ, {'DOCKER_HOST': 'ssh://remote.invalid', 'DOCKER_CONTEXT': 'remote'}),
+              mock.patch(__name__ + '.bounded', side_effect=CommandFailure(failure)) as run):
             with self.assertRaises(CommandFailure):
                 execute_emitted_command(config_path)
+        self.assertEqual(command, run.call_args.args[0])
+        self.assertTrue(set(DOCKER_ENDPOINT_VARIABLES).isdisjoint(run.call_args.kwargs['env']))
         self.assertEqual(failure, json.loads(raw.read_text()))
+
+    def test_nonapproved_docker_selection_is_refused_before_daemon_commands(self):
+        metadata = ['docker', 'context', 'inspect', '--format', '{{json .Endpoints.docker.Host}}']
+        cases = [
+            ({'DOCKER_HOST': 'tcp://remote.invalid:2375'}, [], None, 'docker-endpoint-not-approved'),
+            ({'DOCKER_HOST': 'tcp://127.0.0.1:2375'}, [], None, 'docker-endpoint-not-approved'),
+            ({'DOCKER_HOST': 'unix:///run/other-docker.sock'}, [], None, 'docker-endpoint-not-approved'),
+            ({}, [mock.call(metadata)], 'ssh://remote.invalid', 'docker-endpoint-not-approved'),
+            ({'DOCKER_CONTEXT': 'remote', 'DOCKER_HOST': DOCKER_ENDPOINT},
+             [mock.call(metadata + ['--', 'remote'])], 'tcp://remote.invalid:2375', 'docker-endpoint-not-approved'),
+            ({'DOCKER_CONTEXT': 'unresolved'}, [mock.call(metadata + ['--', 'unresolved'])],
+             CommandFailure({'failure': 'local-command-failed'}), 'docker-endpoint-unresolved'),
+        ]
+        for environment, expected_calls, endpoint, failure in cases:
+            with self.subTest(environment=environment, endpoint=endpoint):
+                class Probe(LinkageSqlContractTests):
+                    pass
+
+                responses = [] if endpoint is None else [endpoint if isinstance(endpoint, CommandFailure)
+                                                         else {'stdout': json.dumps(endpoint)}]
+                with (mock.patch.dict(os.environ),
+                      mock.patch.object(shutil, 'which', side_effect=lambda executable: executable),
+                      mock.patch(__name__ + '.bounded', side_effect=responses) as run):
+                    for variable in DOCKER_ENDPOINT_VARIABLES:
+                        os.environ.pop(variable, None)
+                    os.environ.update(environment)
+                    try:
+                        with self.assertRaisesRegex(RuntimeError, '^' + failure + '$'):
+                            Probe.setUpClass()
+                    finally:
+                        Probe.doClassCleanups()
+                        self.addCleanup(shutil.rmtree, Probe.evidence)
+                self.assertEqual(expected_calls, run.call_args_list)
+                self.assertEqual([], Probe.owned_resources)
+                self.assertEqual([], Probe.tearDown_exceptions)
+                receipt = json.loads((Probe.evidence / 'receipt.json').read_text())
+                self.assertEqual('failed', receipt['status'])
+                self.assertEqual([], receipt['commands'])
+                self.assertTrue(receipt['privateWorkspaceRemoved'])
+
+    def test_owned_cleanup_stays_on_approved_endpoint_after_environment_changes(self):
+        class Probe(LinkageSqlContractTests):
+            docker = 'docker'
+            run_id = 'owned'
+            commands = []
+            cleanup_results = []
+
+        name = 'c1-sql-cleanup-probe'
+        commands = [
+            ['docker', '--host', DOCKER_ENDPOINT, 'container', 'inspect', name,
+             '--format', '{{index .Config.Labels "' + LABEL + '"}}'],
+            ['docker', '--host', DOCKER_ENDPOINT, 'container', 'rm', '--force', '--volumes', name],
+        ]
+        results = [{'exitCode': 0, 'stdout': output, 'stderr': ''} for output in ('owned\n', name + '\n')]
+        overrides = dict.fromkeys(DOCKER_ENDPOINT_VARIABLES, 'unexpected')
+        with (mock.patch.dict(os.environ, overrides),
+              mock.patch(__name__ + '.bounded', side_effect=results) as run):
+            remove_owned_resource(Probe, 'container', name)
+        self.assertEqual(commands, [call.args[0] for call in run.call_args_list])
+        self.assertTrue(all(set(overrides).isdisjoint(call.kwargs['env']) for call in run.call_args_list))
+        self.assertEqual(results[1:], Probe.cleanup_results)
 
     def test_split_valid_session_response_succeeds(self):
         read_descriptor, write_descriptor = os.pipe()

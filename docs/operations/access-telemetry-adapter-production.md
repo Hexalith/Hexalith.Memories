@@ -234,10 +234,17 @@ and grant no target contact or C1.16 disposition.
 ### Isolated emitted SQL contract verification
 
 The separate integration lane requires Docker on `linux/amd64`, PowerShell 7.5+
-and OpenSSL. Prefetch only the approved PostgreSQL child before running it:
+and OpenSSL. Select the approved local Docker endpoint `unix:///var/run/docker.sock`
+before running the lane. It checks the selected endpoint using client metadata
+before contacting the daemon. A `DOCKER_HOST` or `DOCKER_CONTEXT` override that
+points elsewhere fails preflight. Setup, session and observer commands, and
+ownership-checked cleanup all use the approved socket explicitly. Prefetch only
+the approved PostgreSQL child on that socket if it is missing from the cache.
 
 ```bash
-timeout 180 docker pull --platform linux/amd64 docker.io/library/postgres@sha256:0377e72c5289ed2f98cf61b1a9c2db9eb9d300317fe14244492fbc94343b3d04
+timeout 180 env -u DOCKER_HOST -u DOCKER_CONTEXT -u DOCKER_TLS -u DOCKER_TLS_VERIFY -u DOCKER_CERT_PATH \
+  docker --host unix:///var/run/docker.sock pull --platform linux/amd64 \
+  docker.io/library/postgres@sha256:0377e72c5289ed2f98cf61b1a9c2db9eb9d300317fe14244492fbc94343b3d04
 PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_sql_contract -p '*_test.py' -v
 ```
 
