@@ -407,7 +407,8 @@ public sealed class OperationalRunbookSetTests
         tenantSection.ShouldContain("FalkorDB", Case.Sensitive);
         tenantSection.ShouldContain("minutes", Case.Sensitive);
         tenantSection.ShouldContain("container runtime", Case.Sensitive);
-        tenantSection.ShouldContain("leftover fixture data", Case.Sensitive);
+        tenantSection.ShouldContain("tenant lifecycle API", Case.Sensitive);
+        tenantSection.ShouldContain("graph databases and search indexes are gone", Case.Sensitive);
         tenantSection.ShouldNotContain("localhost:6050", Case.Sensitive);
         tenantSection.ShouldNotContain("localhost:6060", Case.Sensitive);
 

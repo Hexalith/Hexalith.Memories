@@ -170,7 +170,8 @@ dotnet build tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.Integrat
 ```
 
 The cited proof provisions a full real Aspire/FalkorDB topology, typically takes several
-minutes, requires a container runtime, and seeds leftover fixture data in the tenant graphs.
+minutes, and requires a container runtime. It deletes both fixture tenants through the
+tenant lifecycle API and verifies that their graph databases and search indexes are gone.
 If Dapr placement and scheduler are not exposed at the CLI defaults (`localhost:50005` and
 `localhost:50006`), discover the active local service endpoints from the local Dapr or container
 runtime configuration and export them before running the proof:

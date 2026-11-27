@@ -1605,6 +1605,80 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             _logProvider.Count,
             cancellationToken).ConfigureAwait(false);
 
+    /// <summary>Polls the tenant route until the tenant has been removed from the registry.</summary>
+    /// <param name="tenantId">Tenant identifier.</param>
+    /// <param name="cancellationToken">Cooperative cancellation.</param>
+    internal async Task WaitForTenantDeletedAsync(string tenantId, CancellationToken cancellationToken = default)
+    {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(TimeSpan.FromMinutes(2));
+        try
+        {
+            while (true)
+            {
+                using HttpResponseMessage response = await MemoriesClient.GetAsync(
+                    $"/api/v1/tenants/{tenantId}", deadline.Token).ConfigureAwait(false);
+                if (response.StatusCode == HttpStatusCode.NotFound)
+                {
+                    return;
+                }
+
+                await Task.Delay(EndpointPollInterval, deadline.Token).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested && deadline.IsCancellationRequested)
+        {
+            throw new TimeoutException($"Tenant '{tenantId}' was not deleted in time.", exception);
+        }
+    }
+
+    /// <summary>Deletes a test-owned tenant through the lifecycle API and waits for registry removal.</summary>
+    /// <param name="tenantId">Identifier allocated for the test.</param>
+    /// <param name="provisioningConfirmed">Whether the test observed the tenant become active.</param>
+    /// <param name="cancellationToken">Cooperative cancellation.</param>
+    internal async Task DeleteOwnedTenantAsync(
+        string tenantId,
+        bool provisioningConfirmed,
+        CancellationToken cancellationToken = default)
+    {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(TimeSpan.FromMinutes(2));
+        // A queued provisioning workflow may not have created the registry entry yet.
+        bool waitingForRegistration = !provisioningConfirmed;
+        try
+        {
+            while (true)
+            {
+                using HttpResponseMessage response = await MemoriesClient.DeleteAsync(
+                    $"/api/v1/tenants/{tenantId}", deadline.Token).ConfigureAwait(false);
+                switch (response.StatusCode)
+                {
+                    case HttpStatusCode.Accepted:
+                        await WaitForTenantDeletedAsync(tenantId, deadline.Token).ConfigureAwait(false);
+                        return;
+                    case HttpStatusCode.NotFound when !waitingForRegistration:
+                        return;
+                    case HttpStatusCode.Conflict:
+                        waitingForRegistration = false;
+                        break;
+                    case HttpStatusCode.NotFound:
+                        break;
+                    default:
+                        throw new HttpRequestException(
+                            $"Deletion of test tenant '{tenantId}' returned HTTP {(int)response.StatusCode}.",
+                            inner: null,
+                            response.StatusCode);
+                }
+
+                await Task.Delay(EndpointPollInterval, deadline.Token).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested && deadline.IsCancellationRequested)
+        {
+            throw new TimeoutException($"Test tenant '{tenantId}' was not deleted in time.", exception);
+        }
+    }
+
     private async Task WaitForTenantActiveAsync(
         string tenantId,
         TimeSpan? timeout,

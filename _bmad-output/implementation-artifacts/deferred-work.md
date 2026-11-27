@@ -4664,6 +4664,7 @@ origin: migrated from legacy ledger ("Infrastructure-Dependency Abstraction (IDA
 location: src/Hexalith.Memories.Redis/RedisPlaceholder.cs
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-infrastructure-dependency-abstraction.md` summary: Remove unreferenced `RedisPlaceholder` port-constant compat surface on the next owned breaking major once no external consumer depends on it (F9). - ID: IDA-F9-REDISPLACEHOLDER-REMOVAL - Status: open - Source story: spec-infrastructure-dependency-abstraction - Target artifact: src/Hexalith.Memories.Redis/RedisPlaceholder.cs - Re-open trigger: an owned breaking major of the Redis package is cut, or an external consumer audit confirms zero remaining references to `DefaultRedisPort` / `DefaultFalkorDbPort`. - Rationale: Constants are compile-time compat only (open no connections); removal is deferred to avoid an unforced package break while F9 already labels them non-leak.
 status: open
+note: 2026-11-27 — Skipped. Removal still needs an owned breaking release or a clean external-consumer audit. The packaged consumer fixture still compiles against both constants.
 
 ### DW-652: Runbook proof text is duplicated across two operator documents.
 
@@ -4678,7 +4679,8 @@ resolution: The route contract links to the tenant runbook for one canonical gra
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence (2026-08-12)"), 2026-09-01
 location: tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs
 reason: - **Collision fixtures remain in the shared real-backend topology.** - ID: 24.6-CR-W2 - Status: carried-forward - Source story: spec-24-6-graph-content-level-tenant-isolation-evidence - Target artifact: tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs - Rationale: The proof seeds collision nodes, edges, and two provisioned tenants without teardown; unique tenant identifiers prevent cross-test identity conflicts, while shared-topology cleanup is a wider fixture-lifecycle concern. - Re-open trigger: A later test observes these records, integration storage growth becomes material, or the shared fixture adds a safe tenant teardown API.
-status: open
+status: done 2026-11-27
+resolution: The two graph collision proofs now attempt lifecycle cleanup for both owned tenants even after partial setup or proof failure. Both live proofs verify registry removal and absence of the physical graph and Redis indexes.
 
 ### DW-654: The collision proof assumes newly provisioned graphs contain no relationships.
 

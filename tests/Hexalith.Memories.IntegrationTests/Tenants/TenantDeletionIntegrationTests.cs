@@ -70,7 +70,7 @@ public sealed class TenantDeletionIntegrationTests
                 .Any(message => message?.Contains("Deletion already in progress", StringComparison.OrdinalIgnoreCase) == true)
                 .ShouldBeTrue();
 
-            await WaitForTenantDeletedAsync(tenantId);
+            await _fixture.WaitForTenantDeletedAsync(tenantId);
         }
         finally
         {
@@ -117,7 +117,7 @@ public sealed class TenantDeletionIntegrationTests
         string? workflowInstanceId = (await ReadDeleteResponseAsync(deleteResponse.Content)).WorkflowInstanceId;
         workflowInstanceId.ShouldNotBeNullOrWhiteSpace();
 
-        await WaitForTenantDeletedAsync(tenantId);
+        await _fixture.WaitForTenantDeletedAsync(tenantId);
 
         using HttpResponseMessage listResponse = await _fixture.MemoriesClient.GetAsync("/api/v1/tenants");
         listResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -181,7 +181,7 @@ public sealed class TenantDeletionIntegrationTests
         using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync($"/api/v1/tenants/{tenantId}");
         deleteResponse.StatusCode.ShouldBe(HttpStatusCode.Accepted);
 
-        await WaitForTenantDeletedAsync(tenantId);
+        await _fixture.WaitForTenantDeletedAsync(tenantId);
 
         // Verify tenant is gone and graph has no data
         try
@@ -212,7 +212,7 @@ public sealed class TenantDeletionIntegrationTests
         // Delete tenant
         using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync($"/api/v1/tenants/{tenantId}");
         deleteResponse.StatusCode.ShouldBe(HttpStatusCode.Accepted);
-        await WaitForTenantDeletedAsync(tenantId);
+        await _fixture.WaitForTenantDeletedAsync(tenantId);
 
         // Search should return 404 because the tenant no longer exists in the registry. Per
         // TenantStatusGuard.ToHttpResult, TENANT_NOT_FOUND maps to 404; 409 Conflict is reserved for
@@ -270,7 +270,7 @@ public sealed class TenantDeletionIntegrationTests
         searchError.ShouldNotBeNull();
         new[] { "TENANT_DELETING", "TENANT_NOT_FOUND" }.ShouldContain(searchError.Code);
 
-        await WaitForTenantDeletedAsync(tenantId);
+        await _fixture.WaitForTenantDeletedAsync(tenantId);
     }
 
     [Fact]
@@ -315,7 +315,7 @@ public sealed class TenantDeletionIntegrationTests
         using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync($"/api/v1/tenants/{tenantId}");
         if (deleteResponse.StatusCode == HttpStatusCode.Accepted)
         {
-            await WaitForTenantDeletedAsync(tenantId);
+            await _fixture.WaitForTenantDeletedAsync(tenantId);
         }
     }
 
@@ -354,24 +354,6 @@ public sealed class TenantDeletionIntegrationTests
         }
 
         throw new TimeoutException($"Tenant '{tenantId}' did not become active in time.");
-    }
-
-    private async Task WaitForTenantDeletedAsync(string tenantId)
-    {
-        DateTimeOffset deadline = DateTimeOffset.UtcNow.AddMinutes(2);
-
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync($"/api/v1/tenants/{tenantId}");
-            if (response.StatusCode == HttpStatusCode.NotFound)
-            {
-                return;
-            }
-
-            await Task.Delay(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
-        }
-
-        throw new TimeoutException($"Tenant '{tenantId}' was not deleted in time.");
     }
 
     private async Task<string> CreateCaseAsync(string tenantId, string caseName)

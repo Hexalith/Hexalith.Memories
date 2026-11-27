@@ -41,6 +41,7 @@ public sealed class TenantIsolationIntegrationTests
     // timeout, hiding the real error and leaving the command in flight.
     private static readonly TimeSpan GraphQueryTimeout = TimeSpan.FromMilliseconds(GraphQueryTimeoutMilliseconds + 5_000);
     private static readonly TimeSpan HttpOperationTimeout = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan TenantCleanupTimeout = TimeSpan.FromMinutes(2);
 
     private readonly AspireIngestionPipelineFixture _fixture;
     private readonly GraphQueryBuilder _graphQueryBuilder = new();
@@ -78,15 +79,16 @@ public sealed class TenantIsolationIntegrationTests
     }
 
     [Fact]
-    public async Task VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes()
+    public Task VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes()
+        => VerifyWithCollisionTenantsAsync(VerifyCollisionIsolationAsync);
+
+    private async Task VerifyCollisionIsolationAsync(string tenantA, string tenantB)
     {
         const string nodeMarkerA = "GRAPH-NODE-MARKER-TENANT-A";
         const string nodeMarkerB = "GRAPH-NODE-MARKER-TENANT-B";
         const string edgeMarkerA = "GRAPH-EDGE-MARKER-TENANT-A";
         const string edgeMarkerB = "GRAPH-EDGE-MARKER-TENANT-B";
 
-        string tenantA = await _fixture.ProvisionActiveTenantAsync($"tenant-a-{Guid.NewGuid():N}");
-        string tenantB = await _fixture.ProvisionActiveTenantAsync($"tenant-b-{Guid.NewGuid():N}");
         DateTimeOffset fixtureTimestamp = DateTimeOffset.UtcNow;
 
         await SeedCollisionGraphAsync(tenantA, nodeMarkerA, edgeMarkerA, fixtureTimestamp);
@@ -143,15 +145,16 @@ public sealed class TenantIsolationIntegrationTests
     }
 
     [Fact]
-    public async Task VerifyTenant_PlantedForeignGraphEdgeMarker_CollisionAssertionsDetectLeakage()
+    public Task VerifyTenant_PlantedForeignGraphEdgeMarker_CollisionAssertionsDetectLeakage()
+        => VerifyWithCollisionTenantsAsync(VerifyPlantedForeignEdgeAsync);
+
+    private async Task VerifyPlantedForeignEdgeAsync(string tenantA, string tenantB)
     {
         const string nodeMarkerA = "GRAPH-NODE-MARKER-TENANT-A-NEGATIVE-CONTROL";
         const string nodeMarkerB = "GRAPH-NODE-MARKER-TENANT-B-NEGATIVE-CONTROL";
         const string edgeMarkerA = "GRAPH-EDGE-MARKER-TENANT-A-NEGATIVE-CONTROL";
         const string edgeMarkerB = "GRAPH-EDGE-MARKER-TENANT-B-NEGATIVE-CONTROL";
 
-        string tenantA = await _fixture.ProvisionActiveTenantAsync($"tenant-a-{Guid.NewGuid():N}");
-        string tenantB = await _fixture.ProvisionActiveTenantAsync($"tenant-b-{Guid.NewGuid():N}");
         DateTimeOffset fixtureTimestamp = DateTimeOffset.UtcNow;
 
         await SeedCollisionGraphAsync(tenantA, nodeMarkerA, edgeMarkerA, fixtureTimestamp);
@@ -223,6 +226,103 @@ public sealed class TenantIsolationIntegrationTests
         }
 
         AssertTraversalIsFixtureLocal(await TraverseAuthenticatedAsync(tenantA), nodeMarkerA, edgeMarkerA, nodeMarkerB);
+    }
+
+    [Fact]
+    public async Task VerifyTenant_WhenCollisionProofThrows_RemovesBothFixtureTenants()
+    {
+        string? firstTenant = null;
+        string? secondTenant = null;
+        InvalidOperationException proofFailure = new("Injected collision proof failure.");
+
+        InvalidOperationException thrown = await Should.ThrowAsync<InvalidOperationException>(
+            () => VerifyWithCollisionTenantsAsync(async (tenantA, tenantB) =>
+            {
+                firstTenant = tenantA;
+                secondTenant = tenantB;
+                DateTimeOffset timestamp = DateTimeOffset.UtcNow;
+                await SeedCollisionGraphAsync(tenantA, "failure-test-node-a", "failure-test-edge-a", timestamp);
+                await SeedCollisionGraphAsync(tenantB, "failure-test-node-b", "failure-test-edge-b", timestamp);
+                throw proofFailure;
+            }));
+
+        thrown.ShouldBeSameAs(proofFailure);
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        await AssertCollisionTenantRemovedAsync(firstTenant.ShouldNotBeNull(), cancellationToken);
+        await AssertCollisionTenantRemovedAsync(secondTenant.ShouldNotBeNull(), cancellationToken);
+    }
+
+    private async Task VerifyWithCollisionTenantsAsync(Func<string, string, Task> verifyAsync)
+    {
+        // Keep both ids even if provisioning creates state and then fails before returning.
+        string tenantA = $"tenant-a-{Guid.NewGuid():N}";
+        string tenantB = $"tenant-b-{Guid.NewGuid():N}";
+        bool tenantAActive = false;
+        bool? tenantBActive = null; // A null value means provisioning was never attempted.
+        Exception? proofFailure = null;
+        try
+        {
+            _ = await _fixture.ProvisionActiveTenantAsync(tenantA);
+            tenantAActive = true;
+            tenantBActive = false;
+            _ = await _fixture.ProvisionActiveTenantAsync(tenantB);
+            tenantBActive = true;
+            await verifyAsync(tenantA, tenantB);
+        }
+        catch (Exception exception)
+        {
+            proofFailure = exception;
+            throw;
+        }
+        finally
+        {
+            Task cleanup = Task.WhenAll(
+                DeleteCollisionTenantAsync(tenantA, tenantAActive),
+                tenantBActive is bool active ? DeleteCollisionTenantAsync(tenantB, active) : Task.CompletedTask);
+            try
+            {
+                await cleanup;
+            }
+            catch (Exception cleanupFailure)
+            {
+                Exception[] failures = cleanup.Exception?.InnerExceptions.ToArray() ?? [cleanupFailure];
+                throw new AggregateException(
+                    "Collision fixture cleanup failed.",
+                    proofFailure is null ? failures : [proofFailure, .. failures]);
+            }
+        }
+    }
+
+    private async Task DeleteCollisionTenantAsync(string tenantId, bool provisioningConfirmed)
+    {
+        // Cleanup gets its own deadline so a canceled proof cannot leave its data in the shared fixture.
+        using var deadline = new CancellationTokenSource(TenantCleanupTimeout);
+        try
+        {
+            await _fixture.DeleteOwnedTenantAsync(tenantId, provisioningConfirmed, deadline.Token);
+            await AssertCollisionTenantRemovedAsync(tenantId, deadline.Token);
+        }
+        catch (OperationCanceledException exception) when (deadline.IsCancellationRequested)
+        {
+            throw new TimeoutException($"Collision fixture tenant '{tenantId}' was not fully removed in time.", exception);
+        }
+    }
+
+    private async Task AssertCollisionTenantRemovedAsync(string tenantId, CancellationToken cancellationToken)
+    {
+        using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
+            $"/api/v1/tenants/{tenantId}", cancellationToken);
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+
+        RedisResult graphs = await _fixture.FalkorDbConnection.GetDatabase()
+            .ExecuteAsync("GRAPH.LIST").WaitAsync(cancellationToken);
+        ((RedisResult[])graphs!).Select(graph => graph.ToString()).ShouldNotContain(tenantId);
+
+        RedisResult indexes = await _fixture.RedisConnection.GetDatabase()
+            .ExecuteAsync("FT._LIST").WaitAsync(cancellationToken);
+        string[] indexNames = [.. ((RedisResult[])indexes!).Select(index => index.ToString())];
+        indexNames.ShouldNotContain(IndexSchemaDefinitions.GetSyntacticIndexName(tenantId));
+        indexNames.ShouldNotContain(IndexSchemaDefinitions.GetSemanticIndexName(tenantId));
     }
 
     [Fact]
