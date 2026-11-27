@@ -256,9 +256,11 @@ function Protect-EvidenceText {
         '-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?-----END [^-]*PRIVATE KEY-----',
         '***',
         [Text.RegularExpressions.RegexOptions]::IgnoreCase)
-    # Legacy service and recovery IDs are Base62. Batch and modern signed IDs
-    # also use Base64URL. Preserve this fallback for unknown tokens in diagnostics.
-    $tokenPattern = '(?<![A-Za-z0-9_])(?:(?:s|r)\.[A-Za-z0-9]{24,}|(?:b|hvs|hvb|hvr)\.[A-Za-z0-9_-]{24,})(?:\.[A-Za-z0-9]{5})?(?![A-Za-z0-9_-])'
+    # OpenBao 2.6.4 encodes batch tokens as Base64URL after barrier encryption.
+    # The key term, version, nonce and tag alone occupy 33 bytes (44 characters).
+    $serviceOrRecovery = '(?:s|r)\.[A-Za-z0-9]{24,}|(?:hvs|hvr)\.[A-Za-z0-9_-]{24,}'
+    $batch = '(?:b|hvb)\.[A-Za-z0-9_-]{44,}'
+    $tokenPattern = "(?<![A-Za-z0-9_])(?:$serviceOrRecovery|$batch)(?:\.[A-Za-z0-9]{5})?(?![A-Za-z0-9_-])"
     $sanitized = [regex]::Replace($sanitized, $tokenPattern, '***')
 
     return $sanitized

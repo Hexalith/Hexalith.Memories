@@ -326,13 +326,13 @@ $results | ConvertTo-Json -Depth 6 -Compress
 
     def test_evidence_redaction_preserves_diagnostic_fragments(self) -> None:
         verifier = VERIFIER.read_text(encoding="utf-8-sig")
-        diagnostics = "s.redis_connection_refused b.queue_retries_failed r.request_timeout_budget"
+        diagnostics = "s.redis_connection_refused b.release_candidate_artifact_missing r.request_timeout_budget"
         tokens = (
             "s." + "Ab012345" * 3,
             "r." + "Cd678901" * 3,
-            "b." + "Ab012345" * 3 + "_-",
+            "b." + "Ab012345" * 6 + "_-",
             "hvs." + "Ab012345" * 3 + "_-",
-            "hvb." + "Ab012345" * 3 + "_-.A1b2C",
+            "hvb." + "Ab012345" * 6 + "_-.A1b2C",
             "hvr." + "Ab012345" * 3,
             "registered-short-value",
         )
