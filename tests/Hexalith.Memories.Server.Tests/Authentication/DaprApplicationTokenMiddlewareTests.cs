@@ -5,6 +5,11 @@
 
 namespace Hexalith.Memories.Server.Tests.Authentication;
 
+using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
+
+using Hexalith.Memories.Server.Tests.EventStoreIntegration;
 using Hexalith.Memories.ServiceDefaults.Security;
 
 using Microsoft.AspNetCore.Http;
@@ -117,6 +122,26 @@ public sealed class DaprApplicationTokenMiddlewareTests
 
         reached.ShouldBeTrue();
         context.Response.StatusCode.ShouldBe(StatusCodes.Status200OK);
+    }
+
+    [Fact]
+    public async Task DevelopmentEventStoreHost_WithInheritedAppToken_ExposesSubscriptionWithoutTokenHeader()
+    {
+        using EnvironmentScope _ = new("inherited-eventstore-test-token");
+        using var factory = new EventStoreWebAppFactory();
+        factory.ConfigurationOverrides["Dapr:DeclarativeSubscriptions"] = "false";
+        using HttpClient client = factory.CreateClient();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        using HttpResponseMessage response = await client.GetAsync("/dapr/subscribe", cancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        JsonElement subscriptions = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken);
+        subscriptions.EnumerateArray().ShouldContain(subscription =>
+            subscription.GetProperty("topic").GetString() == "memories-events"
+            && subscription.EnumerateObject().Any(property =>
+                string.Equals(property.Name, "pubsubname", StringComparison.OrdinalIgnoreCase)
+                && property.Value.GetString() == "pubsub"));
     }
 
     [Fact]
