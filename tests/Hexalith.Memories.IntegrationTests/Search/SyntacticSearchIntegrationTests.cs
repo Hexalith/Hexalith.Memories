@@ -142,9 +142,9 @@ public partial class SyntacticSearchIntegrationTests
             new HashEntry("sourceType", "file"),
         ]);
 
-    private Task<ConnectionMultiplexer> ConnectAsync(bool resp3, string? connectionString = null)
+    private Task<ConnectionMultiplexer> ConnectAsync(bool resp3)
         => RedisStackFixture.ConnectWhenReadyAsync(
-            connectionString ?? _redis.ConnectionString,
+            _redis.ConnectionString,
             resp3 ? RedisProtocol.Resp3 : RedisProtocol.Resp2);
 
     private static string RankedContent(int index)
