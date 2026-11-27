@@ -690,31 +690,31 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     /// <summary>
     /// Waits for the auxiliary access-telemetry sidecars and their permitted OpenBao reads used by
     /// the full sidecar access matrix. Shared fixture startup already waits for those sidecars'
-    /// HTTP endpoints; this method additionally proves the exact secret allow/deny matrix.
+    /// HTTP endpoints. This method additionally waits for their permitted secret reads.
     /// </summary>
     /// <param name="cancellationToken">Cooperative cancellation.</param>
     /// <returns>A task that completes when both exact auxiliary probes succeed.</returns>
     internal Task WaitForOpenBaoSidecarMatrixReadinessAsync(CancellationToken cancellationToken)
+        => WaitForOpenBaoSidecarMatrixReadinessAsync(_topologyLogStartIndex, cancellationToken);
+
+    private Task WaitForOpenBaoSidecarMatrixReadinessAsync(int logStartIndex, CancellationToken cancellationToken)
         => WaitForOpenBaoSidecarMatrixReadinessCoreAsync(
-            async (sidecarResourceName, token) =>
+            (sidecarResourceName, token) => WaitForDaprSidecarHttpEndpointAsync(
+                sidecarResourceName,
+                () => _logProvider.GetEntriesSince(logStartIndex),
+                EndpointReadyTimeout,
+                EndpointPollInterval,
+                token),
+            async (endpoint, secretName, token) =>
             {
-                _ = await WaitForDaprSidecarHttpEndpointAsync(
-                    sidecarResourceName,
-                    () => _logProvider.GetEntriesSince(_topologyLogStartIndex),
-                    EndpointReadyTimeout,
-                    EndpointPollInterval,
-                    token).ConfigureAwait(false);
-            },
-            async (sidecarResourceName, secretName, token) =>
-            {
-                using HttpClient secretProbe = CreateDaprSidecarClient(sidecarResourceName);
+                using HttpClient secretProbe = CreateDaprSidecarClient(endpoint);
                 await WaitForEndpointAsync(
                     secretProbe,
                     $"/v1.0/secrets/access-telemetry-secrets/{secretName}",
                     [HttpStatusCode.OK],
                     EndpointReadyTimeout,
                     EndpointPollInterval,
-                    _topologyLogStartIndex,
+                    logStartIndex,
                     token,
                     DaprSecretProbeTimeout,
                     DaprSecretFailClosedStatusCodes).ConfigureAwait(false);
@@ -722,29 +722,29 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             cancellationToken);
 
     /// <summary>Executes the exact auxiliary-sidecar readiness sequence owned by the OpenBao matrix.</summary>
-    /// <param name="waitForSidecarAsync">Waits for one exact Dapr CLI sidecar endpoint.</param>
-    /// <param name="waitForSecretAsync">Waits for one permitted secret read through that sidecar.</param>
+    /// <param name="waitForSidecarAsync">Waits for and resolves one exact Dapr CLI sidecar endpoint.</param>
+    /// <param name="waitForSecretAsync">Waits for one permitted secret read through the resolved endpoint.</param>
     /// <param name="cancellationToken">Cooperative cancellation.</param>
     /// <returns>A task that completes after both sidecars and their permitted keys are ready.</returns>
     internal static async Task WaitForOpenBaoSidecarMatrixReadinessCoreAsync(
-        Func<string, CancellationToken, Task> waitForSidecarAsync,
-        Func<string, string, CancellationToken, Task> waitForSecretAsync,
+        Func<string, CancellationToken, Task<Uri>> waitForSidecarAsync,
+        Func<Uri, string, CancellationToken, Task> waitForSecretAsync,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(waitForSidecarAsync);
         ArgumentNullException.ThrowIfNull(waitForSecretAsync);
 
-        const string clockSidecarResourceName = "memories-access-telemetry-clock-dapr-cli";
-        await waitForSidecarAsync(clockSidecarResourceName, cancellationToken).ConfigureAwait(false);
+        Uri clockEndpoint = await waitForSidecarAsync("memories-access-telemetry-clock-dapr-cli", cancellationToken)
+            .ConfigureAwait(false);
         await waitForSecretAsync(
-            clockSidecarResourceName,
+            clockEndpoint,
             "access-telemetry-clock-key",
             cancellationToken).ConfigureAwait(false);
 
-        const string lifecycleSidecarResourceName = "memories-access-telemetry-dapr-cli";
-        await waitForSidecarAsync(lifecycleSidecarResourceName, cancellationToken).ConfigureAwait(false);
+        Uri lifecycleEndpoint = await waitForSidecarAsync("memories-access-telemetry-dapr-cli", cancellationToken)
+            .ConfigureAwait(false);
         await waitForSecretAsync(
-            lifecycleSidecarResourceName,
+            lifecycleEndpoint,
             "access-telemetry-marker-key",
             cancellationToken).ConfigureAwait(false);
     }
@@ -770,7 +770,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         string before = await ReadScopedTokenFingerprintAsync().ConfigureAwait(false);
         const string recoveryTenantId = OpenBaoRecoveryTenantId;
         bool recoveryTenantActive = false;
-        string mcpRecoveryStage = "waiting for rotated OpenBao identities";
+        string recoveryStage = "waiting for rotated OpenBao identities";
         HttpStatusCode? mcpRecoveryStatus = null;
         string? mcpRecoveryError = null;
         using var cts = new CancellationTokenSource(ResourceHealthyTimeout);
@@ -791,7 +791,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                 identitiesRotated |= !string.Equals(before, after, StringComparison.Ordinal);
                 if (identitiesRotated)
                 {
-                    mcpRecoveryStage = "waiting for scoped OpenBao secret reads";
+                    recoveryStage = "waiting for scoped OpenBao secret reads";
                     mcpRecoveryStatus = null;
                     mcpRecoveryError = null;
                     OpenBaoEndpoint = app.GetEndpoint(OpenBaoDevelopmentProfile.ResourceName, OpenBaoDevelopmentProfile.EndpointName);
@@ -815,15 +815,23 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                             recoveryTenantActive,
                             cts.Token).ConfigureAwait(false);
                         recoveryTenantActive = recovery.TenantActive;
-                        mcpRecoveryStage = recovery.Stage;
+                        recoveryStage = recovery.Stage;
                         mcpRecoveryStatus = recovery.Status;
                         mcpRecoveryError = recovery.Error;
                         if (recovery.SearchReady)
                         {
+                            recoveryStage = "waiting for auxiliary Dapr sidecar OpenBao secret reads";
+                            // OpenBao restarts both auxiliary sidecars. Wait for their new listen
+                            // evidence even if Aspire assigns the same ports to their new processes.
+                            await WaitForOpenBaoSidecarMatrixReadinessAsync(logStartIndex, cts.Token).ConfigureAwait(false);
                             return true;
                         }
                     }
                 }
+            }
+            catch (OperationCanceledException) when (cts.IsCancellationRequested)
+            {
+                break;
             }
             catch (Exception exception) when (
                 !cts.IsCancellationRequested &&
@@ -857,9 +865,9 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             : "OpenBao did not install a rotated in-place generation before the restart deadline.";
         throw new TimeoutException(
             timeoutSummary +
-            $" Last MCP recovery stage: {mcpRecoveryStage}." +
-            $" Last status: {mcpRecoveryStatus?.ToString() ?? "n/a"}." +
-            $" Last error: {mcpRecoveryError ?? "n/a"}."
+            $" Last recovery stage: {recoveryStage}." +
+            $" Last MCP status: {mcpRecoveryStatus?.ToString() ?? "n/a"}." +
+            $" Last MCP error: {mcpRecoveryError ?? "n/a"}."
             + $"{Environment.NewLine}{FormatRecentLogs(_logProvider.GetEntriesSince(logStartIndex), maxLines: 80)}");
     }
 

@@ -400,16 +400,20 @@ public sealed class AspireIngestionPipelineFixtureTests
     public async Task WaitForOpenBaoSidecarMatrixReadinessCoreAsync_UsesOnlyExactAuxiliarySidecarProbes()
     {
         List<string> probes = [];
+        Uri clockEndpoint = new("http://127.0.0.1:44001");
+        Uri lifecycleEndpoint = new("http://127.0.0.1:44002");
 
         await AspireIngestionPipelineFixture.WaitForOpenBaoSidecarMatrixReadinessCoreAsync(
             (sidecarResourceName, _) =>
             {
                 probes.Add($"sidecar:{sidecarResourceName}");
-                return Task.CompletedTask;
+                return Task.FromResult(sidecarResourceName == "memories-access-telemetry-clock-dapr-cli"
+                    ? clockEndpoint
+                    : lifecycleEndpoint);
             },
-            (sidecarResourceName, secretName, _) =>
+            (endpoint, secretName, _) =>
             {
-                probes.Add($"secret:{sidecarResourceName}:{secretName}");
+                probes.Add($"secret:{endpoint.Port}:{secretName}");
                 return Task.CompletedTask;
             },
             CancellationToken.None);
@@ -417,9 +421,9 @@ public sealed class AspireIngestionPipelineFixtureTests
         probes.ShouldBe(
         [
             "sidecar:memories-access-telemetry-clock-dapr-cli",
-            "secret:memories-access-telemetry-clock-dapr-cli:access-telemetry-clock-key",
+            "secret:44001:access-telemetry-clock-key",
             "sidecar:memories-access-telemetry-dapr-cli",
-            "secret:memories-access-telemetry-dapr-cli:access-telemetry-marker-key",
+            "secret:44002:access-telemetry-marker-key",
         ]);
     }
 
@@ -428,12 +432,13 @@ public sealed class AspireIngestionPipelineFixtureTests
     {
         using var cts = new CancellationTokenSource();
         List<CancellationToken> observedTokens = [];
+        Uri endpoint = new("http://127.0.0.1:44001");
 
         await AspireIngestionPipelineFixture.WaitForOpenBaoSidecarMatrixReadinessCoreAsync(
             (_, token) =>
             {
                 observedTokens.Add(token);
-                return Task.CompletedTask;
+                return Task.FromResult(endpoint);
             },
             (_, _, token) =>
             {
@@ -456,11 +461,11 @@ public sealed class AspireIngestionPipelineFixtureTests
                 (sidecarResourceName, _) =>
                 {
                     probes.Add($"sidecar:{sidecarResourceName}");
-                    return Task.FromException(new IOException("clock sidecar unavailable"));
+                    return Task.FromException<Uri>(new IOException("clock sidecar unavailable"));
                 },
-                (sidecarResourceName, secretName, _) =>
+                (endpoint, secretName, _) =>
                 {
-                    probes.Add($"secret:{sidecarResourceName}:{secretName}");
+                    probes.Add($"secret:{endpoint.Port}:{secretName}");
                     return Task.CompletedTask;
                 },
                 CancellationToken.None));
@@ -470,17 +475,26 @@ public sealed class AspireIngestionPipelineFixtureTests
     }
 
     [Fact]
-    public void OpenBaoSidecarMatrixReadiness_SharedTopologyStartupDoesNotCallIt()
+    public void OpenBaoSidecarMatrixReadiness_InPlaceRestartWaitsForTheNewGenerationOutsideSharedStartup()
     {
-        MethodInfo sharedTopologyStartup = typeof(AspireIngestionPipelineFixture)
-            .GetMethods(BindingFlags.Instance | BindingFlags.NonPublic)
-            .Single(method => method.Name == "StartTopologyAsync");
-        MethodInfo auxiliaryReadiness = typeof(AspireIngestionPipelineFixture)
-            .GetMethods(BindingFlags.Instance | BindingFlags.NonPublic)
-            .Single(method => method.Name == nameof(AspireIngestionPipelineFixture.WaitForOpenBaoSidecarMatrixReadinessAsync));
+        Type fixtureType = typeof(AspireIngestionPipelineFixture);
+        const BindingFlags instanceNonPublic = BindingFlags.Instance | BindingFlags.NonPublic;
+        MethodInfo sharedTopologyStartup = fixtureType.GetMethod("StartTopologyAsync", instanceNonPublic)
+            .ShouldNotBeNull();
+        MethodInfo fullTopologyRestart = fixtureType.GetMethod(nameof(AspireIngestionPipelineFixture.RestartTopologyAsync))
+            .ShouldNotBeNull();
+        MethodInfo inPlaceRestart = fixtureType.GetMethod(
+            nameof(AspireIngestionPipelineFixture.RestartOpenBaoGenerationInPlaceAsync), instanceNonPublic)
+            .ShouldNotBeNull();
+        MethodInfo[] auxiliaryReadinessMethods = fixtureType.GetMethods(instanceNonPublic)
+            .Where(method => method.Name == nameof(AspireIngestionPipelineFixture.WaitForOpenBaoSidecarMatrixReadinessAsync))
+            .ToArray();
+        MethodInfo generationReadiness = auxiliaryReadinessMethods.Single(method =>
+            method.GetParameters() is [{ ParameterType: var cursorType }, _] && cursorType == typeof(int));
 
-        AsyncMethodCalls(sharedTopologyStartup, auxiliaryReadiness).ShouldBeFalse(
-            "clock/lifecycle readiness belongs only to the OpenBao sidecar matrix, not shared fixture startup.");
+        AsyncMethodCalls(inPlaceRestart, generationReadiness).ShouldBeTrue();
+        auxiliaryReadinessMethods.ShouldAllBe(method => !AsyncMethodCalls(sharedTopologyStartup, method));
+        auxiliaryReadinessMethods.ShouldAllBe(method => !AsyncMethodCalls(fullTopologyRestart, method));
     }
 
     [Fact]

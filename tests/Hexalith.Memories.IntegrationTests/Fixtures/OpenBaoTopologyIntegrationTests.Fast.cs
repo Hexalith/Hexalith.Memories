@@ -135,6 +135,18 @@ public sealed partial class OpenBaoTopologyIntegrationTests
         fixture.PrimaryDaprClientGeneration.ShouldBeGreaterThan(
             daprClientGenerationBeforeRestart,
             "the in-place restart must rebind primary Dapr clients before proving actor recovery, including when Aspire reuses the sidecar port.");
+        (await fixture.DaprSecretMatchesAsync(
+            "memories-access-telemetry-clock-dapr-cli",
+            "access-telemetry-secrets",
+            "access-telemetry-clock-key",
+            "signing-key-pkcs8",
+            fixture.AccessTelemetryClockFingerprint).ConfigureAwait(true)).ShouldBeTrue();
+        (await fixture.DaprSecretMatchesAsync(
+            "memories-access-telemetry-dapr-cli",
+            "access-telemetry-secrets",
+            "access-telemetry-marker-key",
+            "access-telemetry-marker-key",
+            fixture.AccessTelemetryMarkerFingerprint).ConfigureAwait(true)).ShouldBeTrue();
         var actorConfig = await fixture
             .CreateTenantConfigurationActorProxy(AspireIngestionPipelineFixture.OpenBaoRecoveryTenantId)
             .GetEmbeddingConfigAsync()
