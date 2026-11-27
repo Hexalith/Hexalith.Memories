@@ -53,6 +53,9 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     /// <summary>Exception data key containing the owned Redis port snapshot from failed Ollama startup.</summary>
     internal const string OllamaStartupRedisPortDataKey = "Owned Ollama startup Redis port";
 
+    /// <summary>Exception data key containing the owned OpenBao port snapshot from failed Ollama startup.</summary>
+    internal const string OllamaStartupOpenBaoPortDataKey = "Owned Ollama startup OpenBao port";
+
     private static readonly TimeSpan TopologyStartupTimeout = TimeSpan.FromMinutes(12);
     private static readonly TimeSpan ResourceHealthyTimeout = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan EndpointReadyTimeout = TimeSpan.FromMinutes(5);
@@ -466,8 +469,12 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         }
         catch (Exception startupException)
         {
-            await ReportBackendPortsAsync(_app, startupException, "Owned restart backend ports", includeFalkorDb: true)
-                .ConfigureAwait(false);
+            await ReportBackendPortsAsync(
+                _app,
+                startupException,
+                "Owned restart backend ports",
+                ("memories-vectors", "redis"),
+                ("memories-graphs", "falkordb")).ConfigureAwait(false);
             throw;
         }
         finally
@@ -483,7 +490,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         DistributedApplication? app,
         Exception startupException,
         string diagnosticKey,
-        bool includeFalkorDb)
+        params (string ResourceName, string EndpointName)[] endpoints)
     {
         try
         {
@@ -494,10 +501,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             }
 
             DistributedApplicationModel model = app.Services.GetRequiredService<DistributedApplicationModel>();
-            Task<string> redisPort = DescribeAsync("memories-vectors", "redis");
-            Task<string>[] ports = includeFalkorDb
-                ? [redisPort, DescribeAsync("memories-graphs", "falkordb")]
-                : [redisPort];
+            Task<string>[] ports = [.. endpoints.Select(endpoint => DescribeAsync(endpoint.ResourceName, endpoint.EndpointName))];
             string diagnostic = string.Join(Environment.NewLine, await Task.WhenAll(ports).ConfigureAwait(false));
             startupException.Data[diagnosticKey] = diagnostic;
             TestContext.Current.TestOutputHelper?.WriteLine($"{diagnosticKey}:{Environment.NewLine}{diagnostic}");
@@ -1443,7 +1447,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         }
     }
 
-    /// <summary>Captures owned Ollama Redis readiness evidence before tearing down failed startup.</summary>
+    /// <summary>Captures owned Ollama backend readiness evidence before tearing down failed startup.</summary>
     /// <param name="startupException">The original fixture startup exception.</param>
     /// <param name="app">The partially started fixture-owned AppHost, if constructed.</param>
     /// <param name="providerMode">The provider selected by the fixture.</param>
@@ -1457,8 +1461,16 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     {
         if (providerMode == EmbeddingProviderTestMode.OllamaOidcFake)
         {
-            await ReportBackendPortsAsync(app, startupException, OllamaStartupRedisPortDataKey, includeFalkorDb: false)
-                .ConfigureAwait(false);
+            await ReportBackendPortsAsync(
+                app,
+                startupException,
+                OllamaStartupOpenBaoPortDataKey,
+                (OpenBaoDevelopmentProfile.ResourceName, OpenBaoDevelopmentProfile.EndpointName)).ConfigureAwait(false);
+            await ReportBackendPortsAsync(
+                app,
+                startupException,
+                OllamaStartupRedisPortDataKey,
+                ("memories-vectors", "redis")).ConfigureAwait(false);
         }
 
         await RethrowAfterCleanupAsync(startupException, cleanupActions).ConfigureAwait(false);

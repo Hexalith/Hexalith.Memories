@@ -576,6 +576,52 @@ public sealed class AspireIngestionPipelineFixtureTests
     }
 
     [Fact]
+    public async Task FailedInitialization_CapturesOpenBaoAllocationAndReachabilityBeforeCleanup()
+    {
+        const string syntheticSeed = "synthetic-openbao-seed-canary";
+        using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        socket.Bind(new IPEndPoint(IPAddress.Loopback, port: 0));
+        int port = ((IPEndPoint)socket.LocalEndPoint!).Port;
+
+        var builder = DistributedApplication.CreateBuilder(new DistributedApplicationOptions { DisableDashboard = true });
+        ContainerResource openBao = builder.AddContainer(OpenBaoDevelopmentProfile.ResourceName, "openbao")
+            .WithEnvironment("OPENBAO_TEST_SEED", syntheticSeed).Resource;
+        var endpoint = new EndpointAnnotation(
+            ProtocolType.Tcp, name: OpenBaoDevelopmentProfile.EndpointName, targetPort: OpenBaoDevelopmentProfile.ContainerPort);
+        endpoint.AllocatedEndpoint = new AllocatedEndpoint(endpoint, "127.0.0.1", port);
+        openBao.Annotations.Add(endpoint);
+
+        await using DistributedApplication app = builder.Build();
+        await app.ResourceNotifications.PublishUpdateAsync(
+            openBao,
+            static snapshot => snapshot with { State = new ResourceStateSnapshot(KnownResourceStates.Running, Style: null) });
+        var startupException = new TimeoutException("owned OpenBao initialization failed");
+        string? capturedBeforeCleanup = null;
+
+        TimeoutException thrown = await Should.ThrowAsync<TimeoutException>(() =>
+            AspireIngestionPipelineFixture.RethrowAfterInitializationFailureAsync(
+                startupException,
+                app,
+                EmbeddingProviderTestMode.OllamaOidcFake,
+                [
+                    new("topology", () =>
+                    {
+                        capturedBeforeCleanup =
+                            startupException.Data[AspireIngestionPipelineFixture.OllamaStartupOpenBaoPortDataKey] as string;
+                        socket.Dispose();
+                        return Task.CompletedTask;
+                    }),
+                ]));
+
+        thrown.ShouldBeSameAs(startupException);
+        capturedBeforeCleanup.ShouldNotBeNull();
+        capturedBeforeCleanup.ShouldContain("openbao/http: state=Running, proxied=True, containerTargetPort=8200");
+        capturedBeforeCleanup.ShouldContain($"hostPort=127.0.0.1:{port}, listener=ConnectionRefused");
+        capturedBeforeCleanup.ShouldNotContain(syntheticSeed);
+        capturedBeforeCleanup.ShouldNotContain("OPENBAO_TEST_SEED");
+    }
+
+    [Fact]
     public async Task RethrowAfterCleanupAsync_AllActionsSucceed_PreservesOriginalWithoutDiagnostics()
     {
         var startupException = new InvalidOperationException("startup failed");
