@@ -115,7 +115,7 @@ class IntegrationTestRunnerTests(unittest.TestCase):
                 )
                 result = self.run_wrapper([
                     *self.bash, "--filter", "Category=IntegrationSlow",
-                    "--results-directory", "./reports/./nested",
+                    "--results-directory", "./reports/./nested/./",
                 ])
                 self.assertEqual(0, result.returncode, result.stderr)
                 self.assertIn("Executed 1 tests for", result.stdout)
@@ -160,11 +160,14 @@ class IntegrationTestRunnerTests(unittest.TestCase):
         self.assertEqual(37, valid.returncode, valid.stderr)
         self.assertIn("Executed 1 tests for", valid.stdout)
 
-        self.environment["TEST_TRX"] = "<TestRun>"
-        malformed = self.run_wrapper(command)
-        self.assertEqual(37, malformed.returncode, malformed.stderr)
-        self.assertIn("Unable to read TRX file", malformed.stderr)
-        self.assertIn("dotnet test failed (37) for", malformed.stderr)
+        for report in ('<TestRun>', '<?xml version="1.0" encoding="unknown-encoding"?><TestRun/>'):
+            with self.subTest(report=report):
+                self.environment["TEST_TRX"] = report
+                malformed = self.run_wrapper(command)
+                self.assertEqual(37, malformed.returncode, malformed.stderr)
+                self.assertIn("Unable to read TRX file", malformed.stderr)
+                self.assertIn("dotnet test failed (37) for", malformed.stderr)
+                self.assertNotIn("Traceback", malformed.stderr)
 
     def test_bash_keeps_available_coverage_after_a_native_failure(self):
         self.environment["TEST_DOTNET_EXIT"] = "37"

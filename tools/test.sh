@@ -149,6 +149,11 @@ if [[ -n "$RESULTS_DIRECTORY" ]]; then
     exit 1
   fi
   RESULTS_ROOT="$REPO_ROOT/${RESULTS_DIRECTORY#./}"
+  # rm refuses a final dot segment, even when it names a valid results directory.
+  while [[ "$RESULTS_ROOT" == */ || "$RESULTS_ROOT" == */. ]]; do
+    RESULTS_ROOT="${RESULTS_ROOT%/}"
+    RESULTS_ROOT="${RESULTS_ROOT%/.}"
+  done
   # Resolve symlinks for containment without redirecting cleanup to their targets.
   if ! python3 - "$REPO_ROOT" "$RESULTS_ROOT" <<'PY'
 from pathlib import Path
@@ -284,7 +289,7 @@ try:
     not_executed = int(counters.attrib.get("notExecuted", "0")) if counters is not None else 0
 except FileNotFoundError:
     raise SystemExit(f"Expected TRX file '{trx_path}' was not produced.")
-except (OSError, ET.ParseError, ValueError) as error:
+except (OSError, ET.ParseError, LookupError, ValueError) as error:
     raise SystemExit(f"Unable to read TRX file '{trx_path}': {error}")
 
 if executed <= 0:
