@@ -20,10 +20,12 @@ public sealed partial class HealthEndpointIntegrationTests
     [Trait("Category", "IntegrationSlow")]
     public async Task ReadyEndpoint_FalkorDbDown_ReturnsDegradedWithCapabilities()
     {
+        bool stopped = false;
         try
         {
             using CancellationTokenSource stopCts = new(HealthTransitionTimeout);
             await _fixture.StopFalkorDbContainerAsync(stopCts.Token);
+            stopped = true;
 
             JsonElement root = await WaitForEndpointAsync(
                 "/ready",
@@ -38,7 +40,10 @@ public sealed partial class HealthEndpointIntegrationTests
         }
         finally
         {
-            _ = await _fixture.RestartTopologyAsync();
+            if (stopped)
+            {
+                await _fixture.StartFalkorDbContainerAsync();
+            }
         }
     }
 
