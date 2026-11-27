@@ -84,6 +84,7 @@
     <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\OwnedSemanticInventory.cs" Link="Fixtures\OwnedSemanticInventory.cs" />
     <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\RedisStackCollection.cs" Link="Fixtures\RedisStackCollection.cs" />
     <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\RedisStackFixture.cs" Link="Fixtures\RedisStackFixture.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\RedisContainerStartup.cs" Link="Fixtures\RedisContainerStartup.cs" />
     <Compile Include="..\Hexalith.Memories.IntegrationTests\Fixtures\ScriptedHttpServer.cs" Link="Fixtures\ScriptedHttpServer.cs" />
     <Compile Include="..\Hexalith.Memories.IntegrationTests\Health\HealthEndpointIntegrationTests.cs" Link="Health\HealthEndpointIntegrationTests.cs" />
     <Compile Include="..\Hexalith.Memories.IntegrationTests\Ingestion\CandidateOnlyQualificationWorkflow.cs" Link="Ingestion\CandidateOnlyQualificationWorkflow.cs" />

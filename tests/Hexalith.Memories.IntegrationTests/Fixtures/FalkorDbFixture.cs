@@ -1,6 +1,5 @@
 namespace Hexalith.Memories.IntegrationTests.Fixtures;
 
-using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 
 using StackExchange.Redis;
@@ -35,18 +34,8 @@ public sealed class FalkorDbFixture : IAsyncLifetime
             Connection = await ConnectionMultiplexer.ConnectAsync(native);
             return;
         }
-        _container = new ContainerBuilder(FalkorDbImage)
-            .WithPortBinding(0, 6379) // FalkorDB listens on 6379 inside the container
-            .WithWaitStrategy(
-                Wait.ForUnixContainer()
-                    .UntilInternalTcpPortIsAvailable(6379)
-                    .UntilExternalTcpPortIsAvailable(6379)
-                    .UntilCommandIsCompleted("redis-cli", "PING"))
-            .Build();
-
-        await _container.StartAsync();
-
-        Connection = await ConnectionMultiplexer.ConnectAsync(ConnectionString);
+        (_container, Connection) = await RedisContainerStartup.StartAsync(
+            FalkorDbImage, TestContext.Current.CancellationToken);
     }
 
     public async ValueTask DisposeAsync()

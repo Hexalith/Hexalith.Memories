@@ -1,6 +1,5 @@
 namespace Hexalith.Memories.IntegrationTests.Fixtures;
 
-using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 
 using StackExchange.Redis;
@@ -29,33 +28,20 @@ public sealed class CompositeSearchFixture : IAsyncLifetime
 
     public async ValueTask InitializeAsync()
     {
-        _falkorDbContainer = new ContainerBuilder(FalkorDbImage)
-            .WithPortBinding(0, 6379)
-            .WithWaitStrategy(
-                Wait.ForUnixContainer()
-                    .UntilInternalTcpPortIsAvailable(6379)
-                    .UntilExternalTcpPortIsAvailable(6379)
-                    .UntilCommandIsCompleted("redis-cli", "PING"))
-            .Build();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        await Task.WhenAll(StartFalkorDbAsync(cancellationToken), StartRedisStackAsync(cancellationToken));
+    }
 
-        _redisStackContainer = new ContainerBuilder(RedisStackImage)
-            .WithPortBinding(0, 6379)
-            .WithWaitStrategy(
-                Wait.ForUnixContainer()
-                    .UntilInternalTcpPortIsAvailable(6379)
-                    .UntilExternalTcpPortIsAvailable(6379)
-                    .UntilCommandIsCompleted("redis-cli", "PING"))
-            .Build();
-
-        await Task.WhenAll(
-            _falkorDbContainer.StartAsync(),
-            _redisStackContainer.StartAsync());
-
-        RedisConnectionString = RedisStackFixture.OwnedLoopbackConnectionString(_redisStackContainer.GetMappedPublicPort(6379));
+    private async Task StartFalkorDbAsync(CancellationToken cancellationToken)
+    {
+        (_falkorDbContainer, FalkorDbConnection) = await RedisContainerStartup.StartAsync(FalkorDbImage, cancellationToken);
         FalkorDbConnectionString = RedisStackFixture.OwnedLoopbackConnectionString(_falkorDbContainer.GetMappedPublicPort(6379));
+    }
 
-        FalkorDbConnection = await RedisStackFixture.ConnectWhenReadyAsync(FalkorDbConnectionString);
-        RedisConnection = await RedisStackFixture.ConnectWhenReadyAsync(RedisConnectionString);
+    private async Task StartRedisStackAsync(CancellationToken cancellationToken)
+    {
+        (_redisStackContainer, RedisConnection) = await RedisContainerStartup.StartAsync(RedisStackImage, cancellationToken);
+        RedisConnectionString = RedisStackFixture.OwnedLoopbackConnectionString(_redisStackContainer.GetMappedPublicPort(6379));
     }
 
     public async ValueTask DisposeAsync()
