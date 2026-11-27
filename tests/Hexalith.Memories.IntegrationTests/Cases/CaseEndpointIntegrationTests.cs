@@ -149,6 +149,8 @@ public sealed partial class CaseEndpointIntegrationTests
         createdCase.ShouldNotBeNull();
         string caseId = createdCase.Id;
 
+        await WaitForCaseCreatedAsync(tenantId, caseId);
+
         // PUT member -- should return 201 (new)
         var memberInput = new AddCaseMemberInput("user-alice", CaseMemberType.User);
         using HttpResponseMessage putResponse = await _fixture.MemoriesClient.PutAsJsonAsync(
@@ -199,6 +201,8 @@ public sealed partial class CaseEndpointIntegrationTests
         CaseRecord? createdCase = await createCaseResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
         createdCase.ShouldNotBeNull();
         string caseId = createdCase.Id;
+
+        await WaitForCaseCreatedAsync(tenantId, caseId);
 
         var memberInput = new AddCaseMemberInput("user-bob", CaseMemberType.User);
 
@@ -279,6 +283,8 @@ public sealed partial class CaseEndpointIntegrationTests
         CaseRecord? createdCase = await createCaseResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
         createdCase.ShouldNotBeNull();
 
+        await WaitForCaseCreatedAsync(tenantId, createdCase.Id);
+
         // DELETE a member that doesn't exist
         using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync(
             $"/api/v1/tenants/{tenantId}/cases/{createdCase.Id}/members/nonexistent-user");
@@ -337,6 +343,8 @@ public sealed partial class CaseEndpointIntegrationTests
         CaseRecord? createdCase = await createCaseResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
         createdCase.ShouldNotBeNull();
 
+        await WaitForCaseCreatedAsync(tenantId, createdCase.Id);
+
         // Add two members
         var member1 = new AddCaseMemberInput("user-alice", CaseMemberType.User);
         var member2 = new AddCaseMemberInput("admin-role", CaseMemberType.Role);
@@ -375,6 +383,8 @@ public sealed partial class CaseEndpointIntegrationTests
         createdCase.ShouldNotBeNull();
         string caseId = createdCase.Id;
 
+        await WaitForCaseCreatedAsync(tenantId, caseId);
+
         // Add 1000 members via direct Redis (faster than 1000 HTTP calls)
         IDatabase redisDb = _fixture.RedisConnection.GetDatabase();
         string membersKey = $"{tenantId}:case:{caseId}:members";
@@ -411,6 +421,8 @@ public sealed partial class CaseEndpointIntegrationTests
         CaseRecord? createdCase = await createCaseResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
         createdCase.ShouldNotBeNull();
 
+        await WaitForCaseCreatedAsync(tenantId, createdCase.Id);
+
         IDatabase redisDb = _fixture.RedisConnection.GetDatabase();
         string membersKey = $"{tenantId}:case:{createdCase.Id}:members";
         for (int i = 0; i < 1000; i++)
@@ -446,6 +458,8 @@ public sealed partial class CaseEndpointIntegrationTests
         CaseRecord? createdCase = await createCaseResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
         createdCase.ShouldNotBeNull();
         string caseId = createdCase.Id;
+
+        await WaitForCaseCreatedAsync(tenantId, caseId);
 
         // Fire 10 parallel PUTs for the same memberId
         var memberInput = new AddCaseMemberInput("user-concurrent", CaseMemberType.User);
