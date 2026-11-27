@@ -7,10 +7,12 @@ import json
 import os
 from pathlib import Path
 import shutil
+import signal
 import stat
 import subprocess
 import sys
 import tempfile
+import time
 import uuid
 
 
@@ -149,7 +151,37 @@ def publish_reports(staging, directory):
                 shutil.rmtree(transfer)
 
 
+def signal_project_group(process, signum):
+    try:
+        os.killpg(process.pid, signum)
+        return True
+    except ProcessLookupError:
+        return False
+
+
+def wait_for_project_group(process, timeout):
+    deadline = time.monotonic() + timeout
+    while True:
+        process.poll()
+        if not signal_project_group(process, 0):
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.05)
+
+
 def run_with_reports(root, results, command):
+    interrupted = None
+
+    def request_stop(signum, _frame):
+        nonlocal interrupted
+        if interrupted is None:
+            interrupted = signum
+
+    if command:
+        for signum in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
+            signal.signal(signum, request_stop)
+
     scratch = Path(tempfile.gettempdir()).resolve()
     checkout = Path.cwd()
     if scratch == checkout or checkout in scratch.parents:
@@ -168,14 +200,33 @@ def run_with_reports(root, results, command):
                     return 0
                 status = 0
             else:
-                process = subprocess.run(
+                if interrupted is not None:
+                    return 128 + interrupted
+                process = subprocess.Popen(
                     command,
                     env=dict(os.environ, MEMORIES_TEST_REPORT_STAGING=staging),
-                    check=False,
+                    start_new_session=True,
                 )
-                status = process.returncode if process.returncode >= 0 else 128 - process.returncode
+                # Record signals even during process creation, then stop the
+                # entire project group before dropping its staging directory.
+                while interrupted is None:
+                    try:
+                        status = process.wait(timeout=0.1)
+                        break
+                    except subprocess.TimeoutExpired:
+                        continue
+                if interrupted is not None:
+                    signal_project_group(process, interrupted)
+                    if not wait_for_project_group(process, 2):
+                        signal_project_group(process, signal.SIGKILL)
+                        wait_for_project_group(process, 2)
+                    return 128 + interrupted
+                if status < 0:
+                    status = 128 - status
             try:
                 require_unchanged(bindings, results, "report generation")
+                if interrupted is not None:
+                    return 128 + interrupted
                 publish_reports(Path(staging), directory)
                 require_unchanged(bindings, results, "report generation")
             except (OSError, RuntimeError, ValueError) as error:

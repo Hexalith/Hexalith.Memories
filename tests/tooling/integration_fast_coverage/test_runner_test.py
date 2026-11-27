@@ -31,7 +31,8 @@ while [ "$#" -gt 0 ]; do
     shift
 done
 if [ -n "${TEST_DOTNET_STARTED:-}" ]; then
-    touch "$TEST_DOTNET_STARTED"
+    printf '%s\\n' "$$" > "$TEST_DOTNET_STARTED.tmp"
+    mv "$TEST_DOTNET_STARTED.tmp" "$TEST_DOTNET_STARTED"
     while [ ! -e "$TEST_DOTNET_RELEASE" ]; do sleep 0.02; done
 fi
 if [ -n "${results:-}" ]; then
@@ -219,7 +220,6 @@ class IntegrationTestRunnerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as scratch:
             start, release = (Path(scratch) / name for name in ("start", "release"))
             owner, log = self.start_report_owner(owner_command, start, release)
-            self.wait_for_file(start, owner, log)
             calls = self.calls.read_bytes()
             active_report = results / "active-report.txt"
             active_report.write_text("owner data", encoding="utf-8")
@@ -253,8 +253,9 @@ class IntegrationTestRunnerTests(unittest.TestCase):
         command = self.report_command(wrapper, "recovered")
         with tempfile.TemporaryDirectory() as scratch:
             start, release, finished = (Path(scratch) / name for name in ("start", "release", "finished"))
-            owner, log = self.start_report_owner(command, start, release, finished=finished)
-            self.wait_for_file(start, owner, log)
+            temp = tempfile.TemporaryDirectory()
+            self.addCleanup(temp.cleanup)
+            owner, _ = self.start_report_owner(command, start, release, finished=finished, temp=temp.name)
             # The dotnet global tool can run PowerShell under a separate PID.
             if wrapper == self.powershell:
                 powershell_pid = int(start.with_name("powershell.pid").read_text())
@@ -281,6 +282,85 @@ class IntegrationTestRunnerTests(unittest.TestCase):
             self.assertEqual(1, len(reports))
             self.assertEqual(self.environment["TEST_TRX"], reports[0].read_text(encoding="utf-8").strip())
 
+    def test_bash_termination_stops_project_group_and_discards_staging(self):
+        dotnet = self.bin / "dotnet"
+        dotnet.write_text(
+            """#!/usr/bin/env python3
+import os
+from pathlib import Path
+import signal
+import sys
+import time
+
+control = Path(os.environ["TEST_PROCESS_CONTROL"])
+results = Path(sys.argv[sys.argv.index("--results-directory") + 1])
+filename = sys.argv[sys.argv.index("--report-xunit-trx-filename") + 1]
+(results / filename).write_text('<TestRun><ResultSummary><Counters executed="1" /></ResultSummary></TestRun>')
+
+def record_term(*_):
+    (control / "dotnet.term").write_text(str(results.is_dir()))
+
+signal.signal(signal.SIGTERM, record_term)
+child = os.fork()
+if child == 0:
+    def stop(*_):
+        (control / "grandchild.term").touch()
+        if os.environ["TEST_IGNORE_TERM"] == "0":
+            raise SystemExit(0)
+
+    signal.signal(signal.SIGTERM, stop)
+    (control / "grandchild.ready").touch()
+    while True:
+        signal.pause()
+
+while not (control / "grandchild.ready").exists():
+    time.sleep(0.01)
+receipt = control / "starting"
+receipt.write_text(str(os.getpgrp()))
+receipt.rename(control / "started")
+os.waitpid(child, 0)
+""",
+            encoding="utf-8",
+        )
+        command = self.report_command(self.bash, "reports")
+        for stubborn in (False, True):
+            with self.subTest(stubborn=stubborn), tempfile.TemporaryDirectory() as scratch:
+                control = Path(scratch)
+                env = dict(
+                    self.wrapper_environment(command), TMPDIR=scratch, TMP=scratch, TEMP=scratch,
+                    TEST_PROCESS_CONTROL=scratch, TEST_IGNORE_TERM=str(int(stubborn)),
+                )
+                owner = subprocess.Popen(
+                    command, cwd=self.root, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    start_new_session=True, text=True,
+                )
+                group = None
+                try:
+                    start = control / "started"
+                    self.wait_for_file(start, owner)
+                    group = int(start.read_text())
+                    self.assertEqual(1, len(list(control.glob("memories-test-reports-*/*/*.trx"))))
+                    owner.terminate()
+                    # The project and grandchild inherit stdout. EOF also proves
+                    # they closed it, even when the system has yet to reap them.
+                    output, _ = owner.communicate(timeout=15)
+                    self.assertEqual(128 + signal.SIGTERM, owner.returncode, output)
+                    self.assertEqual("True", (control / "dotnet.term").read_text())
+                    self.assertTrue((control / "grandchild.term").is_file())
+                    self.assertFalse(list(control.glob("memories-test-reports-*")))
+                    self.assertEqual([RESULTS_MARKER], [path.name for path in (self.root / "reports").iterdir()])
+                finally:
+                    if group is not None:
+                        self.kill_report_group(group)
+                    self.stop_report_owner(owner)
+                    owner.stdout.close()
+
+        dotnet.write_text(DOTNET_FIXTURE, encoding="utf-8")
+        self.environment["TEST_TRX"] = TRX
+        rerun = self.run_wrapper(command)
+        self.assertEqual(0, rerun.returncode, rerun.stderr)
+        self.assertEqual(1, len(list((self.root / "reports").glob("*/*.trx"))))
+
     @unittest.skipUnless(shutil.which("pwsh"), "requires PowerShell 7")
     def test_powershell_publishes_available_reports_after_native_failure(self):
         self.environment.update(TEST_TRX=TRX, TEST_COVERAGE="<coverage/>", TEST_DOTNET_EXIT="37")
@@ -297,8 +377,10 @@ class IntegrationTestRunnerTests(unittest.TestCase):
         )
         return [*wrapper, options[0], "Category=IntegrationSlow", options[1], destination]
 
-    def start_report_owner(self, command, start, release, *, finished=None):
+    def start_report_owner(self, command, start, release, *, finished=None, temp=None):
         environment = self.wrapper_environment(command)
+        if temp is not None:
+            environment.update(TMPDIR=str(temp), TMP=str(temp), TEMP=str(temp))
         environment.update(TEST_DOTNET_STARTED=str(start), TEST_DOTNET_RELEASE=str(release))
         if command[0] == self.powershell[0]:
             environment["TEST_POWERSHELL_PID"] = str(start.with_name("powershell.pid"))
@@ -311,20 +393,28 @@ class IntegrationTestRunnerTests(unittest.TestCase):
                 start_new_session=True,
             )
         self.addCleanup(self.stop_report_owner, owner)
+        self.wait_for_file(start, owner, log)
+        group = os.getpgid(int(start.read_text()))
+        if group != owner.pid:
+            self.addCleanup(self.kill_report_group, group)
         return owner, log
 
-    def stop_report_owner(self, owner):
+    def kill_report_group(self, group):
         try:
-            os.killpg(owner.pid, signal.SIGKILL)
+            os.killpg(group, signal.SIGKILL)
         except ProcessLookupError:
             pass
+
+    def stop_report_owner(self, owner):
+        self.kill_report_group(owner.pid)
         owner.wait(timeout=120)
 
     def wait_for_file(self, path, owner=None, log=None):
         deadline = time.monotonic() + 30
         while not path.exists():
             if owner is not None and owner.poll() is not None:
-                self.fail(f"Owner exited before creating {path}: {log.read_text(encoding='utf-8')}")
+                detail = log.read_text(encoding="utf-8") if log else ""
+                self.fail(f"Owner exited before creating {path}: {detail}")
             if time.monotonic() >= deadline:
                 self.fail(f"Timed out waiting for {path}")
             time.sleep(0.02)
