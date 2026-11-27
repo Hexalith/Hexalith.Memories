@@ -8,12 +8,15 @@ namespace Hexalith.Memories.IntegrationTests.Fixtures;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
+using System.Net;
+using System.Net.Sockets;
 
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Eventing;
 using Aspire.Hosting.Testing;
 
+using Hexalith.Memories.AppHost;
 using Hexalith.Memories.TestHelpers.Process;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -63,7 +66,7 @@ public sealed class AppHostComponentFileOrderingTests
         var redisRestartObservation = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         bool observeNextMcpStart = false;
 
-        builder.Eventing.Subscribe<BeforeResourceStartedEvent>(async (@event, cancellationToken) =>
+        DistributedApplicationEventSubscription startObserver = builder.Eventing.Subscribe<BeforeResourceStartedEvent>(async (@event, cancellationToken) =>
         {
             startedResourceNames.Add(@event.Resource.Name);
             string? consumer = @event.Resource.Name switch
@@ -243,7 +246,63 @@ public sealed class AppHostComponentFileOrderingTests
         rewriteObservedAtStart.ShouldBeTrue("MCP startup must observe the current Redis generation's pub/sub file.");
         _ = await app.ResourceNotifications.WaitForResourceHealthyAsync("memories-mcp", cts.Token).ConfigureAwait(true);
 
+        builder.Eventing.Unsubscribe(startObserver);
+        await AssertClockWaitsForRedisProbeAsync(app, pubSubPath, cts.Token).ConfigureAwait(true);
         await app.StopAsync(cts.Token).ConfigureAwait(true);
+    }
+
+    private static async Task AssertClockWaitsForRedisProbeAsync(
+        DistributedApplication app,
+        string pubSubPath,
+        CancellationToken cancellationToken)
+    {
+        const string rejection = "-ERR controlled clock readiness probe";
+        DistributedApplicationModel model = app.Services.GetRequiredService<DistributedApplicationModel>();
+        IDistributedApplicationEventing eventing = app.Services.GetRequiredService<IDistributedApplicationEventing>();
+        IResource redis = model.Resources.Single(resource => resource.Name == "memories-vectors");
+        IResource clock = model.Resources.Single(resource => resource.Name == "memories-access-telemetry-clock");
+        EndpointAnnotation endpoint = redis.Annotations.OfType<EndpointAnnotation>().Single(annotation => annotation.Name == "redis");
+        AllocatedEndpoint original = endpoint.AllocatedEndpoint.ShouldNotBeNull();
+        using TcpListener listener = new(IPAddress.Loopback, 0);
+        listener.Start();
+        var controlled = new AllocatedEndpoint(endpoint, IPAddress.Loopback.ToString(), ((IPEndPoint)listener.LocalEndpoint).Port);
+
+        Task PublishStartAsync(IResource resource) => eventing.PublishAsync(
+            new BeforeResourceStartedEvent(resource, app.Services),
+            EventDispatchBehavior.BlockingSequential,
+            cancellationToken);
+
+        // The topology is already up. Publish the real startup callbacks on a fresh Redis
+        // generation while the healthy OpenBao generation and the running services stay in place.
+        endpoint.AllocatedEndpoint = controlled;
+        try
+        {
+            await PublishStartAsync(redis).ConfigureAwait(true);
+            using TcpClient probe = await listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(true);
+            using NetworkStream stream = probe.GetStream();
+            byte[] ping = new byte["*1\r\n$4\r\nPING\r\n"u8.Length];
+            await stream.ReadExactlyAsync(ping, cancellationToken).ConfigureAwait(true);
+            ping.ShouldBe("*1\r\n$4\r\nPING\r\n"u8.ToArray());
+
+            Task clockStart = PublishStartAsync(clock);
+            // The only way for the clock callback to see this exact error is to await its
+            // Redis gate. A clock with no enrollment can return while the reply is withheld.
+            await stream.WriteAsync(System.Text.Encoding.ASCII.GetBytes(rejection + "\r\n"), cancellationToken)
+                .ConfigureAwait(true);
+            Exception? failure = await Record.ExceptionAsync(() => clockStart.WaitAsync(cancellationToken)).ConfigureAwait(true);
+            failure.ShouldBeOfType<RedisProbeNonRetryableException>(
+                "Clock startup must await the readiness probe for its current Redis allocation.");
+            failure!.Message.ShouldContain(rejection);
+            (await File.ReadAllTextAsync(pubSubPath, cancellationToken).ConfigureAwait(true))
+                .ShouldContain($"value: \"{controlled.Address}:{controlled.Port}\"");
+        }
+        finally
+        {
+            endpoint.AllocatedEndpoint = original;
+        }
+
+        await PublishStartAsync(redis).ConfigureAwait(true);
+        await PublishStartAsync(clock).WaitAsync(cancellationToken).ConfigureAwait(true);
     }
 
     private static string ResolveRepoRoot()
