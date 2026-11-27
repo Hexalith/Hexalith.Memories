@@ -137,7 +137,7 @@ public sealed class McpServerIntegrationTests
             Endpoint = new Uri(_fixture.McpEndpoint, "/mcp"),
             TransportMode = HttpTransportMode.StreamableHttp,
             AdditionalHeaders = headers,
-        });
+        }, _fixture.McpClient, ownsHttpClient: false);
 
         McpClient client = await McpClient.CreateAsync(transport);
         _output.WriteLine($"Connected to MCP endpoint at {_fixture.McpEndpoint}");
