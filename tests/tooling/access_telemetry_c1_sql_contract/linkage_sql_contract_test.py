@@ -27,7 +27,10 @@ ROOT = Path(__file__).resolve().parents[3]
 COLLECTOR = ROOT / 'tools/verify-access-telemetry-c1-linkage.ps1'
 HELPER = ROOT / 'tools/access-telemetry-c1-component-backend.ps1'
 DEPLOYMENT = ROOT / 'deploy/kubernetes/base/access-telemetry-postgresql.yaml'
-IMAGE = 'docker.io/library/postgres@sha256:0377e72c5289ed2f98cf61b1a9c2db9eb9d300317fe14244492fbc94343b3d04'
+POSTGRES_REPOSITORY = 'docker.io/library/postgres'
+# ADR 27.1-001 records this immutable index and its approved linux/amd64 child.
+DEPLOYMENT_IMAGE = POSTGRES_REPOSITORY + ':18.6-trixie@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722'
+LINUX_AMD64_IMAGE = POSTGRES_REPOSITORY + '@sha256:0377e72c5289ed2f98cf61b1a9c2db9eb9d300317fe14244492fbc94343b3d04'
 DOCKER_ENDPOINT = 'unix:///var/run/docker.sock'
 DOCKER_ENDPOINT_VARIABLES = ('DOCKER_HOST', 'DOCKER_CONTEXT', 'DOCKER_TLS', 'DOCKER_TLS_VERIFY', 'DOCKER_CERT_PATH')
 HOST = 'access-telemetry-postgresql.hexalith-memories.svc.cluster.local'
@@ -157,11 +160,16 @@ def read_session_response(stream, timeout=8):
 
 
 def assert_manifest_contract(path=DEPLOYMENT):
+    """Validate the controlled deployment and return its approved local image reference."""
     text = path.read_text()
     markers = list(re.finditer(r'^        - name: postgresql\n', text, re.MULTILINE))
     if len(markers) != 1:
         raise RuntimeError('deployment-container-contract-invalid')
-    container = text[markers[0].end():].split('      volumes:', 1)[0]
+    container = re.split(r'^ {0,8}\S', text[markers[0].end():], maxsplit=1, flags=re.MULTILINE)[0]
+    # Match the direct mapping keys of the controlled YAML stanza, including duplicate image keys.
+    image_values = re.findall(r'''^ {10}(?:image|'image'|"image")[ \t]*:[ \t]*(.*)$''', container, re.MULTILINE)
+    if image_values != [DEPLOYMENT_IMAGE]:
+        raise RuntimeError('deployment-image-contract-invalid')
     expected_env = {
         'POSTGRES_USER': 'memories_admin', 'POSTGRES_DB': DATABASE,
         'POSTGRES_PASSWORD_FILE': '/run/secrets/postgresql/admin-password',
@@ -185,6 +193,7 @@ def assert_manifest_contract(path=DEPLOYMENT):
         values = re.findall(r'^            - ' + re.escape(name) + r'=(.+)$', arguments, re.MULTILINE)
         if values != [expected]:
             raise RuntimeError('deployment-tls-or-auth-contract-invalid: ' + name)
+    return LINUX_AMD64_IMAGE
 
 
 def inspect_owned_resource(state, kind, name):
@@ -406,7 +415,7 @@ class LinkageSqlContractTests(ReceiptOutcomeCase):
         cls.addClassCleanup(cls.finish)
         for source in (COLLECTOR, HELPER, DEPLOYMENT, Path(__file__)):
             cls.receipt['sources'][str(source.relative_to(ROOT))] = sha256(source.read_bytes())
-        assert_manifest_contract()
+        cls.child_image = assert_manifest_contract()
         cls.docker = shutil.which('docker')
         cls.pwsh = shutil.which('pwsh')
         cls.openssl = shutil.which('openssl')
@@ -416,12 +425,13 @@ class LinkageSqlContractTests(ReceiptOutcomeCase):
         version = cls.run_docker('version', '--format', '{{.Server.Os}}/{{.Server.Arch}}')
         if version['stdout'].strip() != 'linux/amd64':
             raise RuntimeError('docker-linux-amd64-required')
-        identity = json.loads(cls.run_docker('image', 'inspect', IMAGE, '--format', '{{json .}}')['stdout'])
-        if (identity['Os'], identity['Architecture']) != ('linux', 'amd64') or not any(value in identity['RepoDigests'] for value in
-                (IMAGE, IMAGE.removeprefix('docker.io/library/'))):
+        identity = json.loads(cls.run_docker('image', 'inspect', cls.child_image, '--format', '{{json .}}')['stdout'])
+        approved_refs = (cls.child_image, cls.child_image.removeprefix('docker.io/library/'))
+        if (identity['Os'], identity['Architecture']) != ('linux', 'amd64') or not any(
+                value in identity['RepoDigests'] for value in approved_refs):
             raise RuntimeError('approved-child-image-required')
-        cls.receipt['image'] = {'requested': IMAGE, 'id': identity['Id'], 'repoDigests': identity['RepoDigests'],
-                                'platform': 'linux/amd64'}
+        cls.receipt['image'] = {'deployment': DEPLOYMENT_IMAGE, 'requested': cls.child_image,
+                                'id': identity['Id'], 'repoDigests': identity['RepoDigests'], 'platform': 'linux/amd64'}
         cls.started_at = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
         cls.prepare_files()
         cls.owned_resources.append(('network', cls.network))
@@ -448,7 +458,7 @@ class LinkageSqlContractTests(ReceiptOutcomeCase):
                  '--tmpfs', '/run/secrets/postgresql:rw,size=4m', '--env', 'POSTGRES_USER=memories_admin',
                  '--env', 'POSTGRES_DB=' + DATABASE, '--env', 'POSTGRES_PASSWORD_FILE=/run/secrets/postgresql/admin-password',
                  '--env', 'POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256 --auth-local=peer --data-checksums',
-                 '--entrypoint', '/bin/sh', IMAGE, '-ec', server_start)
+                 '--entrypoint', '/bin/sh', cls.child_image, '-ec', server_start)
         deadline = time.monotonic() + 45
         while True:
             result = cls.run_docker('exec', '--user', 'postgres', cls.server,
@@ -469,10 +479,14 @@ class LinkageSqlContractTests(ReceiptOutcomeCase):
         cls.run_docker('run', '--detach', '--pull=never', '--platform=linux/amd64',
                  '--name', cls.client, '--label', LABEL + '=' + cls.run_id, '--network', cls.network,
                  '--mount', 'type=bind,src=' + str(cls.work) + ',dst=/contract,readonly',
-                 '--tmpfs', '/var/lib/postgresql:rw,size=4m', '--tmpfs', '/run/c1:rw,size=4m', '--entrypoint', '/bin/sh', IMAGE, '-ec', client_start)
+                 '--tmpfs', '/var/lib/postgresql:rw,size=4m', '--tmpfs', '/run/c1:rw,size=4m', '--entrypoint', '/bin/sh',
+                 cls.child_image, '-ec', client_start)
         cls.client_ip = cls.run_docker('inspect', cls.client, '--format',
                                       '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')['stdout'].strip()
         for container in (cls.server, cls.client):
+            running_image_id = cls.run_docker('container', 'inspect', container, '--format', '{{.Image}}')['stdout'].strip()
+            if running_image_id != identity['Id']:
+                raise RuntimeError('container-image-does-not-match-approved-child')
             inspection = json.loads(cls.run_docker('inspect', container, '--format',
                                                    '{{json .HostConfig.PortBindings}}')['stdout'])
             if inspection:
@@ -713,7 +727,7 @@ class LinkageSqlContractTests(ReceiptOutcomeCase):
             self.run_docker('run', '--detach', '--pull=never', '--name', name,
                               '--network', self.network, '--label', LABEL + '=' + self.run_id,
                               '--tmpfs', '/var/lib/postgresql:rw,size=4m',
-                              '--entrypoint', 'sleep', IMAGE, '60')
+                              '--entrypoint', 'sleep', self.child_image, '60')
             with self.assertRaisesRegex(RuntimeError, '^local-command-timeout$'):
                 self.run_docker('exec', name, 'sleep', '30', timeout=0.2)
         finally:
@@ -946,6 +960,59 @@ class HarnessFailureTests(ReceiptOutcomeCase):
                     self.assertEqual(2, reader.call_count)
         finally:
             os.close(write_descriptor)
+
+    def test_temporary_manifest_image_drift_is_denied(self):
+        source = DEPLOYMENT.read_bytes()
+        image = ('          image: ' + DEPLOYMENT_IMAGE + '\n').encode()
+        self.assertEqual(1, source.count(image))
+        self.assertEqual(LINUX_AMD64_IMAGE, assert_manifest_contract())
+        manifest = self.state().work / 'deployment.yaml'
+        index_digest = DEPLOYMENT_IMAGE.split('@', 1)[1]
+        wrong_digest = 'sha256:' + '0' * 64
+        mutations = {
+            'wrong tag': source.replace(image, image.replace(b'18.6-trixie', b'18.7-trixie')),
+            'wrong index': source.replace(index_digest.encode(), wrong_digest.encode()),
+            'tag without index': source.replace(image, image.split(b'@', 1)[0] + b'\n'),
+            'child in place of index': source.replace(index_digest.encode(), LINUX_AMD64_IMAGE.split('@', 1)[1].encode()),
+            'missing image': source.replace(image, b''),
+            'duplicate image': source.replace(image, image + ('          image: postgres:18.7@' + wrong_digest + '\n').encode()),
+            'image in another container': source.replace(image, b'').replace(
+                b'      volumes:\n', b'        - name: other\n' + image + b'      volumes:\n'),
+        }
+        for case, changed in mutations.items():
+            with self.subTest(case=case):
+                manifest.write_bytes(changed)
+                with self.assertRaisesRegex(RuntimeError, '^deployment-image-contract-invalid$'):
+                    assert_manifest_contract(manifest)
+        self.assertEqual(source, DEPLOYMENT.read_bytes())
+
+    def test_setup_refuses_a_local_image_without_the_approved_digest_or_platform(self):
+        cases = {
+            'index instead of child': {'RepoDigests': [POSTGRES_REPOSITORY + '@' + DEPLOYMENT_IMAGE.split('@', 1)[1]]},
+            'wrong platform': {'Architecture': 'arm64'},
+        }
+        for case, override in cases.items():
+            with self.subTest(case=case):
+                class Probe(LinkageSqlContractTests):
+                    pass
+
+                identity = {'Id': 'sha256:' + '1' * 64, 'Os': 'linux', 'Architecture': 'amd64',
+                            'RepoDigests': [LINUX_AMD64_IMAGE], **override}
+                replies = [{'stdout': 'linux/amd64'}, {'stdout': json.dumps(identity)}]
+                with (mock.patch.object(shutil, 'which', side_effect=lambda executable: executable),
+                      mock.patch(__name__ + '.assert_local_docker_selection'),
+                      mock.patch.object(Probe, 'run_docker', side_effect=replies) as run):
+                    try:
+                        with self.assertRaisesRegex(RuntimeError, '^approved-child-image-required$'):
+                            Probe.setUpClass()
+                    finally:
+                        Probe.doClassCleanups()
+                        self.addCleanup(shutil.rmtree, Probe.evidence)
+                self.assertEqual([
+                    mock.call('version', '--format', '{{.Server.Os}}/{{.Server.Arch}}'),
+                    mock.call('image', 'inspect', LINUX_AMD64_IMAGE, '--format', '{{json .}}'),
+                ], run.call_args_list)
+                self.assertEqual([], Probe.owned_resources)
 
     def test_temporary_manifest_identity_auth_and_tls_drift_is_denied(self):
         source = DEPLOYMENT.read_bytes()
