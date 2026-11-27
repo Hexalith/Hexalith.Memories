@@ -93,6 +93,7 @@ TRANSFER_WORDING = re.compile(r"\b(?:administrative (?:scope )?transfer|scope[- 
 ISO_DATE_PATTERN = re.compile(r"(?<![\w-])(\d{4}-\d{2}-\d{2})(?=$|[^\w-]|T\d{2}:)")
 
 VALID_STATUSES = ("backlog", "ready-for-dev", "in-progress", "review", "done")
+ACTIVE_SPEC_STATUSES = ("ready-for-dev", "in-progress", "review", "in-review")
 # C1 needs the story's cumulative diff, which is only meaningful while the
 # story is being worked. See EP-5 in the sprint change proposal.
 C1_STATUSES = ("in-progress", "review")
@@ -229,7 +230,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Validate a story's File List, phase ledger, status, and evidence rows before review.",
     )
-    parser.add_argument("--story-key", help="Explicit story key. Highest precedence.")
+    parser.add_argument(
+        "--story-key",
+        help="Explicit story key. Highest precedence. In the worktree, a sprint story key "
+        "selects its latest active numbered spec. Use the exact spec key to pin an artifact.",
+    )
     parser.add_argument("--branch-name", help="Branch name to scan for a story key.")
     parser.add_argument("--commit-message-file", help="Commit message file to parse trailers from.")
     parser.add_argument("--commit-sha", help="Commit SHA whose message should be parsed.")
@@ -882,7 +887,7 @@ def previous_story_revision(args: argparse.Namespace) -> str:
     raise ValidationError("C6: the GitHub pull request base commit is unavailable in this checkout.")
 
 
-def previous_story_snapshots(paths: tuple[Path, Path], args: argparse.Namespace) -> list[str]:
+def previous_story_snapshots(paths: tuple[Path, ...], args: argparse.Namespace) -> list[str]:
     base = previous_story_revision(args)
     revisions = [base]
     if base != "HEAD" and not args.commit_sha and not args.staged_story:
@@ -1073,6 +1078,34 @@ def check_c0_receipt(text: str) -> list[str]:
     return []
 
 
+def find_active_numbered_spec(root: Path, key: str) -> tuple[Path, str] | None:
+    """Resolve follow-ups by revision number for an explicit worktree story key."""
+    filename = re.compile(rf"spec-{re.escape(key)}-([0-9]+)\.md")
+    candidates: dict[int, list[tuple[Path, str]]] = {}
+    for path in root.glob(f"spec-{key}-*.md"):
+        match = filename.fullmatch(path.name)
+        if match is None or (revision := int(match[1])) < 2 or not path.is_file():
+            continue
+        text = read_text_lf(path)
+        # Legacy specs can identify their story by filename alone.
+        if parse_frontmatter(text).get("story_key", key) != key:
+            continue
+        if parse_status(text) in ACTIVE_SPEC_STATUSES:
+            candidates.setdefault(revision, []).append((path, text))
+
+    if not candidates:
+        return None
+    revision = max(candidates)
+    latest = candidates[revision]
+    if len(latest) > 1:
+        names = ", ".join(sorted(path.name for path, _ in latest))
+        raise ValidationError(
+            f"Ambiguous active numbered specs for '{key}' at revision {revision}: {names}. "
+            "Use --story-key with the exact spec key to select an artifact."
+        )
+    return latest[0]
+
+
 def validate(args: argparse.Namespace) -> int:
     message = read_commit_message(args)
     trailer_keys, bypass = parse_trailers(message)
@@ -1090,12 +1123,20 @@ def validate(args: argparse.Namespace) -> int:
     artifacts_root = Path(args.artifacts_root)
     plain_path = artifacts_root / f"{source.key}.md"
     spec_path = artifacts_root / f"spec-{source.key}.md"
-    paths = (plain_path, spec_path)
+    paths: tuple[Path, ...] = (plain_path, spec_path)
     if args.staged_story:
         current = story_snapshot(paths, "")
         if current is None:
             raise ValidationError(f"Story artifact not found in the index: {to_posix(plain_path)} (also checked {to_posix(spec_path)})")
         story_path, text = current
+    elif (
+        source.name == "cli"
+        and not source.key.startswith("spec-")
+        and (current := find_active_numbered_spec(artifacts_root, source.key)) is not None
+    ):
+        story_path, text = current
+        # Checkpoint retention follows the selected artifact's Git history.
+        paths = (story_path,)
     else:
         story_path = next((path for path in paths if path.exists()), None)
         if story_path is None:
