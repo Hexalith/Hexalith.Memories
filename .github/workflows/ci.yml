@@ -162,12 +162,12 @@ jobs:
         run: python3 tools/check-story-review-readiness.py --branch-name "$BRANCH_NAME" --commit-message-file "$COMMIT_MESSAGE_FILE" --changed-files-file "$CHANGED_FILES_FILE"
 
   shared-ci:
-    uses: Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@62876129eaa035e78bd0324419231f07d43a07b8
+    uses: Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@87d45477c16fef2b3db706d2531e1cf3ff98640f
     with:
       solution: Hexalith.Memories.slnx
       dotnet-global-json: global.json
       package-prepare-script: tools/ensure-dotnet11.sh
-      builds-execution-sha: 62876129eaa035e78bd0324419231f07d43a07b8
+      builds-execution-sha: 87d45477c16fef2b3db706d2531e1cf3ff98640f
       test-platform: microsoft-testing-platform
       # The shared shard has no integration-exclusion input. Keep the full
       # Docker-free inventory and its canonical Coverlet reports in the local lane.
@@ -464,7 +464,7 @@ jobs:
         working-directory: tests/Hexalith.Memories.Web.E2E
 
       - name: Initialize Ubuntu APT mirrors
-        uses: Hexalith/Hexalith.Builds/Github/initialize-apt@62876129eaa035e78bd0324419231f07d43a07b8
+        uses: Hexalith/Hexalith.Builds/Github/initialize-apt@87d45477c16fef2b3db706d2531e1cf3ff98640f
 
       - name: Install Chromium browser
         run: npx playwright install --with-deps chromium

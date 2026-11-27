@@ -40,7 +40,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Hexalith/Hexalith.Builds
-          ref: 62876129eaa035e78bd0324419231f07d43a07b8
+          ref: 87d45477c16fef2b3db706d2531e1cf3ff98640f
           path: .hexalith/builds-source-proof
           persist-credentials: false
           submodules: false
@@ -84,7 +84,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Hexalith/Hexalith.Builds
-          ref: 62876129eaa035e78bd0324419231f07d43a07b8
+          ref: 87d45477c16fef2b3db706d2531e1cf3ff98640f
           path: .hexalith/builds-source-proof
           persist-credentials: false
           submodules: false
@@ -247,7 +247,7 @@ jobs:
           HEXALITH_ZOT_API_KEY: ${{ secrets.HEXALITH_ZOT_API_KEY }}
       - name: Initialize historical build submodules
         if: steps.source.outputs.current == 'false'
-        uses: Hexalith/Hexalith.Builds/Github/initialize-build@62876129eaa035e78bd0324419231f07d43a07b8
+        uses: Hexalith/Hexalith.Builds/Github/initialize-build@87d45477c16fef2b3db706d2531e1cf3ff98640f
       - name: Initialize historical .NET
         if: steps.source.outputs.current == 'false'
         uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
