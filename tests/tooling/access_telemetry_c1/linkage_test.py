@@ -119,6 +119,10 @@ def write_fake_kubectl(directory):
             payload = scenario.get(purpose + 'After', scenario[purpose]) if after else scenario[purpose]
             for pod in payload['items']:
                 print(json.dumps([pod['metadata'], pod['status']]))
+            if purpose == 'backendPods' and after and scenario.get('driftApprovedConfiguration'):
+                configuration = Path(__file__).parents[1] / 'deploy/dapr/components/access-telemetry-config.yaml'
+                with configuration.open('ab') as stream:
+                    stream.write(b'\n# Synthetic post-observation drift.\n')
         elif purpose == 'metadata':
             if scenario.get('runMetadataProbe'):
                 result = subprocess.run(args[9:], env=probe_environment, capture_output=True)
@@ -368,6 +372,26 @@ class ConnectionLinkageTests(unittest.TestCase):
         self.assertEqual([], calls)
         self.assertEqual([], packets)
         self.assertFalse(evidence.exists())
+
+    def test_approved_configuration_drift_after_target_observation_blocks_publication(self):
+        result, packets, _, _, captured = self.run_collector({**self.base, 'driftApprovedConfiguration': True})
+        self.assertEqual(1, result.returncode, captured)
+        self.assertEqual(1, len(packets), captured)
+        packet = packets[0]
+        self.assertEqual('blocked', packet['collectorStatus'])
+        self.assertEqual(['approved-profile-input-drift'], packet['blockers'], captured)
+        self.assertIsNone(packet['observations'])
+        for field in ['gateStatus', 'connectionLinkage', 'componentBehavior', 'productionLifecycleWrites']:
+            self.assertEqual('not-evaluated', packet[field])
+        self.assertEqual('pending', packet['independentDisposition'])
+        self.assertIs(packet['productionGatePassed'], False)
+
+        sources = {entry['source']: entry['sha256'] for entry in packet['sources']}
+        self.assertIn('kubectl:linkage-absent-state-get:allowlisted', sources)
+        self.assertIn('kubectl:linkage-backend-pod-recheck:allowlisted', sources)
+        configuration = 'deploy/dapr/components/access-telemetry-config.yaml'
+        self.assertEqual(hashlib.sha256((REPO_ROOT / configuration).read_bytes()).hexdigest(), sources[configuration])
+        self.assertNotEqual(hashlib.sha256((self.last_root / configuration).read_bytes()).hexdigest(), sources[configuration])
 
     def test_drifted_helper_is_rejected_before_loading_its_top_level_code(self):
         temporary = tempfile.TemporaryDirectory()
