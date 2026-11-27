@@ -10,6 +10,7 @@ import unittest
 
 TOOLS = Path(__file__).resolve().parents[3] / "tools"
 RESULTS_MARKER = ".hexalith-memories-test-results"
+RESULTS_SIGNATURE = b"Hexalith.Memories test results v1\n"
 TRX = '<TestRun><ResultSummary><Counters executed="1" /></ResultSummary></TestRun>'
 DOTNET_FIXTURE = """#!/bin/sh
 if [ "$1" != test ]; then
@@ -49,7 +50,10 @@ class IntegrationTestRunnerTests(unittest.TestCase):
         self.root = Path(temp.name)
         tools = self.root / "tools"
         tools.mkdir()
-        for path in (*TOOLS.glob("test-projects.*.txt"), TOOLS / "test.sh", TOOLS / "test.ps1"):
+        for path in (
+            *TOOLS.glob("test-projects.*.txt"), TOOLS / "test.sh", TOOLS / "test.ps1",
+            TOOLS / "prepare-test-results.ps1", TOOLS / "prepare-test-results.py",
+        ):
             shutil.copy2(path, tools / path.name)
         self.bin = self.root / "bin"
         self.bin.mkdir()
@@ -85,6 +89,82 @@ class IntegrationTestRunnerTests(unittest.TestCase):
     def test_powershell_requires_owned_results_directories(self):
         command = [*self.powershell, "-Filter", "Category=IntegrationSlow", "-ResultsDirectory"]
         self.assert_results_ownership(command, "-Coverage")
+
+    @unittest.skipUnless(shutil.which("pwsh"), "requires PowerShell 7")
+    def test_powershell_requires_python_only_for_reports_on_posix(self):
+        self.environment["PATH"] = str(self.bin)
+        results = self.root / "previous-results"
+        results.mkdir()
+        receipt = results / "receipt.txt"
+        receipt.write_text("previous report", encoding="utf-8")
+        command = [*self.powershell, "-Filter", "Category=IntegrationSlow"]
+
+        refused = self.run_wrapper([*command, "-ResultsDirectory", results.name])
+        self.assertEqual(1, refused.returncode, refused.stderr)
+        self.assertIn("-ResultsDirectory requires python3", refused.stderr)
+        self.assertEqual("previous report", receipt.read_text(encoding="utf-8"))
+        self.assertFalse(self.calls.exists())
+
+        ordinary = self.run_wrapper(command)
+        self.assertEqual(0, ordinary.returncode, ordinary.stderr)
+        self.assertTrue(self.calls.is_file())
+
+    @unittest.skipUnless(shutil.which("pwsh"), "requires PowerShell 7")
+    def test_powershell_pins_owned_cleanup_when_results_path_changes(self):
+        (self.bin / "sitecustomize.py").write_text(
+            "import os\n"
+            "import sys\n"
+            "\n"
+            "def replace_binding(event, args):\n"
+            "    if event == 'shutil.rmtree' and args[0] == 'stale':\n"
+            "        binding = os.environ['TEST_RESULTS_BINDING']\n"
+            "        os.rename(binding, os.environ['TEST_MOVED_BINDING'])\n"
+            "        replacement = os.environ['TEST_REPLACEMENT_BINDING']\n"
+            "        if os.environ['TEST_USE_SYMLINK'] == '1':\n"
+            "            os.symlink(replacement, binding)\n"
+            "        else:\n"
+            "            os.rename(replacement, binding)\n"
+            "\n"
+            "sys.addaudithook(replace_binding)\n",
+            encoding="utf-8",
+        )
+        self.environment["PYTHONPATH"] = str(self.bin)
+
+        for name, binding_parts, suffix, use_symlink in (
+            ("parent", ("reports",), ("nested",), True),
+            ("destination", ("reports", "nested"), (), False),
+        ):
+            with self.subTest(binding=name):
+                fixture = self.root / name
+                binding = fixture.joinpath(*binding_parts)
+                results = binding.joinpath(*suffix)
+                moved = fixture / "moved"
+                replacement = fixture / "unrelated"
+                unrelated = replacement.joinpath(*suffix, "stale", "private.txt")
+                stale = results / "stale" / "old-report.txt"
+                stale.parent.mkdir(parents=True)
+                stale.write_text("old report", encoding="utf-8")
+                (results / RESULTS_MARKER).write_bytes(RESULTS_SIGNATURE)
+                unrelated.parent.mkdir(parents=True)
+                unrelated.write_text("user managed", encoding="utf-8")
+                self.environment.update(
+                    TEST_RESULTS_BINDING=str(binding), TEST_MOVED_BINDING=str(moved),
+                    TEST_REPLACEMENT_BINDING=str(replacement), TEST_USE_SYMLINK="1" if use_symlink else "0",
+                )
+
+                result = self.run_wrapper(
+                    [*self.powershell, "-Filter", "Category=IntegrationSlow",
+                     "-ResultsDirectory", str(results.relative_to(self.root))],
+                    cwd=self.root / "tools",
+                )
+
+                moved_results = moved.joinpath(*suffix)
+                self.assertEqual(RESULTS_SIGNATURE, (moved_results / RESULTS_MARKER).read_bytes(), result.stderr)
+                self.assertFalse((moved_results / "stale").exists())
+                self.assertEqual("user managed", (results / "stale" / "private.txt").read_text(encoding="utf-8"))
+                self.assertEqual(1, result.returncode, result.stderr)
+                self.assertIn("path changed during preparation", result.stderr)
+                self.assertFalse(self.calls.exists())
 
     @unittest.skipUnless(shutil.which("pwsh"), "requires PowerShell 7")
     def test_wrappers_share_results_ownership(self):
@@ -375,7 +455,7 @@ class IntegrationTestRunnerTests(unittest.TestCase):
         contents = (TOOLS / f"test-projects.{lane}.txt").read_text(encoding="utf-8")
         return [line for line in map(str.strip, contents.splitlines()) if line and not line.startswith("#")]
 
-    def run_wrapper(self, command):
+    def run_wrapper(self, command, *, cwd=None):
         environment = self.environment.copy()
         if command[0] == self.powershell[0]:
             # The global-tool launcher may need real dotnet before the shell starts.
@@ -383,5 +463,93 @@ class IntegrationTestRunnerTests(unittest.TestCase):
             environment["PATH"] = os.environ["PATH"]
         # Allow the PowerShell runtime to start on a busy build host.
         return subprocess.run(
-            command, cwd=self.root, env=environment, text=True, capture_output=True, check=False, timeout=120,
+            command, cwd=cwd or self.root, env=environment, text=True, capture_output=True, check=False, timeout=120,
         )
+
+
+@unittest.skipUnless(os.name == "nt" and shutil.which("pwsh"), "requires Windows PowerShell 7")
+class WindowsTestResultsCleanupTests(unittest.TestCase):
+    def test_owned_cleanup_pins_parent_and_destination(self):
+        checkpoint = "            CleanEntries(destination, entries, keepMarker: true);"
+        attempt_replacement = """
+            string binding = Environment.GetEnvironmentVariable("TEST_RESULTS_BINDING");
+            try
+            {
+                Directory.Move(binding, Environment.GetEnvironmentVariable("TEST_MOVED_BINDING"));
+                Directory.Move(Environment.GetEnvironmentVariable("TEST_REPLACEMENT_BINDING"), binding);
+                File.WriteAllText(Environment.GetEnvironmentVariable("TEST_REPLACEMENT_RECEIPT"), "replaced");
+            }
+            catch (Exception error) when (error is IOException || error is UnauthorizedAccessException)
+            {
+                File.WriteAllText(Environment.GetEnvironmentVariable("TEST_REPLACEMENT_RECEIPT"), error.HResult.ToString("X8"));
+            }
+"""
+        source = (TOOLS / "prepare-test-results.ps1").read_text(encoding="utf-8")
+        self.assertEqual(1, source.count(checkpoint))
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            helper = root / "prepare-test-results.ps1"
+            helper.write_text(source.replace(checkpoint, attempt_replacement + checkpoint), encoding="utf-8")
+            for binding_name in ("parent", "destination"):
+                with self.subTest(binding=binding_name):
+                    repo = root / binding_name
+                    parent = repo / "reports"
+                    results = parent / "nested"
+                    binding = parent if binding_name == "parent" else results
+                    suffix = results.relative_to(binding)
+                    replacement = repo / "unrelated"
+                    moved = repo / "moved"
+                    receipt = repo / "replacement.txt"
+                    environment = dict(
+                        os.environ,
+                        TEST_RESULTS_BINDING=str(binding), TEST_MOVED_BINDING=str(moved),
+                        TEST_REPLACEMENT_BINDING=str(replacement), TEST_REPLACEMENT_RECEIPT=str(receipt),
+                    )
+                    repo.mkdir()
+                    # -File does not split a native argument into a PowerShell array.
+                    launcher = repo / "run.ps1"
+                    launcher.write_text(
+                        'param([string]$Helper, [string]$Repository, [string]$Results)\n'
+                        '$ErrorActionPreference = "Stop"\n'
+                        '[Console]::OutputEncoding = [Text.Encoding]::UTF8\n'
+                        'try { & $Helper $Repository $Results @("reports", "nested") }\n'
+                        'catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }\n',
+                        encoding="utf-8",
+                    )
+                    command = [shutil.which("pwsh"), "-NoProfile", "-File", str(launcher), str(helper), str(repo), str(results)]
+                    claimed = subprocess.run(command, env=environment, text=True, capture_output=True, timeout=120)
+                    self.assertEqual(0, claimed.returncode, claimed.stderr)
+                    marker = results / RESULTS_MARKER
+                    self.assertEqual(RESULTS_SIGNATURE, marker.read_bytes())
+
+                    stale = results / "stale" / "old-report.txt"
+                    stale.parent.mkdir()
+                    stale.write_text("old report", encoding="utf-8")
+                    stale.chmod(0o444)
+                    unrelated = replacement / suffix / "stale" / "private.txt"
+                    unrelated.parent.mkdir(parents=True)
+                    unrelated.write_text("user managed", encoding="utf-8")
+                    junction = results / "stale-junction"
+                    subprocess.run(
+                        [os.environ["ComSpec"], "/d", "/c", "mklink", "/j", str(junction), str(unrelated.parent)],
+                        check=True, capture_output=True, timeout=30,
+                    )
+
+                    cleaned = subprocess.run(command, env=environment, text=True, capture_output=True, timeout=120)
+                    self.assertEqual(0, cleaned.returncode, cleaned.stderr)
+                    # Windows protects the path by denying rename while the directory handles are open.
+                    self.assertIn(receipt.read_text(encoding="utf-8"), ("80070005", "80070020"))
+                    self.assertFalse(moved.exists())
+                    self.assertEqual(RESULTS_SIGNATURE, marker.read_bytes())
+                    self.assertFalse(stale.parent.exists())
+                    self.assertFalse(junction.exists())
+                    self.assertEqual("user managed", unrelated.read_text(encoding="utf-8"))
+
+                    marker.unlink()
+                    sentinel = results / "unowned.txt"
+                    sentinel.write_text("user managed", encoding="utf-8")
+                    refused = subprocess.run(command, env=environment, text=True, capture_output=True, timeout=120)
+                    self.assertEqual(1, refused.returncode, refused.stderr)
+                    self.assertIn("empty or runner-owned directory", refused.stderr)
+                    self.assertEqual("user managed", sentinel.read_text(encoding="utf-8"))

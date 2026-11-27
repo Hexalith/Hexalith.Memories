@@ -117,54 +117,17 @@ try {
             throw "-ResultsDirectory must stay outside the repository's .git metadata path."
         }
 
-        $current = $repoRootFull
-        foreach ($component in $components) {
-            $current = [System.IO.Path]::Combine($current, $component)
-            try {
-                $attributes = [System.IO.File]::GetAttributes($current)
-            }
-            catch [System.IO.FileNotFoundException], [System.IO.DirectoryNotFoundException] {
-                $attributes = [System.IO.Directory]::CreateDirectory($current).Attributes
-            }
-
-            if ($attributes -band [System.IO.FileAttributes]::ReparsePoint) {
-                throw "-ResultsDirectory must not traverse a symbolic link or reparse point at '$current'."
-            }
-            if (-not ($attributes -band [System.IO.FileAttributes]::Directory)) {
-                throw "-ResultsDirectory component '$current' is not a directory."
-            }
-        }
-
-        # Use the same ownership marker as tools/test.sh and keep it during cleanup.
-        $markerName = '.hexalith-memories-test-results'
-        $signature = "Hexalith.Memories test results v1`n"
-        $entries = @(Get-ChildItem -LiteralPath $resultsRoot -Force)
-        if ($entries.Count -eq 0) {
-            $markerPath = [System.IO.Path]::Combine($resultsRoot, $markerName)
-            $markerStream = [System.IO.File]::Open($markerPath, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write)
-            try {
-                $bytes = [System.Text.Encoding]::UTF8.GetBytes($signature)
-                $markerStream.Write($bytes, 0, $bytes.Length)
-            }
-            finally {
-                $markerStream.Dispose()
-            }
-        }
-        else {
-            $marker = $entries | Where-Object { $_.Name -ceq $markerName }
-            if ($marker -isnot [System.IO.FileInfo] -or
-                ($marker.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -or
-                $marker.Length -ne $signature.Length -or
-                [System.IO.File]::ReadAllText($marker.FullName) -cne $signature) {
-                throw "-ResultsDirectory must name an empty or runner-owned directory. Refusing to clean '$resultsRoot'."
-            }
-
-            foreach ($entry in $entries) {
-                if ($entry.Name -cne $markerName) {
-                    Remove-Item -LiteralPath $entry.FullName -Recurse -Force
+        if ($IsWindows) {
+            $invalidNameCharacters = [System.IO.Path]::GetInvalidFileNameChars()
+            foreach ($component in $components) {
+                if ($component.IndexOfAny($invalidNameCharacters) -ge 0 -or
+                    $component.EndsWith('.') -or $component.EndsWith(' ')) {
+                    throw "-ResultsDirectory component '$component' is not a valid Windows directory name."
                 }
             }
         }
+
+        & (Join-Path $PSScriptRoot 'prepare-test-results.ps1') $repoRootFull $resultsRoot $components
     }
 
     foreach ($projectPath in $projectPaths) {

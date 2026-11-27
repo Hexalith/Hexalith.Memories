@@ -522,8 +522,8 @@ quality JSON separately as `nightly-benchmark-trx` and `nightly-benchmark-qualit
 lanes write TRX files under `TestResults/<lane>` and upload those folders as workflow artifacts. The test scripts fail if a
 selected project executes zero tests **when `--results-directory` (or `-ResultsDirectory`) is passed**;
 local invocations without the flag skip TRX emission and therefore skip the zero-test guard. Pass the
-flag locally to enable the same guard CI uses. The Bash wrapper requires `python3` on `PATH` when
-collecting those reports.
+flag locally to enable the same guard CI uses. The Bash wrapper and PowerShell on Linux and macOS
+require `python3` on `PATH` when collecting those reports.
 
 The same required job runs the `release_packages` and `publish_nuget` fixtures, then exercises the
 real inventory-driven package path without publishing:
