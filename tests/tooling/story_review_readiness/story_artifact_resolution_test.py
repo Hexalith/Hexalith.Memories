@@ -1,4 +1,4 @@
-"""Exercise numbered follow-up resolution through the readiness CLI."""
+"""Exercise artifact selection and status gates through the readiness CLI."""
 
 import os
 from pathlib import Path
@@ -16,6 +16,16 @@ CHECKPOINTS = (
     "| Checkpoint | Review state |\n"
     "| ---------- | ------------ |\n"
 )
+CREATE_STORY_LEDGER = (
+    "\n### Change Log\n\n"
+    "| Date | Phase | Change | Test count | File List reconciliation |\n"
+    "| --- | --- | --- | --- | --- |\n"
+    "| 2026-11-26 | create-story | Define fixture | 1 discovered | Matched 1/1 |\n"
+)
+REVIEW_LEDGER = CREATE_STORY_LEDGER + (
+    "| 2026-11-27 | dev-story | Implement fixture | 1 passed | Matched 1/1 |\n"
+)
+VERIFIED_CHECKPOINT = CHECKPOINTS + "| Verification | Verified 2026-11-27 |\n"
 
 
 class StoryArtifactResolutionTests(unittest.TestCase):
@@ -125,3 +135,79 @@ class StoryArtifactResolutionTests(unittest.TestCase):
         self.assert_selected(result, active)
         self.assertIn("C6: evidence row 'current checkpoint' was removed", result.stdout)
         self.assertNotIn("obsolete checkpoint", result.stdout)
+
+    def test_review_statuses_use_the_same_registered_story_gates(self):
+        self.write_artifact("sprint-status.yaml", f"development_status:\n  {KEY}: review\n")
+        for status in ("review", "in-review"):
+            with self.subTest(status=status):
+                active = self.write_follow_up(
+                    2, "docs/current.md", status=status, evidence=REVIEW_LEDGER + VERIFIED_CHECKPOINT,
+                )
+                result = self.validate("--story-key", KEY, "--changed-file", "docs/current.md")
+
+                self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+                self.assert_selected(result, active)
+                self.assertIn(f"Declared status: {status}", result.stdout)
+                self.assertIn("C1: File List exactly matches all 1 in-scope changed paths.", result.stdout)
+                self.assertIn("C6: 1 evidence table(s) have valid evidence states", result.stdout)
+                self.assertIn("Story review readiness validation passed.", result.stdout)
+
+    def test_in_review_reconciles_standalone_spec_file_list_with_supplied_diff(self):
+        name = self.write_follow_up(
+            2, "docs/current.md", status="in-review", evidence=REVIEW_LEDGER + VERIFIED_CHECKPOINT,
+        )
+        changed = self.repo / "changed-files.txt"
+        changed.write_text("docs/current.md\n", encoding="utf-8")
+        args = ("--story-key", Path(name).stem, "--changed-files-file", str(changed))
+
+        passed = self.validate(*args)
+        self.assertEqual(0, passed.returncode, passed.stdout + passed.stderr)
+        self.assertIn("C1: File List exactly matches all 1 in-scope changed paths.", passed.stdout)
+
+        changed.write_text("docs/other.md\n", encoding="utf-8")
+        failed = self.validate(*args)
+        self.assertEqual(1, failed.returncode, failed.stdout + failed.stderr)
+        self.assertIn("C1: 'docs/other.md' changed but is not in the File List.", failed.stdout)
+        self.assertIn("C1: 'docs/current.md' is in the File List but not in the in-scope changed set.", failed.stdout)
+        self.assertNotIn("C3:", failed.stdout)
+
+        changed.write_text("", encoding="utf-8")
+        empty = self.validate(*args)
+        self.assertEqual(1, empty.returncode, empty.stdout + empty.stderr)
+        self.assertIn("C1: the changed set is empty for a governed story.", empty.stdout)
+
+    def test_in_review_rejects_missing_file_list_and_unfinished_evidence(self):
+        self.write_artifact("sprint-status.yaml", f"development_status:\n  {KEY}: review\n")
+        self.write_artifact(
+            ORIGINAL,
+            "---\nstatus: 'in-review'\n---\n" + CREATE_STORY_LEDGER
+            + CHECKPOINTS + "| Verification | pending |\n",
+        )
+
+        result = self.validate("--story-key", KEY, "--changed-file", "docs/current.md")
+
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("C1: a non-empty File List is required", result.stdout)
+        self.assertIn("C2: status is 'in-review' but no dev-story ledger row exists.", result.stdout)
+        self.assertIn(
+            "C6: evidence row 'Verification' has an unresolved or unrecognized review state 'pending'", result.stdout,
+        )
+        self.assertNotIn("C3:", result.stdout)
+        self.assertNotIn("C4:", result.stdout)
+
+    def test_in_review_rejects_missing_ledger_and_sprint_mismatch(self):
+        self.write_follow_up(2, "docs/current.md", status="in-review")
+
+        result = self.validate("--story-key", KEY, "--changed-file", "docs/current.md")
+
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("C2: a phase ledger is required for this governed 'in-review' artifact.", result.stdout)
+        self.assertIn("C4: story declares status 'in-review' but sprint-status records 'in-progress'.", result.stdout)
+
+    def test_review_status_near_match_remains_invalid(self):
+        name = self.write_follow_up(2, "docs/current.md", status="in-reveiw", evidence=REVIEW_LEDGER)
+
+        result = self.validate("--story-key", Path(name).stem, "--changed-file", "docs/current.md")
+
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("C3: status 'in-reveiw' is not one of", result.stdout)

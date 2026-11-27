@@ -92,13 +92,16 @@ TRANSFER_FIELDS = (*EVIDENCE_ACCOUNTABILITY_FIELDS, "decision", "destination")
 TRANSFER_WORDING = re.compile(r"\b(?:administrative (?:scope )?transfer|scope[- ]transfer(?:red)?)\b")
 ISO_DATE_PATTERN = re.compile(r"(?<![\w-])(\d{4}-\d{2}-\d{2})(?=$|[^\w-]|T\d{2}:)")
 
-VALID_STATUSES = ("backlog", "ready-for-dev", "in-progress", "review", "done")
-ACTIVE_SPEC_STATUSES = ("ready-for-dev", "in-progress", "review", "in-review")
+SPRINT_STATUSES = ("backlog", "ready-for-dev", "in-progress", "review", "done")
+SPEC_REVIEW_STATUS = "in-review"
+VALID_STATUSES = (*SPRINT_STATUSES, SPEC_REVIEW_STATUS)
+REVIEW_STATUSES = ("review", SPEC_REVIEW_STATUS)
+ACTIVE_SPEC_STATUSES = ("ready-for-dev", "in-progress", *REVIEW_STATUSES)
 # C1 needs the story's cumulative diff, which is only meaningful while the
 # story is being worked. See EP-5 in the sprint change proposal.
-C1_STATUSES = ("in-progress", "review")
-# C6 fires only once the story claims its evidence is complete.
-C6_STATUSES = ("review", "done")
+C1_STATUSES = ("in-progress", *REVIEW_STATUSES)
+# C2 requires the development ledger and C6 requires completed evidence here.
+REVIEW_OR_DONE_STATUSES = (*REVIEW_STATUSES, "done")
 C0_STORY = "27-3-production-adapter-and-deployment-profile"
 C0_CHECKPOINT_SECTION = "current binding checkpoints — c0/c2/c3/c4"
 C0_CHECKPOINT_LABEL = "c0 - story 27.2 completion handoff"
@@ -637,7 +640,7 @@ def parse_sprint_status(text: str) -> dict[str, str]:
         if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", key):
             continue
         value = value.split("#", 1)[0].strip()
-        if value in VALID_STATUSES:
+        if value in SPRINT_STATUSES:
             statuses[key] = value
     return statuses
 
@@ -762,7 +765,7 @@ def check_ledger(rows: list[list[str]], status: str) -> list[str]:
         )
         return failures
 
-    if status in ("review", "done"):
+    if status in REVIEW_OR_DONE_STATUSES:
         for required in ("create-story", "dev-story"):
             if required not in phases:
                 failures.append(f"C2: status is '{status}' but no {required} ledger row exists.")
@@ -934,7 +937,7 @@ def check_evidence_rows(text: str, status: str, previous_texts: list[str]) -> tu
     if not tables:
         return failures, 0
 
-    requires_disposition = status in C6_STATUSES
+    requires_disposition = status in REVIEW_OR_DONE_STATUSES
     previous_rows = {(table.section, tuple(row)) for table in previous_tables[0] for row in table.rows}
     for table in tables:
         if sum(header in EVIDENCE_STATUS_HEADERS for header in table.headers) != 1:
@@ -1152,7 +1155,7 @@ def validate(args: argparse.Namespace) -> int:
     file_list = parse_section_paths(text, "File List")
     status = parse_status(text)
     evidence_failures, table_count = check_evidence_rows(text, status or "", previous_story_snapshots(paths, args))
-    if source.key == C0_STORY and status in C6_STATUSES:
+    if source.key == C0_STORY and status in REVIEW_OR_DONE_STATUSES:
         evidence_failures.extend(check_c0_receipt(text))
 
     if ledger is None and file_list is None and not table_count and not evidence_failures:
@@ -1184,8 +1187,9 @@ def validate(args: argparse.Namespace) -> int:
             if not sprint_path.exists():
                 raise ValidationError(f"Sprint status file not found: {to_posix(sprint_path)}")
             sprint_text = read_text_lf(sprint_path)
-        sprint_statuses = parse_sprint_status(sprint_text)
-        recorded = sprint_statuses.get(source.key)
+        recorded = parse_sprint_status(sprint_text).get(source.key)
+        # BMad build uses `in-review` in spec frontmatter and `review` in sprint status.
+        expected = "review" if status == SPEC_REVIEW_STATUS else status
         if recorded is None:
             if source.key.startswith("spec-"):
                 notes.append("C4: spec artifact carries no development_status row, as expected.")
@@ -1194,14 +1198,14 @@ def validate(args: argparse.Namespace) -> int:
                     f"C4: no development_status row for '{source.key}' in "
                     f"{to_posix(Path(args.sprint_status_file))}."
                 )
-        elif recorded != status:
+        elif recorded != expected:
             failures.append(
                 f"C4: story declares status '{status}' but sprint-status records '{recorded}'."
             )
 
     # C2 - phase ledger.
     if ledger is None:
-        if status in ("review", "done"):
+        if status in REVIEW_OR_DONE_STATUSES:
             failures.append(f"C2: a phase ledger is required for this governed '{status}' artifact.")
         else:
             notes.append("C2: artifact carries no phase ledger; ledger checks skipped.")
@@ -1259,7 +1263,7 @@ def validate(args: argparse.Namespace) -> int:
     failures.extend(evidence_failures)
     if not table_count and not evidence_failures:
         notes.append("C6: artifact declares no evidence or checkpoint table; check skipped.")
-    elif status in C6_STATUSES and not evidence_failures:
+    elif status in REVIEW_OR_DONE_STATUSES and not evidence_failures:
         print(f"C6: {table_count} evidence table(s) have valid evidence states, dates and dispositions.")
 
     for note in notes:

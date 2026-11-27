@@ -247,12 +247,13 @@ Five checks run against the resolved artifact:
 | :---- | :--------- |
 | C1 | a governed active artifact has no non-empty `### File List`, or that list differs from the in-scope changed set (exact paths in both directions; no wildcard matching) |
 | C2 | a governed review/done artifact lacks its ledger or status-required creation/development/review rows; canonical phases violate lifecycle dependencies; a Date, Change, Test count or File List reconciliation cell is a placeholder; or the newest row lacks `matched N/N` or a complete labelled blocked-evidence record |
-| C3 | the artifact declares no `Status:` line, or one outside `backlog`, `ready-for-dev`, `in-progress`, `review`, `done` |
+| C3 | the artifact declares no status, or declares a value outside `backlog`, `ready-for-dev`, `in-progress`, `review`, `in-review`, and `done` |
 | C4 | the story's status disagrees with its `development_status` row in `sprint-status.yaml` (a `spec-*` artifact is not expected to carry a row) |
 | C6 | a row in any table with a `Review status`/`Review state` column has an unknown or pending state, lacks a required completion date, or records a blocked disposition without accountability metadata at `review` or `done` |
 
-C1 evaluates only while the story is `in-progress` or `review`, since a
-cumulative diff is not meaningful outside that window.
+C1 evaluates only while the story is `in-progress` or under review. A BMad spec
+with `in-review` uses the same gates as `review` and agrees with the canonical
+`review` status in sprint tracking.
 The line-oriented changed-file and File List interfaces represent a rename by
 listing both its old and new paths separately. Hook, CI and checker Git collectors
 use `--no-renames` so rename detection cannot hide the source path, with
