@@ -1368,7 +1368,9 @@ def extract_ps_function(source: str, name: str) -> str:
     return head + source.split(head, 1)[1].split("\n}\n", 1)[0] + "\n}"
 
 
-def run_pwsh_with_stub_path(script: str, stub_dir: Path) -> subprocess.CompletedProcess[str]:
+def run_pwsh_with_stub_path(
+    script: str, stub_dir: Path, *, umask: int = -1,
+) -> subprocess.CompletedProcess[str]:
     """Run pwsh with a stub binary directory ahead of the real PATH."""
 
     env = dict(os.environ)
@@ -1380,6 +1382,7 @@ def run_pwsh_with_stub_path(script: str, stub_dir: Path) -> subprocess.Completed
         capture_output=True,
         check=False,
         env=env,
+        umask=umask,
     )
 
 
@@ -1515,6 +1518,7 @@ class OpenBaoBootstrapExecutionTests(unittest.TestCase):
                 "-EvidencePath $evidencePath -Ownership $ownership }\n"
                 "finally { $ownership | ConvertTo-Json | Set-Content (Join-Path $evidencePath 'ownership.json') }\n",
                 root,
+                umask=0 if os.name == "posix" else -1,
             )
             receipt_path = root / "openbao-bootstrap.json"
             self.assertTrue(receipt_path.is_file(), flattened_output(result))
@@ -1525,6 +1529,13 @@ class OpenBaoBootstrapExecutionTests(unittest.TestCase):
             self.assertEqual([], list(root.glob("openbao-verify-*")))
             self.assertEqual([], list(root.glob("openbao-bootstrap-*")))
             self.assertEqual([], list(root.glob("openbao-config-*")))
+            if os.name == "posix":
+                for command in commands:
+                    modes = command.get("privateFilePermissions", {})
+                    if command["action"] == "tls-secret":
+                        self.assertEqual({"tls.key": [0o600, 0o700], "ca.key": [0o600, 0o700]}, modes)
+                    elif command["action"] in ("publish-runtime", "publish-access"):
+                        self.assertEqual({"token": [0o600, 0o700], "ca.pem": [0o600, 0o700]}, modes)
             argv = json.dumps([command["args"] for command in commands])
             seeded_values = {value for secrets in self.seeded.values() for fields in secrets.values() for value in fields.values()}
             for canary in (

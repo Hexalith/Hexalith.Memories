@@ -3,6 +3,7 @@
 
 import json
 import os
+import stat
 import sys
 from pathlib import Path
 
@@ -60,14 +61,23 @@ def scope(name):
     return "access" if name.endswith("access-telemetry") else "runtime"
 
 
-def capture_files(options):
+def capture_files(options, private_files=()):
     files = {}
+    permissions = {}
     for option in options:
         if option.startswith("--from-file="):
-            _, key, path = option.split("=", 2)
-            content = Path(path).read_text(encoding="ascii")
+            _, key, filename = option.split("=", 2)
+            path = Path(filename)
+            if os.name == "posix" and key in private_files:
+                mode = stat.S_IMODE(path.stat().st_mode)
+                directory_mode = stat.S_IMODE(path.parent.stat().st_mode)
+                permissions[key] = [mode, directory_mode]
+                if key == "tls.key":
+                    ca_key_mode = stat.S_IMODE(path.with_name("ca.key").stat().st_mode)
+                    permissions["ca.key"] = [ca_key_mode, directory_mode]
+            content = path.read_text(encoding="ascii")
             files[key] = content.splitlines()[0] if key == "tls.key" else content
-    return {"files": files}
+    return {"files": files, "privateFilePermissions": permissions}
 
 
 def observe_cluster_command(args):
@@ -77,7 +87,7 @@ def observe_cluster_command(args):
         case ["create", "namespace", "openbao"]:
             return "namespace", {}, 0, ""
         case ["create", "secret", "generic", "openbao-server-tls", *options]:
-            return "tls-secret", capture_files(options), 0, ""
+            return "tls-secret", capture_files(options, ("tls.key",)), 0, ""
         case ["create", "configmap", "hexalith-keys-config", *options]:
             return "config", capture_files(options), 0, ""
         case ["apply", "-f", "-"]:
@@ -85,7 +95,7 @@ def observe_cluster_command(args):
         case ["rollout", "status", "deployment/hexalith-keys", *_]:
             return "ready", {}, 0, ""
         case ["create", "secret", "generic", name, *options] if name in PUBLISHED_SECRETS:
-            return f"publish-{PUBLISHED_SECRETS[name]}", capture_files(options), 0, ""
+            return f"publish-{PUBLISHED_SECRETS[name]}", capture_files(options, ("token", "ca.pem")), 0, ""
         case _:
             raise AssertionError(f"Unexpected kubectl command: {args}")
 

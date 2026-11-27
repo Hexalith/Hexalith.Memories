@@ -24,6 +24,58 @@ function Get-OpenBaoRedactionSecrets {
     return @($script:OpenBaoRedactionSecrets)
 }
 
+function New-OpenBaoPrivateTempDirectory {
+    param([Parameter(Mandatory)][string]$Prefix)
+
+    # The native temporary-directory API creates the directory with owner-only access on Unix.
+    $directory = [System.IO.Directory]::CreateTempSubdirectory($Prefix)
+    try {
+        if (-not $IsWindows) {
+            $ownerOnly = [System.IO.UnixFileMode]::UserRead -bor
+                [System.IO.UnixFileMode]::UserWrite -bor [System.IO.UnixFileMode]::UserExecute
+            [System.IO.File]::SetUnixFileMode($directory.FullName, $ownerOnly)
+            if ([System.IO.File]::GetUnixFileMode($directory.FullName) -ne $ownerOnly) {
+                throw 'The OpenBao temporary directory could not be restricted to its owner.'
+            }
+        }
+        return $directory.FullName
+    }
+    catch {
+        $directory.Delete()
+        throw
+    }
+}
+
+function Write-OpenBaoPrivateFile {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$Value
+    )
+
+    if ($IsWindows) {
+        Set-Content -LiteralPath $Path -Value $Value -Encoding ascii -NoNewline
+        return
+    }
+
+    $ownerOnly = [System.IO.UnixFileMode]::UserRead -bor [System.IO.UnixFileMode]::UserWrite
+    $options = [System.IO.FileStreamOptions]::new()
+    $options.Access = [System.IO.FileAccess]::Write
+    $options.Mode = [System.IO.FileMode]::CreateNew
+    $options.UnixCreateMode = $ownerOnly
+    $stream = [System.IO.File]::Open($Path, $options)
+    try {
+        $stream.Write([System.Text.Encoding]::ASCII.GetBytes($Value))
+    }
+    finally {
+        $stream.Dispose()
+    }
+    # Normalize permissions even if the process umask removed owner access during creation.
+    [System.IO.File]::SetUnixFileMode($Path, $ownerOnly)
+    if ([System.IO.File]::GetUnixFileMode($Path) -ne $ownerOnly) {
+        throw 'The OpenBao temporary file could not be restricted to its owner.'
+    }
+}
+
 function New-OpenBaoTlsMaterial {
     param([Parameter(Mandatory)][string]$WorkDirectory)
 
@@ -451,15 +503,14 @@ function Publish-OpenBaoBootstrapSecrets {
     )
 
     Set-VerificationStage 'openbao-bootstrap-secrets'
-    $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('openbao-bootstrap-' + [Guid]::NewGuid().ToString('N'))
-    New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
+    $tempRoot = New-OpenBaoPrivateTempDirectory -Prefix 'openbao-bootstrap-'
     try {
         $caPath = Join-Path $tempRoot 'ca.pem'
         $runtimeTokenPath = Join-Path $tempRoot 'runtime.token'
         $accessTokenPath = Join-Path $tempRoot 'access.token'
-        Set-Content -LiteralPath $caPath -Value $CaPem -Encoding ascii -NoNewline
-        Set-Content -LiteralPath $runtimeTokenPath -Value $RuntimeToken -Encoding ascii -NoNewline
-        Set-Content -LiteralPath $accessTokenPath -Value $AccessToken -Encoding ascii -NoNewline
+        Write-OpenBaoPrivateFile -Path $caPath -Value $CaPem
+        Write-OpenBaoPrivateFile -Path $runtimeTokenPath -Value $RuntimeToken
+        Write-OpenBaoPrivateFile -Path $accessTokenPath -Value $AccessToken
 
         foreach ($pair in @(
                 @{ Name = 'openbao-runtime-bootstrap'; TokenPath = $runtimeTokenPath },
@@ -506,8 +557,7 @@ function Invoke-DisposableOpenBaoBootstrap {
     }
     $Image = $script:OpenBaoPinnedImage
 
-    $workDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ('openbao-verify-' + [Guid]::NewGuid().ToString('N'))
-    New-Item -ItemType Directory -Path $workDirectory -Force | Out-Null
+    $workDirectory = New-OpenBaoPrivateTempDirectory -Prefix 'openbao-verify-'
     $bootstrapRecord = [ordered]@{
         schemaVersion = 1
         image = $Image
