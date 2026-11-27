@@ -21,6 +21,17 @@ public sealed class InMemoryAccessTelemetryStateStoreContractTests
     private static readonly DateTimeOffset Expiry = AccessTelemetryStateStoreTestRecords.Expiry;
 
     [Fact]
+    public void RuntimeAssembly_ExcludesInMemoryTestStore()
+    {
+        Type testStore = typeof(InMemoryAccessTelemetryStateStore);
+        var runtimeAssembly = typeof(IAccessTelemetryStateStore).Assembly;
+
+        testStore.Assembly.ShouldNotBe(runtimeAssembly);
+        runtimeAssembly.GetType(testStore.FullName!).ShouldBeNull();
+        runtimeAssembly.GetReferencedAssemblies().ShouldNotContain(reference => reference.Name == testStore.Assembly.GetName().Name);
+    }
+
+    [Fact]
     public async Task WriteRecordAndIndexAsync_EntrySlotAlreadyOccupied_ReturnsConflictAndCommitsNothing()
     {
         // Previously an ArgumentException from Dictionary.Add, thrown after _records had already

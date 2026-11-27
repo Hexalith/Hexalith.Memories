@@ -5,6 +5,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Hexalith.Memories.AccessTelemetry.TestSupport\Hexalith.Memories.AccessTelemetry.TestSupport.csproj" />
     <ProjectReference Include="..\..\src\Hexalith.Memories.AccessTelemetry.Contracts\Hexalith.Memories.AccessTelemetry.Contracts.csproj" />
     <ProjectReference Include="..\..\src\Hexalith.Memories.AccessTelemetry\Hexalith.Memories.AccessTelemetry.csproj" />
     <ProjectReference Include="..\..\src\Hexalith.Memories.AccessTelemetry.Clock\Hexalith.Memories.AccessTelemetry.Clock.csproj" />

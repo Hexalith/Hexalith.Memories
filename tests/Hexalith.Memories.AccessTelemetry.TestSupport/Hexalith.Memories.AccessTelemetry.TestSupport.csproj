@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Remove="coverlet.MTP" />
+    <Using Remove="Xunit" />
+    <InternalsVisibleTo Include="Hexalith.Memories.AccessTelemetry.Tests" />
+    <InternalsVisibleTo Include="Hexalith.Memories.IntegrationTests" />
+    <ProjectReference Include="..\..\src\Hexalith.Memories.AccessTelemetry\Hexalith.Memories.AccessTelemetry.csproj" />
+  </ItemGroup>
+
+</Project>

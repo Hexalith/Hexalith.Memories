@@ -22,6 +22,7 @@
     <Project Path="tools/MigrateEmbeddingVectors/MigrateEmbeddingVectors.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Hexalith.Memories.AccessTelemetry.TestSupport/Hexalith.Memories.AccessTelemetry.TestSupport.csproj" />
     <Project Path="tests/Hexalith.Memories.AccessTelemetry.Tests/Hexalith.Memories.AccessTelemetry.Tests.csproj" />
     <Project Path="tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj" />
     <Project Path="tests/Hexalith.Memories.DomainService.Tests/Hexalith.Memories.DomainService.Tests.csproj" />

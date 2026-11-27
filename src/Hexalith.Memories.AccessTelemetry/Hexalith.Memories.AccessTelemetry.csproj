@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Hexalith.Memories.AccessTelemetry.Tests" />
+    <InternalsVisibleTo Include="Hexalith.Memories.AccessTelemetry.TestSupport" />
     <InternalsVisibleTo Include="Hexalith.Memories.IntegrationTests" />
     <InternalsVisibleTo Include="Hexalith.Memories.Integration.NightlyTests" />
   </ItemGroup>
