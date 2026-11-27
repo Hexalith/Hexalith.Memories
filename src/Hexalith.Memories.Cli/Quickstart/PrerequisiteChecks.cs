@@ -24,7 +24,6 @@ internal sealed partial class PrerequisiteChecks
     private static readonly TimeSpan DockerTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan DotnetTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan DaprTimeout = TimeSpan.FromSeconds(3);
-    private static readonly Version MinimumDotnetSdkVersion = new(11, 0, 100);
 
     private readonly IProcessRunner _processRunner;
 
@@ -35,6 +34,13 @@ internal sealed partial class PrerequisiteChecks
         ArgumentNullException.ThrowIfNull(processRunner);
         _processRunner = processRunner;
     }
+
+    /// <summary>Gets the oldest .NET SDK supported by the quickstart.</summary>
+    internal static Version MinimumDotnetSdkVersion { get; } = new(11, 0, 100);
+
+    private static string SdkDownloadUrl => $"https://dotnet.microsoft.com/download/dotnet/{MinimumDotnetSdkVersion.ToString(2)}";
+
+    private static string SdkInstallSuggestion => $"Install .NET SDK {MinimumDotnetSdkVersion} or newer from {SdkDownloadUrl}, then retry.";
 
     /// <summary>Checks that the Docker daemon responds to <c>docker ps</c> within 5 seconds.</summary>
     /// <param name="ct">Cancellation token.</param>
@@ -85,7 +91,7 @@ internal sealed partial class PrerequisiteChecks
             return new PrerequisiteCheckResult(
                 Passed: false,
                 Diagnostic: ".NET SDK (dotnet) not found on PATH.",
-                RecoverySuggestion: "Install .NET SDK 11.0.100 or newer from https://dotnet.microsoft.com/download/dotnet/11.0, then retry.");
+                RecoverySuggestion: SdkInstallSuggestion);
         }
 
         if (result.TimedOut)
@@ -101,7 +107,7 @@ internal sealed partial class PrerequisiteChecks
             return new PrerequisiteCheckResult(
                 Passed: false,
                 Diagnostic: $"'dotnet --list-sdks' failed (exit {result.ExitCode}).",
-                RecoverySuggestion: "Verify .NET SDK 11.0.100 or newer is installed: run 'dotnet --version'. Install from https://dotnet.microsoft.com/download/dotnet/11.0 if missing.");
+                RecoverySuggestion: $"Verify .NET SDK {MinimumDotnetSdkVersion} or newer is installed: run 'dotnet --version'. Install from {SdkDownloadUrl} if missing.");
         }
 
         string sdkListing = result.StdOut.Trim();
@@ -113,7 +119,7 @@ internal sealed partial class PrerequisiteChecks
                 return new PrerequisiteCheckResult(
                     Passed: false,
                     Diagnostic: "No .NET SDKs were reported by 'dotnet --list-sdks'.",
-                    RecoverySuggestion: "Install .NET SDK 11.0.100 or newer from https://dotnet.microsoft.com/download/dotnet/11.0, then retry.");
+                    RecoverySuggestion: SdkInstallSuggestion);
             }
 
             // Parse-fail advisory per Risk #4 — unusual locales or formats. Pass with advisory rather
@@ -172,7 +178,7 @@ internal sealed partial class PrerequisiteChecks
             return new PrerequisiteCheckResult(
                 Passed: false,
                 Diagnostic: $"No .NET SDK {MinimumDotnetSdkVersion} or newer found. Highest installed SDK: {highestParsedVersion}.",
-                RecoverySuggestion: "Install .NET SDK 11.0.100 or newer from https://dotnet.microsoft.com/download/dotnet/11.0, then retry.");
+                RecoverySuggestion: SdkInstallSuggestion);
         }
 
         string suffix = olderCount == 0
@@ -187,7 +193,7 @@ internal sealed partial class PrerequisiteChecks
     private async Task<PrerequisiteCheckResult> VerifyDotnetRuntimesAsync(PrerequisiteCheckResult sdkResult, CancellationToken ct)
     {
         ProcessResult result = await _processRunner.RunAsync("dotnet", "--list-runtimes", DotnetTimeout, ct).ConfigureAwait(false);
-        const string recovery = "Install the ASP.NET Core 11 runtime (including the .NET 11 runtime) from https://dotnet.microsoft.com/download/dotnet/11.0, or reinstall SDK 11.0.100. Verify 'dotnet --list-runtimes' lists Microsoft.NETCore.App 11.0.x and Microsoft.AspNetCore.App 11.0.x, then retry.";
+        string recovery = $"Install the ASP.NET Core 11 runtime (including the .NET 11 runtime) from https://dotnet.microsoft.com/download/dotnet/11.0, or reinstall SDK {MinimumDotnetSdkVersion}. Verify 'dotnet --list-runtimes' lists Microsoft.NETCore.App 11.0.x and Microsoft.AspNetCore.App 11.0.x, then retry.";
         if (result.TimedOut)
         {
             return new PrerequisiteCheckResult(

@@ -9,6 +9,7 @@ using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 
+using Hexalith.Memories.Cli.Errors;
 using Hexalith.Memories.Cli.Quickstart;
 
 using Shouldly;
@@ -71,17 +72,17 @@ public sealed class QuickstartPrerequisiteTests
     }
 
     [Fact]
-    public async Task CheckDotnetSdk_Passes_WhenSdk11AndBothNet11FrameworksPresent()
+    public async Task CheckDotnetSdk_Passes_WhenMinimumSdkAndBothNet11FrameworksPresent()
     {
         var runner = new FakeProcessRunner();
-        runner.Register("dotnet", new ProcessResult(0, "9.0.100\n10.0.403\n11.0.100\n", string.Empty, TimeSpan.FromMilliseconds(30)));
+        runner.Register("dotnet", new ProcessResult(0, $"9.0.100\n10.0.403\n{PrerequisiteChecks.MinimumDotnetSdkVersion}\n", string.Empty, TimeSpan.FromMilliseconds(30)));
         runner.Register("dotnet", "--list-runtimes", new ProcessResult(0, "Microsoft.NETCore.App 11.0.0 [/dotnet/shared]\nMicrosoft.AspNetCore.App 11.0.0 [/dotnet/shared]\n", string.Empty, TimeSpan.Zero));
         var checks = new PrerequisiteChecks(runner);
 
         PrerequisiteCheckResult result = await checks.CheckDotnetSdkAsync(CancellationToken.None);
 
         result.Passed.ShouldBeTrue();
-        result.Diagnostic.ShouldContain("11.0.100");
+        result.Diagnostic.ShouldContain(PrerequisiteChecks.MinimumDotnetSdkVersion.ToString());
     }
 
     [Fact]
@@ -94,7 +95,7 @@ public sealed class QuickstartPrerequisiteTests
         PrerequisiteCheckResult result = await checks.CheckDotnetSdkAsync(CancellationToken.None);
 
         result.Passed.ShouldBeFalse();
-        result.Diagnostic.ShouldContain("No .NET SDK 11.0.100 or newer");
+        result.Diagnostic.ShouldContain($"No .NET SDK {PrerequisiteChecks.MinimumDotnetSdkVersion} or newer");
     }
 
     [Fact]
@@ -108,6 +109,26 @@ public sealed class QuickstartPrerequisiteTests
 
         result.Passed.ShouldBeFalse();
         result.Diagnostic.ShouldContain("not found");
+    }
+
+    [Theory]
+    [InlineData(-1, "", true)]
+    [InlineData(1, "", false)]
+    [InlineData(0, "", false)]
+    [InlineData(0, "9.0.100", false)]
+    public async Task CheckDotnetSdk_FailureGuidanceMatchesCatalogMinimum(int exitCode, string output, bool notFound)
+    {
+        var runner = new FakeProcessRunner();
+        runner.Register("dotnet", new ProcessResult(exitCode, output, string.Empty, TimeSpan.Zero, NotFound: notFound));
+        var checks = new PrerequisiteChecks(runner);
+
+        PrerequisiteCheckResult result = await checks.CheckDotnetSdkAsync(CancellationToken.None);
+
+        result.Passed.ShouldBeFalse();
+        string supportedVersion = $".NET SDK {PrerequisiteChecks.MinimumDotnetSdkVersion} or newer";
+        result.RecoverySuggestion.ShouldNotBeNull().ShouldContain(supportedVersion);
+        result.RecoverySuggestion.ShouldContain($"/dotnet/{PrerequisiteChecks.MinimumDotnetSdkVersion.ToString(2)}");
+        ErrorMessageCatalog.Resolve("DOTNET_VERSION_INSUFFICIENT").CliSuggestion!.ShouldContain(supportedVersion);
     }
 
     [Fact]
@@ -134,9 +155,10 @@ public sealed class QuickstartPrerequisiteTests
         PrerequisiteCheckResult result = await checks.CheckDotnetSdkAsync(CancellationToken.None);
 
         result.Passed.ShouldBeFalse();
-        result.Diagnostic.ShouldContain("11.0.100");
+        result.Diagnostic.ShouldContain(PrerequisiteChecks.MinimumDotnetSdkVersion.ToString());
         result.RecoverySuggestion.ShouldNotBeNull();
         result.RecoverySuggestion.ShouldContain("/dotnet/11.0");
+        result.RecoverySuggestion.ShouldContain($"SDK {PrerequisiteChecks.MinimumDotnetSdkVersion}");
         runner.Calls.Count.ShouldBe(1);
     }
 
@@ -148,7 +170,7 @@ public sealed class QuickstartPrerequisiteTests
     public async Task CheckDotnetSdk_Fails_WhenRequiredNet11FrameworkMissing(string runtimes, string missing)
     {
         var runner = new FakeProcessRunner();
-        runner.Register("dotnet", new ProcessResult(0, "11.0.100 [/dotnet/sdk]\n", string.Empty, TimeSpan.Zero));
+        runner.Register("dotnet", new ProcessResult(0, $"{PrerequisiteChecks.MinimumDotnetSdkVersion} [/dotnet/sdk]\n", string.Empty, TimeSpan.Zero));
         runner.Register("dotnet", "--list-runtimes", new ProcessResult(0, runtimes, string.Empty, TimeSpan.Zero));
         var checks = new PrerequisiteChecks(runner);
 
@@ -159,13 +181,14 @@ public sealed class QuickstartPrerequisiteTests
         result.RecoverySuggestion.ShouldNotBeNull();
         result.RecoverySuggestion.ShouldContain("ASP.NET Core 11");
         result.RecoverySuggestion.ShouldContain("/dotnet/11.0");
+        result.RecoverySuggestion.ShouldContain($"SDK {PrerequisiteChecks.MinimumDotnetSdkVersion}");
     }
 
     [Fact]
     public async Task CheckDotnetSdk_Fails_WhenRuntimeInspectionTimesOut()
     {
         var runner = new FakeProcessRunner();
-        runner.Register("dotnet", new ProcessResult(0, "11.0.100 [/dotnet/sdk]\n", string.Empty, TimeSpan.Zero));
+        runner.Register("dotnet", new ProcessResult(0, $"{PrerequisiteChecks.MinimumDotnetSdkVersion} [/dotnet/sdk]\n", string.Empty, TimeSpan.Zero));
         runner.Register("dotnet", "--list-runtimes", new ProcessResult(-1, string.Empty, string.Empty, TimeSpan.FromSeconds(5), TimedOut: true));
         var checks = new PrerequisiteChecks(runner);
 

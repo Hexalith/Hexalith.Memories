@@ -4173,7 +4173,8 @@ resolution: A Server architecture guard checks both test projects for shared lis
 origin: migrated from legacy ledger ("Deferred from: code review of spec-run-tests-and-fix-failures (2026-07-18)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-run-tests-and-fix-failures.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-run-tests-and-fix-failures.md` summary: `MinimumDotnetSdkVersion` and its "10.0.302" user-facing message strings are duplicated as separate literals across multiple call sites instead of derived from one source of truth. evidence: `src/Hexalith.Memories.Cli/Quickstart/PrerequisiteChecks.cs:27`'s `MinimumDotnetSdkVersion` constant and `src/Hexalith.Memories.Cli/Errors/ErrorMessageCatalog.cs:148`'s `"Install .NET SDK 10.0.302 or newer and retry."` string (plus other CLI message sites) each hardcode the version independently. This is the exact duplication pattern that caused the drift bug this spec fixed (the constant fell behind when messaging was bumped); deriving all user-facing strings from `MinimumDotnetSdkVersion.ToString()` would prevent recurrence, but is a refactor beyond this bugfix spec's scope.
-status: open
+status: done 2026-11-27
+resolution: Quickstart comparisons, recovery guidance, and the error catalog share one SDK floor. Tests cover missing, failed, empty, and too-old SDK listings plus runtime recovery guidance.
 
 ### DW-587: Concurrency safety of the Dapr access-telemetry state store under actor-failover split-brain.
 

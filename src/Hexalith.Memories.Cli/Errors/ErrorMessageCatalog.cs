@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Cli.Errors;
 
+using Hexalith.Memories.Cli.Quickstart;
+
 /// <summary>
 /// Static lookup table mapping server <c>ErrorResponse.Code</c> literals (and synthetic CLI transport
 /// codes) to the CLI-rendered <see cref="ErrorTranslation"/>. The catalog covers every
@@ -153,7 +155,7 @@ public static class ErrorMessageCatalog
                 ExitCode: 2),
             ["DOTNET_VERSION_INSUFFICIENT"] = new(
                 CliMessage: null,
-                CliSuggestion: "Install .NET SDK 11.0.100 or newer and the ASP.NET Core 11 runtime (including .NET 11), then retry.",
+                CliSuggestion: $"Install .NET SDK {PrerequisiteChecks.MinimumDotnetSdkVersion} or newer and the ASP.NET Core 11 runtime (including .NET 11), then retry.",
                 ExitCode: 2),
             ["PORT_IN_USE"] = new(
                 CliMessage: null,
