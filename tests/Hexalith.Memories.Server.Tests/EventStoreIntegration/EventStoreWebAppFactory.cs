@@ -20,6 +20,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
@@ -88,7 +89,6 @@ internal sealed class EventStoreWebAppFactory : WebApplicationFactory<Program>
         // the ConfigureTestServices override replaces the registrations.
         builder.UseSetting("ConnectionStrings:redis", "localhost:0,abortConnect=false,connectTimeout=1");
         builder.UseSetting("ConnectionStrings:falkordb", "localhost:0,abortConnect=false,connectTimeout=1");
-        builder.UseSetting(DaprApplicationTokenMiddleware.AppApiTokenOverrideConfigurationKey, string.Empty);
         builder.ConfigureAppConfiguration((context, configuration) =>
         {
             Dictionary<string, string?> settings = new(StringComparer.OrdinalIgnoreCase)
@@ -97,17 +97,18 @@ internal sealed class EventStoreWebAppFactory : WebApplicationFactory<Program>
                 ["Authentication:JwtBearer:Audience"] = "hexalith-memories-server",
                 ["Authentication:JwtBearer:SigningKey"] = "hexalith-memories-test-signing-key-32b",
                 ["Authentication:JwtBearer:RequireHttpsMetadata"] = "false",
-                // Dedicated override (not APP_API_TOKEN): host configuration already binds that env var.
-                [DaprApplicationTokenMiddleware.AppApiTokenOverrideConfigurationKey] = string.Empty,
             };
+
+            if (context.HostingEnvironment.IsDevelopment())
+            {
+                settings[DaprApplicationTokenMiddleware.AppApiTokenOverrideConfigurationKey] = string.Empty;
+            }
 
             _ = configuration.AddInMemoryCollection(settings);
             if (ConfigurationOverrides.Count > 0)
             {
                 _ = configuration.AddInMemoryCollection(ConfigurationOverrides);
             }
-
-            _ = context;
         });
 
         builder.ConfigureTestServices(services =>

@@ -38,7 +38,7 @@ using NSubstitute;
 using Shouldly;
 
 /// <summary>Guards the one no-input, exact-profile qualification workload.</summary>
-[Collection("DaprTokenEnvironment")]
+[Collection(DaprTokenEnvironmentCollection.Name)]
 public sealed class AccessTelemetryQualificationWorkloadTests
 {
     // Independently pin the adopted isolated-target identity and historical profiles.

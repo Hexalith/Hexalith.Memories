@@ -11,11 +11,12 @@ using System.Reflection;
 using Dapr.Client;
 
 using Hexalith.Memories.Server.Telemetry.AccessTelemetryLifecycle;
+using Hexalith.Memories.Server.Tests.Authentication;
 
 using Shouldly;
 
 /// <summary>Verifies credentials at the actual pinned SDK invocation handler's transport boundary.</summary>
-[Collection("DaprTokenEnvironment")]
+[Collection(DaprTokenEnvironmentCollection.Name)]
 public sealed class AccessTelemetryDaprHttpClientFactoryTests
 {
     [Theory]
