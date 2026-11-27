@@ -8,6 +8,7 @@ namespace Hexalith.Memories.IntegrationTests.Fixtures;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
+using System.Net.Sockets;
 using System.Runtime.ExceptionServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -456,10 +457,114 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         try { await DisposeTopologyAsync(cts.Token).ConfigureAwait(false); }
         finally { TestContext.Current.TestOutputHelper?.WriteLine($"Owned restart disposal: {stopwatch.Elapsed.TotalSeconds:F2}s"); }
         TimeSpan disposedAt = stopwatch.Elapsed;
-        try { await StartTopologyAsync(cts.Token).ConfigureAwait(false); }
-        finally { TestContext.Current.TestOutputHelper?.WriteLine($"Owned restart startup/readiness: {(stopwatch.Elapsed - disposedAt).TotalSeconds:F2}s"); }
+        try
+        {
+            await StartTopologyAsync(cts.Token).ConfigureAwait(false);
+        }
+        catch (Exception startupException)
+        {
+            await ReportRestartBackendPortsAsync(startupException).ConfigureAwait(false);
+            throw;
+        }
+        finally
+        {
+            TestContext.Current.TestOutputHelper?.WriteLine($"Owned restart startup/readiness: {(stopwatch.Elapsed - disposedAt).TotalSeconds:F2}s");
+        }
+
         stopwatch.Stop();
         return stopwatch.Elapsed;
+    }
+
+    private async Task ReportRestartBackendPortsAsync(Exception startupException)
+    {
+        const string diagnosticKey = "Owned restart backend ports";
+        try
+        {
+            if (_app is not { } app)
+            {
+                startupException.Data[diagnosticKey] = "AppHost construction did not complete.";
+                return;
+            }
+
+            DistributedApplicationModel model = app.Services.GetRequiredService<DistributedApplicationModel>();
+            string[] ports = await Task.WhenAll(
+                DescribeAsync("memories-vectors", "redis"),
+                DescribeAsync("memories-graphs", "falkordb")).ConfigureAwait(false);
+            string diagnostic = string.Join(Environment.NewLine, ports);
+            startupException.Data[diagnosticKey] = diagnostic;
+            TestContext.Current.TestOutputHelper?.WriteLine($"{diagnosticKey}:{Environment.NewLine}{diagnostic}");
+
+            Task<string> DescribeAsync(string resourceName, string endpointName)
+            {
+                IResource? resource = model.Resources.SingleOrDefault(resource => resource.Name == resourceName);
+                if (resource is null)
+                {
+                    return Task.FromResult($"{resourceName}/{endpointName}: resource unavailable");
+                }
+
+                string? state = app.ResourceNotifications.TryGetCurrentState(resourceName, out ResourceEvent? current)
+                    ? current.Snapshot.State?.Text
+                    : null;
+                return DescribeRestartPortAsync(resource, endpointName, state);
+            }
+        }
+        catch (Exception diagnosticException)
+        {
+            // Preserve the original startup failure if the partially started AppHost cannot provide diagnostics.
+            startupException.Data["Owned restart diagnostic failure"] = diagnosticException.GetType().Name;
+        }
+    }
+
+    /// <summary>Reports the declared container target, DCP allocation and loopback listener state for an owned endpoint.</summary>
+    /// <param name="resource">The fixture-owned backend resource.</param>
+    /// <param name="endpointName">The exact backend endpoint.</param>
+    /// <param name="state">The latest observed Aspire resource state.</param>
+    /// <returns>A diagnostic that contains only state and allocation metadata.</returns>
+    internal static async Task<string> DescribeRestartPortAsync(IResource resource, string endpointName, string? state)
+    {
+        string prefix = $"{resource.Name}/{endpointName}: state={state ?? "unobserved"}";
+        EndpointAnnotation? endpoint = resource.Annotations.OfType<EndpointAnnotation>()
+            .SingleOrDefault(endpoint => endpoint.Name == endpointName);
+        if (endpoint is null)
+        {
+            return $"{prefix}, endpoint=undeclared";
+        }
+
+        prefix += $", proxied={endpoint.IsProxied}, containerTargetPort={endpoint.TargetPort?.ToString() ?? "unknown"}";
+        if (endpoint.AllocatedEndpoint is null)
+        {
+            return $"{prefix}, hostPort=unallocated, listener=unprobed";
+        }
+
+        (string host, int port) = AllocatedEndpointResolver.Resolve(resource, endpointName);
+        if (string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase))
+        {
+            host = IPAddress.Loopback.ToString();
+        }
+
+        if (!IPAddress.TryParse(host, out IPAddress? address) || !IPAddress.IsLoopback(address))
+        {
+            return $"{prefix}, hostPort={port}, listener=unprobed-non-loopback";
+        }
+
+        string listener;
+        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+        using var client = new TcpClient(address.AddressFamily);
+        try
+        {
+            await client.ConnectAsync(address, port, budget.Token).ConfigureAwait(false);
+            listener = "reachable";
+        }
+        catch (SocketException exception)
+        {
+            listener = exception.SocketErrorCode.ToString();
+        }
+        catch (OperationCanceledException) when (budget.IsCancellationRequested)
+        {
+            listener = "timed-out";
+        }
+
+        return $"{prefix}, hostPort={address}:{port}, listener={listener}";
     }
 
     /// <summary>Reads the seeded runtime canary through the Server's Dapr secret component.</summary>

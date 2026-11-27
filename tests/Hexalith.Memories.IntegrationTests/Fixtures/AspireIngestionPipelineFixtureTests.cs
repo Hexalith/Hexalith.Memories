@@ -7,9 +7,11 @@ namespace Hexalith.Memories.IntegrationTests.Fixtures;
 
 using System.Diagnostics;
 using System.Net;
+using System.Net.Sockets;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Aspire.Hosting;
+using Aspire.Hosting.ApplicationModel;
 
 using Dapr.Actors.Client;
 
@@ -88,6 +90,49 @@ public sealed class AspireIngestionPipelineFixtureTests
             .ShouldBe(["Second lifetime", "Later second-lifetime message"]);
         current.GetEntriesSince(beforeRestart).Count.ShouldBe(2);
         current.GetEntriesSince(cursor).ShouldHaveSingleItem().Message.ShouldBe("Later second-lifetime message");
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task RestartPortDiagnostic_DistinguishesAllocatedPortFromReachableListener(bool listening)
+    {
+        using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        socket.Bind(new IPEndPoint(IPAddress.Loopback, port: 0));
+        if (listening)
+        {
+            socket.Listen(backlog: 1);
+        }
+
+        int port = ((IPEndPoint)socket.LocalEndPoint!).Port;
+        var resource = new ContainerResource("memories-vectors");
+        var endpoint = new EndpointAnnotation(ProtocolType.Tcp, name: "redis", targetPort: 6379);
+        endpoint.AllocatedEndpoint = new AllocatedEndpoint(endpoint, "0.0.0.0", port);
+        resource.Annotations.Add(endpoint);
+
+        string diagnostic = await AspireIngestionPipelineFixture.DescribeRestartPortAsync(
+            resource, "redis", KnownResourceStates.Running);
+
+        diagnostic.ShouldContain("memories-vectors/redis: state=Running, proxied=True, containerTargetPort=6379");
+        diagnostic.ShouldContain($"hostPort=127.0.0.1:{port}");
+        diagnostic.ShouldContain(listening ? "listener=reachable" : "listener=ConnectionRefused");
+    }
+
+    [Fact]
+    public async Task RestartPortDiagnostic_PartialReadiness_DoesNotProbeUnallocatedOrNonLoopbackAddresses()
+    {
+        var resource = new ContainerResource("memories-graphs");
+        var endpoint = new EndpointAnnotation(ProtocolType.Tcp, name: "falkordb", targetPort: 6379, isProxied: false);
+        resource.Annotations.Add(endpoint);
+
+        string pending = await AspireIngestionPipelineFixture.DescribeRestartPortAsync(resource, "falkordb", state: null);
+        pending.ShouldContain("state=unobserved, proxied=False, containerTargetPort=6379");
+        pending.ShouldContain("hostPort=unallocated, listener=unprobed");
+
+        endpoint.AllocatedEndpoint = new AllocatedEndpoint(endpoint, "192.0.2.1", 16379);
+        string remote = await AspireIngestionPipelineFixture.DescribeRestartPortAsync(resource, "falkordb", "Starting");
+        remote.ShouldContain("hostPort=16379, listener=unprobed-non-loopback");
+        remote.ShouldNotContain("192.0.2.1");
     }
 
     [Fact]
