@@ -79,6 +79,7 @@ public sealed class RedisStackFixture : IAsyncLifetime
 
         throw last ?? new RedisConnectionException(
             ConnectionFailureType.UnableToConnect,
+            CommandFlags.None,
             "Redis did not accept a client handshake before the readiness deadline.");
     }
 
