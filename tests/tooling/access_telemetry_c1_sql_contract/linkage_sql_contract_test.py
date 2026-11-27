@@ -159,16 +159,74 @@ def read_session_response(stream, timeout=8):
     return bytes(response)
 
 
+def manifest_entries(text, indent):
+    entries = list(re.finditer('^' + ' ' * indent + r'([^ \n][^\n]*)$', text, re.MULTILINE))
+    for index, entry in enumerate(entries):
+        end = entries[index + 1].start() if index + 1 < len(entries) else len(text)
+        if not entry[1].startswith('#'):
+            yield entry[1], text[entry.end():end]
+
+
+def canonical_manifest_mapping(text, indent):
+    # The controlled manifest uses unquoted block keys at fixed indentation.
+    # Refuse duplicate keys and alternate key forms, including merges and aliases.
+    if indent and text and not text.startswith('\n'):
+        raise RuntimeError('deployment-mapping-contract-invalid')
+    fields = {}
+    for header, children in manifest_entries(text, indent):
+        field = re.fullmatch(r'([A-Za-z][A-Za-z0-9_-]*):( .*)?', header)
+        if not field or field[1] in fields:
+            raise RuntimeError('deployment-mapping-contract-invalid')
+        fields[field[1]] = (field[2] or '') + children
+    return fields
+
+
+def canonical_manifest_identity(fields, key):
+    value = fields.get(key, '')
+    if not re.fullmatch(r' [A-Za-z0-9./-]+\s*', value):
+        raise RuntimeError('deployment-mapping-contract-invalid: ' + key)
+    return value.strip()
+
+
+def postgres_manifest_container(text):
+    if re.search(r'[\x85\u2028\u2029]', text):
+        raise RuntimeError('deployment-mapping-contract-invalid')
+    stateful_sets = []
+    for document in re.split(r'^---[ \t]*$', text, flags=re.MULTILINE):
+        if not document.strip():
+            continue
+        resource = canonical_manifest_mapping(document, 0)
+        if (canonical_manifest_identity(resource, 'apiVersion'), canonical_manifest_identity(resource, 'kind')) != (
+                'apps/v1', 'StatefulSet'):
+            continue
+        metadata = canonical_manifest_mapping(resource.get('metadata', ''), 2)
+        if canonical_manifest_identity(metadata, 'name') == 'access-telemetry-postgresql':
+            stateful_sets.append(resource)
+    if len(stateful_sets) != 1:
+        raise RuntimeError('deployment-statefulset-contract-invalid')
+
+    spec = canonical_manifest_mapping(stateful_sets[0].get('spec', ''), 2)
+    template = canonical_manifest_mapping(spec.get('template', ''), 4)
+    pod = canonical_manifest_mapping(template.get('spec', ''), 6)
+    containers = pod.get('containers', '')
+    if not containers.startswith('\n'):
+        raise RuntimeError('deployment-container-contract-invalid')
+    postgres = []
+    for item, children in manifest_entries(containers, 8):
+        if not re.match(r'- \S', item):
+            raise RuntimeError('deployment-container-contract-invalid')
+        container = canonical_manifest_mapping('\n          ' + item[2:] + children, 10)
+        if canonical_manifest_identity(container, 'name') == 'postgresql':
+            postgres.append(container)
+    if len(postgres) != 1:
+        raise RuntimeError('deployment-container-contract-invalid')
+    return postgres[0]
+
+
 def assert_manifest_contract(path=DEPLOYMENT):
     """Validate the controlled deployment and return its approved local image reference."""
-    text = path.read_text()
-    markers = list(re.finditer(r'^        - name: postgresql\n', text, re.MULTILINE))
-    if len(markers) != 1:
-        raise RuntimeError('deployment-container-contract-invalid')
-    container = re.split(r'^ {0,8}\S', text[markers[0].end():], maxsplit=1, flags=re.MULTILINE)[0]
-    # Match the direct mapping keys of the controlled YAML stanza, including duplicate image keys.
-    image_values = re.findall(r'''^ {10}(?:image|'image'|"image")[ \t]*:[ \t]*(.*)$''', container, re.MULTILINE)
-    if image_values != [DEPLOYMENT_IMAGE]:
+    container = postgres_manifest_container(path.read_text())
+    if container.get('image', '').strip() != DEPLOYMENT_IMAGE:
         raise RuntimeError('deployment-image-contract-invalid')
     expected_env = {
         'POSTGRES_USER': 'memories_admin', 'POSTGRES_DB': DATABASE,
@@ -178,10 +236,10 @@ def assert_manifest_contract(path=DEPLOYMENT):
     }
     for name, expected in expected_env.items():
         values = re.findall(r'^            - name: ' + re.escape(name) +
-                            r'\n              value: (.+)$', container, re.MULTILINE)
+                            r'\n              value: (.+)$', container.get('env', ''), re.MULTILINE)
         if values != [expected]:
             raise RuntimeError('deployment-identity-contract-invalid: ' + name)
-    arguments = container.split('          args:\n', 1)[1].split('          env:', 1)[0]
+    arguments = container.get('args', '')
     expected_args = {
         'hba_file': '/etc/postgresql/pg_hba.conf', 'ident_file': '/etc/postgresql/pg_ident.conf',
         'ssl': 'on', 'ssl_min_protocol_version': 'TLSv1.2',
@@ -975,7 +1033,6 @@ class HarnessFailureTests(ReceiptOutcomeCase):
             'tag without index': source.replace(image, image.split(b'@', 1)[0] + b'\n'),
             'child in place of index': source.replace(index_digest.encode(), LINUX_AMD64_IMAGE.split('@', 1)[1].encode()),
             'missing image': source.replace(image, b''),
-            'duplicate image': source.replace(image, image + ('          image: postgres:18.7@' + wrong_digest + '\n').encode()),
             'image in another container': source.replace(image, b'').replace(
                 b'      volumes:\n', b'        - name: other\n' + image + b'      volumes:\n'),
         }
@@ -985,6 +1042,51 @@ class HarnessFailureTests(ReceiptOutcomeCase):
                 with self.assertRaisesRegex(RuntimeError, '^deployment-image-contract-invalid$'):
                     assert_manifest_contract(manifest)
         self.assertEqual(source, DEPLOYMENT.read_bytes())
+
+    def test_only_the_postgres_statefulset_pod_container_can_supply_the_image(self):
+        source = DEPLOYMENT.read_bytes()
+        header = b'---\napiVersion: apps/v1\nkind: StatefulSet\nmetadata:\n  name: access-telemetry-postgresql\n'
+        self.assertEqual(1, source.count(header))
+        decoy_header = header.replace(b'postgresql\n', b'other\n')
+        decoy = decoy_header + source.split(header, 1)[1]
+        wrong_image = source.replace(DEPLOYMENT_IMAGE.encode(), b'postgres:18.7')
+        manifest = self.state().work / 'deployment.yaml'
+        manifest.write_bytes(source + decoy)
+        self.assertEqual(LINUX_AMD64_IMAGE, assert_manifest_contract(manifest))
+        cases = {
+            'wrong resource kind': (source.replace(header, header.replace(b'StatefulSet', b'Deployment')), 'statefulset'),
+            'wrong resource name': (source.replace(header, decoy_header), 'statefulset'),
+            'wrong API version': (source.replace(header, header.replace(b'apps/v1', b'apps/v2')), 'statefulset'),
+            'init container': (source.replace(b'      containers:\n', b'      initContainers:\n'), 'container'),
+            'approved image on a decoy resource': (wrong_image + decoy, 'image'),
+        }
+        for case, (changed, expected) in cases.items():
+            with self.subTest(case=case):
+                manifest.write_bytes(changed)
+                with self.assertRaisesRegex(RuntimeError, '^deployment-' + expected + '-contract-invalid$'):
+                    assert_manifest_contract(manifest)
+
+    def test_temporary_manifest_duplicate_image_keys_are_denied(self):
+        source = DEPLOYMENT.read_bytes()
+        image = ('          image: ' + DEPLOYMENT_IMAGE + '\n').encode()
+        self.assertEqual(1, source.count(image))
+        self.assertEqual(1, source.count(b'      annotations:\n'))
+        anchored = source.replace(b'      annotations:\n',
+                                  b'      annotations:\n        example.com/map-key: &image_key image\n')
+        manifest = self.state().work / 'deployment.yaml'
+        cases = {
+            'plain duplicate': source.replace(image, image + b'          image: postgres:18.7\n'),
+            'quoted duplicate': source.replace(image, image + b'          "image": postgres:18.7\n'),
+            'escaped duplicate': source.replace(image, image + b'          "im\\x61ge": postgres:18.7\n'),
+            'alias duplicate': anchored.replace(image, image + b'          ? *image_key\n          : postgres:18.7\n'),
+            'alternate line break': source.replace(b'imagePullPolicy: IfNotPresent\n',
+                                                   b'imagePullPolicy: IfNotPresent\xc2\x85          image: postgres:18.7\n'),
+        }
+        for case, changed in cases.items():
+            with self.subTest(case=case):
+                manifest.write_bytes(changed)
+                with self.assertRaisesRegex(RuntimeError, '^deployment-mapping-contract-invalid$'):
+                    assert_manifest_contract(manifest)
 
     def test_setup_refuses_a_local_image_without_the_approved_digest_or_platform(self):
         cases = {
