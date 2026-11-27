@@ -230,7 +230,7 @@ spec:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
-            readOnlyRootFilesystem: false
+            readOnlyRootFilesystem: true
           volumeMounts:
             - name: config
               mountPath: /openbao/config

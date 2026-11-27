@@ -1463,6 +1463,32 @@ class OpenBaoSecretTransportTests(unittest.TestCase):
 
 
 class OpenBaoCleanupExecutionTests(unittest.TestCase):
+    def test_disposable_manifest_mounts_data_on_a_read_only_root(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            capture = root / "deployment.yaml"
+            kubectl = root / "kubectl"
+            kubectl.write_text(
+                f"#!/bin/sh\n[ \"$1\" = apply ] && cat > {shlex.quote(str(capture))}\n",
+                encoding="utf-8",
+            )
+            kubectl.chmod(0o755)
+            result = run_pwsh_with_stub_path(
+                "$ErrorActionPreference = 'Stop'\n"
+                ". ./tools/production-deployment-openbao.ps1\n"
+                "function Invoke-Checked { param($File, $Arguments) }\n"
+                "$tls = @{ ServerCertificatePath = 'cert'; ServerKeyPath = 'key'; CaCertificatePath = 'ca' }\n"
+                "$ownership = @{ NamespaceCreated = $false }\n"
+                "Deploy-DisposableOpenBaoService -TlsMaterial $tls -Image $script:OpenBaoPinnedImage -Ownership $ownership\n"
+                "if (-not $ownership.NamespaceCreated) { throw 'namespace not tracked' }\n",
+                root,
+            )
+            self.assertEqual(0, result.returncode, result.stderr)
+            deployment = capture.read_text(encoding="utf-8").split("kind: Deployment\n", 1)[1]
+            self.assertRegex(deployment, r"(?m)^            readOnlyRootFilesystem: true$")
+            self.assertRegex(deployment, r"(?m)^            - name: data\n              mountPath: /openbao/data$")
+            self.assertRegex(deployment, r"(?m)^        - name: data\n          emptyDir: \{\}$")
+
     def test_partial_bootstrap_and_failed_delete_only_retire_owned_resources(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

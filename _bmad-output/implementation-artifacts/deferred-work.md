@@ -4647,7 +4647,8 @@ resolution: Fallback redaction uses the documented token length and token-family
 origin: migrated from legacy ledger ("Deferred from: code review of 27-3-production-adapter-and-deployment-profile (2026-07-31)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-gh-29804293613-fix-production-deployment-verification.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-gh-29804293613-fix-production-deployment-verification.md` summary: Disposable OpenBao container still runs with readOnlyRootFilesystem false despite emptyDir data volume. evidence: Edge/hardening review; securityContext is otherwise hardened but root filesystem writability remains a residual disposable-verifier hardening gap.
-status: open
+status: done 2026-11-27
+resolution: The pinned disposable OpenBao container uses a read-only root and retains its writable emptyDir data volume. The executed manifest test checks both properties.
 
 ### DW-650: Full stubbed-kubectl execution suite for OpenBao init/unseal/KV/policy/seed/token paths is not unit-tested beyond source pins and kind e2e.
 
