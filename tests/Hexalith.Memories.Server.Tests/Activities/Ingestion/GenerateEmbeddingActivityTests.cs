@@ -15,6 +15,7 @@ using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Ingestion;
 using Hexalith.Memories.Server.Actors;
 using Hexalith.Memories.Server.Ingestion;
+using Hexalith.Memories.Server.Tests.Telemetry.Infrastructure;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -31,6 +32,7 @@ using Shouldly;
 
 using StackExchange.Redis;
 
+[Collection(TelemetryTestCollection.Name)]
 public class GenerateEmbeddingActivityTests
 {
     private const string TenantId = "test-tenant";

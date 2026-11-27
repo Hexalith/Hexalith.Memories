@@ -17,6 +17,7 @@ using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Ingestion;
 using Hexalith.Memories.Server.Actors;
 using Hexalith.Memories.Server.Ingestion;
+using Hexalith.Memories.Server.Tests.Telemetry.Infrastructure;
 using Hexalith.Memories.Telemetry;
 
 using Microsoft.Extensions.Configuration;
@@ -34,6 +35,7 @@ using StackExchange.Redis;
 /// for durable workflow replay: paused workflows whose history carries the 9.1 JSON shape
 /// <c>{"TenantId":"t","ContentText":"c"}</c> MUST continue to deserialize under 9.2+ code with
 /// <c>ContentKind == Payload</c> applied via the default value.</summary>
+[Collection(TelemetryTestCollection.Name)]
 public sealed class EmbeddingInputContentKindTests
 {
     [Fact]

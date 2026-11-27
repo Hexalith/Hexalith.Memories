@@ -16,6 +16,7 @@ using System.Threading.Tasks;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.EventStore;
 using Hexalith.Memories.Server.Handlers;
+using Hexalith.Memories.Server.Tests.Telemetry.Infrastructure;
 using Hexalith.Memories.Telemetry;
 
 using Microsoft.Extensions.Logging;
@@ -26,6 +27,7 @@ using NSubstitute;
 
 using Shouldly;
 
+[Collection(TelemetryTestCollection.Name)]
 public sealed class HandlerMismatchDetectorTests
 {
     [Fact]

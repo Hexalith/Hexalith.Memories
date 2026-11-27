@@ -7,6 +7,7 @@ namespace Hexalith.Memories.Server.Tests.Activities.Indexing;
 
 using Dapr.Workflow;
 using System.Diagnostics;
+using Hexalith.Memories.Server.Tests.Telemetry.Infrastructure;
 using Hexalith.Memories.Telemetry;
 
 using Hexalith.Memories.Contracts.V1;
@@ -23,6 +24,7 @@ using Shouldly;
 
 using StackExchange.Redis;
 
+[Collection(TelemetryTestCollection.Name)]
 public class IndexNaturalLanguageSemanticActivityTests
 {
     [Fact]

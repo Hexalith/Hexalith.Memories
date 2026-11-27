@@ -7,6 +7,7 @@ namespace Hexalith.Memories.AccessTelemetry.Tests.Lifecycle;
 
 using Hexalith.Memories.AccessTelemetry.Contracts;
 using Hexalith.Memories.AccessTelemetry.Lifecycle;
+using Hexalith.Memories.AccessTelemetry.Tests.Observability;
 
 using Microsoft.Extensions.Time.Testing;
 
@@ -18,6 +19,7 @@ using Shouldly;
 /// portable lifecycle checkpoints and the Dapr adapter qualified for PG-ONPREM-1 must agree
 /// exactly: minute-major, then <c>ExpiresAtUtc</c>, then <c>Shard</c>, then <c>RecordId</c>.
 /// </summary>
+[Collection(AccessTelemetryLifecycleMetricsTestCollection.Name)]
 public sealed class AccessTelemetryStateStoreOrderingParityTests
 {
     private static readonly DateTimeOffset Expiry = AccessTelemetryStateStoreTestRecords.Expiry;

@@ -5,6 +5,7 @@ using Dapr.Actors.Runtime;
 
 using Hexalith.Memories.AccessTelemetry.Contracts;
 using Hexalith.Memories.AccessTelemetry.Lifecycle;
+using Hexalith.Memories.AccessTelemetry.Tests.Observability;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting.Internal;
@@ -13,6 +14,7 @@ using Microsoft.Extensions.Time.Testing;
 using Shouldly;
 
 /// <summary>Verifies a registered actor's retention reminder obeys the live disable control.</summary>
+[Collection(AccessTelemetryLifecycleMetricsTestCollection.Name)]
 public sealed class AccessTelemetryRetentionDisableTests
 {
     [Fact]

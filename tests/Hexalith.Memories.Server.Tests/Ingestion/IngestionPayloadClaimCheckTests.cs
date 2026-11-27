@@ -10,6 +10,7 @@ using System.Diagnostics;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.NaturalLanguage;
+using Hexalith.Memories.Server.Tests.Telemetry.Infrastructure;
 using Hexalith.Memories.TestHelpers.Factories;
 
 using Microsoft.Extensions.Options;
@@ -18,6 +19,7 @@ using NSubstitute;
 
 using Shouldly;
 
+[Collection(TelemetryTestCollection.Name)]
 public sealed class IngestionPayloadClaimCheckTests
 {
     [Fact]

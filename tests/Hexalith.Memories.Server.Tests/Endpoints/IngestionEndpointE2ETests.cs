@@ -21,6 +21,7 @@ using Hexalith.Memories.Server.Tenants;
 using Hexalith.Memories.Server.Tests.Authentication;
 using Hexalith.Memories.Server.Tests.EventStoreIntegration;
 using Hexalith.Memories.Server.Tests.Ingestion;
+using Hexalith.Memories.Server.Tests.Telemetry.Infrastructure;
 using Hexalith.Memories.TestHelpers.Factories;
 using Hexalith.Memories.Telemetry;
 
@@ -31,6 +32,7 @@ using Shouldly;
 using StackExchange.Redis;
 
 /// <summary>Story 23.8 API-level coverage for file ingestion scheduling through the deterministic scheduler seam.</summary>
+[Collection(TelemetryTestCollection.Name)]
 public sealed class IngestionEndpointE2ETests : IDisposable
 {
     private const string StoreName = "statestore";

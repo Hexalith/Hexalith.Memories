@@ -4158,13 +4158,15 @@ origin: migrated from legacy ledger ("Deferred from: code review of spec-run-tes
 location: _bmad-output/implementation-artifacts/spec-run-tests-and-fix-failures.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-run-tests-and-fix-failures.md` summary: Reconcile the `20.5-A41-ACCESS-TELEMETRY-RETENTION` entry's now-partially-resolved non-canonical labels with the earlier tracking entry that named them. evidence: An existing entry (source_spec `spec-one-shot-artifact-tracking.md`, "Reconcile the access-telemetry retention deferred-entry schema...") named both `Target artifacts:` and `Re-open/claim trigger:` as non-canonical labels needing reconciliation. This spec's fix renamed both labels on the `20.5-A41-ACCESS-TELEMETRY-RETENTION` entry to the canonical singular form, but the other issues that same tracking entry names (a validator accepting incomplete accepted-debt metadata, contradictory proposed/applied and open-action wording) remain unresolved. Flagging so the earlier entry isn't treated as fully obsolete, nor its label-naming half duplicated as new work.
 status: open
+note: 2026-11-27 — Skipped. DW-572 already reconciles the canonical labels, validation, and proposal wording. The 2026-11-01 scope reset records the later disposition of DW-17.
 
 ### DW-585: The `[Collection(...)]` convention preventing cross-test pollution of `AccessTelemetryLifecycleMetrics`'s static counter is enforced only by an XML doc comment, not by tooling.
 
 origin: migrated from legacy ledger ("Deferred from: code review of spec-run-tests-and-fix-failures (2026-07-18)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-run-tests-and-fix-failures.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-run-tests-and-fix-failures.md` summary: The `[Collection(...)]` convention preventing cross-test pollution of `AccessTelemetryLifecycleMetrics`'s static counter is enforced only by an XML doc comment, not by tooling. evidence: `AccessTelemetryLifecycleMetricsTestCollection`'s doc comment states every test class touching the static `Records` counter via `MeterListener` "MUST be annotated" with the collection attribute, but nothing (analyzer or reflection-based guard test) verifies this. A third class added later that records to or listens on the counter without the attribute would silently reintroduce the exact flake this spec fixed, surfacing only as an intermittent CI failure. The same gap pre-exists for `Hexalith.Memories.Server.Tests`'s `TelemetryTestCollection`, suggesting a repo-wide guard test (e.g. reflection over `MeterListener` usages cross-checked against `[Collection]` attributes) would be the durable fix.
-status: open
+status: done 2026-11-27
+resolution: A Server architecture guard checks both test projects for shared listener and lifecycle instrument use, verifies nonparallel collection definitions, and covers accepted and rejected annotations. Affected tests now use nonparallel collections.
 
 ### DW-586: `MinimumDotnetSdkVersion` and its "10.0.302" user-facing message strings are duplicated as separate literals across multiple call sites instead of derived from one source of truth.
 
@@ -4179,6 +4181,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 27-3-product
 location: src/Hexalith.Memories.AccessTelemetry/Lifecycle/DaprAccessTelemetryStateStore.cs
 reason: - Concurrency safety of the Dapr access-telemetry state store under actor-failover split-brain. - ID: 27.3-CR1 - Status: carried-forward - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 1/3) - Target artifact: src/Hexalith.Memories.AccessTelemetry/Lifecycle/DaprAccessTelemetryStateStore.cs - Re-open trigger: the pending C1 two-writer / partial-commit deployment probe runs against PG-ONPREM-1. - Rationale: WriteRecordAndIndexAsync/DeleteAndVerifyAsync have no retry loop and empty-etag FirstWrite on first bucket/catalog creation is last-write-wins, so a rare split-brain window could drop an expiry-index entry. Not reachable under the single global turn-based AccessTelemetryLifecycleActor in normal operation, and fail-closed (ETag conflict throws -> at-least-once retry; orphaned record bounded by its own TTL). The ADR assigns two-writer collision / partial-commit proof to the C1 deployment probe, not unit tests.
 status: open
+note: 2026-11-27 — Skipped. DW-730 owns the parked production-shaped two-writer and failover proof. The lifecycle deployment remains disabled.
 
 ### DW-588: Live test-count totals recorded in the 27.3 Change Log predate current HEAD.
 
@@ -4216,6 +4219,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 27-3-product
 location: deploy/kubernetes/base/access-telemetry-network-policy.yaml
 reason: - Clock NetworkPolicy egress to TCP/443 is unrestricted (no `to:`); tighten to real UTC-source CIDRs before enablement. [deploy/kubernetes/base/access-telemetry-network-policy.yaml:99] - ID: 27.3-CR19 - Status: open - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 2/3) - Target artifact: deploy/kubernetes/base/access-telemetry-network-policy.yaml - Re-open trigger: before Production lifecycle enablement; the clock egress must be restricted to the real UTC-source CIDRs once the three `.example.invalid` authorities are replaced. - Rationale: The clock NetworkPolicy allows egress on TCP/443 with no `to:` selector, so the trusted-time workload can reach any address on the internet. The real UTC-source CIDRs are not knowable while all three configured authorities are `.example.invalid` placeholders, so narrowing the rule now would encode a fiction. Owner: clock-authority owner. Consequence: an unrestricted egress path exists on a workload that is scaled to zero and fail-closed.
 status: open
+note: 2026-11-27 — Skipped. Approved UTC source endpoints and CIDRs are still required. The disabled deployment uses placeholder authorities.
 decision: 2026-09-01 Supply restricted authorities — Provide approved endpoints and CIDRs, restrict egress, and add manifest guards.
 decision: 2026-09-01 Supply restricted authorities — Provide approved endpoints and CIDRs, restrict egress, and add manifest guards.
 
@@ -4237,6 +4241,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 27-3-product
 location: deploy/kubernetes/base/access-telemetry-deployments.yaml
 reason: - Pre-enablement operational hardening: probe `wget`/`sh` dependency, missing metrics ingress, startup-vs-initTimeout cold-start race, terminationGracePeriod/PDB node-drain block, manual restart on password/CA rotation. [deploy/kubernetes/base/access-telemetry-deployments.yaml] - ID: 27.3-CR20 - Status: open - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 2/3) - Target artifact: deploy/kubernetes/base/access-telemetry-deployments.yaml - Re-open trigger: before Production lifecycle enablement; each named hardening item must be resolved or accepted with an owner. - Rationale: Five independent pre-enablement items on a workload that is scaled to zero: the exec probes require `wget` and `/bin/sh` in images that are still `:0.0.0` placeholders; there is no metrics/monitoring ingress, so Prometheus reports NoData; the 60s startup probe races the store's `initTimeout: 1m` on a cold start; `terminationGracePeriodSeconds: 120` plus a `minAvailable: 1` PDB on a single replica blocks node drain; and DB/OpenBao password and TLS-CA rotation need a manual sidecar restart because HotReload is off for an actor state store. Owner: Hexalith Platform Operations. Consequence: none today (replicas are zero); each becomes live at enablement.
 status: open
+note: 2026-11-27 — Skipped. Platform Operations must qualify the image, metrics ingress, cold start, node drain, and credential rotation against the deployment selected under DW-730.
 
 ### DW-597: Docs: release-runbook four-image expansion belongs with DW 27.3-CR5; ADR byte-bucket boundary overlap and `edgeTypeCount>16` ambiguity; verify ADR `Story 27.2 C1 mapping` block attribution.
 

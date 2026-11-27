@@ -20,6 +20,7 @@ using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Ingestion;
 using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.NaturalLanguage;
+using Hexalith.Memories.Server.Tests.Telemetry.Infrastructure;
 
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -31,6 +32,7 @@ using Shouldly;
 
 /// <summary>Story 9.2 Task 2.8 — tests for <see cref="GenerateNaturalLanguageDescriptionActivity"/>.
 /// Covers AC #1, #5, Risk #5 (degraded path), and exception-surface safe-baseline (Spike 0.3).</summary>
+[Collection(TelemetryTestCollection.Name)]
 public sealed class GenerateNaturalLanguageDescriptionActivityTests
 {
     private const string TenantId = "t-1";
