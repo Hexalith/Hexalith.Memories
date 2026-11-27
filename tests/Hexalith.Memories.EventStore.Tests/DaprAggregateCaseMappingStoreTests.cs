@@ -7,6 +7,7 @@ namespace Hexalith.Memories.EventStore.Tests;
 
 using System.Collections.Generic;
 
+using Dapr;
 using Dapr.Client;
 
 using Hexalith.Memories.EventStore;
@@ -68,6 +69,69 @@ public sealed class DaprAggregateCaseMappingStoreTests
         fake.ContainsKey("tenant-1:eventstore:aggregate-case-map:Claims").ShouldBeTrue();
         fake.ContainsKey("tenant-1:eventstore:aggregate-case-map:Orders").ShouldBeTrue();
         (await store.GetAggregateCountAsync("tenant-1", CancellationToken.None)).ShouldBe(2);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TryStoreCaseIdAsync_WhenTwoWritersCreateIndex_KeepsBothMappings(bool throwsConflict)
+    {
+        FakeDaprStateStore fake = new();
+        DaprClient client = fake.CreateClient();
+        DaprAggregateCaseMappingStore store = new(client, Options.Create(new EventStoreStateStoreOptions { StateStoreName = Store }));
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(5));
+        var firstCreationReached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var winningCreationCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        _ = client.TrySaveStateAsync(
+                Store, IndexKey, Arg.Any<List<string>>(), string.Empty, Arg.Any<StateOptions?>(),
+                Arg.Any<IReadOnlyDictionary<string, string>?>(), Arg.Any<CancellationToken>())
+            .Returns(async call =>
+            {
+                List<string> update = call.ArgAt<List<string>>(2);
+                if (update.ShouldHaveSingleItem() == "Claims")
+                {
+                    // Both writers read an absent index. Let Orders commit before Claims
+                    // attempts its empty-ETag write, which only FirstWrite can reject.
+                    firstCreationReached.SetResult();
+                    await winningCreationCompleted.Task.WaitAsync(deadline.Token);
+                    if (call.ArgAt<StateOptions?>(4)?.Concurrency == ConcurrencyMode.FirstWrite)
+                    {
+                        if (throwsConflict)
+                        {
+                            throw new DaprException("FirstWrite rejected by the Redis state component.");
+                        }
+
+                        return false;
+                    }
+                }
+
+                fake.Seed(IndexKey, update);
+                return true;
+            });
+
+        Task<bool> claims = store.TryStoreCaseIdAsync("tenant-1", "Claims", "case-claims", deadline.Token);
+        try
+        {
+            await firstCreationReached.Task.WaitAsync(deadline.Token);
+            (await store.TryStoreCaseIdAsync("tenant-1", "Orders", "case-orders", deadline.Token)).ShouldBeTrue();
+        }
+        finally
+        {
+            winningCreationCompleted.SetResult();
+            (await claims.WaitAsync(deadline.Token)).ShouldBeTrue();
+        }
+
+        (await store.GetCaseIdAsync("tenant-1", "Claims", deadline.Token)).ShouldBe("case-claims");
+        (await store.GetCaseIdAsync("tenant-1", "Orders", deadline.Token)).ShouldBe("case-orders");
+        (await store.GetAggregateCountAsync("tenant-1", deadline.Token)).ShouldBe(2);
+        fake.TryGet(IndexKey, out List<string>? index).ShouldBeTrue();
+        index.ShouldBe(["Orders", "Claims"]);
+        _ = client.Received(2).TrySaveStateAsync(
+            Store, IndexKey, Arg.Any<List<string>>(), string.Empty,
+            Arg.Is<StateOptions?>(options => options != null && options.Concurrency == ConcurrencyMode.FirstWrite),
+            Arg.Any<IReadOnlyDictionary<string, string>?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -180,6 +244,120 @@ public sealed class DaprAggregateCaseMappingStoreTests
         ex.Message.ShouldContain("Failed to index");
         fake.ContainsKey("tenant-1:eventstore:aggregate-case-map:Claims").ShouldBeFalse();
         fake.ContainsKey(IndexKey).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task TryStoreCaseIdAsync_WhenFirstIndexSaveFailsWithoutWinner_RollsBackMapEntryAndThrows()
+    {
+        FakeDaprStateStore fake = new();
+        DaprClient client = fake.CreateClient();
+        var failure = new DaprException("The state store could not save the index.");
+        _ = client.TrySaveStateAsync(
+                Store, IndexKey, Arg.Any<List<string>>(), string.Empty, Arg.Any<StateOptions?>(),
+                Arg.Any<IReadOnlyDictionary<string, string>?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<bool>(failure));
+        DaprAggregateCaseMappingStore store = new(client, Options.Create(new EventStoreStateStoreOptions { StateStoreName = Store }));
+
+        DaprException actual = await Should.ThrowAsync<DaprException>(
+            () => store.TryStoreCaseIdAsync("tenant-1", "Claims", "case-claims", CancellationToken.None));
+
+        actual.ShouldBeSameAs(failure);
+        fake.ContainsKey("tenant-1:eventstore:aggregate-case-map:Claims").ShouldBeFalse();
+        fake.ContainsKey(IndexKey).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task TryStoreCaseIdAsync_WhenLastIndexSaveCommitsButThrows_RecognizesThePublishedMapping()
+    {
+        FakeDaprStateStore fake = new();
+        DaprClient client = fake.CreateClient();
+        int indexWrites = 0;
+        _ = client.TrySaveStateAsync(
+                Store, IndexKey, Arg.Any<List<string>>(), string.Empty, Arg.Any<StateOptions?>(),
+                Arg.Any<IReadOnlyDictionary<string, string>?>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                if (++indexWrites < 8)
+                {
+                    return Task.FromResult(false);
+                }
+
+                fake.Seed(IndexKey, call.ArgAt<List<string>>(2));
+                return Task.FromException<bool>(new DaprException("The reply was lost after writing the index."));
+            });
+        DaprAggregateCaseMappingStore store = new(client, Options.Create(new EventStoreStateStoreOptions { StateStoreName = Store }));
+
+        (await store.TryStoreCaseIdAsync("tenant-1", "Claims", "case-claims", CancellationToken.None)).ShouldBeTrue();
+
+        indexWrites.ShouldBe(8);
+        (await store.GetCaseIdAsync("tenant-1", "Claims", CancellationToken.None)).ShouldBe("case-claims");
+        (await store.GetAggregateCountAsync("tenant-1", CancellationToken.None)).ShouldBe(1);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TryStoreCaseIdAsync_WhenIndexSaveIsCancelled_OnlyRemovesUnindexedMapping(bool indexCommitted)
+    {
+        const string mapKey = "tenant-1:eventstore:aggregate-case-map:Claims";
+        FakeDaprStateStore fake = new();
+        DaprClient client = fake.CreateClient();
+        using var cancellation = new CancellationTokenSource();
+        _ = client.TrySaveStateAsync(
+                Store, IndexKey, Arg.Any<List<string>>(), string.Empty, Arg.Any<StateOptions?>(),
+                Arg.Any<IReadOnlyDictionary<string, string>?>(), cancellation.Token)
+            .Returns(call =>
+            {
+                if (indexCommitted)
+                {
+                    fake.Seed(IndexKey, call.ArgAt<List<string>>(2));
+                }
+
+                cancellation.Cancel();
+                return Task.FromCanceled<bool>(cancellation.Token);
+            });
+        _ = client.DeleteStateAsync(
+                Store, mapKey, Arg.Any<StateOptions?>(), Arg.Any<IReadOnlyDictionary<string, string>?>(), cancellation.Token)
+            .Returns(_ => Task.FromCanceled(cancellation.Token));
+        DaprAggregateCaseMappingStore store = new(client, Options.Create(new EventStoreStateStoreOptions { StateStoreName = Store }));
+
+        OperationCanceledException cancelled = await Should.ThrowAsync<OperationCanceledException>(
+            () => store.TryStoreCaseIdAsync("tenant-1", "Claims", "case-claims", cancellation.Token));
+
+        cancelled.CancellationToken.ShouldBe(cancellation.Token);
+        fake.ContainsKey(mapKey).ShouldBe(indexCommitted);
+        fake.ContainsKey(IndexKey).ShouldBe(indexCommitted);
+        _ = client.Received(1).GetStateAsync<List<string>?>(
+            Store,
+            IndexKey,
+            Arg.Any<ConsistencyMode?>(),
+            Arg.Any<IReadOnlyDictionary<string, string>?>(),
+            Arg.Is<CancellationToken>(token => token.CanBeCanceled && token != cancellation.Token));
+    }
+
+    [Fact]
+    public async Task TryStoreCaseIdAsync_WhenRecoveryReadAlsoFails_PreservesOriginalFailureAndMapping()
+    {
+        FakeDaprStateStore fake = new();
+        DaprClient client = fake.CreateClient();
+        var recoveryFailure = new DaprException("The index could not be checked during compensation.");
+        var indexFailure = new InvalidOperationException("The index write did not report success.");
+        _ = client.TrySaveStateAsync(
+                Store, IndexKey, Arg.Any<List<string>>(), string.Empty, Arg.Any<StateOptions?>(),
+                Arg.Any<IReadOnlyDictionary<string, string>?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<bool>(indexFailure));
+        _ = client.GetStateAsync<List<string>?>(
+                Store, IndexKey, Arg.Any<ConsistencyMode?>(),
+                Arg.Any<IReadOnlyDictionary<string, string>?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<List<string>?>(recoveryFailure));
+        DaprAggregateCaseMappingStore store = new(client, Options.Create(new EventStoreStateStoreOptions { StateStoreName = Store }));
+
+        InvalidOperationException failure = await Should.ThrowAsync<InvalidOperationException>(
+            () => store.TryStoreCaseIdAsync("tenant-1", "Claims", "case-claims", CancellationToken.None));
+
+        failure.ShouldBeSameAs(indexFailure);
+        failure.Data["CompensationFailure"].ShouldBeSameAs(recoveryFailure);
+        fake.ContainsKey("tenant-1:eventstore:aggregate-case-map:Claims").ShouldBeTrue();
     }
 
     [Fact]

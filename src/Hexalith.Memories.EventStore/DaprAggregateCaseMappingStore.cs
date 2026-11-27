@@ -30,6 +30,7 @@ internal sealed class DaprAggregateCaseMappingStore : IAggregateCaseMappingStore
     private const string LockedValue = "locked";
 
     private static readonly StateOptions FirstWriteOptions = new() { Concurrency = ConcurrencyMode.FirstWrite };
+    private static readonly TimeSpan IndexRecoveryTimeout = TimeSpan.FromSeconds(5);
 
     private readonly DaprClient _daprClient;
     private readonly string _stateStoreName;
@@ -151,12 +152,28 @@ internal sealed class DaprAggregateCaseMappingStore : IAggregateCaseMappingStore
         {
             await EnsureIndexedAsync(tenantId, aggregateType, cancellationToken).ConfigureAwait(false);
         }
-        catch
+        catch (Exception failure)
         {
-            // Compensate: an unindexed map entry is invisible to purge/delete-by-case (review patch #2).
-            await _daprClient
-                .DeleteStateAsync(_stateStoreName, mapKey, cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
+            // Cancellation or a transport failure can hide a committed index write.
+            // Inspect it using an independent budget before removing the mapping.
+            using var recovery = new CancellationTokenSource(IndexRecoveryTimeout);
+            try
+            {
+                List<string>? index = await _daprClient
+                    .GetStateAsync<List<string>?>(_stateStoreName, GetIndexKey(tenantId), cancellationToken: recovery.Token)
+                    .ConfigureAwait(false);
+                if (index?.Contains(aggregateType, StringComparer.Ordinal) != true)
+                {
+                    await _daprClient
+                        .DeleteStateAsync(_stateStoreName, mapKey, cancellationToken: recovery.Token)
+                        .ConfigureAwait(false);
+                }
+            }
+            catch (Exception recoveryFailure)
+            {
+                failure.Data["CompensationFailure"] = recoveryFailure;
+            }
+
             throw;
         }
 
@@ -318,12 +335,32 @@ internal sealed class DaprAggregateCaseMappingStore : IAggregateCaseMappingStore
                 return;
             }
 
-            index.Add(aggregateType);
-            if (await _daprClient
-                .TrySaveStateAsync(_stateStoreName, indexKey, index, etag, cancellationToken: cancellationToken)
-                .ConfigureAwait(false))
+            List<string> nextIndex = [.. index, aggregateType];
+            StateOptions? concurrency = string.IsNullOrEmpty(etag) ? FirstWriteOptions : null;
+            try
             {
-                return;
+                if (await _daprClient
+                    .TrySaveStateAsync(_stateStoreName, indexKey, nextIndex, etag, concurrency, cancellationToken: cancellationToken)
+                    .ConfigureAwait(false))
+                {
+                    return;
+                }
+            }
+            catch (DaprException) when (concurrency is not null)
+            {
+                // Redis can throw on a FirstWrite conflict. Retry only when an index now exists.
+                List<string>? current = await _daprClient
+                    .GetStateAsync<List<string>?>(_stateStoreName, indexKey, cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+                if (current is null)
+                {
+                    throw;
+                }
+
+                if (current.Contains(aggregateType, StringComparer.Ordinal))
+                {
+                    return;
+                }
             }
 
             await DelayBackoffAsync(attempt, cancellationToken).ConfigureAwait(false);

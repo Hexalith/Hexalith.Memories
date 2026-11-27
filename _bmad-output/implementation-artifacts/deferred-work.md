@@ -4938,13 +4938,15 @@ origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-gr
 location: _bmad-output/implementation-artifacts/spec-mark-completed-pushall-specs-done.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-mark-completed-pushall-specs-done.md` summary: Backfill unavailable historical command-level validation and pruning logs for the five completed pushall synchronization specs. evidence: The specs list intended validation commands but do not retain their contemporaneous output; the current repository proves the landed commits and absence of remaining branches but cannot reconstruct exact historical command results.
 status: open
+note: 2026-11-27 — Skipped. The landed commits remain verifiable, but the contemporaneous outputs were never retained and cannot be reconstructed from Git history.
 
 ### DW-689: Make first creation of the aggregate-to-case mapping index concurrency-safe.
 
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence — eighth pass (2026-08-14)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-publish-approved-module-baselines-2026-08-01.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-publish-approved-module-baselines-2026-08-01.md` summary: Make first creation of the aggregate-to-case mapping index concurrency-safe. evidence: `DaprAggregateCaseMappingStore.EnsureIndexedAsync` creates an absent index without `FirstWrite`, so concurrent first mappings can both save from an empty ETag and lose one aggregate type.
-status: open
+status: done 2026-11-27
+resolution: Empty-ETag index creation uses Dapr FirstWrite. Deterministic tests verify both conflict forms, lost replies after commit, and bounded rollback after cancellation. Persisted membership separates a committed index from an unindexed partial write.
 
 ### DW-690: Make case-mapping deletion recoverable when map-key deletion fails after index removal.
 
@@ -6203,3 +6205,12 @@ source_spec: spec-six-deferred-telemetry-and-recovery.md
 severity: medium
 reason: AnnotationProjectionWorkflow invokes IngestionWorkflow directly as a child, bypassing the scheduler that tracks workflow instance IDs. After the legacy drain is confirmed, the startup gate can miss an active annotation child. Track that entry point without changing existing workflow history replay.
 status: open
+
+## Deferred from the review of the six-item bootstrap, graph, and mapping batch (2026-11-27)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-six-deferred-bootstrap-graph-and-mapping.md`
+  summary: Propagate the tenant verifier’s lookup deadline into the Dapr embedding configuration actor read.
+  evidence: The verifier applies its deadline to its own wait while the actor receives the caller token. Add a controlled live state read to verify deadline propagation across both Dapr hops and verify that an expired result cannot fill the cache.
+- source_spec: `_bmad-output/implementation-artifacts/spec-six-deferred-bootstrap-graph-and-mapping.md`
+  summary: Verify and document first-index creation during mixed-version Memories rollouts.
+  evidence: Dapr Redis 1.19.1 rejects missing-ETag updates to rows marked FirstWrite. A running pre-fix writer can still create an index without the marker between an upgraded writer’s read and creation attempt. Existing rows with an ETag still use compare-and-save. Settle safe initialization while both versions can receive writes.
