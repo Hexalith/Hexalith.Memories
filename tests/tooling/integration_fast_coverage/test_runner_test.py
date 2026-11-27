@@ -33,6 +33,13 @@ if [ -n "${results:-}" ]; then
     if [ "${TEST_COVERAGE+x}" = x ]; then
         printf '%s\\n' "$TEST_COVERAGE" > "$results/fixture.coverage.cobertura.xml"
     fi
+    if [ "${TEST_ATTACHMENT+x}" = x ]; then
+        mkdir -p "$results/attachments"
+        printf '%s\\n' "$TEST_ATTACHMENT" > "$results/attachments/trace.txt"
+    fi
+fi
+if [ -n "${TEST_DOTNET_BEFORE_EXIT:-}" ]; then
+    "$TEST_DOTNET_BEFORE_EXIT" || exit $?
 fi
 status=${TEST_DOTNET_EXIT:-0}
 if [ "$status" -ne 0 ]; then
@@ -289,6 +296,73 @@ class IntegrationTestRunnerTests(unittest.TestCase):
         self.assertIn("path changed during preparation", result.stderr)
         self.assertFalse(self.calls.exists())
 
+    def test_bash_preserves_unrelated_reports_when_parent_changes_before_dotnet(self):
+        self.assert_reports_survive_parent_replacement("before-dotnet", use_symlink=True, native_status=0)
+
+    def test_bash_ignores_unrelated_reports_when_parent_changes_before_collection(self):
+        self.assert_reports_survive_parent_replacement("before-collection", use_symlink=False, native_status=37)
+
+    def assert_reports_survive_parent_replacement(self, timing, *, use_symlink, native_status):
+        parent = self.root / "reports"
+        results = parent / "nested"
+        moved = self.root / "moved-reports"
+        replacement = self.root / "replacement"
+        project = Path(self.read_inventory("integration-slow")[0]).stem
+        project_results = replacement / "nested" / project
+        project_results.mkdir(parents=True)
+        foreign_reports = {
+            f"{project}.trx": TRX.replace('executed="1"', 'executed="919"'),
+            "fixture.coverage.cobertura.xml": "<foreign-coverage/>",
+        }
+        for filename, content in foreign_reports.items():
+            (project_results / filename).write_text(content, encoding="utf-8")
+        results.mkdir(parents=True)
+        (results / RESULTS_MARKER).write_bytes(RESULTS_SIGNATURE)
+        (results / "stale.txt").write_text("previous run", encoding="utf-8")
+
+        swap = self.bin / "replace-results-parent"
+        swap.write_text(
+            "#!/bin/sh\n"
+            'set -eu\n'
+            'mv "$TEST_RESULTS_PARENT" "$TEST_MOVED_PARENT"\n'
+            + (
+                'ln -s "$TEST_REPLACEMENT_PARENT" "$TEST_RESULTS_PARENT"\n'
+                if use_symlink else 'mv "$TEST_REPLACEMENT_PARENT" "$TEST_RESULTS_PARENT"\n'
+            ),
+            encoding="utf-8",
+        )
+        swap.chmod(0o755)
+        self.environment.update(
+            TEST_RESULTS_PARENT=str(parent), TEST_MOVED_PARENT=str(moved),
+            TEST_REPLACEMENT_PARENT=str(replacement), TEST_REPLACE_RESULTS_PARENT=str(swap),
+            TEST_TRX=TRX, TEST_COVERAGE="<owned-coverage/>", TEST_DOTNET_EXIT=str(native_status),
+        )
+        if timing == "before-dotnet":
+            # The first project mkdir runs after cleanup and before the native process.
+            mkdir = self.bin / "mkdir"
+            mkdir.write_text(
+                '#!/bin/sh\nset -eu\n"$TEST_REPLACE_RESULTS_PARENT"\nexec "$TEST_MKDIR" "$@"\n',
+                encoding="utf-8",
+            )
+            mkdir.chmod(0o755)
+            self.environment["TEST_MKDIR"] = shutil.which("mkdir")
+        else:
+            self.environment["TEST_DOTNET_BEFORE_EXIT"] = str(swap)
+
+        result = self.run_wrapper([
+            *self.bash, "--filter", "Category=IntegrationSlow", "--results-directory", "reports/nested",
+            "--coverage",
+        ])
+        self.assertNotIn("Executed 919 tests", result.stdout)
+        self.assertEqual(RESULTS_SIGNATURE, (moved / "nested" / RESULTS_MARKER).read_bytes())
+        self.assertFalse((moved / "nested" / "stale.txt").exists())
+        observed_reports = {
+            path.name: path.read_text(encoding="utf-8") for path in (results / project).iterdir()
+        }
+        self.assertEqual(foreign_reports, observed_reports)
+        self.assertEqual(native_status or 1, result.returncode, result.stderr)
+        self.assertIn("path changed during report generation", result.stderr)
+
     def test_bash_preserves_native_failure_when_reports_are_missing(self):
         self.environment["TEST_DOTNET_EXIT"] = "37"
         command = [*self.bash, "--filter", "Category=IntegrationSlow", "--results-directory", "reports"]
@@ -322,6 +396,7 @@ class IntegrationTestRunnerTests(unittest.TestCase):
     def test_bash_keeps_available_coverage_after_a_native_failure(self):
         self.environment["TEST_DOTNET_EXIT"] = "37"
         self.environment["TEST_COVERAGE"] = "<coverage/>"
+        self.environment["TEST_ATTACHMENT"] = "test trace"
         result = self.run_wrapper([
             *self.bash, "--filter", "Category=IntegrationSlow", "--results-directory", "reports", "--coverage",
         ])
@@ -329,6 +404,51 @@ class IntegrationTestRunnerTests(unittest.TestCase):
         reports = list((self.root / "reports").glob("*/coverage.cobertura.xml"))
         self.assertEqual(1, len(reports))
         self.assertEqual("<coverage/>\n", reports[0].read_text(encoding="utf-8"))
+        self.assertEqual("<coverage/>\n", (reports[0].parent / "fixture.coverage.cobertura.xml").read_text())
+        self.assertEqual("test trace\n", (reports[0].parent / "attachments" / "trace.txt").read_text())
+
+    def test_bash_transfers_reports_when_scratch_is_on_another_filesystem(self):
+        (self.bin / "sitecustomize.py").write_text(
+            "import errno\n"
+            "import os\n"
+            "from pathlib import Path\n"
+            "import sys\n"
+            "\n"
+            "def simulate_cross_device_transfer(event, args):\n"
+            "    if event == 'os.rename' and 'memories-test-reports-' in os.fspath(args[0]):\n"
+            "        raise OSError(errno.EXDEV, 'simulated cross-device rename')\n"
+            "    if event == 'shutil.copytree' and Path(args[0]).parent.name.startswith('memories-test-reports-'):\n"
+            "        binding = os.environ.get('TEST_TRANSFER_BINDING')\n"
+            "        if binding:\n"
+            "            os.rename(binding, binding + '-moved')\n"
+            "            replacement = Path(binding) / Path(args[1]).parent.name\n"
+            "            replacement.mkdir(parents=True)\n"
+            "            (replacement / 'sentinel.txt').write_text('unrelated', encoding='utf-8')\n"
+            "\n"
+            "sys.addaudithook(simulate_cross_device_transfer)\n",
+            encoding="utf-8",
+        )
+        self.environment.update(PYTHONPATH=str(self.bin), TEST_TRX=TRX, TEST_COVERAGE="<coverage/>")
+        project = Path(self.read_inventory("integration-slow")[0]).stem
+        for name, expected_status in (("stable", 0), ("renamed", 1)):
+            with self.subTest(name=name):
+                binding = self.root / name
+                results = binding
+                if expected_status:
+                    self.environment["TEST_TRANSFER_BINDING"] = str(binding)
+                    results = self.root / f"{name}-moved"
+                result = self.run_wrapper([
+                    *self.bash, "--filter", "Category=IntegrationSlow", "--results-directory", name, "--coverage",
+                ])
+                self.assertEqual(expected_status, result.returncode, result.stderr)
+                self.assertCountEqual([RESULTS_MARKER, project], [path.name for path in results.iterdir()])
+                self.assertEqual(TRX, (results / project / f"{project}.trx").read_text().strip())
+                self.assertEqual("<coverage/>\n", (results / project / "coverage.cobertura.xml").read_text())
+                if expected_status:
+                    self.assertIn("path changed during report generation", result.stderr)
+                    unrelated = [path for path in binding.rglob("*") if path.is_file()]
+                    self.assertEqual(["sentinel.txt"], [path.name for path in unrelated])
+                    self.assertEqual("unrelated", unrelated[0].read_text())
 
     def test_bash_requires_reports_after_a_successful_test_process(self):
         command = [*self.bash, "--filter", "Category=IntegrationSlow", "--results-directory", "reports"]

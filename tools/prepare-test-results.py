@@ -1,12 +1,15 @@
-"""Prepare a PowerShell results directory using POSIX directory descriptors."""
+"""Prepare test results using POSIX directory descriptors."""
 
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 import errno
 import os
 from pathlib import Path
 import shutil
 import stat
+import subprocess
 import sys
+import tempfile
+import uuid
 
 
 MARKER = ".hexalith-memories-test-results"
@@ -25,14 +28,14 @@ def open_directory(parent, component):
         return os.open(component, DIRECTORY_FLAGS, dir_fd=parent)
 
 
-def require_unchanged(bindings, results):
+def require_unchanged(bindings, results, phase="preparation"):
     for parent, component, directory in bindings:
         try:
             current = os.stat(component, dir_fd=parent, follow_symlinks=parent is None)
         except FileNotFoundError:
             current = None
         if current is None or not os.path.samestat(current, os.fstat(directory)):
-            raise ValueError(f"path changed during preparation. Refusing to use '{results}'.")
+            raise ValueError(f"path changed during {phase}. Refusing to use '{results}'.")
 
 
 def has_ownership_marker(directory):
@@ -49,7 +52,8 @@ def has_ownership_marker(directory):
         return os.path.samestat(metadata, os.fstat(descriptor)) and receipt.read(len(SIGNATURE) + 1) == SIGNATURE
 
 
-def prepare_results(root, results):
+@contextmanager
+def prepared_results(root, results):
     components = results.relative_to(root).parts
     if not components or ".." in components:
         raise ValueError("must resolve beneath the repository root.")
@@ -60,8 +64,9 @@ def prepare_results(root, results):
 
     with ExitStack() as descriptors:
         # The helper process starts in the checkout and can change its own cwd during cleanup.
-        directory = os.open(".", DIRECTORY_FLAGS)
-        descriptors.callback(os.close, directory)
+        checkout = os.open(".", DIRECTORY_FLAGS)
+        descriptors.callback(os.close, checkout)
+        directory = checkout
         current = root
         bindings = [(None, root, directory)]
         for component in components:
@@ -91,20 +96,77 @@ def prepare_results(root, results):
         else:
             # Relative names stay anchored by this process's cwd, including on Python <3.11.
             os.fchdir(directory)
-            for entry in entries:
-                if entry == MARKER:
-                    continue
-                if stat.S_ISDIR(os.lstat(entry).st_mode):
-                    shutil.rmtree(entry)
-                else:
-                    os.unlink(entry)
+            try:
+                for entry in entries:
+                    if entry == MARKER:
+                        continue
+                    if stat.S_ISDIR(os.lstat(entry).st_mode):
+                        shutil.rmtree(entry)
+                    else:
+                        os.unlink(entry)
+            finally:
+                os.fchdir(checkout)
         require_unchanged(bindings, results)
+        yield directory, bindings
+
+
+def publish_reports(staging, directory):
+    for entry in staging.iterdir():
+        try:
+            os.rename(entry, entry.name, dst_dir_fd=directory)
+        except OSError as error:
+            if error.errno != errno.EXDEV:
+                raise
+            # Stage on the destination filesystem before renaming if the scratch
+            # directory is mounted elsewhere. The cwd is still descriptor-bound.
+            os.fchdir(directory)
+            transfer = Path(f".memories-report-transfer-{uuid.uuid4().hex}")
+            os.mkdir(transfer, mode=0o700, dir_fd=directory)
+            try:
+                copied = transfer / entry.name
+                shutil.copytree(entry, copied, symlinks=True)
+                os.rename(copied, entry.name, dst_dir_fd=directory)
+            finally:
+                shutil.rmtree(transfer)
+
+
+def run_with_reports(root, results, command):
+    scratch = Path(tempfile.gettempdir()).resolve()
+    checkout = Path.cwd()
+    if scratch == checkout or checkout in scratch.parents:
+        raise ValueError("requires a temporary directory outside the repository.")
+
+    # dotnet resolves a relative results path to an absolute name before
+    # launching the test application. Give it a private path independent of
+    # the checkout, then publish to the directory held open since cleanup.
+    with tempfile.TemporaryDirectory(prefix="memories-test-reports-", dir=scratch) as staging:
+        with prepared_results(root, results) as (directory, bindings):
+            process = subprocess.run(
+                command,
+                env=dict(os.environ, MEMORIES_TEST_REPORT_STAGING=staging),
+                check=False,
+            )
+            status = process.returncode if process.returncode >= 0 else 128 - process.returncode
+            try:
+                require_unchanged(bindings, results, "report generation")
+                publish_reports(Path(staging), directory)
+                require_unchanged(bindings, results, "report generation")
+            except (OSError, RuntimeError, ValueError) as error:
+                if status == 0:
+                    raise
+                print(f"--results-directory {error}", file=sys.stderr)
+            else:
+                print(f"Test results directory is '{results}'.")
+            return status
 
 
 if __name__ == "__main__":
-    root, results, *report_option = sys.argv[1:]
-    option = report_option[0] if report_option else "-ResultsDirectory"
+    root, results, *arguments = sys.argv[1:]
+    option = arguments[0] if arguments else "-ResultsDirectory"
     try:
-        prepare_results(Path(root), Path(results))
+        if len(arguments) > 1:
+            raise SystemExit(run_with_reports(Path(root), Path(results), arguments[1:]))
+        with prepared_results(Path(root), Path(results)):
+            pass
     except (OSError, RuntimeError, ValueError) as error:
         raise SystemExit(f"{option} {error}") from None

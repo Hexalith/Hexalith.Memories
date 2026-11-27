@@ -8,6 +8,210 @@
 #   ./tools/test.sh --coverage
 set -euo pipefail
 
+read_inventory() {
+  local inventory_file="$1"
+  local inventory_path="$REPO_ROOT/$inventory_file"
+
+  if [[ ! -f "$inventory_path" ]]; then
+    echo "Test project inventory '$inventory_file' was not found." >&2
+    return 1
+  fi
+
+  # Most repository text is intentionally materialized as CRLF in CI. Normalize only the
+  # terminal carriage return so project paths passed to dotnet remain exact on both platforms.
+  sed 's/\r$//' "$inventory_path" | grep -vE '^[[:space:]]*(#|$)'
+}
+
+# Translate the wrapper's VSTest-shaped Category expressions into Microsoft.Testing.Platform
+# trait filters. SDK 10.0.400 selects MTP in global.json; VSTest --filter executes zero tests.
+append_mtp_filter_args() {
+  local filter="$1"
+  MTP_FILTER_ARGS=()
+  if [[ -z "$filter" ]]; then
+    return 0
+  fi
+
+  local part
+  local -a parts
+  IFS='&' read -ra parts <<< "$filter"
+  for part in "${parts[@]}"; do
+    case "$part" in
+      Category!=*)
+        MTP_FILTER_ARGS+=(--filter-not-trait "Category=${part#Category!=}")
+        ;;
+      Category=*)
+        MTP_FILTER_ARGS+=(--filter-trait "$part")
+        ;;
+      *)
+        echo "Unsupported test filter '$part' in '$filter'; Microsoft.Testing.Platform requires Category trait expressions." >&2
+        return 1
+        ;;
+    esac
+  done
+}
+
+run_projects() {
+  local RESULTS_ROOT="$1" FILTER="$2" CONFIGURATION="$3" NO_BUILD="$4" COVERAGE="$5"
+  shift 5
+  local project EFFECTIVE_FILTER TRX_PATH EXPECTED_EXECUTED_TESTS project_results_directory project_name
+  local benchmark_result benchmark_target test_exit_code report_exit_code
+  local -a CMD MTP_FILTER_ARGS
+  for project in "$@"; do
+    CMD=(dotnet test)
+    EFFECTIVE_FILTER="$FILTER"
+    if [[ "$FILTER" == "Category!=Integration" ]]; then
+      EFFECTIVE_FILTER="Category!=Integration&Category!=Benchmark"
+    elif [[ "$FILTER" == "Category=Benchmark" ]]; then
+      EFFECTIVE_FILTER=""
+    fi
+
+    if [[ -n "$project" ]]; then
+      CMD+=(--project "$project")
+    fi
+
+    CMD+=(--configuration "$CONFIGURATION")
+
+    if [[ "$NO_BUILD" == true ]]; then
+      CMD+=(--no-build)
+    fi
+
+    append_mtp_filter_args "$EFFECTIVE_FILTER"
+    if [[ ${#MTP_FILTER_ARGS[@]} -gt 0 ]]; then
+      CMD+=("${MTP_FILTER_ARGS[@]}")
+    fi
+
+    TRX_PATH=""
+    EXPECTED_EXECUTED_TESTS=""
+    project_results_directory=""
+    if [[ -n "$RESULTS_ROOT" ]]; then
+      if [[ -n "$project" ]]; then
+        project_name="$(basename "$project" .csproj)"
+      else
+        project_name="solution"
+      fi
+
+      project_results_directory="$RESULTS_ROOT/$project_name"
+      mkdir -p "$project_results_directory"
+      TRX_PATH="$project_results_directory/$project_name.trx"
+      CMD+=(--results-directory "$project_results_directory" --report-xunit-trx --report-xunit-trx-filename "$project_name.trx")
+      if [[ "$FILTER" == "Category=Benchmark" ]]; then
+        EXPECTED_EXECUTED_TESTS="17"
+      fi
+    fi
+
+    if [[ "$COVERAGE" == true ]]; then
+      # coverlet.MTP matches the Coverlet include/exclude contract in tests/tests.runsettings.
+      # Microsoft.Testing.Extensions.CodeCoverage under-counted Hexalith.Memories.Server hits
+      # on GitHub-hosted runners (23% vs ~75% Coverlet), which failed the 76.5% line gate.
+      CMD+=(
+        --coverlet
+        --coverlet-output-format cobertura
+        --coverlet-include '[Hexalith.Memories.*]*'
+        --coverlet-exclude '[*.Tests]*'
+        --coverlet-exclude '[Hexalith.Memories.TestHelpers]*'
+        --coverlet-exclude '[Hexalith.Memories.Web.Specimens]*'
+        --coverlet-exclude '[Hexalith.Memories.MigrateEmbeddingVectors]*'
+        --coverlet-exclude-by-file '**/obj/**'
+        --coverlet-exclude-by-attribute GeneratedCodeAttribute
+        --coverlet-exclude-by-attribute ObsoleteAttribute
+        --coverlet-skip-auto-props
+      )
+    fi
+
+    benchmark_result=""
+    if [[ "$FILTER" == "Category=Benchmark" ]]; then
+      benchmark_target=$(dotnet msbuild "$project" -getProperty:TargetPath "-p:Configuration=$CONFIGURATION")
+      benchmark_result="$(dirname "$benchmark_target")/benchmark-results.json"
+      rm -f -- "$benchmark_result"
+    fi
+
+    echo "${CMD[*]}"
+    test_exit_code=0
+    MEMORIES_BENCHMARK_RESULTS_PATH="$benchmark_result" "${CMD[@]}" || test_exit_code=$?
+
+    # A failed test process may leave partial reports. Keep their diagnostics and return its exit code.
+    report_exit_code=0
+    if [[ "$COVERAGE" == true && -n "${project_results_directory:-}" ]]; then
+      python3 - "$project_results_directory" "$test_exit_code" <<'PY' || report_exit_code=$?
+from pathlib import Path
+import sys
+
+results = Path(sys.argv[1])
+report_required = sys.argv[2] == "0"
+canonical = results / "coverage.cobertura.xml"
+if canonical.is_file():
+    raise SystemExit(0)
+
+candidates = sorted(
+    {
+        *results.glob("coverage.cobertura*.xml"),
+        *results.glob("*.coverage.cobertura.xml"),
+    }
+)
+if not candidates:
+    if report_required:
+        raise SystemExit(f"Test project produced no Cobertura report under {results}.")
+    raise SystemExit(0)
+canonical.write_bytes(candidates[-1].read_bytes())
+PY
+    fi
+
+    if [[ -n "$TRX_PATH" && ( $test_exit_code -eq 0 || -f "$TRX_PATH" ) ]]; then
+      python3 - "$TRX_PATH" "$project" "$EFFECTIVE_FILTER" "$EXPECTED_EXECUTED_TESTS" <<'PY' || report_exit_code=$?
+import sys
+import xml.etree.ElementTree as ET
+
+trx_path, project, test_filter, expected_text = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+try:
+    root = ET.parse(trx_path).getroot()
+    namespace = root.tag.partition("}")[0] + "}" if root.tag.startswith("{") else ""
+    counters = root.find(f"{namespace}ResultSummary/{namespace}Counters")
+    executed = int(counters.attrib.get("executed", "0")) if counters is not None else 0
+    not_executed = int(counters.attrib.get("notExecuted", "0")) if counters is not None else 0
+except FileNotFoundError:
+    raise SystemExit(f"Expected TRX file '{trx_path}' was not produced.")
+except (OSError, ET.ParseError, LookupError, ValueError) as error:
+    raise SystemExit(f"Unable to read TRX file '{trx_path}': {error}")
+
+if executed <= 0:
+    raise SystemExit(f"Test project '{project}' executed zero tests for filter '{test_filter}'.")
+if expected_text:
+    expected = int(expected_text)
+    if executed != expected or not_executed != 0:
+        raise SystemExit(
+            f"Test project '{project}' must execute exactly {expected} tests with none skipped; "
+            f"TRX reported executed={executed}, notExecuted={not_executed}."
+        )
+
+print(f"Executed {executed} tests for {project}")
+PY
+    fi
+
+    if [[ $test_exit_code -ne 0 ]]; then
+      echo "dotnet test failed ($test_exit_code) for $project" >&2
+      exit "$test_exit_code"
+    fi
+    if [[ $report_exit_code -ne 0 ]]; then
+      exit "$report_exit_code"
+    fi
+
+    if [[ -n "$benchmark_result" ]]; then
+      (
+        second_run=$(mktemp -d)
+        trap 'rm -rf -- "$second_run"' EXIT
+        echo "Running the benchmark in an independent process."
+        MEMORIES_BENCHMARK_RESULTS_PATH="$second_run/benchmark-results.json" \
+          dotnet "$benchmark_target" -method '*RunBenchmarkSuite_ProducesValidResults'
+        python3 tools/compare-benchmark-results.py "$benchmark_result" "$second_run/benchmark-results.json"
+      )
+    fi
+  done
+}
+
+if [[ ${BASH_SOURCE[0]} != "$0" ]]; then
+  return
+fi
+
 COVERAGE=false
 FILTER=""
 CONFIGURATION="Debug"
@@ -59,48 +263,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
-read_inventory() {
-  local inventory_file="$1"
-  local inventory_path="$REPO_ROOT/$inventory_file"
-
-  if [[ ! -f "$inventory_path" ]]; then
-    echo "Test project inventory '$inventory_file' was not found." >&2
-    return 1
-  fi
-
-  # Most repository text is intentionally materialized as CRLF in CI. Normalize only the
-  # terminal carriage return so project paths passed to dotnet remain exact on both platforms.
-  sed 's/\r$//' "$inventory_path" | grep -vE '^[[:space:]]*(#|$)'
-}
-
-# Translate the wrapper's VSTest-shaped Category expressions into Microsoft.Testing.Platform
-# trait filters. SDK 10.0.400 selects MTP in global.json; VSTest --filter executes zero tests.
-append_mtp_filter_args() {
-  local filter="$1"
-  MTP_FILTER_ARGS=()
-  if [[ -z "$filter" ]]; then
-    return 0
-  fi
-
-  local part
-  local -a parts
-  IFS='&' read -ra parts <<< "$filter"
-  for part in "${parts[@]}"; do
-    case "$part" in
-      Category!=*)
-        MTP_FILTER_ARGS+=(--filter-not-trait "Category=${part#Category!=}")
-        ;;
-      Category=*)
-        MTP_FILTER_ARGS+=(--filter-trait "$part")
-        ;;
-      *)
-        echo "Unsupported test filter '$part' in '$filter'; Microsoft.Testing.Platform requires Category trait expressions." >&2
-        return 1
-        ;;
-    esac
-  done
-}
-
 # Keep local project routing aligned with the separated complete projects.
 inventory_files=()
 case "$FILTER" in
@@ -138,278 +300,22 @@ for inventory_file in "${inventory_files[@]}"; do
   PROJECTS+=("${inventory_projects[@]}")
 done
 
-RESULTS_ROOT=""
-if [[ -n "$RESULTS_DIRECTORY" ]]; then
-  if [[ "$RESULTS_DIRECTORY" == /* || "$RESULTS_DIRECTORY" =~ ^[A-Za-z]:[\\/] || "/$RESULTS_DIRECTORY/" == *"/../"* ]]; then
-    echo "--results-directory must be a repository-relative path without '..' segments." >&2
-    exit 1
-  fi
-  if ! python3 -c 'import sys; import xml.etree.ElementTree; sys.exit(sys.version_info.major != 3)' >/dev/null 2>&1; then
-    echo "--results-directory requires python3 to read test reports. Install or repair Python 3 and retry." >&2
-    exit 1
-  fi
-  RESULTS_ROOT="$REPO_ROOT/${RESULTS_DIRECTORY#./}"
-  # Keep the report path usable by dotnet when the input ends with a dot segment.
-  while [[ "$RESULTS_ROOT" == */ || "$RESULTS_ROOT" == */. ]]; do
-    RESULTS_ROOT="${RESULTS_ROOT%/}"
-    RESULTS_ROOT="${RESULTS_ROOT%/.}"
-  done
-  python3 - "$REPO_ROOT" "$RESULTS_ROOT" <<'PY'
-from contextlib import ExitStack
-import errno
-import os
-from pathlib import Path
-import shutil
-import stat
-import sys
-
-
-def open_directory(parent, component, flags):
-    try:
-        return os.open(component, flags, dir_fd=parent)
-    except FileNotFoundError:
-        try:
-            os.mkdir(component, dir_fd=parent)
-        except FileExistsError:
-            pass
-        return os.open(component, flags, dir_fd=parent)
-
-
-def require_unchanged(bindings, results):
-    for parent, component, directory in bindings:
-        try:
-            current = os.lstat(component, dir_fd=parent)
-        except FileNotFoundError:
-            current = None
-        if current is None or not os.path.samestat(current, os.fstat(directory)):
-            raise ValueError(f"path changed during preparation. Refusing to use '{results}'.")
-
-
-def has_ownership_marker(directory, marker, signature):
-    try:
-        metadata = os.lstat(marker, dir_fd=directory)
-        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size != len(signature):
-            return False
-        descriptor = os.open(marker, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
-    except OSError as error:
-        if error.errno in (errno.ENOENT, errno.ELOOP):
-            return False
-        raise
-    with os.fdopen(descriptor, "rb") as receipt:
-        return os.path.samestat(metadata, os.fstat(descriptor)) and receipt.read(len(signature) + 1) == signature
-
-
-def prepare_results(root, results):
-    components = results.relative_to(root).parts
-    if not components:
-        raise ValueError("must resolve beneath the repository root.")
-    if any(component.casefold() == ".git" for component in components):
-        raise ValueError("must stay outside the repository's .git metadata path.")
-    if not shutil.rmtree.avoids_symlink_attacks:
-        raise ValueError("requires Python support for symlink-safe directory cleanup.")
-
-    with ExitStack() as descriptors:
-        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
-        # Bash already changed into the checkout. Keep each opened directory pinned.
-        directory = os.open(".", flags)
-        descriptors.callback(os.close, directory)
-        current = root
-        bindings = []
-        for component in components:
-            parent = directory
-            current /= component
-            try:
-                directory = open_directory(parent, component, flags)
-            except OSError as error:
-                if error.errno in (errno.ELOOP, errno.ENOTDIR):
-                    raise ValueError(
-                        f"must resolve beneath the repository root without traversing a symbolic link "
-                        f"or non-directory at '{current}'."
-                    ) from error
-                raise
-            descriptors.callback(os.close, directory)
-            bindings.append((parent, component, directory))
-
-        marker = ".hexalith-memories-test-results"
-        signature = b"Hexalith.Memories test results v1\n"
-        entries = os.listdir(directory)
-        if entries and not has_ownership_marker(directory, marker, signature):
-            raise ValueError(f"must name an empty or runner-owned directory. Refusing to clean '{results}'.")
-
-        require_unchanged(bindings, results)
-        if not entries:
-            descriptor = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666, dir_fd=directory)
-            with os.fdopen(descriptor, "wb") as receipt:
-                receipt.write(signature)
-        else:
-            # Relative names stay anchored by this process's cwd, including on Python <3.11.
-            os.fchdir(directory)
-            for entry in entries:
-                # Keep the marker so an interrupted rerun remains recoverable.
-                if entry == marker:
-                    continue
-                if stat.S_ISDIR(os.lstat(entry).st_mode):
-                    shutil.rmtree(entry)
-                else:
-                    os.unlink(entry)
-        # Refuse a replaced path before returning it to the shell for report generation.
-        require_unchanged(bindings, results)
-
-
-try:
-    prepare_results(*(Path(path) for path in sys.argv[1:]))
-except (OSError, RuntimeError, ValueError) as error:
-    raise SystemExit(f"--results-directory {error}") from None
-PY
+if [[ -z "$RESULTS_DIRECTORY" ]]; then
+  run_projects "" "$FILTER" "$CONFIGURATION" "$NO_BUILD" "$COVERAGE" "${PROJECTS[@]}"
+  exit
 fi
 
-for project in "${PROJECTS[@]}"; do
-  CMD=(dotnet test)
-  EFFECTIVE_FILTER="$FILTER"
-  if [[ "$FILTER" == "Category!=Integration" ]]; then
-    EFFECTIVE_FILTER="Category!=Integration&Category!=Benchmark"
-  elif [[ "$FILTER" == "Category=Benchmark" ]]; then
-    EFFECTIVE_FILTER=""
-  fi
+if [[ "$RESULTS_DIRECTORY" == /* || "$RESULTS_DIRECTORY" =~ ^[A-Za-z]:[\\/] || "/$RESULTS_DIRECTORY/" == *"/../"* ]]; then
+  echo "--results-directory must be a repository-relative path without '..' segments." >&2
+  exit 1
+fi
+if ! python3 -c 'import sys; import xml.etree.ElementTree; sys.exit(sys.version_info.major != 3)' >/dev/null 2>&1; then
+  echo "--results-directory requires python3 to read test reports. Install or repair Python 3 and retry." >&2
+  exit 1
+fi
 
-  if [[ -n "$project" ]]; then
-    CMD+=(--project "$project")
-  fi
-
-  CMD+=(--configuration "$CONFIGURATION")
-
-  if [[ "$NO_BUILD" == true ]]; then
-    CMD+=(--no-build)
-  fi
-
-  append_mtp_filter_args "$EFFECTIVE_FILTER"
-  if [[ ${#MTP_FILTER_ARGS[@]} -gt 0 ]]; then
-    CMD+=("${MTP_FILTER_ARGS[@]}")
-  fi
-
-  TRX_PATH=""
-  EXPECTED_EXECUTED_TESTS=""
-  project_results_directory=""
-  if [[ -n "$RESULTS_DIRECTORY" ]]; then
-    if [[ -n "$project" ]]; then
-      project_name="$(basename "$project" .csproj)"
-    else
-      project_name="solution"
-    fi
-
-    project_results_directory="$RESULTS_ROOT/$project_name"
-    mkdir -p "$project_results_directory"
-    TRX_PATH="$project_results_directory/$project_name.trx"
-    CMD+=(--results-directory "$project_results_directory" --report-xunit-trx --report-xunit-trx-filename "$project_name.trx")
-    if [[ "$FILTER" == "Category=Benchmark" ]]; then
-      EXPECTED_EXECUTED_TESTS="17"
-    fi
-  fi
-
-  if [[ "$COVERAGE" == true ]]; then
-    # coverlet.MTP matches the Coverlet include/exclude contract in tests/tests.runsettings.
-    # Microsoft.Testing.Extensions.CodeCoverage under-counted Hexalith.Memories.Server hits
-    # on GitHub-hosted runners (23% vs ~75% Coverlet), which failed the 76.5% line gate.
-    CMD+=(
-      --coverlet
-      --coverlet-output-format cobertura
-      --coverlet-include '[Hexalith.Memories.*]*'
-      --coverlet-exclude '[*.Tests]*'
-      --coverlet-exclude '[Hexalith.Memories.TestHelpers]*'
-      --coverlet-exclude '[Hexalith.Memories.Web.Specimens]*'
-      --coverlet-exclude '[Hexalith.Memories.MigrateEmbeddingVectors]*'
-      --coverlet-exclude-by-file '**/obj/**'
-      --coverlet-exclude-by-attribute GeneratedCodeAttribute
-      --coverlet-exclude-by-attribute ObsoleteAttribute
-      --coverlet-skip-auto-props
-    )
-  fi
-
-  benchmark_result=""
-  if [[ "$FILTER" == "Category=Benchmark" ]]; then
-    benchmark_target=$(dotnet msbuild "$project" -getProperty:TargetPath "-p:Configuration=$CONFIGURATION")
-    benchmark_result="$(dirname "$benchmark_target")/benchmark-results.json"
-    rm -f -- "$benchmark_result"
-  fi
-
-  echo "${CMD[*]}"
-  test_exit_code=0
-  MEMORIES_BENCHMARK_RESULTS_PATH="$benchmark_result" "${CMD[@]}" || test_exit_code=$?
-
-  # A failed test process may leave partial reports. Keep their diagnostics and return its exit code.
-  report_exit_code=0
-  if [[ "$COVERAGE" == true && -n "${project_results_directory:-}" ]]; then
-    python3 - "$project_results_directory" "$test_exit_code" <<'PY' || report_exit_code=$?
-from pathlib import Path
-import sys
-
-results = Path(sys.argv[1])
-report_required = sys.argv[2] == "0"
-canonical = results / "coverage.cobertura.xml"
-if canonical.is_file():
-    raise SystemExit(0)
-
-candidates = sorted(
-    {
-        *results.glob("coverage.cobertura*.xml"),
-        *results.glob("*.coverage.cobertura.xml"),
-    }
-)
-if not candidates:
-    if report_required:
-        raise SystemExit(f"Test project produced no Cobertura report under {results}.")
-    raise SystemExit(0)
-canonical.write_bytes(candidates[-1].read_bytes())
-PY
-  fi
-
-  if [[ -n "$TRX_PATH" && ( $test_exit_code -eq 0 || -f "$TRX_PATH" ) ]]; then
-    python3 - "$TRX_PATH" "$project" "$EFFECTIVE_FILTER" "$EXPECTED_EXECUTED_TESTS" <<'PY' || report_exit_code=$?
-import sys
-import xml.etree.ElementTree as ET
-
-trx_path, project, test_filter, expected_text = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
-try:
-    root = ET.parse(trx_path).getroot()
-    namespace = root.tag.partition("}")[0] + "}" if root.tag.startswith("{") else ""
-    counters = root.find(f"{namespace}ResultSummary/{namespace}Counters")
-    executed = int(counters.attrib.get("executed", "0")) if counters is not None else 0
-    not_executed = int(counters.attrib.get("notExecuted", "0")) if counters is not None else 0
-except FileNotFoundError:
-    raise SystemExit(f"Expected TRX file '{trx_path}' was not produced.")
-except (OSError, ET.ParseError, LookupError, ValueError) as error:
-    raise SystemExit(f"Unable to read TRX file '{trx_path}': {error}")
-
-if executed <= 0:
-    raise SystemExit(f"Test project '{project}' executed zero tests for filter '{test_filter}'.")
-if expected_text:
-    expected = int(expected_text)
-    if executed != expected or not_executed != 0:
-        raise SystemExit(
-            f"Test project '{project}' must execute exactly {expected} tests with none skipped; "
-            f"TRX reported executed={executed}, notExecuted={not_executed}."
-        )
-
-print(f"Executed {executed} tests for {project}")
-PY
-  fi
-
-  if [[ $test_exit_code -ne 0 ]]; then
-    echo "dotnet test failed ($test_exit_code) for $project" >&2
-    exit "$test_exit_code"
-  fi
-  if [[ $report_exit_code -ne 0 ]]; then
-    exit "$report_exit_code"
-  fi
-
-  if [[ -n "$benchmark_result" ]]; then
-    (
-      second_run=$(mktemp -d)
-      trap 'rm -rf -- "$second_run"' EXIT
-      echo "Running the benchmark in an independent process."
-      MEMORIES_BENCHMARK_RESULTS_PATH="$second_run/benchmark-results.json" \
-        dotnet "$benchmark_target" -method '*RunBenchmarkSuite_ProducesValidResults'
-      python3 tools/compare-benchmark-results.py "$benchmark_result" "$second_run/benchmark-results.json"
-    )
-  fi
-done
+# The Python process holds the verified destination while this project loop
+# generates and checks reports in private staging.
+exec python3 "$SCRIPT_DIR/prepare-test-results.py" "$REPO_ROOT" "$REPO_ROOT/$RESULTS_DIRECTORY" --results-directory \
+  "$BASH" -c 'source "$1"; shift; run_projects "$MEMORIES_TEST_REPORT_STAGING" "$@"' \
+  memories-test "$SCRIPT_DIR/test.sh" "$FILTER" "$CONFIGURATION" "$NO_BUILD" "$COVERAGE" "${PROJECTS[@]}"
