@@ -5,7 +5,7 @@ created: '2026-09-01'
 status: blocked
 baseline_revision: 0411d500eeb0c230fdc6e8d7651a6cb08f6efb2c
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - 'tests/README.md'
 warnings:
@@ -159,6 +159,25 @@ deferred:
     anchor while the unit class it shares authority with cites all of them, and the deliberately unreachable
     100 ms rendezvous bound was an inline literal beside four named constants. Added the traceability summary
     and named the bound `InjectedRendezvousTimeout`.
+
+### 2026-11-27 — Independent follow-up review (DW-724)
+
+The original race and release-scope methods still run against live Redis and are pinned in the
+integration-fast inventory. The current endpoint test forwards the winning instance ID and proves
+the duplicate does not schedule. The reservation suite covers request cancellation while Redis
+is pending and owner-checked cleanup after a late successful reservation.
+
+Normal scheduling compensation still deleted the key after the original lease could have expired
+and a successor could have acquired it. The reservation store now uses the same atomic comparison
+for normal release and canceled-request cleanup. The endpoint passes its reserved candidate ID
+when scheduling fails. The live regression expires the first lease, installs a successor through
+the production reserve path, and verifies stale release preserves the successor's value and TTL.
+The existing release-scope proof also verifies the neighbouring tenant's key survives.
+
+Fresh Release builds of Server.Tests and IntegrationTests had zero warnings and errors. Focused
+`dotnet exec` runs with `-class` passed 19 reservation, 17 endpoint, 13 key-builder, and three live
+Redis cases. The cross-tenant authorization method with `-method` passed all three cases. Python
+unit discovery in `tests/tooling/integration_fast_coverage` passed 13 cases.
 
 ## Design Notes
 

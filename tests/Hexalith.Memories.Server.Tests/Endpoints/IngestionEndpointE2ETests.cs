@@ -261,6 +261,38 @@ public sealed class IngestionEndpointE2ETests : IDisposable
     }
 
     [Fact]
+    public async Task PostIngest_WhenSchedulingFails_ReleasesOnlyTheReservedCandidate()
+    {
+        _factory.ConfigurationOverrides["EventStoreIntegration:Routing:PreflightDedupEnabled"] = "true";
+        StubTenantActive();
+        _factory.RedisDatabase.StringSetAsync(
+                Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<TimeSpan?>(), Arg.Any<When>())
+            .Returns(true);
+        _scheduler.ScheduleAsync(Arg.Any<string>(), Arg.Any<IngestionInput>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<string>(new InvalidOperationException("Scheduling failed.")));
+        IngestionInput request = IngestionInputFactory.Create(
+            tenantId: TenantId,
+            caseId: CaseId,
+            sourceUri: "file:///evidence/scheduling-failed.txt",
+            contentBytes: Encoding.UTF8.GetBytes("reservation release evidence"),
+            ingestedBy: "qa@example.com");
+        using HttpClient client = CreateAuthorizedClient();
+
+        using HttpResponseMessage response = await client.PostAsJsonAsync(
+            "/api/v1/ingest", request, MemoriesJsonContext.Options, TestContext.Current.CancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.InternalServerError);
+        var set = _factory.RedisDatabase.ReceivedCalls()
+            .Single(call => call.GetMethodInfo().Name == nameof(IDatabase.StringSetAsync));
+        var release = _factory.RedisDatabase.ReceivedCalls()
+            .Single(call => call.GetMethodInfo().Name == nameof(IDatabase.ScriptEvaluateAsync));
+        ((RedisKey[])release.GetArguments()[1]!).ShouldBe([(RedisKey)set.GetArguments()[0]!]);
+        ((RedisValue[])release.GetArguments()[2]!).ShouldBe([(RedisValue)set.GetArguments()[1]!]);
+        await _scheduler.Received(1).ScheduleAsync(
+            ((RedisValue)set.GetArguments()[1]!).ToString(), Arg.Any<IngestionInput>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task PostIngest_CanceledWhileReservationPending_CancelsWithoutSchedulingAndCleansLateSuccess()
     {
         _factory.ConfigurationOverrides["EventStoreIntegration:Routing:PreflightDedupEnabled"] = "true";

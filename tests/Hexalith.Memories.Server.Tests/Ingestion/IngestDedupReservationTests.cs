@@ -343,33 +343,39 @@ public class IngestDedupReservationTests
     }
 
     [Fact]
-    public async Task ReleaseAsync_DeletesTheReservationKey()
+    public async Task ReleaseAsync_UsesTheReservationKeyAndOwnerInOneScript()
     {
         (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
         IngestDedupReservation reservation = new(redis, NullLogger<IngestDedupReservation>.Instance);
 
-        await reservation.ReleaseAsync("tenant-1", "case-1", "file:///doc.pdf", idempotencyToken: null, CancellationToken.None);
+        await reservation.ReleaseAsync("tenant-1", "case-1", "file:///doc.pdf", idempotencyToken: null, "wf-owner", CancellationToken.None);
 
         string expectedKey = "ingest-reserve:" + DedupKeyBuilder.BuildKey("tenant-1", "case-1", "file:///doc.pdf");
-        await db.Received(1).KeyDeleteAsync(expectedKey, Arg.Any<CommandFlags>());
+        await db.Received(1).ScriptEvaluateAsync(
+            Arg.Any<string>(),
+            Arg.Is<RedisKey[]>(keys => keys.Length == 1 && keys[0] == (RedisKey)expectedKey),
+            Arg.Is<RedisValue[]>(values => values.Length == 1 && values[0] == (RedisValue)"wf-owner"),
+            Arg.Any<CommandFlags>());
+        await db.DidNotReceive().KeyDeleteAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>());
     }
 
     [Fact]
     public async Task ReleaseAsync_CanceledPendingDelete_ThrowsPromptly()
     {
         (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
-        TaskCompletionSource<bool> pendingDelete = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        db.KeyDeleteAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>()).Returns(_ => pendingDelete.Task);
+        TaskCompletionSource<RedisResult> pendingDelete = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        db.ScriptEvaluateAsync(Arg.Any<string>(), Arg.Any<RedisKey[]>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>())
+            .Returns(_ => pendingDelete.Task);
         IngestDedupReservation reservation = new(redis, NullLogger<IngestDedupReservation>.Instance);
         using CancellationTokenSource cancellation = new();
 
         Task release = reservation.ReleaseAsync(
-            "tenant-1", "case-1", "file:///doc.pdf", idempotencyToken: null, cancellation.Token);
+            "tenant-1", "case-1", "file:///doc.pdf", idempotencyToken: null, "wf-owner", cancellation.Token);
         release.IsCompleted.ShouldBeFalse();
 
         cancellation.Cancel();
         await Should.ThrowAsync<OperationCanceledException>(() => release);
-        pendingDelete.SetResult(true);
+        pendingDelete.SetResult(RedisResult.Create((RedisValue)1L));
     }
 
     [Fact]
@@ -378,12 +384,12 @@ public class IngestDedupReservationTests
         // Compensation must never turn a release failure into a hard error (invariant 8); the reservation
         // TTL is the backstop. ReleaseAsync swallows the Redis exception and logs a warning instead.
         (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
-        db.KeyDeleteAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+        db.ScriptEvaluateAsync(Arg.Any<string>(), Arg.Any<RedisKey[]>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>())
             .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "down"));
         IngestDedupReservation reservation = new(redis, NullLogger<IngestDedupReservation>.Instance);
 
         await Should.NotThrowAsync(() => reservation.ReleaseAsync(
-            "tenant-1", "case-1", "file:///doc.pdf", idempotencyToken: null, CancellationToken.None));
+            "tenant-1", "case-1", "file:///doc.pdf", idempotencyToken: null, "wf-owner", CancellationToken.None));
     }
 
     private static void SetNxReturns(IDatabase db, bool acquired)

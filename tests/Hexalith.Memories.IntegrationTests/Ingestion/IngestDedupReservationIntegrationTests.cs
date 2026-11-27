@@ -126,6 +126,14 @@ public sealed class IngestDedupReservationIntegrationTests
                     caseId,
                     sourceUri,
                     idempotencyToken: null,
+                    candidateA,
+                    CancellationToken.None);
+                await reservation.ReleaseAsync(
+                    tenantId,
+                    caseId,
+                    sourceUri,
+                    idempotencyToken: null,
+                    candidateB,
                     CancellationToken.None);
             }
 
@@ -155,6 +163,7 @@ public sealed class IngestDedupReservationIntegrationTests
             sourceUri,
             idempotencyToken: null);
         string neighbourInstanceId = $"workflow-neighbour-{uniqueSuffix}";
+        string ownerInstanceId = $"workflow-{uniqueSuffix}";
         string sentinelKey = $"{reservationKey}:sentinel";
         IDatabase database = _redis.Connection.GetDatabase();
         IngestDedupReservation reservation = new(
@@ -174,7 +183,7 @@ public sealed class IngestDedupReservationIntegrationTests
                     caseId,
                     sourceUri,
                     idempotencyToken: null,
-                    $"workflow-{uniqueSuffix}",
+                    ownerInstanceId,
                     ReservationTtl,
                     CancellationToken.None);
                 held.Outcome.ShouldBe(IngestReservationOutcome.Reserved);
@@ -203,7 +212,7 @@ public sealed class IngestDedupReservationIntegrationTests
                     tenantId,
                     caseId,
                     sourceUri,
-                    $"workflow-{uniqueSuffix}",
+                    ownerInstanceId,
                     InjectedRendezvousTimeout));
             }
             finally
@@ -216,6 +225,7 @@ public sealed class IngestDedupReservationIntegrationTests
                     caseId,
                     sourceUri,
                     idempotencyToken: null,
+                    ownerInstanceId,
                     CancellationToken.None);
             }
 
@@ -231,7 +241,46 @@ public sealed class IngestDedupReservationIntegrationTests
                 caseId,
                 sourceUri,
                 idempotencyToken: null,
+                neighbourInstanceId,
                 CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task ReleaseAsync_AfterAReservationExpires_PreservesTheSuccessor()
+    {
+        string suffix = Guid.NewGuid().ToString("N");
+        string tenantId = $"tenant-{suffix}";
+        string caseId = $"case-{suffix}";
+        string sourceUri = $"file:///ingest-successor-{suffix}.pdf";
+        const string priorOwner = "prior-workflow";
+        const string successor = "successor-workflow";
+        string key = "ingest-reserve:" + DedupKeyBuilder.BuildIdentityKey(tenantId, caseId, sourceUri, idempotencyToken: null);
+        IDatabase database = _redis.Connection.GetDatabase();
+        var reservation = new IngestDedupReservation(_redis.Connection, NullLogger<IngestDedupReservation>.Instance);
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        try
+        {
+            IngestReservationResult initial = await reservation.TryReserveAsync(
+                tenantId, caseId, sourceUri, idempotencyToken: null, priorOwner, ReservationTtl, cancellationToken);
+            initial.Outcome.ShouldBe(IngestReservationOutcome.Reserved);
+            (await database.KeyExpireAsync(key, TimeSpan.Zero)).ShouldBeTrue();
+            IngestReservationResult next = await reservation.TryReserveAsync(
+                tenantId, caseId, sourceUri, idempotencyToken: null, successor, ReservationTtl, cancellationToken);
+            next.Outcome.ShouldBe(IngestReservationOutcome.Reserved);
+
+            await reservation.ReleaseAsync(tenantId, caseId, sourceUri, idempotencyToken: null, priorOwner, cancellationToken);
+
+            (await database.StringGetAsync(key)).ShouldBe((RedisValue)successor);
+            (await database.KeyTimeToLiveAsync(key)).ShouldNotBeNull().ShouldBeGreaterThan(TimeSpan.Zero);
+
+            await reservation.ReleaseAsync(tenantId, caseId, sourceUri, idempotencyToken: null, successor, cancellationToken);
+            (await database.KeyExistsAsync(key)).ShouldBeFalse();
+        }
+        finally
+        {
+            _ = await database.KeyDeleteAsync(key);
         }
     }
 

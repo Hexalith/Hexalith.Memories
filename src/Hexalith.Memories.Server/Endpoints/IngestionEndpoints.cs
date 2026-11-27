@@ -167,7 +167,8 @@ internal static class IngestionEndpoints
                     if (reservationHeld)
                     {
                         await ingestReservation.ReleaseAsync(
-                            input.TenantId, input.CaseId, input.SourceUri, input.IdempotencyToken, CancellationToken.None);
+                            input.TenantId, input.CaseId, input.SourceUri, input.IdempotencyToken,
+                            candidateInstanceId, CancellationToken.None);
                     }
 
                     throw;

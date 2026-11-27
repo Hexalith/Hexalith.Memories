@@ -120,22 +120,23 @@ internal sealed partial class IngestDedupReservation
         }
     }
 
-    /// <summary>Releases a held reservation so a retry is not permanently blocked when workflow scheduling
-    /// fails after a successful reservation (mirrors the EventStore compensation; the TTL is the backstop).</summary>
+    /// <summary>Releases the reservation only while it still belongs to the caller's workflow instance.</summary>
     public async Task ReleaseAsync(
         string tenantId,
         string caseId,
         string sourceUri,
         string? idempotencyToken,
+        string instanceId,
         CancellationToken cancellationToken)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(instanceId);
         string reservationKey = BuildReservationKey(tenantId, caseId, sourceUri, idempotencyToken);
         cancellationToken.ThrowIfCancellationRequested();
 
         try
         {
             IDatabase db = _redis.GetDatabase();
-            _ = await db.KeyDeleteAsync(reservationKey)
+            _ = await ReleaseIfOwnedAsync(db, reservationKey, instanceId)
                 .WaitAsync(cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -152,6 +153,9 @@ internal sealed partial class IngestDedupReservation
     private static string BuildReservationKey(string tenantId, string caseId, string sourceUri, string? idempotencyToken)
         => ReservationKeyPrefix + DedupKeyBuilder.BuildIdentityKey(tenantId, caseId, sourceUri, idempotencyToken);
 
+    private static Task<RedisResult> ReleaseIfOwnedAsync(IDatabase db, string reservationKey, string instanceId)
+        => db.ScriptEvaluateAsync(ReleaseIfOwnedScript, [(RedisKey)reservationKey], [(RedisValue)instanceId]);
+
     private async Task ObserveLateSetAndCleanupAsync(
         IDatabase db,
         Task<bool> setTask,
@@ -165,10 +169,7 @@ internal sealed partial class IngestDedupReservation
                 return;
             }
 
-            _ = await db.ScriptEvaluateAsync(
-                ReleaseIfOwnedScript,
-                [(RedisKey)reservationKey],
-                [(RedisValue)instanceId]).ConfigureAwait(false);
+            _ = await ReleaseIfOwnedAsync(db, reservationKey, instanceId).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
