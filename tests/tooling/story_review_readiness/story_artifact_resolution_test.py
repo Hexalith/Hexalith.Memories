@@ -204,6 +204,24 @@ class StoryArtifactResolutionTests(unittest.TestCase):
         self.assertIn("C2: a phase ledger is required for this governed 'in-review' artifact.", result.stdout)
         self.assertIn("C4: story declares status 'in-review' but sprint-status records 'in-progress'.", result.stdout)
 
+    def test_status_only_numbered_spec_requires_file_list_and_ledger_in_bmad_review(self):
+        name = f"spec-{KEY}-2.md"
+        self.write_artifact("sprint-status.yaml", f"development_status:\n  {KEY}: review\n")
+        args = ("--story-key", KEY, "--changed-file", "docs/current.md")
+
+        self.write_artifact(name, "---\nstatus: 'review'\n---\n")
+        legacy = self.validate(*args)
+        self.assert_selected(legacy, name)
+        self.assertEqual(0, legacy.returncode, legacy.stdout + legacy.stderr)
+        self.assertIn("check is a no-op.", legacy.stdout)
+
+        self.write_artifact(name, "---\nstatus: 'in-review'\n---\n")
+        result = self.validate(*args)
+        self.assert_selected(result, name)
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("C1: a non-empty File List is required", result.stdout)
+        self.assertIn("C2: a phase ledger is required for this governed 'in-review' artifact.", result.stdout)
+
     def test_review_status_near_match_remains_invalid(self):
         name = self.write_follow_up(2, "docs/current.md", status="in-reveiw", evidence=REVIEW_LEDGER)
 

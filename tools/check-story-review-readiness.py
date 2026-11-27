@@ -1158,7 +1158,14 @@ def validate(args: argparse.Namespace) -> int:
     if source.key == C0_STORY and status in REVIEW_OR_DONE_STATUSES:
         evidence_failures.extend(check_c0_receipt(text))
 
-    if ledger is None and file_list is None and not table_count and not evidence_failures:
+    # BMad explicitly enters the review gate by declaring `in-review`.
+    if (
+        status != SPEC_REVIEW_STATUS
+        and ledger is None
+        and file_list is None
+        and not table_count
+        and not evidence_failures
+    ):
         print("Artifact carries no ledger, File List, or evidence table; check is a no-op.")
         return 0
 
