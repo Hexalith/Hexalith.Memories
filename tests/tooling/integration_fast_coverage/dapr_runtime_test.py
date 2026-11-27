@@ -24,7 +24,10 @@ case "$*" in
             : > "$DAPR_FIRST_ATTEMPT"
             exit 1
         fi ;;
-    '--version') ;;
+    '--version')
+        if [ "$STALL_COMMAND" = 'dapr --version' ]; then
+            exec fixture-stall
+        fi ;;
     *) exit 97 ;;
 esac
 """
@@ -54,7 +57,7 @@ deadline=$3
 shift 3
 case "$1 $2" in
     'dapr init'|'docker run') [ "$deadline" = '120s' ] || exit 97 ;;
-    'docker rm'|'docker volume') [ "$deadline" = '30s' ] || exit 97 ;;
+    'dapr --version'|'docker rm'|'docker volume') [ "$deadline" = '30s' ] || exit 97 ;;
     'bash -c')
         [ "$deadline" = '30s' ] || exit 97
         case "$5" in
@@ -269,6 +272,26 @@ class DaprRuntimeTests(unittest.TestCase):
                 self.assertTrue(calls[-1].startswith(operation), calls)
                 self.assertFalse(self.readiness_calls.exists())
                 self.assert_stalled_jobs_stopped(count=1)
+
+    def test_readiness_deadline_stops_both_probes_and_their_children(self):
+        result = self.run_initializer(STALL_COMMAND="readiness")
+
+        self.assertEqual(1, result.returncode, result.stderr)
+        self.assertIn("Timed out after 30s waiting for Dapr placement on 127.0.0.1:50005", result.stderr)
+        self.assertIn("Timed out after 30s waiting for Dapr scheduler on 127.0.0.1:50006", result.stderr)
+        self.assertNotIn("--version", self.calls.read_text(encoding="utf-8"))
+        self.assertEqual(4, len(self.stalled_pids()))
+        self.assertEqual([], self.running_stalled_pids())
+
+    def test_stalled_version_reports_its_deadline_and_stops_its_child(self):
+        result = self.run_initializer(
+            STALL_COMMAND="dapr --version", EXIT_LAUNCHER_ON_TERM="yes",
+        )
+
+        self.assertEqual(124, result.returncode, result.stderr)
+        self.assertIn("Timed out after 30s running dapr --version", result.stderr)
+        self.assertEqual(2, len(self.readiness_calls.read_text(encoding="utf-8").splitlines()))
+        self.assert_stalled_jobs_stopped(count=1)
 
     def test_interruption_stops_active_setup_and_readiness_jobs(self):
         for interrupted, operation, count in (

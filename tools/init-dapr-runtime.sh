@@ -135,4 +135,4 @@ if (( readiness_status != 0 )); then
   exit "$readiness_status"
 fi
 
-dapr --version
+run_setup_command 30s dapr --version
