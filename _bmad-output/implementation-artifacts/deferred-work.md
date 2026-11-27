@@ -5544,22 +5544,37 @@ decision: 2026-11-01 keep-open — parked. Reopens only on the trigger: any Prod
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-4-tenant-context-requalification.md`
   summary: Restore stable Aspire fixture startup for token-free sidecar and authenticated HTTP graph checks.
   evidence: Review B1/B2 (medium, pre-existing). The token-free method timed out after 65 seconds with test JWT settings and xUnit Total: 0; the HTTP graph test also stopped before its body after 120 seconds. The real-FalkorDB graph boundary test passed, but endpoint graph choice and default-mode sidecar behavior remain unverified locally. Reopen when fixture startup can complete both methods with bounded runs.
+  note: 2026-11-27 — Skipped. The full integration rerun passed the token-free sidecar proof and the live graph isolation already recorded under DW-736.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-5-4-tenant-context-requalification.md`
-  summary: Add live non-health-route denial checks for absent and wrong APP_API_TOKEN values.
-  evidence: Review B5 (medium, pre-existing). The fixture now sets the valid token on direct clients in token mode, while only middleware unit tests cover invalid app tokens. Reopen with an enabled-mode direct application request that proves denial before protected endpoint work.
+### DW-749: Add live non-health-route denial checks for absent and wrong APP_API_TOKEN values.
+
+origin: migrated from attended ledger ("Deferred from: offline resumption review of spec-27-4-retention-verification-operations-runbook-and-a41-close-out-4.md (2026-10-07)"), 2026-11-27
+location: tests/Hexalith.Memories.IntegrationTests/Tenants/TenantContextEnforcementIntegrationTests.cs
+source_spec: `_bmad-output/implementation-artifacts/spec-5-4-tenant-context-requalification.md`
+severity: medium
+reason: Review B5 (medium, pre-existing). The fixture now sets the valid token on direct clients in token mode, while only middleware unit tests cover invalid app tokens. Reopen with an enabled-mode direct application request that proves denial before protected endpoint work.
+status: done 2026-11-27
+resolution: 9c62f9d87bbb79a473135c8c89a78f3be2407834 — The protected read refused missing and incorrect app tokens and returned the persisted memory with the matching token. The default bearer-only case also passed.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-4-tenant-context-requalification.md`
   summary: Enroll the enabled Dapr sidecar token test in a routine verification lane.
   evidence: Review V1 (medium, pre-existing). CI and nightly run integration filters without DAPR_API_TOKEN_MODE=enabled, so neither the prior enabled branch nor the new missing/wrong/valid token assertions execute routinely. Reopen with a focused token-enabled CI invocation and its fixture prerequisites.
+  note: 2026-11-27 — Skipped. Hosted selection remains under Hexalith.CiCd. DW-749 and DW-750 passed locally in enabled and default modes.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-5-4-tenant-context-requalification.md`
-  summary: Make direct MCP integration transports usable and verifiable with APP_API_TOKEN enabled.
-  evidence: Review V3 (medium, pre-existing). McpServerIntegrationTests and McpAuthenticationIntegrationTests construct independent HttpClientTransport headers with bearer authorization but no dapr-api-token. In token mode their requests can receive app-token 401 before bearer or tool assertions. Reopen with header propagation and one enabled-mode MCP request.
+### DW-750: Make direct MCP integration transports usable and verifiable with APP_API_TOKEN enabled.
+
+origin: migrated from attended ledger ("Deferred from: offline resumption review of spec-27-4-retention-verification-operations-runbook-and-a41-close-out-4.md (2026-10-07)"), 2026-11-27
+location: tests/Hexalith.Memories.IntegrationTests/Mcp/McpServerIntegrationTests.cs
+source_spec: `_bmad-output/implementation-artifacts/spec-5-4-tenant-context-requalification.md`
+severity: medium
+reason: Review V3 (medium, pre-existing). McpServerIntegrationTests and McpAuthenticationIntegrationTests construct independent HttpClientTransport headers with bearer authorization but no dapr-api-token. In token mode their requests can receive app-token 401 before bearer or tool assertions. Reopen with header propagation and one enabled-mode MCP request.
+status: done 2026-11-27
+resolution: 81a5008fcc701b4bec09ef7378729c67128b4a0f — The transport now uses the fixture-owned client, including its optional app token. All nine live MCP cases passed in each token mode.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-4-live-tenant-isolation-evidence.md`
   summary: Verify that the routine integration lane supplies the test JWT settings needed for Aspire fixture startup.
   evidence: Blind review B1 (medium if reproduced, pre-existing). `.github/workflows/ci.yml` invokes `tools/test.sh` without the test JWT environment used by the focused Story 5.4 runs; the earlier local env-free attempt failed EventStore gateway startup before any test body. A CI-equivalent run with those variables unset, or a workflow inspection showing another source of equivalent settings, would settle whether the routine lane is affected. Owner: CI/AppHost integration maintainers. Reopen when qualifying the routine integration lane.
+  note: 2026-11-27 — Skipped. The fixture already supplies an explicit symmetric issuer, audience and signing key in ConfigureGatewayTestAuthentication. The batch ran the full integration project without ambient JWT configuration.
 
 ### DW-736: Add live authenticated HTTP proof that tenant A's bearer cannot traverse tenant B's graph route.
 
@@ -6154,15 +6169,25 @@ prior-evidence: 2026-11-23 — VerifyAsync_MissingSyntacticIndex_RetainsSurvivin
 status: done 2026-11-24
 resolution: VerifyAsync_MissingSyntacticIndex_RetainsSurvivingKeyFindings passed for complete and interrupted scans. The previously implemented scan and its partial evidence were verified on this source. See spec-ten-deferred-tenant-isolation-evidence.md.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-five-deferred-integration-tooling.md`
-  summary: Refuse Bash test results paths that resolve to the repository root.
-  evidence: Independent review reproduced the pre-existing defect in a disposable copy. A dot-only results path passes the relative-path guard and lets report cleanup remove the checkout. Match the PowerShell wrapper's strict descendant check.
-  status: open
+### DW-741: Refuse Bash test results paths that resolve to the repository root.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-five-deferred-integration-tooling.md`
-  summary: Preserve Bash test failure details when dotnet exits without writing TRX.
-  evidence: When dotnet fails before emitting the report, the pre-existing Bash report loop raises a missing-file error before reporting the native test process status. Preserve both the failure status and report diagnostics where a report exists.
-  status: open
+origin: migrated from attended ledger ("Deferred from the 2026-11-20 repository audit"), 2026-11-27
+location: tools/test.sh; tests/tooling/integration_fast_coverage/test_runner_test.py
+source_spec: `_bmad-output/implementation-artifacts/spec-five-deferred-integration-tooling.md`
+severity: critical
+reason: Independent review reproduced the pre-existing defect in a disposable copy. A dot-only results path passes the relative-path guard and lets report cleanup remove the checkout. Match the PowerShell wrapper's strict descendant check.
+status: done 2026-11-27
+resolution: a357e0ed0dbb4772b4053f48e2160158b5fcacf2 — The runner requires a strict physical descendant before cleanup. The 14-case tooling suite accepted valid nested paths and rejected five unsafe aliases.
+
+### DW-743: Preserve Bash test failure details when dotnet exits without writing TRX.
+
+origin: migrated from attended ledger ("Deferred from the 2026-11-20 repository audit"), 2026-11-27
+location: tools/test.sh; tests/tooling/integration_fast_coverage/test_runner_test.py
+source_spec: `_bmad-output/implementation-artifacts/spec-five-deferred-integration-tooling.md`
+severity: medium
+reason: When dotnet fails before emitting the report, the pre-existing Bash report loop raises a missing-file error before reporting the native test process status. Preserve both the failure status and report diagnostics where a report exists.
+status: done 2026-11-27
+resolution: 7f546eccb050674c5ccf65f5cea808431d38a234 — The Bash wrapper preserves the native error status and available reports. All 18 focused tooling tests passed, including absent and malformed reports.
 
 ## Deferred from: review of spec-ten-deferred-story-scope-hooks.md (2026-11-24)
 
@@ -6202,18 +6227,30 @@ note: 2026-11-27 — Skipped. The official NuGet feed still shows the Redis inst
 
 ## Deferred from review of spec-seven-ordered-deferred-items.md (2026-11-24)
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-seven-ordered-deferred-items.md`
-  summary: Share one AppHost Redis readiness probe per Redis allocation cycle instead of one probe loop per starting resource.
-  evidence: The BeforeResourceStartedEvent handler in src/Hexalith.Memories.AppHost/Program.cs runs WaitForRedisPingAsync separately for each Redis-consuming project and its Dapr CLI resource, up to eight concurrent loops. DW-419 spaced each loop out but did not reduce their number. The handler could await one shared readiness task, as it already shares the component rewrite signal.
+### DW-745: Share one AppHost Redis readiness probe per Redis allocation cycle instead of one probe loop per starting resource.
+
+origin: migrated from attended ledger ("Deferred from review of spec-seven-ordered-deferred-items.md (2026-11-24)"), 2026-11-27
+location: src/Hexalith.Memories.AppHost/Program.cs; src/Hexalith.Memories.AppHost/RedisReadinessGate.cs; tests/Hexalith.Memories.IntegrationTests/Fixtures/AppHostComponentFileOrderingTests.cs
+source_spec: `_bmad-output/implementation-artifacts/spec-seven-ordered-deferred-items.md`
+severity: medium
+reason: The BeforeResourceStartedEvent handler in src/Hexalith.Memories.AppHost/Program.cs runs WaitForRedisPingAsync separately for each Redis-consuming project and its Dapr CLI resource, up to eight concurrent loops. DW-419 spaced each loop out but did not reduce their number. The handler could await one shared readiness task, as it already shares the component rewrite signal.
+status: done 2026-11-27
+resolution: 81a2e6efb340cd0a3cce3e98793c146156331ca6 (follow-up 2b97916624e94781d85f0b75ef169b5c5aec398b) — Redis consumers share one readiness probe per resource start. Four gate tests and an in-place Redis/MCP restart verified generation isolation and component rewrite.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-seven-ordered-deferred-items.md`
   summary: Remove the IndexGraphActivity compatibility constructor that skips the tenant-ownership write check without the keyed Redis connection.
   evidence: IndexGraphActivity keeps a public constructor without the keyed "redis" connection and then skips TenantIngestionOwnership.BeginOperationAsync. The server host always registers that connection, so the guard runs today, but a host without it would silently create the unguarded activity, the pattern DW-400 removed from the embedding activities.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-seven-ordered-deferred-items.md`
-  summary: Make the nightly PipelinePersistenceIntegrationTests topology restart reliable when restarted container host ports are slow to become reachable.
-  evidence: On 2026-11-24 the restart class failed in five of ten runs (four of nine isolated runs) on a host with load average 26 to 33. The AppHost Redis probe timed out against the restarted host port, or the restarted server failed its startup FalkorDB connection in ServiceDefaults ConnectRequiredMultiplexer and /alive never became ready. The same cases passed on unchanged sources in other runs, and the previous batch recorded the same restart timeout. Capture the DCP proxy and container port state at the restart boundary to separate a host-port forwarding delay from a fixture ordering defect.
-  note: 2026-11-25 — Aspire reported an active Redis container disappearing during an isolated restart-class run, followed by Dapr state-store I/O timeouts. All originally failing nightly tests passed across the class reruns and three method-level reruns with dedicated loopback placement and scheduler services. The cause of the shared-host removal is still open. See spec-seven-deferred-evidence-cockpit.md.
+### DW-744: Make the nightly PipelinePersistenceIntegrationTests topology restart reliable when restarted container host ports are slow to become reachable.
+
+origin: migrated from attended ledger ("Deferred from review of spec-seven-ordered-deferred-items.md (2026-11-24)"), 2026-11-27
+location: tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixture.cs; tests/Hexalith.Memories.Integration.NightlyTests/Ingestion/PipelinePersistenceIntegrationTests.cs
+source_spec: `_bmad-output/implementation-artifacts/spec-seven-ordered-deferred-items.md`
+severity: medium
+reason: On 2026-11-24 the restart class failed in five of ten runs (four of nine isolated runs) on a host with load average 26 to 33. The AppHost Redis probe timed out against the restarted host port, or the restarted server failed its startup FalkorDB connection in ServiceDefaults ConnectRequiredMultiplexer and /alive never became ready. The same cases passed on unchanged sources in other runs, and the previous batch recorded the same restart timeout. Capture the DCP proxy and container port state at the restart boundary to separate a host-port forwarding delay from a fixture ordering defect.
+status: done 2026-11-27
+resolution: a763f11369aac03472ffe39d089c9dd90755f303 — The remaining restart diagnostic records backend allocation and bounded listener status without replacing the original error. All 62 fixture cases and the live restart passed.
+note: 2026-11-25 — Aspire reported an active Redis container disappearing during an isolated restart-class run, followed by Dapr state-store I/O timeouts. All originally failing nightly tests passed across the class reruns and three method-level reruns with dedicated loopback placement and scheduler services. The cause of the shared-host removal is still open. See spec-seven-deferred-evidence-cockpit.md.
 
 ### DW-740: Include annotation child ingestion in the replay-safety drain.
 
@@ -6236,20 +6273,62 @@ resolution: The replay-safety drain accounts for annotation child ingestion whil
 
 ## Deferred from full test verification of the six-item batch (2026-11-27)
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-six-deferred-bootstrap-graph-and-mapping.md`
-  summary: Diagnose intermittent Redis startup timeouts in the isolated Ollama integration fixture.
-  evidence: The full fast suite recorded a two-minute timeout waiting for the AppHost Redis host port before the Ollama proof started. A single fresh focused rerun completed the same proof successfully. Investigate port readiness and collect the Redis allocation and resource states when it recurs.
+### DW-747: Diagnose intermittent Redis startup timeouts in the isolated Ollama integration fixture.
+
+origin: migrated from attended ledger ("Deferred from full test verification of the six-item batch (2026-11-27)"), 2026-11-27
+location: tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixture.cs; tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixtureTests.cs
+source_spec: `_bmad-output/implementation-artifacts/spec-six-deferred-bootstrap-graph-and-mapping.md`
+severity: medium
+reason: The full fast suite recorded a two-minute timeout waiting for the AppHost Redis host port before the Ollama proof started. A single fresh focused rerun completed the same proof successfully. Investigate port readiness and collect the Redis allocation and resource states when it recurs.
+status: done 2026-11-27
+resolution: 0a07d08bbe5e445aeabd3470f9b61aa9339f6f62 — Failed Ollama startup captures Redis state and loopback reachability before disposal. All 64 fixture cases and the live Ollama proof passed.
 
 ## Deferred from full verification of the six-item purge and verification batch (2026-11-27)
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-six-deferred-purge-and-verification.md`
-  summary: Diagnose intermittent OpenBao loopback startup timeouts in the embedding-provider failure fixture.
-  evidence: The full fast run timed out initializing OpenBao before `HybridSearch_WhenQueryEmbeddingFails_DegradesOnlySemanticAndRecoversAsync` entered its test body. An isolated execution passed on the same revision. Capture DCP OpenBao allocation and listener state if startup times out again.
+### DW-748: Diagnose intermittent OpenBao loopback startup timeouts in the embedding-provider failure fixture.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-six-deferred-purge-and-verification.md`
-  summary: Bound and diagnose the disposable Redis startup wait in the deep-window syntactic search tests.
-  evidence: In the full fast run the published port refused connections and Testcontainers stayed in Docker's exit-code wait even though the owned Redis container was running. Stopping that container let the suite continue. All four `SearchAsync_DeepWindowBeyondAggregateCap_ShouldRejectPartialSuccess` cases passed in an isolated execution on the same revision.
+origin: migrated from attended ledger ("Deferred from full verification of the six-item purge and verification batch (2026-11-27)"), 2026-11-27
+location: tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixture.cs; tests/Hexalith.Memories.IntegrationTests/Ingestion/EmbeddingProviderFailureIntegrationTests.cs
+source_spec: `_bmad-output/implementation-artifacts/spec-six-deferred-purge-and-verification.md`
+severity: medium
+reason: The full fast run timed out initializing OpenBao before `HybridSearch_WhenQueryEmbeddingFails_DegradesOnlySemanticAndRecoversAsync` entered its test body. An isolated execution passed on the same revision. Capture DCP OpenBao allocation and listener state if startup times out again.
+status: done 2026-11-27
+resolution: 9d6189453b553924e0c2940dd552d2d4c91f0d04 (follow-up ed0945e2ee331b8840af2967b41a609d6e286083) — Failed Ollama startup records OpenBao allocation and bounded loopback reachability. All 65 fixture cases and the live hybrid-search recovery proof passed.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-six-deferred-purge-and-verification.md`
-  summary: Diagnose intermittent subprocess timeouts in the C1.16 tooling bounds fixture.
-  evidence: `test_literal_credentials_process_failures_timeouts_and_output_bounds_are_safe` exceeded its PowerShell outer subprocess deadline during the parallel tooling run. The same test passed in an isolated invocation on the final product revision. Preserve the existing timeout assertions while investigating the harness launch and termination path.
+### DW-742: Bound and diagnose the disposable Redis startup wait in the deep-window syntactic search tests.
+
+origin: migrated from attended ledger ("Deferred from full verification of the six-item purge and verification batch (2026-11-27)"), 2026-11-27
+location: tests/Hexalith.Memories.IntegrationTests/Fixtures/RedisStackFixture.cs; tests/Hexalith.Memories.IntegrationTests/Search/SyntacticSearchIntegrationTests.Fast.cs
+source_spec: `_bmad-output/implementation-artifacts/spec-six-deferred-purge-and-verification.md`
+severity: high
+reason: In the full fast run the published port refused connections and Testcontainers stayed in Docker's exit-code wait even though the owned Redis container was running. Stopping that container let the suite continue. All four `SearchAsync_DeepWindowBeyondAggregateCap_ShouldRejectPartialSuccess` cases passed in an isolated execution on the same revision.
+status: done 2026-11-27
+resolution: 0aa7a573e515c97c205ce477f5c1b1c434b3b726 (follow-up 1e42eda6b5b60f00ee50b4c47539bc405b2da01d) — Owned Redis startup now uses cancellable Docker allocation and a bounded real handshake. Three startup cases and six live Redis cases passed.
+
+### DW-746: Diagnose intermittent subprocess timeouts in the C1.16 tooling bounds fixture.
+
+origin: migrated from attended ledger ("Deferred from full verification of the six-item purge and verification batch (2026-11-27)"), 2026-11-27
+location: tests/tooling/access_telemetry_c1/gate_c1_16_test.py
+source_spec: `_bmad-output/implementation-artifacts/spec-six-deferred-purge-and-verification.md`
+severity: medium
+reason: `test_literal_credentials_process_failures_timeouts_and_output_bounds_are_safe` exceeded its PowerShell outer subprocess deadline during the parallel tooling run. The same test passed in an isolated invocation on the final product revision. Preserve the existing timeout assertions while investigating the harness launch and termination path.
+status: done 2026-11-27
+resolution: 8e9fa49cf28b86d96233c9ce67639656ea92e4c2 — The harness computes a capture budget from the sequential observations. The regression exceeded the former outer deadline and passed with the existing subprocess and credential checks.
+
+## Deferred from review of test execution reliability (2026-11-27)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-deferred-test-execution-reliability.md`
+  summary: Restrict test-results cleanup to runner-owned output directories.
+  evidence: The strict descendant check prevents checkout-root cleanup. An existing tracked descendant selected explicitly still enters recursive cleanup. Add ownership verification that preserves supported report locations.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-deferred-test-execution-reliability.md`
+  summary: Keep Bash results cleanup anchored to the validated directory when parent links change.
+  evidence: The path is resolved for containment before cleanup. Concurrent replacement of an intermediate parent can redirect raw-path deletion. Use a descriptor-anchored operation and verify safe replacement handling.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-deferred-test-execution-reliability.md`
+  summary: Reap child processes when the C1.16 test harness capture watchdog expires.
+  evidence: The outer subprocess watchdog stops PowerShell. Exercise forced expiry with a child still running and verify the caller waits for the complete owned process tree before deleting the workspace.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-deferred-test-execution-reliability.md`
+  summary: Exercise backend diagnostics on a deliberately failed full Aspire startup and restart.
+  evidence: The diagnostic helpers passed simulated endpoint failures and the live topologies passed normal startup. Inject a controlled failure at both full fixture boundaries to prove the original error retains pre-cleanup port evidence.
