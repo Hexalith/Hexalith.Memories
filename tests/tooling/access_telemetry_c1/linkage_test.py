@@ -96,7 +96,7 @@ def write_fake_kubectl(directory):
                 raise SystemExit(98)
         if scenario.get('hangPurpose') == purpose:
             Path(os.environ['C1_HANG_STARTED']).write_text(json.dumps({'pid': os.getpid(), 'started': time.time()}))
-            time.sleep(5)
+            time.sleep(scenario.get('hangSeconds', 5))
             Path(os.environ['C1_HANG_COMPLETED']).write_text('not terminated')
         if purpose == 'sessionsAfter' and scenario.get('delayAfterRead'):
             time.sleep(scenario['delayAfterRead'])
@@ -235,8 +235,6 @@ class ConnectionLinkageTests(unittest.TestCase):
                  'identityHelperSha256': hashlib.sha256(HELPER.read_bytes()).hexdigest(),
                  'lifecycleImageSha256': 'a' * 64}
         scope.update(scope_changes or {})
-        if expiry_seconds is not None:
-            scope['authorizedUntilUtc'] = utc(now + timedelta(seconds=expiry_seconds))
         scope_path = root / 'scope.json'
         scope_path.write_text(json.dumps(scope))
         calls_path = root / 'calls.jsonl'
@@ -246,16 +244,31 @@ class ConnectionLinkageTests(unittest.TestCase):
                    C1_NC_CALLS=str(root / 'nc-calls'), C1_HANG_STARTED=str(root / 'hang-started'),
                    C1_HANG_COMPLETED=str(root / 'hang-completed'), PGHOSTADDR='192.0.2.99',
                    http_proxy='http://192.0.2.99:8080', HTTP_PROXY='http://192.0.2.99:8080')
-        command = [shutil.which('pwsh'), '-NoProfile', str(runner), '-Gate', gate, '-ProfileId', profile, '-Mode', mode,
-                   '-LifecyclePod', self.pod, '-ScopeFile', str(scope_path), '-EvidenceDirectory', str(evidence),
-                   '-CommandTimeoutSeconds', str(timeout)]
+        parameters = {'Gate': gate, 'ProfileId': profile, 'Mode': mode, 'LifecyclePod': self.pod,
+                      'ScopeFile': str(scope_path), 'EvidenceDirectory': str(evidence), 'CommandTimeoutSeconds': timeout}
+        command = [shutil.which('pwsh'), '-NoProfile']
+        if expiry_seconds is None:
+            command.append(str(runner))
+            for name, value in parameters.items():
+                command.extend((f'-{name}', str(value)))
+        else:
+            # Start the synthetic authorization window after interpreter startup.
+            env.update(C1_COLLECTOR=str(runner), C1_COLLECTOR_ARGUMENTS=json.dumps(parameters),
+                       C1_SCOPE_EXPIRY_SECONDS=str(expiry_seconds))
+            command.extend(('-NonInteractive', '-Command', textwrap.dedent('''
+                $ErrorActionPreference = 'Stop'
+                $parameters = ConvertFrom-Json $env:C1_COLLECTOR_ARGUMENTS -AsHashtable
+                $scope = ConvertFrom-Json ([IO.File]::ReadAllText($parameters.ScopeFile)) -AsHashtable -DateKind String
+                $scope.authorizedUntilUtc = [DateTime]::UtcNow.AddSeconds([int]$env:C1_SCOPE_EXPIRY_SECONDS).ToString('o')
+                [IO.File]::WriteAllText($parameters.ScopeFile, (ConvertTo-Json $scope -Compress))
+                & $env:C1_COLLECTOR @parameters
+                exit $LASTEXITCODE
+            ''')))
         for _ in range(repeat):
             # Each run is an independent synthetic observation; preserve prior immutable packets.
             calls_path.unlink(missing_ok=True)
-            started = time.monotonic()
             # One observation executes several children with their own deadlines.
             result = subprocess.run(command, cwd=REPO_ROOT, env=env, text=True, capture_output=True, timeout=60)
-            self.last_elapsed = time.monotonic() - started
             self.last_root = root
             if result.returncode:
                 break
@@ -440,15 +453,28 @@ class ConnectionLinkageTests(unittest.TestCase):
                 self.assert_blocked({**self.base, **change}, 'session-activity-not-attributable')
 
     def test_running_command_is_terminated_at_authorization_deadline(self):
-        self.assert_blocked({**self.base, 'hangPurpose': 'context'}, 'kubectl-current-context-timeout', expiry_seconds=3)
+        # Allow preflight under load. Without the scope deadline, the fake
+        # command would finish before its own command timeout.
+        hang_seconds = 25
+        scenario = {**self.base, 'hangPurpose': 'context', 'hangSeconds': hang_seconds}
+        calls, _ = self.assert_blocked(scenario, 'kubectl-current-context-timeout', expiry_seconds=20, timeout=30)
+        self.assertEqual([['config', 'current-context']], calls)
         started = self.last_root / 'hang-started'
         self.assertTrue(started.exists(), 'The authorized command must have started before its deadline.')
+        child = json.loads(started.read_text())
+        scope = json.loads((self.last_root / 'scope.json').read_text())
+        deadline = datetime.fromisoformat(scope['authorizedUntilUtc'].replace('Z', '+00:00')).timestamp()
+        self.assertLess(child['started'], deadline)
+        self.assertLess(deadline, child['started'] + hang_seconds)
+        self.assertGreaterEqual(time.time(), deadline)
         self.assertFalse((self.last_root / 'hang-completed').exists())
-        self.assertLess(self.last_elapsed, 4.5, 'The five-second command must be terminated at the three-second scope deadline.')
-        pid = json.loads(started.read_text())['pid']
-        status = Path('/proc') / str(pid) / 'status'
-        if status.exists():
-            self.assertRegex(status.read_text(), r'State:\s+Z', 'The command must no longer be running.')
+        status = Path('/proc') / str(child['pid']) / 'status'
+        try:
+            child_status = status.read_text()
+        except FileNotFoundError:
+            pass
+        else:
+            self.assertRegex(child_status, r'State:\s+Z', 'The command must no longer be running.')
 
     def test_missing_duplicate_or_concurrent_sessions_block(self):
         for purpose in ['sessionsBefore', 'sessionsAfter']:
