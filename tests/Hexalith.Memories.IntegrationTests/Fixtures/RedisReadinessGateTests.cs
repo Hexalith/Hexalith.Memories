@@ -56,7 +56,7 @@ public sealed class RedisReadinessGateTests
     }
 
     [Fact]
-    public async Task StartGenerationAsync_RejectsLateSuccessFromSupersededProbe()
+    public async Task StartGenerationAsync_LiveWaitersFollowRestartAndIgnoreLateSuccess()
     {
         using var testBudget = new CancellationTokenSource(_testTimeout);
         var gate = new RedisReadinessGate(_testTimeout);
@@ -68,21 +68,54 @@ public sealed class RedisReadinessGateTests
         var running = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         Task currentProbe = gate.StartGenerationAsync(_ => running.Task, _ => Task.CompletedTask, testBudget.Token);
         Task currentConsumer = gate.WaitAsync(testBudget.Token);
-        _ = await Should.ThrowAsync<OperationCanceledException>(() => staleConsumer).ConfigureAwait(true);
         await oldProbeCanceled.Task.WaitAsync(testBudget.Token).ConfigureAwait(true);
 
         latePong.SetResult();
         await staleProbe.WaitAsync(testBudget.Token).ConfigureAwait(true);
+        staleConsumer.IsCompleted.ShouldBeFalse();
         currentConsumer.IsCompleted.ShouldBeFalse();
 
         running.SetResult();
-        await Task.WhenAll(currentProbe, currentConsumer).WaitAsync(testBudget.Token).ConfigureAwait(true);
+        await Task.WhenAll(currentProbe, staleConsumer, currentConsumer).WaitAsync(testBudget.Token).ConfigureAwait(true);
 
         async Task ProbeAsync(CancellationToken cancellationToken)
         {
             using CancellationTokenRegistration registration = cancellationToken.Register(() => oldProbeCanceled.SetResult());
             await latePong.Task.ConfigureAwait(true);
         }
+    }
+
+    [Fact]
+    public async Task WaitAsync_LaterConsumersShareRetryAfterAProbeFailure()
+    {
+        using var testBudget = new CancellationTokenSource(_testTimeout);
+        var gate = new RedisReadinessGate(_testTimeout);
+        var firstAttempt = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var retry = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        int probeCalls = 0;
+        Task initialProbe = gate.StartGenerationAsync(
+            _ => Task.CompletedTask,
+            _ => ++probeCalls == 1 ? firstAttempt.Task : retry.Task,
+            testBudget.Token);
+        Task firstConsumer = gate.WaitAsync(testBudget.Token);
+        Task secondConsumer = gate.WaitAsync(testBudget.Token);
+
+        var failure = new TimeoutException("Redis did not respond to its initial probe.");
+        firstAttempt.SetException(failure);
+        (await Should.ThrowAsync<TimeoutException>(() => firstConsumer).ConfigureAwait(true)).ShouldBeSameAs(failure);
+        (await Should.ThrowAsync<TimeoutException>(() => secondConsumer).ConfigureAwait(true)).ShouldBeSameAs(failure);
+        await initialProbe.WaitAsync(testBudget.Token).ConfigureAwait(true);
+        probeCalls.ShouldBe(1);
+
+        Task laterConsumer = gate.WaitAsync(testBudget.Token);
+        Task anotherConsumer = gate.WaitAsync(testBudget.Token);
+        probeCalls.ShouldBe(2);
+        laterConsumer.IsCompleted.ShouldBeFalse();
+        anotherConsumer.IsCompleted.ShouldBeFalse();
+
+        retry.SetResult();
+        await Task.WhenAll(laterConsumer, anotherConsumer).WaitAsync(testBudget.Token).ConfigureAwait(true);
+        probeCalls.ShouldBe(2);
     }
 
     [Fact]

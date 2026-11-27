@@ -12,6 +12,7 @@ internal sealed class RedisReadinessGate(TimeSpan startTimeout)
     private readonly Lock _sync = new();
     private TaskCompletionSource _started = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private TaskCompletionSource _readiness = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private Func<TaskCompletionSource, Task>? _startProbe;
 
     /// <summary>Starts a fresh readiness task and invalidates work from an earlier Redis start.</summary>
     /// <param name="waitForRunning">Waits for the current Redis resource to reach Running.</param>
@@ -32,8 +33,9 @@ internal sealed class RedisReadinessGate(TimeSpan startTimeout)
                 _readiness = new(TaskCreationOptions.RunContinuationsAsynchronously);
             }
 
+            _startProbe = readiness => CompleteReadinessAsync(readiness, waitForRunning, prepareAndProbe, applicationStopping);
             _started.SetResult();
-            return CompleteReadinessAsync(_readiness, waitForRunning, prepareAndProbe, applicationStopping);
+            return _startProbe(_readiness);
         }
     }
 
@@ -50,20 +52,41 @@ internal sealed class RedisReadinessGate(TimeSpan startTimeout)
             lock (_sync)
             {
                 started = _started.Task;
+
+                // Existing waiters see the outcome of their attempt. A new waiter can retry a
+                // failed probe on the same allocation, and later waiters join that pending retry.
+                if (_readiness.Task.IsFaulted && _startProbe is { } startProbe)
+                {
+                    _readiness = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                    _ = startProbe(_readiness);
+                }
+
                 readiness = _readiness.Task;
             }
 
-            await WaitForStartAsync(started, cancellationToken).ConfigureAwait(false);
-            await readiness.WaitAsync(cancellationToken).ConfigureAwait(false);
-
-            // A successful earlier probe may have completed just before its start was superseded.
-            lock (_sync)
+            try
             {
-                if (ReferenceEquals(readiness, _readiness.Task))
-                {
-                    return;
-                }
+                await WaitForStartAsync(started, cancellationToken).ConfigureAwait(false);
+                await readiness.WaitAsync(cancellationToken).ConfigureAwait(false);
             }
+            catch (Exception) when (!cancellationToken.IsCancellationRequested && !IsCurrentGeneration(started))
+            {
+                continue;
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            if (IsCurrentGeneration(started))
+            {
+                return;
+            }
+        }
+    }
+
+    private bool IsCurrentGeneration(Task started)
+    {
+        lock (_sync)
+        {
+            return ReferenceEquals(started, _started.Task);
         }
     }
 

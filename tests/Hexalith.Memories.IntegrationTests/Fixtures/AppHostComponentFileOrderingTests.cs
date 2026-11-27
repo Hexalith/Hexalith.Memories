@@ -58,6 +58,10 @@ public sealed class AppHostComponentFileOrderingTests
         var observations = new ConcurrentDictionary<string, bool>(StringComparer.Ordinal);
         var observationErrors = new ConcurrentDictionary<string, string>(StringComparer.Ordinal);
         var startedResourceNames = new ConcurrentBag<string>();
+        const string priorGenerationMarker = "# prior Redis generation";
+        string pubSubPath = Path.Combine(ownedDirectory, "pubsub.yaml");
+        var redisRestartObservation = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        bool observeNextMcpStart = false;
 
         builder.Eventing.Subscribe<BeforeResourceStartedEvent>(async (@event, cancellationToken) =>
         {
@@ -79,6 +83,19 @@ public sealed class AppHostComponentFileOrderingTests
 
             if (consumer == "mcp")
             {
+                if (@event.Resource.Name == "memories-mcp" && Volatile.Read(ref observeNextMcpStart))
+                {
+                    try
+                    {
+                        string pubSub = await File.ReadAllTextAsync(pubSubPath, cancellationToken).ConfigureAwait(true);
+                        redisRestartObservation.TrySetResult(!pubSub.Contains(priorGenerationMarker, StringComparison.Ordinal));
+                    }
+                    catch (Exception exception)
+                    {
+                        redisRestartObservation.TrySetException(exception);
+                    }
+                }
+
                 observations.AddOrUpdate(@event.Resource.Name, true, (_, previous) => previous);
                 return;
             }
@@ -207,8 +224,6 @@ public sealed class AppHostComponentFileOrderingTests
 
         // A restart can reuse the same host port. Mark the generated file so we can tell that
         // a consumer waited for the new generation's rewrite rather than cached readiness.
-        const string priorGenerationMarker = "# prior Redis generation";
-        string pubSubPath = Path.Combine(ownedDirectory, "pubsub.yaml");
         await File.AppendAllTextAsync(pubSubPath, $"{Environment.NewLine}{priorGenerationMarker}{Environment.NewLine}", cts.Token)
             .ConfigureAwait(true);
         ExecuteCommandResult redisRestart = await app.ResourceCommands.ExecuteCommandAsync(
@@ -220,12 +235,13 @@ public sealed class AppHostComponentFileOrderingTests
                 current.Snapshot.StartTimeStamp > originalStart,
             cts.Token).ConfigureAwait(true);
 
+        Volatile.Write(ref observeNextMcpStart, true);
         ExecuteCommandResult mcpRestart = await app.ResourceCommands.ExecuteCommandAsync(
             "memories-mcp", KnownResourceCommands.RestartCommand, cts.Token).ConfigureAwait(true);
         mcpRestart.Success.ShouldBeTrue(mcpRestart.Message);
+        bool rewriteObservedAtStart = await redisRestartObservation.Task.WaitAsync(cts.Token).ConfigureAwait(true);
+        rewriteObservedAtStart.ShouldBeTrue("MCP startup must observe the current Redis generation's pub/sub file.");
         _ = await app.ResourceNotifications.WaitForResourceHealthyAsync("memories-mcp", cts.Token).ConfigureAwait(true);
-        string newPubSub = await File.ReadAllTextAsync(pubSubPath, cts.Token).ConfigureAwait(true);
-        newPubSub.ShouldNotContain(priorGenerationMarker);
 
         await app.StopAsync(cts.Token).ConfigureAwait(true);
     }

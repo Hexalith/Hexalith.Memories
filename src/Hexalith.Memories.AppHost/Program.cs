@@ -149,18 +149,6 @@ redis.OnBeforeResourceStarted((resource, @event, startCancellationToken) =>
 });
 builder.Eventing.Subscribe<BeforeResourceStartedEvent>(async (@event, cancellationToken) =>
 {
-    bool usesRedis = @event.Resource.Name is "memories" or "memories-access-telemetry" or
-        "memories-access-telemetry-clock" or
-        "memories-mcp" or
-        "memories-dapr" or "memories-dapr-cli" or
-        "memories-mcp-dapr" or "memories-mcp-dapr-cli" or
-        "memories-access-telemetry-dapr" or "memories-access-telemetry-dapr-cli" or
-        "memories-access-telemetry-clock-dapr" or "memories-access-telemetry-clock-dapr-cli";
-    if (usesRedis)
-    {
-        await redisReadiness.WaitAsync(cancellationToken).ConfigureAwait(false);
-    }
-
     bool usesOpenBao = @event.Resource.Name is "memories" or
         "memories-access-telemetry" or "memories-access-telemetry-clock" or
         "memories-dapr" or "memories-dapr-cli" or
@@ -174,6 +162,19 @@ builder.Eventing.Subscribe<BeforeResourceStartedEvent>(async (@event, cancellati
             openBaoGenerationGate,
             TimeSpan.FromMinutes(2),
             cancellationToken).ConfigureAwait(false);
+    }
+
+    bool usesRedis = @event.Resource.Name is "memories-access-telemetry" or
+        "memories-access-telemetry-clock" or
+        "memories-mcp" or
+        "eventstore-dapr" or "eventstore-dapr-cli" or
+        "memories-dapr" or "memories-dapr-cli" or
+        "memories-mcp-dapr" or "memories-mcp-dapr-cli" or
+        "memories-access-telemetry-dapr" or "memories-access-telemetry-dapr-cli" or
+        "memories-access-telemetry-clock-dapr" or "memories-access-telemetry-clock-dapr-cli";
+    if (usesRedis)
+    {
+        await redisReadiness.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 });
 
@@ -313,6 +314,8 @@ server.OnBeforeResourceStarted(async (_, @event, cancellationToken) =>
         cancellationToken).ConfigureAwait(false);
     (string host, int port) = AllocatedEndpointResolver.Resolve(falkordb.Resource, "falkordb");
     await WaitForRedisPingAsync(host, port, TimeSpan.FromMinutes(2), cancellationToken).ConfigureAwait(false);
+    // Check Redis last so a restart during the FalkorDB wait cannot release the server on stale readiness.
+    await redisReadiness.WaitAsync(cancellationToken).ConfigureAwait(false);
 });
 server = RandomizeProjectHttpEndpointIfRequested(server);
 
