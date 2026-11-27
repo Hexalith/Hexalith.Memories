@@ -290,33 +290,38 @@ public sealed partial class TenantIsolationVerifier
         Stopwatch sw = Stopwatch.StartNew();
 
         TenantEmbeddingConfig? embeddingConfig;
-        Task<TenantEmbeddingConfig>? lookup = null;
-        try
+        using (var deadline = new CancellationTokenSource(_embeddingConfigurationLookupTimeout, _timeProvider))
+        using (var lookupCancellation = CancellationTokenSource.CreateLinkedTokenSource(ct, deadline.Token))
         {
-            lookup = _embeddingConfigProvider.GetAsync(tenantId, ct);
-            if (lookup is null)
+            CancellationToken lookupToken = lookupCancellation.Token;
+            Task<TenantEmbeddingConfig>? lookup = null;
+            try
             {
+                lookup = _embeddingConfigProvider.GetAsync(tenantId, lookupToken);
+                if (lookup is null)
+                {
+                    sw.Stop();
+                    LogEmbeddingConfigurationLookupFailed(_logger, tenantId, "NullLookupTask");
+                    return CreateEmbeddingConfigurationUnavailableResult(tenantId, sw.Elapsed.TotalMilliseconds);
+                }
+
+                embeddingConfig = await lookup.WaitAsync(lookupToken).ConfigureAwait(false);
+                ct.ThrowIfCancellationRequested();
+                deadline.Token.ThrowIfCancellationRequested();
+            }
+            catch (Exception ex) when (ex is OperationCanceledException || IsEmbeddingConfigurationUnavailable(ex))
+            {
+                if (lookup is not null)
+                {
+                    _ = ObserveLookupCompletionAsync(lookup);
+                }
+
+                ct.ThrowIfCancellationRequested();
                 sw.Stop();
-                LogEmbeddingConfigurationLookupFailed(_logger, tenantId, "NullLookupTask");
+                string failureType = deadline.IsCancellationRequested ? nameof(TimeoutException) : ex.GetType().Name;
+                LogEmbeddingConfigurationLookupFailed(_logger, tenantId, failureType);
                 return CreateEmbeddingConfigurationUnavailableResult(tenantId, sw.Elapsed.TotalMilliseconds);
             }
-
-            embeddingConfig = await lookup
-                .WaitAsync(_embeddingConfigurationLookupTimeout, _timeProvider, ct)
-                .ConfigureAwait(false);
-            ct.ThrowIfCancellationRequested();
-        }
-        catch (Exception ex) when (ex is OperationCanceledException || IsEmbeddingConfigurationUnavailable(ex))
-        {
-            if (lookup is not null)
-            {
-                _ = ObserveLookupCompletionAsync(lookup);
-            }
-
-            ct.ThrowIfCancellationRequested();
-            sw.Stop();
-            LogEmbeddingConfigurationLookupFailed(_logger, tenantId, ex.GetType().Name);
-            return CreateEmbeddingConfigurationUnavailableResult(tenantId, sw.Elapsed.TotalMilliseconds);
         }
 
         if (embeddingConfig is null)
@@ -893,7 +898,7 @@ public sealed partial class TenantIsolationVerifier
         }
     }
 
-    // The verifier can stop waiting while the provider's actor request is still in flight.
+    // Observe any late completion if the provider has not responded to cancellation yet.
     private static async Task ObserveLookupCompletionAsync(Task lookup)
         => await lookup.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
 

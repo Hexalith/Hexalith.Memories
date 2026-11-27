@@ -10,12 +10,13 @@ namespace Hexalith.Memories.Server.Tests.Ingestion;
 internal sealed class CancellationTrackingActorHandler(CancellationToken testToken) : HttpMessageHandler
 {
     private readonly TaskCompletionSource<string> _requestPath = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource<bool> _requestCancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     /// <summary>Gets the path captured when the client dispatches the actor request.</summary>
     internal Task<string> RequestPath => _requestPath.Task;
 
-    /// <summary>Gets a value indicating whether the actor request token was cancelled.</summary>
-    internal bool RequestCancelled { get; private set; }
+    /// <summary>Reports whether the actor request token was cancelled when the request ended.</summary>
+    internal Task<bool> RequestCancelled => _requestCancelled.Task;
 
     /// <inheritdoc/>
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -29,7 +30,7 @@ internal sealed class CancellationTrackingActorHandler(CancellationToken testTok
         }
         catch (OperationCanceledException)
         {
-            RequestCancelled = cancellationToken.IsCancellationRequested;
+            _requestCancelled.SetResult(cancellationToken.IsCancellationRequested);
             throw;
         }
 

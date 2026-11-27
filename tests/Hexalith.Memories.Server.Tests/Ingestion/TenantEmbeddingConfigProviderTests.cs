@@ -100,7 +100,7 @@ public sealed class TenantEmbeddingConfigProviderTests
         await cancellation.CancelAsync();
 
         await Should.ThrowAsync<OperationCanceledException>(() => pending.WaitAsync(budget.Token));
-        transport.RequestCancelled.ShouldBeTrue();
+        (await transport.RequestCancelled.WaitAsync(budget.Token)).ShouldBeTrue();
         budget.IsCancellationRequested.ShouldBeFalse();
     }
 

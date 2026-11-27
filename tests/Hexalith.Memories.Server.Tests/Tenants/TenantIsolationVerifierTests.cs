@@ -13,15 +13,18 @@ using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 
 using Dapr.Actors;
+using Dapr.Actors.Client;
 using Dapr.Client;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.Infrastructure;
 using Hexalith.Memories.Server.Tenants;
+using Hexalith.Memories.Server.Tests.Ingestion;
 using Hexalith.Memories.TestHelpers.Documentation;
 
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
 using NSubstitute;
@@ -526,14 +529,14 @@ public class TenantIsolationVerifierTests
     public async Task VerifyAsync_EmbeddingConfigLookupCancelled_PropagatesCancellation()
     {
         using CancellationTokenSource cts = new();
-        TaskCompletionSource<bool> providerEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<CancellationToken> providerEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<TenantEmbeddingConfig> pendingConfiguration = new(TaskCreationOptions.RunContinuationsAsynchronously);
         ITenantEmbeddingConfigProvider embeddingConfigProvider = Substitute.For<ITenantEmbeddingConfigProvider>();
         embeddingConfigProvider
-            .GetAsync("tenant-a", cts.Token)
-            .Returns(_ =>
+            .GetAsync("tenant-a", Arg.Any<CancellationToken>())
+            .Returns(call =>
             {
-                providerEntered.TrySetResult(true);
+                providerEntered.SetResult(call.Arg<CancellationToken>());
                 return pendingConfiguration.Task;
             });
         (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, _) = CreateVerifier(
@@ -547,16 +550,17 @@ public class TenantIsolationVerifierTests
         SetupGraphList(falkorDb, "tenant-a");
 
         Task<TenantIsolationVerificationResult> verification = verifier.VerifyAsync("tenant-a", cts.Token);
-        _ = await providerEntered.Task.WaitAsync(TestContext.Current.CancellationToken);
+        CancellationToken lookupToken = await providerEntered.Task.WaitAsync(TestContext.Current.CancellationToken);
         cts.Cancel();
 
         OperationCanceledException exception = await Should.ThrowAsync<OperationCanceledException>(() => verification);
 
         exception.CancellationToken.ShouldBe(cts.Token);
+        lookupToken.IsCancellationRequested.ShouldBeTrue();
         pendingConfiguration.Task.IsCompleted.ShouldBeFalse();
         pendingConfiguration.TrySetCanceled(cts.Token).ShouldBeTrue();
         pendingConfiguration.Task.IsCanceled.ShouldBeTrue();
-        _ = await embeddingConfigProvider.Received(1).GetAsync("tenant-a", cts.Token);
+        _ = await embeddingConfigProvider.Received(1).GetAsync("tenant-a", lookupToken);
         embeddingConfigProvider.DidNotReceive().Invalidate(Arg.Any<string>());
         AssertReadOnlyDependencyCalls(redisDb, falkorDb);
     }
@@ -567,7 +571,7 @@ public class TenantIsolationVerifierTests
         FakeTimeProvider time = new();
         TaskCompletionSource<TenantEmbeddingConfig> pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
         ITenantEmbeddingConfigProvider provider = Substitute.For<ITenantEmbeddingConfigProvider>();
-        provider.GetAsync("tenant-a", CancellationToken.None).Returns(pending.Task);
+        provider.GetAsync("tenant-a", Arg.Any<CancellationToken>()).Returns(pending.Task);
         (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, _) = CreateVerifier(
             [new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow)],
             provider,
@@ -576,7 +580,7 @@ public class TenantIsolationVerifierTests
         SetupGraphList(falkorDb, "tenant-a");
 
         Task<TenantIsolationVerificationResult> verification = verifier.VerifyAsync("tenant-a", CancellationToken.None);
-        _ = await provider.Received(1).GetAsync("tenant-a", CancellationToken.None);
+        _ = await provider.Received(1).GetAsync("tenant-a", Arg.Any<CancellationToken>());
         time.Advance(TimeSpan.FromSeconds(4));
         verification.IsCompleted.ShouldBeFalse();
 
@@ -595,13 +599,40 @@ public class TenantIsolationVerifierTests
     }
 
     [Fact]
+    public async Task VerifyAsync_EmbeddingConfigLookupDeadline_AbortsTheTypedActorRequest()
+    {
+        FakeTimeProvider time = new();
+        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var transport = new CancellationTrackingActorHandler(budget.Token);
+        var factory = new ActorProxyFactory(new ActorProxyOptions { HttpEndpoint = "http://localhost:3500" }, transport);
+        TenantEmbeddingConfigProvider provider = new(factory, Options.Create(new TenantEmbeddingConfigCacheOptions()), time);
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, _) = CreateVerifier(
+            [new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, time.GetUtcNow())],
+            provider,
+            timeProvider: time);
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        SetupGraphList(falkorDb, "tenant-a");
+
+        Task<TenantIsolationVerificationResult> verification = verifier.VerifyAsync("tenant-a", CancellationToken.None);
+        string path = await transport.RequestPath.WaitAsync(budget.Token);
+        path.ShouldBe("/v1.0/actors/TenantConfigurationActor/tenant-a/method/GetEmbeddingConfigAsync");
+
+        time.Advance(TimeSpan.FromSeconds(5));
+
+        (await transport.RequestCancelled.WaitAsync(budget.Token)).ShouldBeTrue();
+        TenantIsolationVerificationResult result = await verification.WaitAsync(budget.Token);
+        result.Checks.Single(check => check.CheckName == "SemanticIsolation").Passed.ShouldBeFalse();
+        result.Checks.Where(check => check.CheckName != "SemanticIsolation").Count(check => check.Passed).ShouldBe(4);
+    }
+
+    [Fact]
     public async Task VerifyAsync_ProviderSideCancellationWithoutCallerCancellation_FailsClosed()
     {
         using CancellationTokenSource providerCts = new();
         providerCts.Cancel();
         ITenantEmbeddingConfigProvider embeddingConfigProvider = Substitute.For<ITenantEmbeddingConfigProvider>();
         embeddingConfigProvider
-            .GetAsync("tenant-a", CancellationToken.None)
+            .GetAsync("tenant-a", Arg.Any<CancellationToken>())
             .Returns(Task.FromCanceled<TenantEmbeddingConfig>(providerCts.Token));
         CapturingLogger<TenantIsolationVerifier> logger = new();
         (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, _) = CreateVerifier(
