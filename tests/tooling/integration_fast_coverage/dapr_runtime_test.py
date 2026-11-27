@@ -1,11 +1,14 @@
 """Exercise Dapr startup with fake CLI tools and fixture-owned TCP listeners."""
 
+from contextlib import contextmanager
 import os
 from pathlib import Path
 import shutil
+import signal
 import socket
 import subprocess
 import tempfile
+import time
 import unittest
 
 
@@ -14,6 +17,9 @@ DAPR_FIXTURE = """#!/bin/sh
 printf '%s\\n' "$*" >> "$DAPR_CALLS"
 case "$*" in
     'init --slim --runtime-version 1.19.1')
+        if [ "$STALL_COMMAND" = 'dapr init' ]; then
+            exec fixture-stall
+        fi
         if [ ! -e "$DAPR_FIRST_ATTEMPT" ]; then
             : > "$DAPR_FIRST_ATTEMPT"
             exit 1
@@ -22,20 +28,54 @@ case "$*" in
     *) exit 97 ;;
 esac
 """
+DOCKER_FIXTURE = """#!/bin/sh
+printf '%s\\n' "$*" >> "$DOCKER_CALLS"
+if [ -n "$STALL_COMMAND" ]; then
+    case "docker $*" in
+        "$STALL_COMMAND"*) exec fixture-stall ;;
+    esac
+fi
+# The two stale containers may already be absent.
+[ "$1" != rm ]
+"""
+STALL_FIXTURE = """#!/bin/sh
+trap '' TERM
+"$REAL_SLEEP" 60 &
+child=$!
+if [ "$EXIT_LAUNCHER_ON_TERM" = 'yes' ]; then
+    trap 'exit 0' TERM
+fi
+printf '%s %s\\n' "$$" "$child" >> "$STALLED_JOBS"
+wait "$child"
+"""
 TIMEOUT_FIXTURE = """#!/bin/sh
-[ "$1" = '30s' ] || exit 97
-case "$6" in
-    50005) port=$PLACEMENT_FIXTURE_PORT ;;
-    50006) port=$SCHEDULER_FIXTURE_PORT ;;
+[ "$1 $2" = '--foreground --kill-after=5s' ] || exit 97
+deadline=$3
+shift 3
+case "$1 $2" in
+    'dapr init'|'docker run') [ "$deadline" = '120s' ] || exit 97 ;;
+    'docker rm'|'docker volume') [ "$deadline" = '30s' ] || exit 97 ;;
+    'bash -c')
+        [ "$deadline" = '30s' ] || exit 97
+        case "$5" in
+            50005) port=$PLACEMENT_FIXTURE_PORT ;;
+            50006) port=$SCHEDULER_FIXTURE_PORT ;;
+            *) exit 97 ;;
+        esac
+        set -- "$1" "$2" "$3" "$4" "$port" ;;
     *) exit 97 ;;
 esac
-exec "$REAL_TIMEOUT" 1s "$2" "$3" "$4" "$5" "$port"
+exec "$REAL_TIMEOUT" --foreground --kill-after=0.2s "$FIXTURE_TIMEOUT" "$@"
 """
 SLEEP_FIXTURE = """#!/bin/sh
 [ "$1" = 5 ] || exec "$REAL_SLEEP" "$@"
 """
 CURL_FIXTURE = """#!/bin/sh
 for url do :; done
+printf '%s\\n' "$url" >> "$READINESS_CALLS"
+if [ "$STALL_COMMAND" = 'readiness' ]; then
+    exec fixture-stall
+fi
 case "$url" in
     "$PLACEMENT_READY_URL"|"$SCHEDULER_READY_URL") printf '2 200 application/grpc' ;;
     *) exec "$REAL_CURL" "$@" ;;
@@ -43,8 +83,8 @@ esac
 """
 
 
-@unittest.skipUnless(all(shutil.which(tool) for tool in ("bash", "timeout", "curl")),
-                     "requires Bash, timeout, and curl")
+@unittest.skipUnless(all(shutil.which(tool) for tool in ("bash", "timeout", "curl", "ps", "sleep")),
+                     "requires Bash, timeout, curl, ps, and sleep")
 class DaprRuntimeTests(unittest.TestCase):
     def setUp(self):
         temp = tempfile.TemporaryDirectory()
@@ -55,28 +95,41 @@ class DaprRuntimeTests(unittest.TestCase):
         bin_dir.mkdir()
         for name, contents in (
             ("dapr", DAPR_FIXTURE),
-            ("docker", "#!/bin/sh\nexit 0\n"),
+            ("docker", DOCKER_FIXTURE),
             ("curl", CURL_FIXTURE),
             ("timeout", TIMEOUT_FIXTURE),
             ("sleep", SLEEP_FIXTURE),
+            ("fixture-stall", STALL_FIXTURE),
         ):
             executable = bin_dir / name
             executable.write_text(contents, encoding="utf-8")
             executable.chmod(0o755)
         self.calls = self.root / "dapr-calls"
+        self.first_attempt = self.root / "dapr-first-attempt"
+        self.docker_calls = self.root / "docker-calls"
+        self.readiness_calls = self.root / "readiness-calls"
+        self.stalled_jobs = self.root / "stalled-jobs"
+        self.addCleanup(self.kill_stalled_jobs)
         self.env = dict(
             os.environ,
             PATH=os.pathsep.join((str(bin_dir), os.environ["PATH"])),
             DAPR_RUNTIME_VERSION="1.19.1",
             DAPR_INIT_ATTEMPTS="2",
             DAPR_CALLS=str(self.calls),
-            DAPR_FIRST_ATTEMPT=str(self.root / "dapr-first-attempt"),
+            DAPR_FIRST_ATTEMPT=str(self.first_attempt),
+            DOCKER_CALLS=str(self.docker_calls),
+            READINESS_CALLS=str(self.readiness_calls),
+            STALLED_JOBS=str(self.stalled_jobs),
+            STALL_COMMAND="",
+            EXIT_LAUNCHER_ON_TERM="no",
+            FIXTURE_TIMEOUT="1s",
             REAL_CURL=shutil.which("curl"),
             REAL_TIMEOUT=shutil.which("timeout"),
             REAL_SLEEP=shutil.which("sleep"),
         )
 
-    def run_initializer(self, unavailable=None):
+    @contextmanager
+    def start_initializer(self, unavailable=None, **overrides):
         with socket.socket(socket.AF_INET) as placement, socket.socket(socket.AF_INET) as scheduler:
             placement.bind(("127.0.0.1", 0))
             scheduler.bind(("127.0.0.1", 0))
@@ -96,10 +149,63 @@ class DaprRuntimeTests(unittest.TestCase):
                 SCHEDULER_READY_URL=f"http://127.0.0.1:{scheduler_port}{health_path}"
                 if unavailable != "scheduler" else "",
             )
-            return subprocess.run(
-                ["bash", SCRIPT.name], cwd=self.root, env=env,
-                capture_output=True, text=True, timeout=10,
-            )
+            env.update(overrides)
+            with subprocess.Popen(
+                ["bash", SCRIPT.name], cwd=self.root, env=env, text=True,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            ) as process:
+                try:
+                    yield process
+                finally:
+                    if process.poll() is None:
+                        process.terminate()
+                        try:
+                            process.wait(timeout=2)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+
+    def run_initializer(self, unavailable=None, **overrides):
+        with self.start_initializer(unavailable, **overrides) as process:
+            stdout, stderr = process.communicate(timeout=10)
+            return subprocess.CompletedProcess(process.args, process.returncode, stdout, stderr)
+
+    def stalled_pids(self):
+        if not self.stalled_jobs.exists():
+            return []
+        return [int(pid) for pid in self.stalled_jobs.read_text(encoding="utf-8").split()]
+
+    def running_stalled_pids(self):
+        pids = self.stalled_pids()
+        if not pids:
+            return []
+        result = subprocess.run(
+            ["ps", "-o", "pid=,stat=", "-p", ",".join(map(str, pids))],
+            capture_output=True, text=True, timeout=2,
+        )
+        self.assertIn(result.returncode, (0, 1), result.stderr)
+        self.assertEqual("", result.stderr)
+        states = [line.split() for line in result.stdout.splitlines()]
+        return [int(pid) for pid, state in states if not state.startswith("Z")]
+
+    def kill_stalled_jobs(self):
+        for pid in self.running_stalled_pids():
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+
+    def assert_stalled_jobs_stopped(self, count):
+        self.assertEqual(count * 2, len(self.stalled_pids()))
+        deadline = time.monotonic() + 2
+        while alive := self.running_stalled_pids():
+            if time.monotonic() >= deadline:
+                self.fail(f"Stalled jobs are still running: {alive}")
+            time.sleep(0.01)
+
+    def reset_calls(self):
+        self.kill_stalled_jobs()
+        for path in (self.calls, self.first_attempt, self.docker_calls, self.readiness_calls, self.stalled_jobs):
+            path.unlink(missing_ok=True)
 
     def test_retries_slim_init_without_uninstalling_and_accepts_both_grpc_responses(self):
         result = self.run_initializer()
@@ -126,3 +232,61 @@ class DaprRuntimeTests(unittest.TestCase):
         self.assertIn("waiting for Dapr placement on 127.0.0.1:50005", result.stderr)
         self.assertNotIn("waiting for Dapr scheduler", result.stderr)
         self.assertNotIn("--version", self.calls.read_text(encoding="utf-8"))
+
+    def test_stalled_slim_install_retries_and_stops_its_children(self):
+        result = self.run_initializer(STALL_COMMAND="dapr init")
+
+        self.assertEqual(1, result.returncode, result.stderr)
+        self.assertEqual(2, result.stderr.count("Timed out after 120s running dapr init --slim"))
+        self.assertIn("dapr init --slim failed after 2 attempts", result.stderr)
+        self.assertEqual(
+            ["init --slim --runtime-version 1.19.1"] * 2,
+            self.calls.read_text(encoding="utf-8").splitlines(),
+        )
+        self.assertFalse(self.docker_calls.exists())
+        self.assertFalse(self.readiness_calls.exists())
+        self.assert_stalled_jobs_stopped(count=2)
+
+    def test_stalled_docker_operations_stop_setup_and_their_children(self):
+        operations = (
+            ("rm -f dapr_placement dapr_scheduler", "Timed out after 30s removing"),
+            ("run -d --name dapr_placement", "Timed out after 120s running docker run"),
+            ("volume create dapr_scheduler", "Timed out after 30s running docker volume create"),
+            ("run -d --name dapr_scheduler", "Timed out after 120s running docker run"),
+        )
+        for count, (operation, message) in enumerate(operations, start=1):
+            with self.subTest(operation=operation):
+                self.reset_calls()
+                result = self.run_initializer(
+                    STALL_COMMAND=f"docker {operation}", EXIT_LAUNCHER_ON_TERM="yes",
+                )
+
+                self.assertEqual(124, result.returncode, result.stderr)
+                self.assertIn(message, result.stderr)
+                calls = self.docker_calls.read_text(encoding="utf-8").splitlines()
+                self.assertEqual(count, len(calls), calls)
+                self.assertEqual(operations[0][0], calls[0])
+                self.assertTrue(calls[-1].startswith(operation), calls)
+                self.assertFalse(self.readiness_calls.exists())
+                self.assert_stalled_jobs_stopped(count=1)
+
+    def test_interruption_stops_active_setup_and_readiness_jobs(self):
+        for interrupted, operation, count in (
+            (signal.SIGHUP, "dapr init", 1),
+            (signal.SIGINT, "docker run -d --name dapr_placement", 1),
+            (signal.SIGTERM, "readiness", 2),
+        ):
+            with self.subTest(signal=interrupted, operation=operation):
+                self.reset_calls()
+                with self.start_initializer(STALL_COMMAND=operation, FIXTURE_TIMEOUT="30s") as process:
+                    deadline = time.monotonic() + 5
+                    while len(self.stalled_pids()) < count * 2:
+                        if process.poll() is not None or time.monotonic() >= deadline:
+                            self.fail(f"{operation} stalled jobs did not start")
+                        time.sleep(0.01)
+                    process.send_signal(interrupted)
+                    _, stderr = process.communicate(timeout=3)
+
+                self.assertEqual(128 + interrupted, process.returncode, stderr)
+                self.assertNotIn("--version", self.calls.read_text(encoding="utf-8"))
+                self.assert_stalled_jobs_stopped(count)
