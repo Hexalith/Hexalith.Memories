@@ -4501,7 +4501,8 @@ resolution: The C6 checker retains previously committed checkpoint labels and re
 origin: migrated from legacy ledger ("Deferred from: code review of 27-3-production-adapter-and-deployment-profile (2026-07-31)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-gh-30655137033-fix-ci-cd-issues.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-gh-30655137033-fix-ci-cd-issues.md` summary: Reconcile the documented approximately five-minute `integration-fast` budget with observed 15–20 minute executions. evidence: The final exact selector passed in 15m38s and earlier unchanged broad runs took 19–20 minutes, while `tests/README.md` still defines this lane as an approximately five-minute budget; the discrepancy predates and is not caused by the OpenBao/MCP stabilization patch.
-status: open
+status: done 2026-11-27
+resolution: Dated hosted measurements replace the five-minute estimate. The guide distinguishes test-step and job runtime, cites slower historical runs, and confirms the existing 35-minute required job and 30-minute manual job accommodate setup and measured execution.
 decision: 2026-09-01 Adopt measured budget — Benchmark current runs and update docs, workflow timeouts, and naming to the measured budget.
 decision: 2026-09-01 Adopt measured budget — Benchmark current runs and update docs, workflow timeouts, and naming to the measured budget.
 

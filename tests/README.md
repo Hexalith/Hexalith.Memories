@@ -56,12 +56,28 @@ This includes module collection and evaluation of helper annotations under that 
 
 Integration tests split into two lanes by wall-clock cost. Performance-tagged integration smoke tests are opt-in so the PR lane stays deterministic under shared CI resources.
 
-- `Category=Integration&Category!=IntegrationSlow&Category!=Performance` — PR-fast lane (~5 min budget)
+- `Category=Integration&Category!=IntegrationSlow&Category!=Performance` — required PR/push `integration-fast` lane
 - `Category=IntegrationSlow` — nightly-only tests that restart the full Aspire topology or exercise long retry loops (individual tests >20 s)
 - `Category=Performance` — opt-in latency and throughput smoke tests
 
+The three successful `integration-fast` jobs on November 26–27, 2026 took
+8m31s–8m58s for the test step and 11m33s–12m03s for the whole job, including
+setup and build. Use about 12 minutes for the hosted job and allow about
+20 minutes for a cold or loaded run. An earlier selector run passed in 15m38s,
+and a partial run reached 20m29s. Keep time for provisioning and evidence
+collection in the job limit.
+[Historical timing record](../_bmad-output/implementation-artifacts/spec-gh-30655137033-fix-ci-cd-issues.md)
+[Nov 26 job](https://github.com/Hexalith/Hexalith.Memories/actions/runs/45848169332/job/140007175830)
+· [Nov 27 job](https://github.com/Hexalith/Hexalith.Memories/actions/runs/45968678905/job/140403595613)
+· [Nov 27 job](https://github.com/Hexalith/Hexalith.Memories/actions/runs/45978113724/job/140434882492)
+
+The required `integration-fast` job has a 35-minute timeout. The manually
+dispatched nightly fast job has a 30-minute timeout. Both limits include
+tool setup, restore, build, tests, and evidence collection. The fast label
+identifies the selector that excludes slow and performance cases.
+
 ```bash
-./tools/test.sh --filter "Category=Integration"                            # all integration tests (~17 min)
+./tools/test.sh --filter "Category=Integration"                            # all integration tests
 ./tools/test.sh --filter "Category=Integration&Category!=IntegrationSlow&Category!=Performance"    # PR-fast lane
 ./tools/test.sh --filter "Category=IntegrationSlow"                        # slow lane only
 ./tools/test.sh --filter "Category=Performance"                            # performance smoke tests
