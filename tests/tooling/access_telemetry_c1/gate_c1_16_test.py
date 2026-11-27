@@ -1,17 +1,22 @@
 import copy
+import ctypes
 import hashlib
 import json
 import os
 import shutil
+import signal
 import stat
 import subprocess
 import sys
 import tempfile
 import textwrap
 import threading
+import time
 import unittest
+from contextlib import contextmanager, suppress
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from unittest import mock
 
 from approved_profile_fixture import stage_approved_inputs
 
@@ -25,11 +30,62 @@ TOKEN_CANARY = 'C1_SECRET_CANARY_DO_NOT_EMIT_7429'
 POD_OUTPUT = "jsonpath-as-json={range .items[*]}{['metadata','status']}{end}"
 
 
+@contextmanager
+def capture_subreaper():
+    if sys.platform != 'linux':
+        yield
+        return
+
+    libc = ctypes.CDLL(None, use_errno=True)
+    PR_SET_CHILD_SUBREAPER = 36
+    PR_GET_CHILD_SUBREAPER = 37
+    previous = ctypes.c_int()
+    if libc.prctl(PR_GET_CHILD_SUBREAPER, ctypes.byref(previous), 0, 0, 0) == -1:
+        error = ctypes.get_errno()
+        raise OSError(error, os.strerror(error))
+    if libc.prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) == -1:
+        error = ctypes.get_errno()
+        raise OSError(error, os.strerror(error))
+    try:
+        yield
+    finally:
+        if libc.prctl(PR_SET_CHILD_SUBREAPER, previous.value, 0, 0, 0) == -1:
+            error = ctypes.get_errno()
+            raise OSError(error, os.strerror(error))
+
+
+def capture_gate(command, *, env, timeout):
+    with capture_subreaper(), subprocess.Popen(command, cwd=REPO_ROOT, env=env, text=True,
+                                               stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                               start_new_session=True) as process:
+        try:
+            stdout, stderr = process.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            # The group can still contain kubectl and its children after PowerShell exits.
+            with suppress(ProcessLookupError):
+                os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+            if sys.platform == 'linux':
+                # Orphans from the capture are reparented here as their parents exit.
+                with suppress(ChildProcessError):
+                    while True:
+                        os.waitpid(-process.pid, 0)
+            else:
+                # On other POSIX systems, init reaps the orphaned group members.
+                with suppress(ProcessLookupError):
+                    while True:
+                        os.killpg(process.pid, 0)
+                        time.sleep(0.01)
+            return None
+        return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+
+
 def write_fake_kubectl(directory: Path) -> None:
     fake = directory / 'fake_kubectl.py'
     fake.write_text(textwrap.dedent(r'''
         import json
         import os
+        import subprocess
         import sys
         import time
         from pathlib import Path
@@ -90,6 +146,14 @@ def write_fake_kubectl(directory: Path) -> None:
             purpose = 'server'
         else:
             raise SystemExit(98)
+        if 'watchdogMarker' in scenario:
+            child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'],
+                                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            marker = Path(scenario['watchdogMarker'])
+            pending = marker.with_suffix('.pending')
+            pending.write_text(json.dumps({'pids': [os.getpid(), child.pid], 'workspace': str(log.parent)}))
+            pending.replace(marker)
+            child.wait()
         if scenario.get('hangPurpose') == purpose:
             time.sleep(5)
         if 'commandDelaySeconds' in scenario:
@@ -162,10 +226,8 @@ class ComponentBackendCaptureTests(unittest.TestCase):
         observation_count = 8 + len(scenario['pods']['items'])
         capture_timeout = observation_count * timeout + 20
         for capture in range(1, repeat + 1):
-            try:
-                result = subprocess.run(command, cwd=REPO_ROOT, env=env, text=True, capture_output=True,
-                                        check=False, timeout=capture_timeout)
-            except subprocess.TimeoutExpired:
+            result = capture_gate(command, env=env, timeout=capture_timeout)
+            if result is None:
                 launched = len(log.read_text().splitlines()) if log.exists() else 0
                 self.fail(f'{gate} PowerShell fixture capture {capture} exceeded its {capture_timeout}s budget '
                           f'with {launched} total kubectl launches ({timeout}s per command).')
@@ -662,6 +724,56 @@ class ComponentBackendCaptureTests(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual(9, len(calls))
         self.assertEqual('observed', packets[0]['producerStatus'])
+
+    def test_outer_harness_reaps_descendants_before_workspace_cleanup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            marker = Path(directory) / 'watchdog.json'
+            runner = Path(directory) / RUNNER.name
+            runner.write_text('[Console]::Out.WriteLine($env:DAPR_API_TOKEN)\n'
+                              '[Console]::Error.WriteLine($env:DAPR_API_TOKEN)\n'
+                              '& kubectl config current-context\n')
+            scenario = dict(self.base, watchdogMarker=str(marker))
+            communicate = subprocess.Popen.communicate
+            pids = []
+            workspace = None
+            all_reaped = False
+
+            def expire_after_child_starts(process, *args, timeout=None, **kwargs):
+                nonlocal workspace
+                deadline = time.monotonic() + 10
+                while not marker.exists() and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                self.assertTrue(marker.exists(), 'The fake kubectl child did not start')
+                ready = json.loads(marker.read_text())
+                pids.extend([process.pid, *ready['pids']])
+                workspace = Path(ready['workspace'])
+                try:
+                    return communicate(process, *args, timeout=0.2, **kwargs)
+                except subprocess.TimeoutExpired as error:
+                    canary = TOKEN_CANARY.encode()
+                    self.assertTrue(canary in (error.stdout or b''), 'The stdout canary was not captured')
+                    self.assertTrue(canary in (error.stderr or b''), 'The stderr canary was not captured')
+                    raise
+
+            try:
+                with mock.patch.object(subprocess.Popen, 'communicate', expire_after_child_starts):
+                    with self.assertRaises(self.failureException) as failure:
+                        self.run_gate(scenario, runner=runner)
+                for pid in pids:
+                    with self.assertRaises(ProcessLookupError):
+                        os.kill(pid, 0)
+                all_reaped = True
+                self.assertEqual('C1.16 PowerShell fixture capture 1 exceeded its 290s budget '
+                                 'with 1 total kubectl launches (30s per command).', str(failure.exception))
+                self.assertIsNone(failure.exception.__context__)
+                self.assertTrue(workspace.is_dir())
+                self.assertTrue(self.doCleanups())
+                self.assertFalse(workspace.exists())
+            finally:
+                if not all_reaped:
+                    for pid in pids[1:]:
+                        with suppress(ProcessLookupError):
+                            os.kill(pid, signal.SIGKILL)
 
 
     def successor_scenario(self):
