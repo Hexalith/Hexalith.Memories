@@ -413,3 +413,175 @@ The Debug source-reference build and all 164 focused deployment cases passed. `k
 `validate_current_profile_inputs()` independently refused the existing PG-ONPREM-2 checkout with `approved PG-ONPREM-2 input drifted: deploy/kubernetes/overlays/production/access-telemetry-disabled-patch.yaml`. A direct check compared all sixteen hashed inputs byte-for-byte with HEAD. The production disabled patch and production kustomization already differed from their historical approved hashes at HEAD. The new overlay preserves those inputs and has its own render.
 
 The approved recovery-point and restore-rehearsal evidence and the deployment's intake-quiescence and workflow-drain record were unavailable in this preflight. The cluster rollout remains pending under the [upgrade and migration runbook](../../../docs/operations/upgrade-migration.md#3-backup-rehearse-and-quiesce). The live Dapr control plane, workloads, Configurations, Roles, and Secrets were inspected read-only.
+
+## Dapr 1.19.2 rollout on 2026-11-28
+
+Jérôme Piquot (`jpiquot`), sole owner, approved two decisions on 2026-11-28 in the spec `spec-31-2-runtime-dapr-secret-store-migration-2.md`. Option B is the approved non-CSI maintenance procedure for `jpiquot@local`: a one-off Velero backup of `hexalith-memories` to `scaleway-kube-green`, paired with an explicit empty-tenant confirmation, an isolated restore in a disposable namespace that is then removed, and a minimal single-cluster intake pause and drain checklist. Option A approves dropping the residue grants and deleting the four residue Secrets after zero live consumers and a metadata-only OpenBao key check. Its safety rail retains, without a grant, any Secret whose namesake key is not confirmed.
+
+All writes used a kubectl v1.34.9 client against Kubernetes v1.34.9. The workspace kubectl v1.36.1 was used for no write. No Secret value, token, CA, ACL or response body was printed or stored. Secret inspections were limited to names, types, key names, byte sizes, references and managed-field owners.
+
+### Preflight and empty-tenant confirmation
+
+At 11:15:29Z node1 was Ready. The shared Dapr control plane ran 1.18.1 with three Ready replicas of the operator, sentry, injector, placement and scheduler. Helm release `dapr` was at revision 1, chart dapr-1.18.1, installed on 2026-07-19 by the Dapr CLI. Velero 1.18.1 ran with its kopia node-agent, and `scaleway-kube-green` was Available. The cluster served no `snapshot.storage.k8s.io` API. All four residue Secrets were present.
+
+From 11:20:50Z to 11:21:04Z, and again at 11:35:01Z, the data stores held no tenant data:
+
+- Redis DB0 held three keys: the empty `memories-events` stream, whose `memories` consumer group had 0 pending entries, the in-flight registry marker `ingestion-workflow:in-flight:initialized`, and `retentionSeconds`. No key had a tenant prefix or a Dapr state prefix, and no search index existed.
+- FalkorDB held no key and no graph.
+- PostgreSQL `memories_access_telemetry` had two tables in schema `access_telemetry`. `dapr_metadata` held three rows and `lifecycle_state` none.
+
+This explicit empty-tenant confirmation replaces the logical export, because no tenant exists to export.
+
+### Intake pause and drain
+
+No Ingress, IngressRoute, NodePort or LoadBalancer targets the namespace. The `memories` and `memories-mcp` Services are ClusterIP. In the 24 hours before 11:21Z each memories and memories-mcp container logged at most one line.
+
+At 11:33:52Z NetworkPolicy `maintenance-intake-pause-31-2` denied all ingress to the memories and memories-mcp pods. Kubelet probes still passed, and all four pods were Ready at 11:34:37Z. At 11:35:01Z the drain checks above found zero Dapr workflow or actor state keys, an empty event stream with no pending entry and no tracked in-flight registry entry. The quiescence record named playbook `story-31-2-jpiquot-local-single-cluster-intake-pause-v1`, `intakePaused: true`, `activeWorkflows: 0` and resume owner Platform Operations (`jpiquot`). The jq gate in [Backup and Restore](../../../docs/operations/backup-restore.md#backup-policy-prerequisites-and-authorization) accepted it with an age of 0 seconds.
+
+The deny-all form also blocked the memories-mcp `memories-upstream` health check once the memories pods were replaced. From about 12:00Z the old memories-mcp pods were unready, and the first new memories-mcp container restarted five times. At 12:03:21Z the policy was narrowed to admit only traffic between memories and memories-mcp pods, and the memories-mcp rollout completed by 12:03:37Z. That upstream failure is the evidence that the policy blocked new connections. A TCP check from `redis-stack-0` to the Services' port 80 is not a control: both Services target the loopback-bound Dapr HTTP port 3500, which refused connections with and without the policy.
+
+### Recovery point and isolated restore
+
+Backup `hexalith-memories-31-2-pre-dapr-1192` ran from 11:35:24Z to 11:36:37Z to `scaleway-kube-green` with file-system backup through kopia, no volume snapshots and no cluster resources. It completed 161 of 161 items with no error. Its three warnings name the `tmp` volumes of three completed CronJob pods. All ten PodVolumeBackups completed: PostgreSQL data 65,643,918 bytes, Redis data 1,031 bytes, FalkorDB data 324 bytes, the PostgreSQL runtime volume 68 bytes and six empty `tmp` volumes. The backup expires on 2026-12-28T11:35:24Z. Its resource list names all fourteen namespace Secrets, so `scaleway-kube-green` holds copies of each of them until then, including `openbao-runtime-bootstrap`, `openbao-access-telemetry-bootstrap`, `dapr-api-token` and `registry-credentials`.
+
+The first rehearsal, Restore `hexalith-memories-31-2-rehearsal`, started at 11:37:33Z. Its restored PVCs kept `spec.volumeName` of the production volumes, because the backup excludes PersistentVolumes. They stayed Pending with "already bound to a different claim", and the production PVCs stayed Bound. The restored pods and PVCs were deleted at 11:47:31Z. The deleted Restore stayed InProgress, so the Velero Deployment was restarted from 11:50:26Z to 11:51:46Z, which failed and removed it. The `forgejo-hourly` backup at 12:00:01Z completed afterwards. Other restores from `includeClusterResources: false` backups, including that schedule, need the same claim modifier.
+
+Restore `hexalith-memories-31-2-rehearsal-2` ran from 11:52:03Z to 11:52:41Z into namespace `hm-restore-31-2`. It restored only the pods, PVCs, ConfigMaps and ServiceAccounts that carry the redis-stack, falkordb or access-telemetry-postgresql name label. A resource modifier removed `spec.volumeName` from the three data PVCs. Freshly generated synthetic `redis-secret`, PostgreSQL bootstrap and PostgreSQL TLS Secrets and copies of the two non-secret Redis and FalkorDB ConfigMaps were created beforehand, so no production Secret entered that namespace. The restore completed 8 of 8 items with no error. Its three warnings record that the backup contains no PersistentVolume. All five PodVolumeRestores completed with the backed-up byte counts.
+
+| Check at 11:53:26Z–11:53:28Z | Source | Rehearsal |
+| --- | --- | --- |
+| Redis key count | 3 | 3 |
+| Redis key-name set SHA-256 | `7053ef6edd527c90268bf163ac6792171aa21ecf6a5699e3a1fc2343db289ea3` | same SHA-256 |
+| `memories-events` length | 0 | 0 |
+| FalkorDB key count | 0 | 0 |
+| PostgreSQL ready, rows in dapr_metadata / lifecycle_state, tables | ready, 3 / 0, 2 | ready, 3 / 0, 2 |
+
+The synthetic password files ended with a newline, which the Redis and FalkorDB startup probes passed and the `--requirepass` argument dropped. Those probes therefore failed in the rehearsal, and the parity checks trimmed the newline. From 11:53:40Z to 11:55:23Z the namespace was deleted, and the three released rehearsal volumes were switched from Retain to Delete and removed by the provisioner. The modifier ConfigMap was deleted. The Restore record remains in `velero`.
+
+### Rollback inputs and scoped live diff
+
+From 11:32:41Z to 11:33:01Z the pre-change objects were saved as owner-only JSON in `/tmp/claude-1000/-home-administrator-projects-hexalith-memories/<session>/scratchpad/maint/rollback/`, where `<session>` is this Claude Code session's identifier. They cover the four Memories Configurations, four Deployments and two Roles, and the five Dapr workloads in `ext-secrets-1-isolated`. That scratchpad is ephemeral and can be cleared. The durable rollback sources are the Deployment revision history, which keeps revisions memories 5, memories-mcp 3, memories-access-telemetry 6, clock 3, eventstore 5, custody 5, inventory 8 and tenants 4, and the StatefulSet revision history of `ext-secrets-1-hmac-authority`. They also include Helm revision 1 with chart dapr-1.18.1 for the control plane, and the Velero backup above for every `hexalith-memories` object. The [Dapr 1.19.0 release notes](https://github.com/dapr/dapr/releases/tag/v1.19.0) state: "The safe rollback target is 1.18.x."
+
+The control-plane values were derived without reading the Helm release. The dapr-1.18.1 chart, sha256 `d518bd2e2f783c5b38b7a644596426fd278449e9cd74acf4a37be213e8812e7b`, rendered with `global.ha.enabled=true`, `dapr_scheduler.cluster.storageClassName=openebs-hostpath-retain` and `dapr_scheduler.etcdSpaceQuota=16Gi`. Each of its 45 non-Secret objects matched the live object. The trust-bundle Secret data has managed-field owner `sentry`, and the release owns none of it. The dapr-1.19.2 chart, sha256 `3c0e68d61dccf6dc30bf153cb7bd47b50dbe5f8cb889ec2d72b2ec38fa725efa`, matches the Helm index digest. Its `kubectl diff` against the live objects changed only version labels and images, the injector sidecar image, the scheduler compaction retention from 1000000 to the new default 10000, the sentry credentials volume mode from 420 to 288 and Service `appProtocol` fields. It also added Role and RoleBinding `dapr-scheduler-pods`. No StatefulSet claim template changed. `helm upgrade --dry-run=server` rendered the same 45 objects with the scheduler claim at 16Gi on `openebs-hostpath-retain`. The `configurations` and `workflowaccesspolicies` CRDs gained fields only. The `subscriptions` CRD file is unchanged between the charts and carries a placeholder webhook namespace, so it was not applied.
+
+The Memories patches derive from `deploy/kubernetes/overlays/production-dapr-1.19`. A server dry run of fifteen JSON patches showed only these changes:
+
+- `memories-config`, `memories-mcp-config`, `memories-access-telemetry-config` and `memories-access-telemetry-clock-config` each gain `{storeName: kubernetes, defaultAccess: deny}`.
+- `memories-dapr-secret-reader` loses `llm-secret`, `google-embedding-api-key`, `memories-embedding-client-secret` and `access-telemetry-marker-key`. It keeps `openbao-access-telemetry-bootstrap` beyond the overlay's four names, because the live `access-telemetry-secrets` still scopes `memories`.
+- `memories-access-telemetry-secret-reader` loses `access-telemetry-marker-key`.
+- The four Deployments gain annotation `dapr.io/sidecar-image` with `ghcr.io/dapr/daprd:1.19.2@sha256:7839fbb66d4be24ec52e347bec2dca66a91bef3079d8c8d57676f6d3ef92654f`.
+- The five `ext-secrets-1-isolated` templates declare their daprd container explicitly, so each changes that container image from `ghcr.io/dapr/daprd:1.18.1` to the same digest. A local daprd 1.19.2 binary accepts every flag those templates pass.
+
+No application image, replica count, PostgreSQL object or component scope changed.
+
+### Control-plane upgrade
+
+At 11:56:29Z the two 1.19.2 CRDs were applied and became Established. Helm v3.22.1, tarball sha256 `896cf63684a42a723d61c980369d6e588330927deb13676ca0d85006dd6da0ea`, upgraded release `dapr` from 11:56:30Z to 11:56:55Z with the three derived values and `--wait`. Revision 2, chart dapr-1.19.2, is deployed, and `dapr status -k` reports all five services healthy on 1.19.2 with three replicas. A sentry pod logged that it found the root and issuer certificates in its store. The trust-bundle data still belongs to `sentry`, and the release owns none of it. The scheduler logged four leadership-quorum errors from 11:56:47Z to 11:56:50Z while its members restarted. The other services logged none.
+
+While placement restarted, the 1.18.1 sidecar of `eventstore` in `ext-secrets-1-isolated` lost placement and was unready until 11:57:34Z.
+
+### Memories sidecar rollout
+
+The four Configuration and two Role patches were applied from 11:58:15Z to 11:58:17Z and the four Deployment patches from 11:58:18Z to 11:58:19Z. All rollouts completed by 12:03:37Z, at revisions memories 6, memories-mcp 4, memories-access-telemetry 7 and clock 4. Replicas stayed at 2, 2, 1 and 0 with unchanged application digests. The five new daprd containers logged no error. The memories sidecars loaded seven components, the lifecycle sidecar four and each memories-mcp sidecar one.
+
+### ext-secrets-1-isolated sidecars
+
+At 12:04Z the five templates moved to the 1.19.2 digest. `ext-secrets-1-custody`, `inventory` and `ext-secrets-1-hmac-authority` became Ready, and their sidecars logged no error in the next 15 minutes.
+
+The `eventstore` application failed at startup with the 1.19.2 sidecar. Its first state save returned `ERR ACL failure in script: User eventstore has no permissions to run the 'type' command`. The daprd 1.19.2 Redis state store save script calls `TYPE`, and the `registry-state` ACL user does not permit it. `tenants` uses the same Redis state store pattern with its own ACL user from the same ACL Secret, which was not inspected. At 12:10:02Z both Deployments were rolled back to their previous revisions and were Ready on 1.18.1 at 12:10:12Z. Running a 1.18.1 sidecar on the 1.19.2 control plane is unsourced as a supported state: Dapr documents no support window for it. The [Kubernetes upgrade guide](https://docs.dapr.io/operations/hosting/kubernetes/kubernetes-upgrade/) notes only that sidecars running an older Dapr version can use only the Placement service, which stays deployed here. Before the upgrade, both 1.18.1 sidecars already logged a hot-reload abort for their actor state store every minute, and they still do.
+
+Platform Operations owns this blocker for `ext-secrets-1-isolated`. Reopen it when the `registry-state` ACL users allow `TYPE` or a Dapr release changes that script. Then move both templates to the pinned 1.19.2 digest and repeat the startup check.
+
+### Built-in Kubernetes store and Vault probe matrix
+
+The probe at SHA-256 `9f8324eb8eabf3733f1a22f75469b5571e3fd70fea41fb304ec713db3a33b711` ran in each application container with the expected runtime version as its third argument. No Secret in the namespace is named `dapr-scope-probe-synthetic-absent`. Every call exited 0.
+
+| UTC | Pod / container | Check | Runtime and identity | Store and key | Result |
+| --- | --- | --- | --- | --- | --- |
+| 12:10:38Z | memories-5c7845f9db-dzkmk / memories | allowed | 1.19.2, memories | secretstore registered, redis-secret | 200, password field present |
+| 12:10:38Z | memories-5c7845f9db-dzkmk / memories | outside | 1.19.2, memories | secretstore registered, access-telemetry-marker-key | 403 ERR_PERMISSION_DENIED |
+| 12:10:39Z | memories-5c7845f9db-dzkmk / memories | builtin | 1.19.2, memories | kubernetes registered, synthetic name | 403 ERR_PERMISSION_DENIED |
+| 12:10:39Z | memories-5c7845f9db-vcbx4 / memories | allowed | 1.19.2, memories | secretstore registered, redis-secret | 200, password field present |
+| 12:10:40Z | memories-5c7845f9db-vcbx4 / memories | outside | 1.19.2, memories | secretstore registered, access-telemetry-marker-key | 403 ERR_PERMISSION_DENIED |
+| 12:10:40Z | memories-5c7845f9db-vcbx4 / memories | builtin | 1.19.2, memories | kubernetes registered, synthetic name | 403 ERR_PERMISSION_DENIED |
+| 12:10:41Z | memories-mcp-75685d5c84-9h4lw / memories-mcp | unscoped | 1.19.2, memories-mcp | secretstore absent, redis-secret | 401 ERR_SECRET_STORE_NOT_FOUND |
+| 12:10:41Z | memories-mcp-75685d5c84-9h4lw / memories-mcp | builtin | 1.19.2, memories-mcp | kubernetes registered, synthetic name | 403 ERR_PERMISSION_DENIED |
+| 12:10:42Z | memories-mcp-75685d5c84-ktrv6 / memories-mcp | unscoped | 1.19.2, memories-mcp | secretstore absent, redis-secret | 401 ERR_SECRET_STORE_NOT_FOUND |
+| 12:10:42Z | memories-mcp-75685d5c84-ktrv6 / memories-mcp | builtin | 1.19.2, memories-mcp | kubernetes registered, synthetic name | 403 ERR_PERMISSION_DENIED |
+| 12:10:43Z | memories-access-telemetry-6557bfc95d-pc975 / lifecycle | allowed | 1.19.2, memories-access-telemetry | access-telemetry-secrets registered, redis-secret | 200, password field present |
+| 12:10:44Z | memories-access-telemetry-6557bfc95d-pc975 / lifecycle | outside | 1.19.2, memories-access-telemetry | access-telemetry-secrets registered, access-telemetry-clock-key | 403 ERR_PERMISSION_DENIED |
+| 12:10:44Z | memories-access-telemetry-6557bfc95d-pc975 / lifecycle | unscoped | 1.19.2, memories-access-telemetry | secretstore absent, redis-secret | 401 ERR_SECRET_STORE_NOT_FOUND |
+| 12:10:44Z | memories-access-telemetry-6557bfc95d-pc975 / lifecycle | builtin | 1.19.2, memories-access-telemetry | kubernetes registered, synthetic name | 403 ERR_PERMISSION_DENIED |
+
+The built-in `kubernetes` store stays registered in every sidecar, and its deny policy now rejects application reads before any Kubernetes lookup. The synthetic name has no Secret, so a missing policy would have produced a lookup failure rather than a value. Both Vault stores still resolve their bootstrap after the deny scope, because every permitted Vault read succeeded. No `eventstore` workload runs in `hexalith-memories`. The `eventstore` app ID in `ext-secrets-1-isolated` cannot load the namespaced Memories components, so it does not reopen the reserved-scope live read.
+
+```bash
+k=(kubectl --context=jpiquot@local -n hexalith-memories)  # v1.34.9 client
+"${k[@]}" exec -i "$pod" -c "$container" -- sh -s -- "$app" "$check" 1.19.2 < tools/probe-dapr-secret-scope.sh
+```
+
+### Residue Secret disposition
+
+At 11:58:03Z, before the grant change, and again at 12:12:29Z, no pod, workload template, CronJob, ServiceAccount or volume referenced `llm-secret`, `google-embedding-api-key`, `memories-embedding-client-secret` or `access-telemetry-marker-key`. This covered env, envFrom, volume, projected and pull references. The only component reference, `llm-openai`, resolves `llm-secret` through `secretstore`, and the Configuration allow-lists name OpenBao keys. Since 11:58:17Z no Role grants any of the four.
+
+The metadata-only check ran from 12:11:16Z to 12:11:52Z in two short-lived pods, `openbao-metadata-check-31-2` and `openbao-metadata-read-31-2`, which were deleted afterwards. Each mounted only the token and CA items of the two bootstrap Secrets and printed only HTTP statuses. The first attempt could not read its mount and sent no request. Both read-only bootstrap policies then answered 403 to a metadata list of `secret/metadata/hexalith/memories/runtime` and `secret/metadata/hexalith/memories/access-telemetry`. They also answered 403 to a metadata read of each of the four keys. No other OpenBao identity was available without inspecting Secret contents.
+
+No namesake key was confirmed, so under the approved safety rail all four Secrets stay, without any RBAC grant. Owner jpiquot approved that disposition on 2026-11-28. The Velero backup above also holds them. The loaded `llm-openai` component shows that the runtime store resolves `llm-secret`. That observation supports the record but does not replace the metadata check. The consequence: four unused Kubernetes copies remain readable by anyone who can read Secrets in the namespace, and they can go stale after an OpenBao rotation. Reopen when an identity with metadata read on both prefixes confirms the four keys, then delete each confirmed Secret.
+
+### Secret names and types after the Dapr 1.19.2 rollout
+
+Measured 2026-11-28T12:12:29Z with the names/types projection from the read-only replay.
+
+| Secret | Type |
+| --- | --- |
+| access-telemetry-clock-key | Opaque |
+| access-telemetry-clock-sources | Opaque |
+| access-telemetry-marker-key | Opaque |
+| access-telemetry-postgresql-bootstrap | Opaque |
+| access-telemetry-postgresql-tls | Opaque |
+| app-api-token | Opaque |
+| dapr-api-token | Opaque |
+| google-embedding-api-key | Opaque |
+| llm-secret | Opaque |
+| memories-embedding-client-secret | Opaque |
+| openbao-access-telemetry-bootstrap | Opaque |
+| openbao-runtime-bootstrap | Opaque |
+| redis-secret | Opaque |
+| registry-credentials | kubernetes.io/dockerconfigjson |
+
+The fourteen names and types equal the November 22 projection.
+
+### Intake resume and final state
+
+At 12:12:57Z the pause policy was deleted. At 12:13:34Z ports 8080, 3501 and 50002 of a memories pod and ports 8080 and 3501 of a memories-mcp pod accepted connections from `redis-stack-0`. At 12:13:44Z all five control-plane services ran 1.19.2. Every Dapr pod in `hexalith-memories` and three of five in `ext-secrets-1-isolated` ran the pinned 1.19.2 sidecar, and all were Ready. `eventstore` and `tenants` remain on 1.18.1. The PostgreSQL, Redis and FalkorDB pods never restarted.
+
+### Verification on November 28
+
+From the repository root, with SDK 11.0.100 and a BusyBox 1.37.0 binary copied from the local busybox image placed first on PATH:
+
+```bash
+dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -c Debug -p:UseHexalithProjectReferences=true
+dll=tests/Hexalith.Memories.Server.Tests/bin/Debug/net11.0/Hexalith.Memories.Server.Tests.dll
+export DiffEngine_Disabled=true
+dotnet exec "$dll" -list methods -noLogo
+dotnet exec "$dll" -class '*.RuntimeSecretStoreMigrationTests' -class '*.OpenBaoPlatformDocumentationTests' -class '*.ProductionDeploymentArtifactsTests' -parallel none -noLogo
+python3 -B -m unittest discover -s tests/tooling/runtime_secret_store -v
+git diff --check
+python3 tools/check-tenant-isolation-evidence.py --changed-files-file <changed>
+```
+
+The build at 12:19:46Z–12:20:09Z succeeded with 0 warnings and 0 errors. Discovery counted 2,601 server methods, 142 of them in Deployment: 7 migration, 45 platform and 15 production. The sorted method-set SHA-256 is `821935ae109feedad29e0f70279bc649c7765cec0431db7e64ad73b7dfc31baa`. This phase added no xUnit method. It changed `Inventory_CoversJulyAndMeasuredNamesInBothDirections` so that both dated names/types projections bind the operations inventory. Other stories changed the lane after November 22, so no reconciliation with the 2,482 count is claimed.
+
+At 12:27Z `epic-31-context.md` was corrected to carry Story 31.1's exact sole-owner sentence in its Requirements & Constraints section. A rerun then passed all 167 cases of the three classes: migration 7, platform 143 and production 17. `OperationalRunbookSetTests` passed 10 of 10, and `python3 -B -m unittest discover -s tests/tooling/runtime_secret_store -p '*.py'` passed 3 of 3 with BusyBox 1.37.0. Adding a synthetic name to the November 28 projection failed the inventory method, and the restored file matched its original SHA-256.
+
+The Python discovery passed 3 test methods. Before the review fixes below, the probe methods ran 23 and 18 synthetic loopback subTests. Each of four temporary probe mutations failed its targeted subTests, and the probe was restored to SHA-256 `9f8324eb8eabf3733f1a22f75469b5571e3fd70fea41fb304ec713db3a33b711`. The mutations accepted a 500 for the built-in check, skipped the runtime-version gate, printed an unrecognized runtime version, and skipped the identity check. In the third case the canary-leak assertion failed. No generated token or credential appeared in any probe output.
+
+`git diff --check` exited 0. The tenant checker printed `No tenant-isolation surface changed; evidence check is a no-op.` for the changed files since baseline `3662d5be`.
+
+### Review replay and fixes on November 28
+
+The review recorded an independent replay. At 12:28Z a read found all four live Configurations with `{storeName: kubernetes, defaultAccess: deny}` and no `allowedSecrets` on that scope. From 12:29:06Z to 12:29:19Z the 14-row probe matrix above replayed with identical results. At 12:40Z `kubectl auth can-i get secret/<name>` for each of the four residue names, and `kubectl auth can-i list secrets`, answered no for all eight ServiceAccounts in `hexalith-memories`.
+
+After the review the probe was tightened. A non-empty expected version must now match the version shape the parser prints, so the placeholder words `absent` and `unrecognized` and `+build` suffixes exit 2. The `builtin` check now requires an expected version. The probe is now at SHA-256 `a80c0d44bd7b1167a170660725ed731878143438d2c96282802377341fe25bd8`. Every live call above passed `1.19.2`, which the tightened probe still accepts. The test gained rows for both placeholder words, for a bare `builtin` run, for the app IDs `Memories` and `memorie\163` and for a lifecycle outside-name read answering 200 with the field. Each row expects failure. The probe methods now run 25 and 21 subTests, 46 in all. `python3 -B -m unittest discover -s tests/tooling/runtime_secret_store -p '*.py'` passed 3 of 3 with BusyBox 1.37.0. Deleting the app-ID gate failed the two app-ID rows, deleting the version-shape check failed the two placeholder rows, and deleting the `builtin` version requirement failed the bare row. Each time the probe was restored to the same SHA-256.
+
+The operations inventory regained the dropped reopen triggers. It now states that a production overlay apply would also restore the residue grants, and that the clock deny scope is proven structurally only.

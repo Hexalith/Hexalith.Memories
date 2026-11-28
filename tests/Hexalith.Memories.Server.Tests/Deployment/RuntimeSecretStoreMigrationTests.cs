@@ -24,6 +24,10 @@ public sealed partial class RuntimeSecretStoreMigrationTests
     private const string Inventory = "Runtime Kubernetes Secret inventory";
     private const string Component = "deploy/kubernetes/base/dapr/secretstore.yaml";
     private const string Dapr119ProductionOverlay = "production-dapr-1.19";
+
+    // Each dated names/types projection in the evidence binds the operations inventory in both directions.
+    private static readonly string[] MeasuredSecretTables =
+        ["Current Secret names and types", "Secret names and types after the Dapr 1.19.2 rollout"];
     private static readonly string[] Prerequisites = ["C1", "C2", "C3", "C4a", "C5a", "C6"];
 
     [Fact]
@@ -295,12 +299,17 @@ public sealed partial class RuntimeSecretStoreMigrationTests
         var expected = Regex.Matches(history.Split("**Kubernetes Secrets present", StringSplitOptions.None)[1], @"(?m)^\| `([\w-]+)` \|")
             .Select(m => ("hexalith-memories", m.Groups[1].Value)).ToHashSet();
         expected.Count.ShouldBe(15);
-        var measured = new MarkdownContractDocument(Read(root, Evidence)).GetTableRows("Current Secret names and types");
-        foreach (var row in measured)
+        var evidence = new MarkdownContractDocument(Read(root, Evidence));
+        foreach (string table in MeasuredSecretTables)
         {
-            row.Count.ShouldBe(2);
-            row.All(cell => !string.IsNullOrWhiteSpace(cell)).ShouldBeTrue();
-            expected.Add(("hexalith-memories", row[0]));
+            var measured = evidence.GetTableRows(table);
+            measured.ShouldNotBeEmpty(table);
+            foreach (var row in measured)
+            {
+                row.Count.ShouldBe(2);
+                row.All(cell => !string.IsNullOrWhiteSpace(cell)).ShouldBeTrue();
+                expected.Add(("hexalith-memories", row[0]));
+            }
         }
 
         foreach (string platform in new[] { "openbao-seal", "openbao-server-tls", "hexalith-keys-pki", "openbao-operator-credentials" })
