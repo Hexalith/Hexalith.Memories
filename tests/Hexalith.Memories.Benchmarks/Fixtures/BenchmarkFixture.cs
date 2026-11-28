@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Benchmarks.Fixtures;
 
+using System.Net;
+
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 
@@ -27,7 +29,9 @@ public sealed class BenchmarkFixture : IAsyncLifetime
 {
     private const string FalkorDbImage = "falkordb/falkordb:latest@sha256:4b7c79901ad409a39655f049b772adbc499b92ee2e01db80c3502572444df84d";
     private const string RedisStackImage = "redis/redis-stack:latest@sha256:880df9c228597cb0d15b585f39a4327d6ee2d8b0d0f155e3f75dba9a761d4ec3";
+    private const int RedisPort = 6379;
     private const string TenantId = "benchmark-tenant";
+    private static readonly TimeSpan HandshakeTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan StartupTimeout = TimeSpan.FromMinutes(5);
 
     private bool _disposed;
@@ -66,31 +70,9 @@ public sealed class BenchmarkFixture : IAsyncLifetime
     {
         try
         {
-            // Start both containers in parallel
-            _falkorDbContainer = new ContainerBuilder(FalkorDbImage)
-                .WithPortBinding(0, 6379)
-                .WithWaitStrategy(
-                    Wait.ForUnixContainer()
-                        .UntilInternalTcpPortIsAvailable(6379)
-                        .UntilCommandIsCompleted("redis-cli", "PING"))
-                .Build();
-
-            _redisStackContainer = new ContainerBuilder(RedisStackImage)
-                .WithPortBinding(0, 6379)
-                .WithWaitStrategy(
-                    Wait.ForUnixContainer()
-                        .UntilInternalTcpPortIsAvailable(6379)
-                        .UntilCommandIsCompleted("redis-cli", "PING"))
-                .Build();
-
-            await Task.WhenAll(
-                _falkorDbContainer.StartAsync(),
-                _redisStackContainer.StartAsync()).WaitAsync(StartupTimeout).ConfigureAwait(false);
-
-            FalkorDb = await ConnectionMultiplexer.ConnectAsync(
-                $"localhost:{_falkorDbContainer.GetMappedPublicPort(6379)}").ConfigureAwait(false);
-            Redis = await ConnectionMultiplexer.ConnectAsync(
-                $"localhost:{_redisStackContainer.GetMappedPublicPort(6379)}").ConfigureAwait(false);
+            using var startup = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+            startup.CancelAfter(StartupTimeout);
+            await Task.WhenAll(StartFalkorDbAsync(startup.Token), StartRedisStackAsync(startup.Token)).ConfigureAwait(false);
 
             // Load and validate corpus + ground truth
             Corpus = BenchmarkCorpusLoader.LoadCorpus();
@@ -110,6 +92,93 @@ public sealed class BenchmarkFixture : IAsyncLifetime
         {
             await DisposeAsync().ConfigureAwait(false);
             throw;
+        }
+    }
+
+    private async Task StartFalkorDbAsync(CancellationToken cancellationToken)
+        => (_falkorDbContainer, FalkorDb) = await StartBackendAsync(FalkorDbImage, cancellationToken).ConfigureAwait(false);
+
+    private async Task StartRedisStackAsync(CancellationToken cancellationToken)
+        => (_redisStackContainer, Redis) = await StartBackendAsync(RedisStackImage, cancellationToken).ConfigureAwait(false);
+
+    private static async Task<(IContainer Container, ConnectionMultiplexer Connection)> StartBackendAsync(
+        string image,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await StartAttemptAsync().ConfigureAwait(false);
+        }
+        catch (TimeoutException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Docker can report a published host port that remains unreachable.
+            // A fresh container gets a new port for the retry.
+            return await StartAttemptAsync().ConfigureAwait(false);
+        }
+
+        async Task<(IContainer Container, ConnectionMultiplexer Connection)> StartAttemptAsync()
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            IContainer container = new ContainerBuilder(image)
+                .WithPortBinding(0, RedisPort)
+                .Build();
+            try
+            {
+                await container.StartAsync(cancellationToken).ConfigureAwait(false);
+                ConnectionMultiplexer connection = await ConnectWhenReadyAsync(container, cancellationToken).ConfigureAwait(false);
+                return (container, connection);
+            }
+            catch (Exception startupFailure)
+            {
+                try
+                {
+                    await container.DisposeAsync().ConfigureAwait(false);
+                }
+                catch (Exception cleanupFailure)
+                {
+                    throw new AggregateException("Failed to discard a benchmark container after startup failed.", startupFailure, cleanupFailure);
+                }
+
+                throw;
+            }
+        }
+    }
+
+    private static async Task<ConnectionMultiplexer> ConnectWhenReadyAsync(IContainer container, CancellationToken cancellationToken)
+    {
+        using var readiness = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        readiness.CancelAfter(HandshakeTimeout);
+        var endpoint = new IPEndPoint(IPAddress.Loopback, container.GetMappedPublicPort(RedisPort));
+        var options = new ConfigurationOptions
+        {
+            AbortOnConnectFail = true,
+            ConnectRetry = 1,
+            ConnectTimeout = 2000,
+            EndPoints = { endpoint },
+        };
+
+        RedisConnectionException? lastFailure = null;
+        try
+        {
+            while (true)
+            {
+                readiness.Token.ThrowIfCancellationRequested();
+                try
+                {
+                    return await ConnectionMultiplexer.ConnectAsync(options).ConfigureAwait(false);
+                }
+                catch (RedisConnectionException ex)
+                {
+                    lastFailure = ex;
+                    await Task.Delay(TimeSpan.FromMilliseconds(250), readiness.Token).ConfigureAwait(false);
+                }
+            }
+        }
+        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException(
+                $"Benchmark Redis container {container.Id} did not accept a handshake at {endpoint} within {HandshakeTimeout}.",
+                lastFailure ?? (Exception)ex);
         }
     }
 
