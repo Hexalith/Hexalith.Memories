@@ -271,7 +271,7 @@ try {
 
                     if ($canonical) {
                         $coverageReport = Read-TestReportXml $canonical 'Cobertura report'
-                        if ($coverageReport.DocumentElement.LocalName -cne 'coverage') {
+                        if ($coverageReport.PSBase.DocumentElement.PSBase.LocalName -cne 'coverage') {
                             throw "Invalid Cobertura report '$canonical': expected a coverage root element."
                         }
                     }

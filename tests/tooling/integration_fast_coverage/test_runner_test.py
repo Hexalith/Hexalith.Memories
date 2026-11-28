@@ -457,7 +457,7 @@ os.waitpid(child, 0)
         cases = (
             ("<TestRun>", "<coverage/>", "Unable to read TRX file", "*.trx"),
             (TRX, "<coverage>", "Unable to read Cobertura report", "coverage.cobertura.xml"),
-            (TRX, "<unexpected/>", "expected a coverage root element", "coverage.cobertura.xml"),
+            (TRX, '<unexpected LocalName="coverage"/>', "expected a coverage root element", "coverage.cobertura.xml"),
         )
         for status in ("0", "37"):
             for trx, coverage, diagnostic, report_pattern in cases:
