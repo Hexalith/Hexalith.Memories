@@ -6609,3 +6609,7 @@ status: open
 - source_spec: `_bmad-output/implementation-artifacts/spec-31-2-runtime-dapr-secret-store-migration-2.md`
   summary: Align the Redis and FalkorDB startup probes with the `--requirepass` handling of a trailing newline in the password Secret.
   evidence: In the 2026-11-28 restore rehearsal the synthetic password files ended in a newline. The startup probes kept the newline, `--requirepass` dropped it, and the probes then failed authentication. A rotated production Secret ending in a newline would break those pods the same way. Pre-existing manifest behavior, not caused by Story 31.2. Owner: Platform Operations and Memories Maintainer.
+
+## Deferred from: code review of 31-2-runtime-dapr-secret-store-migration.md (2026-11-28)
+
+- `tests/tooling/runtime_secret_store/test_scope_probe.py` runs in no automated CI lane (absent from `.github/workflows/ci.yml`, `.github/workflows/nightly.yml`, `.github/workflows/recover-partial-release.yml`, and `tools/test.sh`) and requires BusyBox on `PATH`. Pre-verified verification gap (`verification-gap`, `medium`); `.github/workflows/ci.yml` is owned by `Hexalith.CiCd` (`hexalith-llm-instructions.md:339`). Consolidates with the earlier Story 31.2 probe-CI deferrals during patch P9.
