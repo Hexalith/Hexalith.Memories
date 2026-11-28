@@ -2209,6 +2209,7 @@ location: .github/workflows/ci.yml:67-74,108-115
 reason: - **W5. `if-no-files-found: error` + `if: always()` upgrades a build failure to two red checks.** Noisy but correct; reviewers must read the build step first. Resolve by gating artifact upload on `success() || failure()` against the test step specifically. (`.github/workflows/ci.yml:67-74,108-115`)
 status: open
 note: 2026-11-24 — Skipped. Both live artifact uploads still use the recorded condition. Hexalith.CiCd owns the delivered workflow and must make the change there.
+note: 2026-11-28 — Skipped. Test artifact upload condition is maintained by Hexalith.CiCd in the hosted workflow.
 
 ### DW-314: W6. `submodules: recursive` cannot fetch private submodules without PAT.
 
@@ -2287,6 +2288,7 @@ location: .github/workflows/ci.yml
 reason: - **W18. CI `runs-on: ubuntu-latest` is unpinned.** Works today; pin to `ubuntu-22.04` if Docker engine version drift causes Testcontainers regression. (`.github/workflows/ci.yml`)
 status: open
 note: 2026-11-24 — Skipped. No hosted runner drift has met the recorded trigger. Hexalith.CiCd also owns the runner declaration.
+note: 2026-11-28 — Skipped. The recorded hosted runner drift trigger has not occurred. Hexalith.CiCd owns the pin.
 
 ### DW-325: W19 [resolved in 14.2]. `concurrency: cancel-in-progress: false` enables stuck-release deadlock with `--skip-duplicate` self-heal.
 
@@ -2325,6 +2327,7 @@ location: tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:66-68
 reason: - **W23. `CiTestInventoryTests` uses `Contains` for workflow text.** Too permissive; a future workflow refactor adding another `dotnet test` step with the wrong arguments still passes the assertion. Replace with structural YAML parsing. (`tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:66-68`)
 status: open
 note: 2026-11-24 — Skipped. The cited CiTestInventoryTests file has been removed. The current CI ownership rules also prohibit tests that assert workflow YAML.
+note: 2026-11-28 — Skipped. Obsolete. The workflow-text test was removed with the old inventory suite.
 
 ### DW-330: W24. `CiTestInventoryTests` opaque error if `RepoRoot` AssemblyMetadata missing.
 
@@ -2928,6 +2931,7 @@ location: Directory.Build.props
 reason: - **15.6-CR2. Submodule guard `.git`-existence check does not detect partially-cloned submodules.** `Exists('{path}/.git')` passes as long as a `.git` file or directory is present at that path; it does not verify `HEAD` validity or that `git submodule update --init` actually populated content. - ID: 15.6-CR2 - Status: accepted - Source story: 15-6-scaffolding-hardening-sweep - Target artifact: Directory.Build.props - Re-open trigger: A developer reports a fresh clone that "passes the submodule guard" but actually has missing content, traced to a network failure mid `git submodule update`. - Rationale: Story 15.6 only expanded the *count* of checked submodules (Story 1.1's pre-existing guard pattern); tightening the predicate to verify `HEAD` validity is a separate, broader scope and would require shelling out to git.
 status: open
 note: 2026-11-24 — Skipped. A partially populated submodule still fails the build loudly at its first missing file. A stricter guard needs a per-submodule sentinel or a git call in the shared build configuration across the standalone, sibling, superproject and resolved-root layouts, and no such partial checkout has been reported.
+note: 2026-11-28 — Skipped. No partially populated checkout has reproduced the recorded guard failure.
 
 ### DW-421: 15.6-CR3. `File.WriteAllText` on DAPR component files is not atomic.
 
@@ -4769,6 +4773,7 @@ location: tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipel
 reason: - **Reconnect fires only when the sidecar endpoint changes.** - ID: 24.6-F5-W3 - Status: carried-forward - Source story: 24-6-graph-content-level-tenant-isolation-evidence - Target artifact: tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixture.cs - Rationale: The guard is `if (currentDaprEndpoint != DaprSidecarHttpEndpoint)`, so a sidecar that restarts on the same port skips the reconnect entirely and the fixture keeps pooled connections to the killed process. The correct trigger condition (endpoint change **or** process restart) needs a restart signal the fixture does not currently expose. - Re-open trigger: The restart regression flakes with a connection error on an unchanged port, or a process-restart signal becomes available.
 status: open
 note: 2026-11-27 — Skipped. The in-place identity-rotation flow already rebinds the first generation on an unchanged port. The existing OpenBao restart test checks the client generation and actor recovery.
+note: 2026-11-28 — Skipped. Already covered. The in-place OpenBao rotation rebinds clients on an unchanged sidecar URI and the regression checks its new generation.
 
 ### DW-666: Traversal assertions dereference without null guards.
 
@@ -5004,6 +5009,7 @@ reason: - source_spec: `_bmad-output/implementation-artifacts/spec-publish-appro
 status: open
 note: 2026-11-27 — Skipped. Scheduled fast integration selection belongs to the Hexalith.CiCd-owned nightly workflow. DW-731 also governs the next integration lane selection change.
 note: 2026-11-28 — Skipped. Scheduled workflow selection remains owned by Hexalith.CiCd. DW-731 verified the existing required fast lane.
+note: 2026-11-28 — Skipped. Hexalith.CiCd owns scheduled fast-integration workflow selection.
 
 ### DW-697: Restrict filesystem permissions on temporary OpenBao bootstrap credentials.
 
@@ -5140,6 +5146,7 @@ status: open
 note: 2026-11-27 — Skipped. Current CI no longer invokes the proof-feed workaround. The remaining gateway readiness and retry proof is blocked by the baseline AppHost EventStore gateway exit 134.
 decision: 2026-09-01 Prove retry behavior — Extract the action, regression-test Dapr retry behavior, document it, and retain no WaitFor only if safe.
 decision: 2026-09-01 Prove retry behavior — Extract the action, regression-test Dapr retry behavior, document it, and retain no WaitFor only if safe.
+note: 2026-11-28 — Skipped. The proof-feed workflow was retired. The standalone baseline reached Memories health, while EventStore exited and could not supply gateway startup-order evidence.
 
 ### DW-717: `production-deployment-verification` CI job not wired to the ephemeral EventStore local-feed provisioning script; unconfirmed whether it needs it.
 
@@ -5499,9 +5506,14 @@ acceptance-criteria: require actual JSON strings for metadata id/runtimeVersion 
   summary: The Story 27.4 planning commit `b7a4377a` recompiled `epic-27-context.md` and dropped Technical Decisions: Dapr-only typed-state/actor/reminder lifecycle, millisecond logical timestamps with a one-second UTC attestation bound, writer/key-rotation barriers, separate clock/adapter authorities and secret-store prefixes, and the 250-events/s cluster-wide capacity envelope.
   evidence: medium (unverified). The edit fell outside both 27.4 reviews because `baseline_commit` was rewritten from `ed4528d5` to `b7a4377a`. Agent-context file, so deferred rather than patched. Settle by diffing `git show ed4528d5:_bmad-output/implementation-artifacts/epic-27-context.md` against `docs/dev/adr-27.1-001-access-telemetry-lifecycle.md` and the architecture spine: restore any decision still current, or confirm each removal is intentional. Story 27.22 has since edited the same file.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-4.md`
-  summary: bmad-build, the official implementation route, has no `_bmad/custom/bmad-build*.toml`, so `story-scope-guard.md`, `story-phase-ledger.md`, `epic-ac-verification.md` and `remediation-runtime-checklist.md` never load when it authors or implements a spec.
-  evidence: Every Story 27.4 spec (four, since 2026-09-02) lacks a Change Log, File List, Historical Context Classification, Slice Proof, checkpoint table and Epic AC Verification section; `tools/check-story-slice-scope.py --require-record` exits 1 on the reviewed change set. Fix edits customization files and the resolver fixture (`tests/tooling/bmad_customization/bmad_customization_test.py`), so it is out of review scope. Owner: BMAD process maintainer. Reopen trigger: wire the four policies into bmad-build (and bmad-build-auto) the same way the story-authoring routes are wired, then extend the fixture.
+### DW-793: Load repository verification policies in both BMAD Build workflows
+
+origin: migrated from the Story 27.4 review of 2026-10-06
+location: _bmad/custom/bmad-build.toml; _bmad/custom/bmad-build-auto.toml; _bmad/custom/tests/test_build_policy_wiring.py
+source_spec: `_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-4.md`
+reason: bmad-build, the official implementation route, has no `_bmad/custom/bmad-build*.toml`, so `story-scope-guard.md`, `story-phase-ledger.md`, `epic-ac-verification.md` and `remediation-runtime-checklist.md` never load when it authors or implements a spec. Every Story 27.4 spec (four, since 2026-09-02) lacks a Change Log, File List, Historical Context Classification, Slice Proof, checkpoint table and Epic AC Verification section; `tools/check-story-slice-scope.py --require-record` exits 1 on the reviewed change set. Fix edits customization files and the resolver fixture (`tests/tooling/bmad_customization/bmad_customization_test.py`), so it is out of review scope. Owner: BMAD process maintainer. Reopen trigger: wire the four policies into bmad-build (and bmad-build-auto) the same way the story-authoring routes are wired, then extend the fixture.
+status: done 2026-11-28
+resolution: 38ff7b386394f5ea24f19556697fc41f0c27be1e — Both Build routes load and carry the four repository policies for applicable work. The local regression verifies all installed Build routes and detects either missing team override.
 
 ### DW-768: `tools/check-story-review-readiness.py:771` resolves a sprint story key only to `<key>.md` or `spec-<key>.md`, so numbered follow-up specs (`spec-<key>-2.md` and later) are never selected by story key and the gate no-ops green on the original spec.
 
@@ -5568,6 +5580,7 @@ resolution: eac9d4aa3c9218e60ca8c1e6a8450be788791346 (follow-up 98cd0d5998c624fc
   summary: Deployment Adapter Developer owns enrolling the existing real PostgreSQL SQL-contract assertions in an automated verification lane with their pinned prerequisites.
   evidence: V1: .github/workflows/ci.yml:297 discovers access_telemetry_c1 only; its fake transport manufactures normalized clientAddr values. The real valid-session and old-inet-projection regression tests are in the separate manual access_telemetry_c1_sql_contract lane. A restored a.client_addr::text projection can pass CI fixtures while refusing valid actual IPv4 sessions. This predates the Story 27.4 resumption. Reopen with automated isolated discovery and documented Docker/PowerShell/OpenSSL/pinned-image setup, proving the real projection mutation fails the gate.
   note: 2026-11-27 — Skipped. Already enrolled. The access-telemetry-sql-contract CI job pulls the approved PostgreSQL child and discovers the real SQL suite, including the old-projection regression.
+  note: 2026-11-28 — Skipped. Already enrolled in the access-telemetry-sql-contract CI job.
 
 ### DW-765: Deployment Adapter Developer owns a regression proving C1.16 source drift after target observation blocks positive publication.
 
@@ -5613,6 +5626,7 @@ resolution: 2f518bbf2db3ed8414000b209b14354182fe2729 — A copied configuration 
   summary: Restore stable Aspire fixture startup for token-free sidecar and authenticated HTTP graph checks.
   evidence: Review B1/B2 (medium, pre-existing). The token-free method timed out after 65 seconds with test JWT settings and xUnit Total: 0; the HTTP graph test also stopped before its body after 120 seconds. The real-FalkorDB graph boundary test passed, but endpoint graph choice and default-mode sidecar behavior remain unverified locally. Reopen when fixture startup can complete both methods with bounded runs.
   note: 2026-11-27 — Skipped. The full integration rerun passed the token-free sidecar proof and the live graph isolation already recorded under DW-736.
+  note: 2026-11-28 — Skipped. Already covered by the full live rerun after the fixture correction and the DW-736 graph proof.
 
 ### DW-749: Add live non-health-route denial checks for absent and wrong APP_API_TOKEN values.
 
@@ -5628,6 +5642,7 @@ resolution: 9c62f9d87bbb79a473135c8c89a78f3be2407834 — The protected read refu
   summary: Enroll the enabled Dapr sidecar token test in a routine verification lane.
   evidence: Review V1 (medium, pre-existing). CI and nightly run integration filters without DAPR_API_TOKEN_MODE=enabled, so neither the prior enabled branch nor the new missing/wrong/valid token assertions execute routinely. Reopen with a focused token-enabled CI invocation and its fixture prerequisites.
   note: 2026-11-27 — Skipped. Hosted selection remains under Hexalith.CiCd. DW-749 and DW-750 passed locally in enabled and default modes.
+  note: 2026-11-28 — Skipped. DW-749 and DW-750 cover the local token modes. Hexalith.CiCd owns the hosted lane selector.
 
 ### DW-750: Make direct MCP integration transports usable and verifiable with APP_API_TOKEN enabled.
 
@@ -5643,6 +5658,7 @@ resolution: 81a5008fcc701b4bec09ef7378729c67128b4a0f — The transport now uses 
   summary: Verify that the routine integration lane supplies the test JWT settings needed for Aspire fixture startup.
   evidence: Blind review B1 (medium if reproduced, pre-existing). `.github/workflows/ci.yml` invokes `tools/test.sh` without the test JWT environment used by the focused Story 5.4 runs; the earlier local env-free attempt failed EventStore gateway startup before any test body. A CI-equivalent run with those variables unset, or a workflow inspection showing another source of equivalent settings, would settle whether the routine lane is affected. Owner: CI/AppHost integration maintainers. Reopen when qualifying the routine integration lane.
   note: 2026-11-27 — Skipped. The fixture already supplies an explicit symmetric issuer, audience and signing key in ConfigureGatewayTestAuthentication. The batch ran the full integration project without ambient JWT configuration.
+  note: 2026-11-28 — Skipped. Already covered by the fixture-owned gateway test authentication and prior environment-free verification.
 
 ### DW-736: Add live authenticated HTTP proof that tenant A's bearer cannot traverse tenant B's graph route.
 
@@ -5680,10 +5696,12 @@ resolution: 067b8fac4f9d82f84f4b072e8d2b6f4f55c8c576 — One SemVer validator co
 - source_spec: `_bmad-output/implementation-artifacts/spec-five-deferred-preflight-harness.md`
   summary: Enroll the release-preflight fixture suite in pull-request validation before changes reach main.
   evidence: Independent review confirmed .github/workflows/release.yml:118 runs the suite only in its main-push workflow, while ci.yml has no release_preflight discovery step. This predates DW-61 through DW-65 corrections; their executed focused suite is local evidence only. Owner: CI/release maintainer. Reopen with a focused PR lane that supplies Git and PowerShell and proves a deliberately failing fixture blocks PR validation; retain an explicit missing-prerequisite policy.
+  note: 2026-11-28 — Skipped. Already enrolled through the release_preflight discovery step in the PR test-unit-contract job.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-five-deferred-preflight-harness.md`
   summary: Add routine Python 3.9 module/annotation and harness verification for the preflight harness minimum runtime.
   evidence: Actual CPython 3.9.25 collection, typing.get_type_hints and all nine helper cases pass locally after the Optional correction; the exact command is documented in tests/README.md. Restoring Python 3.10 union annotations still passes helper checks on Python 3.14, and the existing release workflow uses only its runner-default interpreter. Owner: CI/release maintainer. Reopen with a maintained lower-runtime lane that rejects the baseline union-annotation mutation while accepting current source; this entry concerns recurring qualification rather than the already executed compatibility proof.
+  note: 2026-11-28 — Skipped. Local compatibility evidence and the documented command already exist. Recurring hosted runtime provisioning is a CI maintainer change.
 
 
 ## Deferred from: Story 27.4 S3 integration final review (2026-10-29)
@@ -6040,6 +6058,7 @@ resolution: 1faf94b28d67ddbf888ae3b9172300be14eff01e (follow-up 39f8acaad2899f33
   summary: Enroll the failed-retry and fresh-candidate producer integration proofs in normal CI execution (medium).
   evidence: R7-V1 pre-verified gap; SourceInventoryProducerIntegrationTests and ReferencedSourceProducerIntegrationTests have no Category=Integration trait on their classes, assembly or RedisStack collection, while CI filters by that category and unit-contract inventory excludes this project. Owner: Memories ingestion/test maintainer. Consequence: predecessor-status and coverage assertions can remain unexecuted while normal lanes pass. Reopen trigger: assign the integration category, register critical methods in tools/integration-fast-required-surfaces.txt, and retain passing required TRX records for the running/mismatched/fenced/tombstoned predecessor cases.
   note: 2026-11-28 — Skipped. The proof is included in DW-731's eight-class enrollment and exact predecessor TRX catalog. This duplicate did not count toward the batch.
+  note: 2026-11-28 — Skipped. Already covered by DW-731, including the predecessor result catalog.
 
 - source_spec: `spec-30-4-five-image-publication-contract.md`
   summary: Make tracked annotation scheduling retries repair an accepted schedule instead of attempting the same workflow again (R8-B8).
@@ -6298,6 +6317,7 @@ resolution: b7f49e3396b5008508a075e4edece5c2d6a41046 — Canonical JSON path bul
   summary: Preserve literal Git filenames in the hosted story-scope job.
   evidence: The hosted job still sends Git's C-quoted, newline-delimited path list. A disposable reproduction showed the legacy parser reports a different path for a filename containing a newline. Hexalith.CiCd owns the workflow.
   note: 2026-11-28 — Skipped. Local NUL-delimited inputs are covered by DW-775. Lossless hosted input and routine execution of the literal-filename regressions require a Hexalith.CiCd change.
+  note: 2026-11-28 — Skipped. DW-775 covers the local parser. Hexalith.CiCd owns the hosted input contract.
 
 ## Deferred from review of spec-ten-deferred-projection-registry.md (2026-11-24)
 
@@ -6548,6 +6568,7 @@ resolution: c546d436a042e38f099050f45fc2a86eee95f2d0 (follow-up c78d08f0bd0d66d8
   summary: Run the native Windows results cleanup and lease regressions in routine verification.
   evidence: The checked-in discovery lane runs on Ubuntu and the native fixture skips there. The native Windows tests passed locally. Automated Windows enrollment belongs to Hexalith.CiCd.
   note: 2026-11-28 — Skipped. Native smoke checks ran locally. Hosted Windows runner enrollment belongs to Hexalith.CiCd.
+  note: 2026-11-28 — Skipped. The relevant native tests were exercised locally for DW-780. Hosted Windows enrollment remains a Hexalith.CiCd change.
 
 ### DW-780: Protect active overlapping results runs on native Windows and mixed Windows/WSL checkouts.
 
@@ -6556,7 +6577,8 @@ location: tools/prepare-test-results.ps1; tools/prepare-test-results.py; tests/t
 source_spec: `_bmad-output/implementation-artifacts/spec-dw-771-results-ancestry.md`
 severity: high
 reason: On NTFS a native or mixed descendant can occupy an active ancestor's report path. A native Windows ancestor also deleted a WSL descendant's sentinel before refusing. Verify fail-before-cleanup in both start orders with native and mixed ownership, preserve same-directory lease behavior and independently usable sibling destinations, and exercise recovery after the owning process exits.
-status: open
+status: done 2026-11-28
+resolution: b567eaa10bfb8c36c15827bc84541504a4699585 — Native Windows and WSL coordinate ancestor and destination leases on NTFS. Native and mixed regression runs verified both ancestry orders, same destinations, sibling destinations and abrupt owner exit.
 
 ### DW-781: Enroll the runtime secret-store probe suite in CI
 
@@ -6567,6 +6589,7 @@ severity: medium
 reason: The loopback suite covers the cancel-on-half-close transport regression, built-in-store policy, per-check store selection and runtime identity. It runs manually with BusyBox and has no workflow, hook or tools/test.sh enrollment. The original probe-change and live-replay triggers fired on November 28. Hexalith.CiCd owns the CI change, including provisioning a BusyBox with nc -e. Memories Maintainer owns the handoff.
 status: open
 note: Consolidates the original `_bmad-output/implementation-artifacts/spec-31-2-runtime-dapr-secret-store-migration.md` entry and the subsequent rollout and parent review deferrals.
+note: 2026-11-28 — Skipped. Hexalith.CiCd owns the hosted enrollment and BusyBox setup. The existing loopback suite can be run locally.
 
 ### DW-782: Update the McpCli proprietary-surface census for the probe
 
