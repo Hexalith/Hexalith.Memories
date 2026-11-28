@@ -56,6 +56,8 @@ AND_JOINED_STORY_KEYS_PATTERN = re.compile(
     re.IGNORECASE,
 )
 BACKTICK_PATTERN = re.compile(r"`([^`]+)`")
+LITERAL_GIT_PATH_PREFIX = "* Git path:"
+LITERAL_GIT_PATH_PATTERN = re.compile(re.escape(LITERAL_GIT_PATH_PREFIX) + r' `("[^`]*")`([ \t].*)?')
 CODE_FENCE_PATTERN = re.compile(r"^\s*(`{3,}|~{3,})(.*)$")
 STATUS_LINE_PATTERN = re.compile(r"^\s*(?:\*\*)?status(?:\*\*)?\s*:\s*(.+?)\s*$", re.IGNORECASE)
 
@@ -407,6 +409,33 @@ def extract_backtick_path(line: str) -> str | None:
     return match.group(1) if match else None
 
 
+def parse_literal_git_path(line: str, section: str, *, allow_metadata: bool = False) -> tuple[str, str]:
+    """Decode an opted-in path without applying conventional path normalization."""
+    diagnostic = f"C1: invalid literal Git path in {section}: {line!r}."
+    match = LITERAL_GIT_PATH_PATTERN.fullmatch(line)
+    if not match:
+        raise ValidationError(f"{diagnostic} Expected a backticked JSON string after {LITERAL_GIT_PATH_PREFIX!r}.")
+
+    encoded, metadata = match.groups()
+    if metadata and not allow_metadata:
+        raise ValidationError(f"{diagnostic} Put only the encoded path in a File List bullet.")
+    try:
+        path = json.loads(encoded)
+        path.encode("utf-8")
+    except (json.JSONDecodeError, UnicodeEncodeError) as error:
+        raise ValidationError(f"{diagnostic} Expected a valid UTF-8 JSON string value.") from error
+
+    if "\0" in path or any(part in ("", ".", "..") for part in path.split("/")):
+        raise ValidationError(f"{diagnostic} Expected a repository-relative Git path without dot or empty components.")
+
+    # A raw backtick would close the Markdown code span.
+    canonical = json.dumps(path, ensure_ascii=True).replace("`", r"\u0060")
+    if encoded != canonical:
+        raise ValidationError(f"{diagnostic} Use the canonical spelling {canonical!r}.")
+
+    return path, metadata or ""
+
+
 def iter_unfenced_lines(text: str):
     """Yield (index, raw_line) for lines outside fenced code blocks."""
     fence_marker: str | None = None
@@ -556,7 +585,7 @@ def find_evidence_tables(text: str) -> list[EvidenceTable]:
 
 
 def parse_section_paths(text: str, heading: str) -> set[str] | None:
-    """Collect backticked or bare paths from top-level bullets under a heading."""
+    """Collect conventional or literal paths from top-level bullets under a heading."""
     target = heading.strip().lower()
     in_section = False
     paths: set[str] = set()
@@ -573,6 +602,10 @@ def parse_section_paths(text: str, heading: str) -> set[str] | None:
             if in_section:
                 break
         if not in_section:
+            continue
+        if raw_line.startswith(LITERAL_GIT_PATH_PREFIX):
+            path, _ = parse_literal_git_path(stripped, heading)
+            paths.add(path)
             continue
         if not raw_line.startswith("- "):
             continue
@@ -608,21 +641,26 @@ def parse_exclusions(text: str) -> list[Exclusion]:
                 continue
             if in_section:
                 break
-        if not in_section or not raw_line.startswith("- "):
+        if not in_section:
             continue
 
-        path = extract_backtick_path(stripped)
-        if not path:
-            raise ValidationError(f"File List Exclusions entry has no backticked path: {stripped}")
-        owner_match = re.search(r"owner\s*:\s*([^;]+)", stripped, re.IGNORECASE)
+        if raw_line.startswith(LITERAL_GIT_PATH_PREFIX):
+            path, metadata = parse_literal_git_path(stripped, "File List Exclusions", allow_metadata=True)
+        elif raw_line.startswith("- "):
+            candidate = extract_backtick_path(stripped)
+            if not candidate:
+                raise ValidationError(f"File List Exclusions entry has no backticked path: {stripped}")
+            path = normalize_path(candidate)
+            metadata = stripped
+        else:
+            continue
+        owner_match = re.search(r"owner\s*:\s*([^;]+)", metadata, re.IGNORECASE)
         if not owner_match or not owner_match.group(1).strip():
             raise ValidationError(f"File List Exclusions entry names no owner: {stripped}")
-        remainder = stripped[owner_match.end():].strip(" ;—-")
+        remainder = metadata[owner_match.end():].strip(" ;—-")
         if not remainder:
             raise ValidationError(f"File List Exclusions entry gives no reason: {stripped}")
-        exclusions.append(
-            Exclusion(normalize_path(path), owner_match.group(1).strip(), remainder)
-        )
+        exclusions.append(Exclusion(path, owner_match.group(1).strip(), remainder))
     return exclusions
 
 
@@ -1262,7 +1300,7 @@ def validate(args: argparse.Namespace) -> int:
             for path in unlisted:
                 failures.append(f"C1: {path!r} changed but is not in the File List.")
             for path in stale:
-                failures.append(f"C1: '{path}' is in the File List but not in the in-scope changed set.")
+                failures.append(f"C1: {path!r} is in the File List but not in the in-scope changed set.")
             if not unlisted and not stale:
                 print(f"C1: File List exactly matches all {len(changed_paths)} in-scope changed paths.")
 

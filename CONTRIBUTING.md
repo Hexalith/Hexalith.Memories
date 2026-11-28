@@ -119,10 +119,9 @@ The `pre-commit` hook checks the current index using the branch name. The `commi
 the index again so files staged during pre-commit are checked with the proposed message. It shares
 that snapshot with the scope, tenant-isolation evidence, and review-readiness checks.
 
-The Markdown `File List` uses normalized, single-line paths. It cannot represent literal newlines
-or backslashes in filenames. The pull-request `story-file-scope` job supplies a line-oriented path
-list, so Git filenames that require quoting can be reported differently in that job and in the
-local hooks.
+The pull-request `story-file-scope` job supplies a line-oriented path list. Git filenames that
+require quoting can be reported differently there than in the local hooks, which use NUL-delimited
+Git paths.
 
 Run the focused story-scope fixtures with `python3 -m unittest discover -s tests/tooling/story_scope -p '*_test.py'`.
 
@@ -323,6 +322,26 @@ for a human reader but does not exempt a path:
 Every bullet needs a backticked path, a named owner, and a reason. Whitespace
 alone is not an owner. Excluded paths are removed from the changed set before
 comparison and must not also be credited in the File List.
+
+When the changed set comes from Git's NUL-delimited paths, use a top-level `* Git path:`
+bullet to represent exact filenames containing literal backslashes or newlines.
+Both sections accept this form alongside conventional bullets.
+
+```markdown
+### File List
+
+* Git path: `"docs/with\\backslash.md"`
+
+### File List Exclusions
+
+* Git path: `"docs/with\nnewline.md"` — owner: Another Story; concurrent work
+```
+
+Put a canonical JSON string, including its double quotes, in the code span.
+Use `\\` for a literal backslash and `\n` for a newline. Generate the canonical
+spelling with ``json.dumps(path, ensure_ascii=True).replace("`", r"\u0060")``.
+Use the exact repository-relative Git path. Empty components, `.`, and `..`
+are invalid. Comparison preserves every decoded character, including whitespace.
 
 Run it yourself before moving a story to review:
 

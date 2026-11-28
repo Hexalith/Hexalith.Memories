@@ -1,4 +1,4 @@
-"""Exercise artifact selection and status gates through the readiness CLI."""
+"""Exercise artifact selection and validation gates through the readiness CLI."""
 
 import os
 from pathlib import Path
@@ -54,14 +54,34 @@ class StoryArtifactResolutionTests(unittest.TestCase):
         )
         return name
 
-    def command(self, *args, check=False):
+    def command(self, *args, check=False, text=True):
         return subprocess.run(
             args, cwd=self.repo, env=self.environment, check=check,
-            capture_output=True, text=True, timeout=20,
+            capture_output=True, text=text, timeout=20,
         )
 
     def validate(self, *args):
         return self.command(sys.executable, str(VALIDATOR), *args)
+
+    def stage_changed_paths(self, *paths):
+        self.command("git", "init", "--quiet", check=True)
+        for path in paths:
+            target = self.repo / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text("fixture\n", encoding="utf-8")
+        self.command("git", "add", "--", *paths, check=True)
+        changed = self.repo / "changed-files.nul"
+        changed.write_bytes(self.command(
+            "git", "diff", "--cached", "--no-renames", "--name-only", "-z", "--",
+            check=True, text=False,
+        ).stdout)
+        return "--story-key", Path(ORIGINAL).stem, "--changed-files0-file", str(changed)
+
+    def write_file_list(self, rows, exclusions=""):
+        text = "Status: in-progress\n\n### File List\n\n" + rows + "\n"
+        if exclusions:
+            text += "\n### File List Exclusions\n\n" + exclusions + "\n"
+        self.write_artifact(ORIGINAL, text)
 
     def assert_selected(self, result, name):
         self.assertIn(f"Story artifact: _bmad-output/implementation-artifacts/{name}\n", result.stdout)
@@ -175,6 +195,99 @@ class StoryArtifactResolutionTests(unittest.TestCase):
         empty = self.validate(*args)
         self.assertEqual(1, empty.returncode, empty.stdout + empty.stderr)
         self.assertIn("C1: the changed set is empty for a governed story.", empty.stdout)
+
+    @unittest.skipIf(os.name == "nt", "Uses POSIX filenames with literal backslashes and newlines")
+    def test_file_list_matches_literal_git_paths_and_conventional_paths(self):
+        arguments = self.stage_changed_paths(
+            "docs/with\\slash.md", "docs/new\nline café`.md", "docs/bare.md", "docs/ordinary.md",
+            "docs/prefixed.md",
+        )
+        rows = "\n".join((
+            r'* Git path: `"docs/with\\slash.md"`',
+            r'* Git path: `"docs/new\nline caf\u00e9\u0060.md"`',
+            '- docs/bare.md — documentation',
+            r'- `.\docs\ordinary.md` — documentation',
+            '- Git path: `docs/prefixed.md` — documentation',
+        ))
+        self.write_file_list(rows)
+
+        passed = self.validate(*arguments)
+        self.assertEqual(0, passed.returncode, passed.stdout + passed.stderr)
+        self.assertIn("C1: File List exactly matches all 5 in-scope changed paths.", passed.stdout)
+
+        for alias_rows in (
+            rows.replace(r'with\\slash.md', 'with/slash.md'),
+            rows.replace(r'new\nline', r'new\\nline'),
+        ):
+            with self.subTest(rows=alias_rows):
+                self.write_file_list(alias_rows)
+                failed = self.validate(*arguments)
+                self.assertEqual(1, failed.returncode, failed.stdout + failed.stderr)
+                self.assertIn("changed but is not in the File List.", failed.stdout)
+                self.assertIn("is in the File List but not in the in-scope changed set.", failed.stdout)
+
+    @unittest.skipIf(os.name == "nt", "Uses a POSIX filename with a literal backslash")
+    def test_file_list_exclusion_matches_only_its_literal_git_path(self):
+        arguments = self.stage_changed_paths("docs/with\\slash.md", "docs/with/slash.md", "docs/other.md")
+        rows = "- `docs/with/slash.md`"
+        literal = r'* Git path: `"docs/with\\slash.md"`'
+        metadata = " — owner: Another Story; concurrent work"
+        conventional = "\n- `docs/other.md`" + metadata
+        self.write_file_list(rows, literal + metadata + conventional)
+        passed = self.validate(*arguments)
+        self.assertEqual(0, passed.returncode, passed.stdout + passed.stderr)
+        self.assertIn("C1: File List exactly matches all 1 in-scope changed paths.", passed.stdout)
+
+        self.write_file_list(rows, literal.replace(r'with\\slash.md', 'with/slash.md') + metadata + conventional)
+        failed = self.validate(*arguments)
+        self.assertEqual(1, failed.returncode, failed.stdout + failed.stderr)
+        self.assertIn(r"C1: 'docs/with\\slash.md' changed but is not in the File List.", failed.stdout)
+
+    def test_invalid_literal_git_paths_fail_in_either_section(self):
+        arguments = self.stage_changed_paths("docs/ordinary.md")
+        malformed = (
+            '* Git path:',
+            '* Git path: "docs/ordinary.md"',
+            '* Git path: `"docs/ordinary.md',
+            '* Git path: `["docs/ordinary.md"]`',
+            r'* Git path: `"docs/\q.md"`',
+            r'* Git path: `"docs/\ud800.md"`',
+            r'* Git path: `"docs/\u0000.md"`',
+            '* Git path: `""`',
+            '* Git path: `"/docs/ordinary.md"`',
+            '* Git path: `"./docs/ordinary.md"`',
+            '* Git path: `"docs//ordinary.md"`',
+            '* Git path: `"docs/sub/../ordinary.md"`',
+            r'* Git path: `"docs\/ordinary.md"`',
+            r'* Git path: `"docs/\u006frdinary.md"`',
+            '* Git path: `"docs/ordinary.md"`extra',
+        )
+        ordinary = "- `docs/ordinary.md`"
+        for section in ("File List", "File List Exclusions"):
+            for row in malformed:
+                with self.subTest(section=section, row=row):
+                    if section == "File List":
+                        self.write_file_list(ordinary + "\n" + row)
+                    else:
+                        self.write_file_list(ordinary, row + " — owner: Another Story; concurrent work")
+                    failed = self.validate(*arguments)
+                    self.assertEqual(1, failed.returncode, failed.stdout + failed.stderr)
+                    self.assertIn(f"C1: invalid literal Git path in {section}:", failed.stdout)
+
+        self.write_file_list(ordinary + '\n* Git path: `"docs/ordinary.md"` extra')
+        failed = self.validate(*arguments)
+        self.assertEqual(1, failed.returncode, failed.stdout + failed.stderr)
+        self.assertIn("C1: invalid literal Git path in File List:", failed.stdout)
+
+    def test_literal_exclusion_requires_owner_and_reason_after_the_path(self):
+        arguments = self.stage_changed_paths("docs/ordinary.md")
+        row = '* Git path: `"docs/owner: Misleading; reason.md"`'
+        for metadata, missing in (("", "names no owner"), (" — owner: Another Story", "gives no reason")):
+            with self.subTest(metadata=metadata):
+                self.write_file_list("- `docs/ordinary.md`", row + metadata)
+                failed = self.validate(*arguments)
+                self.assertEqual(1, failed.returncode, failed.stdout + failed.stderr)
+                self.assertIn(f"File List Exclusions entry {missing}", failed.stdout)
 
     def test_in_review_rejects_missing_file_list_and_unfinished_evidence(self):
         self.write_artifact("sprint-status.yaml", f"development_status:\n  {KEY}: review\n")
