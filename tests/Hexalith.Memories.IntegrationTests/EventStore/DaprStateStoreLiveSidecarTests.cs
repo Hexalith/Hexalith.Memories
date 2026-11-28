@@ -77,6 +77,8 @@ public sealed class DaprStateStoreLiveSidecarTests
             .ShouldBe(["Claims"]);
 
         // A stale FirstWrite request can overwrite an unmarked row. A marked row rejects an empty ETag.
+        const string redisSetScriptHash = "d908b9553add63a82e03589b5c6d01a7654ef0f2";
+        string redisKey = $"{_fixture.AppId}||{indexKey}";
         bool secondSaved;
         try
         {
@@ -85,7 +87,9 @@ public sealed class DaprStateStoreLiveSidecarTests
                 cancellationToken: cancellationToken);
         }
         catch (DaprException ex) when (ex.InnerException is RpcException { StatusCode: StatusCode.Internal } rpc
-            && rpc.Status.Detail.Contains($"failed to set key {_fixture.AppId}||{indexKey} script:", StringComparison.Ordinal))
+            && rpc.Status.Detail.EndsWith(
+                $"ERR user_script:14: failed to set key {redisKey} script: {redisSetScriptHash}, on @user_script:14.",
+                StringComparison.Ordinal))
         {
             // The pinned Redis component surfaces this empty-ETag conflict as a Lua script error.
             secondSaved = false;

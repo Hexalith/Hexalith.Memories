@@ -295,11 +295,18 @@ Dapr/RBAC/namespace resources, and other configuration outside the failed Deploy
 rollback, verify sidecar/runtime compatibility and all canary/control checks.
 
 A scoped Deployment rollback does not reverse CRDs, workflow history, index/schema changes,
-Redis/FalkorDB data layouts, configuration written to durable state, or PVC contents. Before a rollback
-reintroduces legacy index writers, apply the same mapping index quiescence while versions coexist.
+Redis/FalkorDB data layouts, configuration written to durable state, or PVC contents.
 
-If the rollback restores a binary that can schedule untracked ingestion, invalidate the Redis confirmation key for
-the build you plan to upgrade to while intake is paused. Use
+Before rolling back across the mapping index `FirstWrite` change, pause affected case-routing intake
+and index-changing maintenance. Verify the queues and in-flight workflows have drained before
+replacing writers. Keep normal writes paused until rollout status and running image digests confirm
+that every index writer runs its approved rollback target and the superseded writers have retired.
+Confirm the scoped canary's index is absent before admitting its first mapping on the rollback target.
+Verify the persisted case ID, aggregate type membership, and nonempty index ETag through the owning
+app's Dapr state component before resuming normal writes.
+
+If the rollback restores a binary that can schedule untracked ingestion, invalidate the Redis
+confirmation key for the build you plan to upgrade to while intake is paused. Use
 `ingestion-workflow:in-flight:drain-confirmed-v2` for builds that track annotation projection parents
 and `ingestion-workflow:in-flight:drain-confirmed` for earlier builds. A subsequent upgrade enumerates
 Dapr workflows before recording a new confirmation.
