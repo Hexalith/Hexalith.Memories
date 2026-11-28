@@ -8,6 +8,8 @@ namespace Hexalith.Memories.IntegrationTests.EventStore;
 using Dapr;
 using Dapr.Client;
 
+using Grpc.Core;
+
 using Hexalith.Memories.EventStore;
 using Hexalith.Memories.IntegrationTests.Fixtures;
 
@@ -49,6 +51,82 @@ public sealed class DaprStateStoreLiveSidecarTests
         (await store.TryStoreCaseIdAsync(tenantId, "Orders", "case-orders", CancellationToken.None))
             .ShouldBeTrue();
         (await store.GetAggregateCountAsync(tenantId, CancellationToken.None)).ShouldBe(2);
+    }
+
+    [Theory]
+    [InlineData(true, "Orders")]
+    [InlineData(false, "Claims")]
+    public async Task AggregateCaseMapping_MixedVersionIndexCreation_DependsOnWhichWriterCreatesTheRowAsync(
+        bool legacyWritesFirst, string expectedAggregateType)
+    {
+        DaprClient client = _fixture.DaprClient;
+        string storeName = _fixture.StateStoreName;
+        string indexKey = $"ida-mixed-{Guid.NewGuid():N}:eventstore:aggregate-case-map-index";
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        StateOptions firstWrite = new() { Concurrency = ConcurrencyMode.FirstWrite };
+
+        // Both writers read before either saves. The legacy writer omitted the options on an absent index.
+        (List<string>? absentIndex, string absentEtag) = await client.GetStateAndETagAsync<List<string>?>(
+            storeName, indexKey, cancellationToken: cancellationToken);
+        absentIndex.ShouldBeNull();
+        absentEtag.ShouldBeEmpty();
+        (await client.TrySaveStateAsync<List<string>>(
+            storeName, indexKey, ["Claims"], absentEtag, legacyWritesFirst ? null : firstWrite,
+            cancellationToken: cancellationToken)).ShouldBeTrue();
+        (await client.GetStateAsync<List<string>>(storeName, indexKey, cancellationToken: cancellationToken))
+            .ShouldBe(["Claims"]);
+
+        // A stale FirstWrite request can overwrite an unmarked row. A marked row rejects an empty ETag.
+        bool secondSaved;
+        try
+        {
+            secondSaved = await client.TrySaveStateAsync<List<string>>(
+                storeName, indexKey, ["Orders"], absentEtag, legacyWritesFirst ? firstWrite : null,
+                cancellationToken: cancellationToken);
+        }
+        catch (DaprException ex) when (ex.InnerException is RpcException { StatusCode: StatusCode.Internal } rpc
+            && rpc.Status.Detail.Contains($"failed to set key {_fixture.AppId}||{indexKey} script:", StringComparison.Ordinal))
+        {
+            // The pinned Redis component surfaces this empty-ETag conflict as a Lua script error.
+            secondSaved = false;
+        }
+
+        secondSaved.ShouldBe(legacyWritesFirst);
+        (await client.GetStateAsync<List<string>>(storeName, indexKey, cancellationToken: cancellationToken))
+            .ShouldBe([expectedAggregateType]);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AggregateCaseMapping_ExistingIndex_PreservesMembershipAndRejectsStaleETagAsync(bool firstWriteCreation)
+    {
+        DaprClient client = _fixture.DaprClient;
+        string storeName = _fixture.StateStoreName;
+        string tenantId = $"ida-etag-{Guid.NewGuid():N}"[..28];
+        string indexKey = $"{tenantId}:eventstore:aggregate-case-map-index";
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        StateOptions? creationOptions = firstWriteCreation ? new() { Concurrency = ConcurrencyMode.FirstWrite } : null;
+
+        (await client.TrySaveStateAsync<List<string>>(
+            storeName, indexKey, ["Claims"], string.Empty, creationOptions, cancellationToken: cancellationToken))
+            .ShouldBeTrue();
+        (List<string> originalIndex, string originalEtag) = await client.GetStateAndETagAsync<List<string>>(
+            storeName, indexKey, cancellationToken: cancellationToken);
+        originalIndex.ShouldBe(["Claims"]);
+        originalEtag.ShouldNotBeNullOrEmpty();
+
+        DaprAggregateCaseMappingStore store = CreateMappingStore();
+        (await store.TryStoreCaseIdAsync(tenantId, "Orders", "case-orders", cancellationToken)).ShouldBeTrue();
+        (await client.TrySaveStateAsync<List<string>>(
+            storeName, indexKey, ["Claims", "Invoices"], originalEtag, cancellationToken: cancellationToken))
+            .ShouldBeFalse();
+
+        (List<string> persistedIndex, string persistedEtag) = await client.GetStateAndETagAsync<List<string>>(
+            storeName, indexKey, cancellationToken: cancellationToken);
+        persistedIndex.ShouldBe(["Claims", "Orders"]);
+        persistedEtag.ShouldNotBeNullOrEmpty();
+        persistedEtag.ShouldNotBe(originalEtag);
     }
 
     [Fact]

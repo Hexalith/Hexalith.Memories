@@ -49,6 +49,33 @@ Repository pins and image digests are the deployment input. Current pins include
 Dapr .NET packages 1.18.5, Redis Stack 7.4.0-v8, and FalkorDB 4.12.0. A package pin does not prove the
 cluster runtime/control-plane version. No component version is changed by this runbook.
 
+### Aggregate-to-case mapping index during mixed-version rollouts
+
+With Dapr runtime 1.19.1 and the Redis state component, a legacy writer can create
+`{tenant}:eventstore:aggregate-case-map-index` without the `FirstWrite` marker. If both writers read an
+absent index and the legacy writer saves first, the upgraded writer's empty-ETag `FirstWrite` request
+can overwrite that row and lose the legacy aggregate type from discovery. If the upgraded writer saves
+first, the marker causes the stale empty-ETag request to be rejected. On an existing row, a save
+using the current ETag can extend membership, and a stale ETag is rejected regardless of how the row
+was created. [Live Dapr/Redis regression tests](../../tests/Hexalith.Memories.IntegrationTests/EventStore/DaprStateStoreLiveSidecarTests.cs),
+[Dapr 1.19.1 Redis component source](https://github.com/dapr/components-contrib/blob/v1.19.0/state/redis/redis.go#L35-L49).
+
+Require a quiesced writer cutover for tenants whose index is absent or may become absent during the
+rollout, including newly onboarded tenants and tenants undergoing a purge or restore. If that scope
+cannot be established, quiesce case-routing and index-changing operations across all tenants.
+
+1. Before deploying upgraded writers, pause case-routing intake and index-changing maintenance in
+   scope. Drain admitted work and verify the relevant queues and in-flight workflows are drained.
+2. Keep those writes paused until rollout status and the actual running image digests show every
+   workload that can write the index is upgraded, and legacy replicas and in-flight writes have
+   retired. If writes may already have overlapped with an absent index, reconcile the scoped mapping
+   rows and index using the procedure above before allowing writes again.
+3. Admit a scoped canary first mapping through an upgraded writer. Before the write, read the canary
+   index through the owning app's Dapr state component and confirm it is absent. After the write,
+   read the mapping and index through that same component and verify the expected case ID, aggregate
+   type membership, and a nonempty index ETag. Resume normal writes after this check and the
+   canary/control gates below pass.
+
 ## Prerequisites and authorization
 
 - Assign release owner, platform/Dapr owner, data owner, tenant canary owner, security/secret owner,
@@ -179,7 +206,8 @@ real results; a skipped infrastructure lane is not passing evidence.
    recoverability. Do not rehearse over production.
 3. Before the real change, pause publishers/intake and independently enumerate workflow/queue state until
    terminal/drained. If workflow shape changes, retain the old workflow version and decide version/patch/
-   purge behavior before deploying.
+   purge behavior before deploying. Apply the [mapping index writer cutover](#aggregate-to-case-mapping-index-during-mixed-version-rollouts)
+   when crossing the change to `FirstWrite` index creation.
 
 ### 4. Staging, production rollout, and tenant canary validation
 
@@ -267,8 +295,10 @@ Dapr/RBAC/namespace resources, and other configuration outside the failed Deploy
 rollback, verify sidecar/runtime compatibility and all canary/control checks.
 
 A scoped Deployment rollback does not reverse CRDs, workflow history, index/schema changes,
-Redis/FalkorDB data layouts, configuration written to durable state, or PVC contents. If the rollback
-restores a binary that can schedule untracked ingestion, invalidate the Redis confirmation key for
+Redis/FalkorDB data layouts, configuration written to durable state, or PVC contents. Before a rollback
+reintroduces legacy index writers, apply the same mapping index quiescence while versions coexist.
+
+If the rollback restores a binary that can schedule untracked ingestion, invalidate the Redis confirmation key for
 the build you plan to upgrade to while intake is paused. Use
 `ingestion-workflow:in-flight:drain-confirmed-v2` for builds that track annotation projection parents
 and `ingestion-workflow:in-flight:drain-confirmed` for earlier builds. A subsequent upgrade enumerates
