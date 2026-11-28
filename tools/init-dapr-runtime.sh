@@ -10,6 +10,7 @@ max_attempts="${DAPR_INIT_ATTEMPTS:-5}"
 # Bash can run signal traps immediately while waiting for a background job.
 set -m
 pending_jobs=()
+docker_cleanup_log=""
 
 start_job() {
   "$@" &
@@ -45,6 +46,9 @@ stop_jobs() {
   while read -r pid; do
     wait_for_job_after_kill "$pid"
   done < <(jobs -p)
+  if [[ -n "$docker_cleanup_log" ]]; then
+    rm -f -- "$docker_cleanup_log"
+  fi
 }
 
 trap stop_jobs EXIT
@@ -69,6 +73,15 @@ run_setup_command() {
   return "$status"
 }
 
+only_missing_dapr_containers() {
+  local log_file="$1" line
+  local missing='^(Error|Error response from daemon): No such container: dapr_(placement|scheduler)$'
+  [[ -s "$log_file" ]] || return 1
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ "$line" =~ $missing ]] || return 1
+  done < "$log_file"
+}
+
 attempt=1
 while true; do
   if run_setup_command 120s dapr init --slim --runtime-version "${runtime_version}"; then
@@ -87,11 +100,20 @@ done
 placement_port=50005
 scheduler_port=50006
 docker_metadata_timeout=30s
-# The containers may not exist. A timed-out removal leaves their state unknown.
+# Older Docker CLIs may return 1 even if the only errors are missing containers.
+docker_cleanup_log=$(mktemp -t dapr-docker-cleanup.XXXXXXXXXX)
 cleanup_status=0
-run_bounded "$docker_metadata_timeout" docker rm -f dapr_placement dapr_scheduler >/dev/null 2>&1 || cleanup_status=$?
-if (( cleanup_status == 124 || cleanup_status == 137 )); then
-  echo "Timed out after ${docker_metadata_timeout} removing dapr_placement and dapr_scheduler" >&2
+run_bounded "$docker_metadata_timeout" docker rm -f dapr_placement dapr_scheduler >/dev/null 2>"$docker_cleanup_log" || cleanup_status=$?
+if (( cleanup_status == 1 )) && only_missing_dapr_containers "$docker_cleanup_log"; then
+  cleanup_status=0
+fi
+if (( cleanup_status != 0 )); then
+  if (( cleanup_status == 124 || cleanup_status == 137 )); then
+    echo "Timed out after ${docker_metadata_timeout} removing dapr_placement and dapr_scheduler" >&2
+  else
+    echo "Docker cleanup failed while removing dapr_placement and dapr_scheduler (exit ${cleanup_status})" >&2
+  fi
+  cat "$docker_cleanup_log" >&2
   exit "$cleanup_status"
 fi
 

@@ -38,8 +38,19 @@ if [ -n "$STALL_COMMAND" ]; then
         "$STALL_COMMAND"*) exec fixture-stall ;;
     esac
 fi
-# The two stale containers may already be absent.
-[ "$1" != rm ]
+if [ "$1 $2" = 'rm -f' ]; then
+    if [ -n "$DOCKER_RM_ERROR" ]; then
+        printf '%s\\n' "$DOCKER_RM_ERROR" >&2
+        exit 1
+    fi
+    shift 2
+    for name do
+        if [ -f "$DOCKER_CONTAINERS/$name" ]; then
+            rm -- "$DOCKER_CONTAINERS/$name" || exit 97
+            printf '%s\\n' "$name"
+        fi
+    done
+fi
 """
 STALL_FIXTURE = """#!/bin/sh
 trap '' TERM
@@ -110,17 +121,22 @@ class DaprRuntimeTests(unittest.TestCase):
         self.calls = self.root / "dapr-calls"
         self.first_attempt = self.root / "dapr-first-attempt"
         self.docker_calls = self.root / "docker-calls"
+        self.docker_containers = self.root / "docker-containers"
+        self.docker_containers.mkdir()
         self.readiness_calls = self.root / "readiness-calls"
         self.stalled_jobs = self.root / "stalled-jobs"
         self.addCleanup(self.kill_stalled_jobs)
         self.env = dict(
             os.environ,
             PATH=os.pathsep.join((str(bin_dir), os.environ["PATH"])),
+            TMPDIR=str(self.root),
             DAPR_RUNTIME_VERSION="1.19.1",
             DAPR_INIT_ATTEMPTS="2",
             DAPR_CALLS=str(self.calls),
             DAPR_FIRST_ATTEMPT=str(self.first_attempt),
             DOCKER_CALLS=str(self.docker_calls),
+            DOCKER_CONTAINERS=str(self.docker_containers),
+            DOCKER_RM_ERROR="",
             READINESS_CALLS=str(self.readiness_calls),
             STALLED_JOBS=str(self.stalled_jobs),
             STALL_COMMAND="",
@@ -170,6 +186,7 @@ class DaprRuntimeTests(unittest.TestCase):
     def run_initializer(self, unavailable=None, **overrides):
         with self.start_initializer(unavailable, **overrides) as process:
             stdout, stderr = process.communicate(timeout=10)
+            self.assertEqual([], list(self.root.glob("dapr-docker-cleanup.*")))
             return subprocess.CompletedProcess(process.args, process.returncode, stdout, stderr)
 
     def stalled_pids(self):
@@ -219,6 +236,45 @@ class DaprRuntimeTests(unittest.TestCase):
             ["init --slim --runtime-version 1.19.1"] * 2 + ["--version"],
             self.calls.read_text(encoding="utf-8").splitlines(),
         )
+
+    def test_removes_only_the_owned_dapr_containers(self):
+        other_container = "dapr_placement_backup"
+        for name in ("dapr_placement", "dapr_scheduler", other_container):
+            (self.docker_containers / name).touch()
+
+        result = self.run_initializer()
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual([other_container], [entry.name for entry in self.docker_containers.iterdir()])
+
+    def test_continues_when_legacy_docker_reports_only_missing_dapr_containers(self):
+        result = self.run_initializer(
+            DOCKER_RM_ERROR="Error: No such container: dapr_placement\n"
+            "Error response from daemon: No such container: dapr_scheduler",
+        )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("--version", self.calls.read_text(encoding="utf-8"))
+
+    def test_refuses_startup_on_docker_removal_errors(self):
+        for error in (
+            "Cannot connect to the Docker daemon at unix:///var/run/docker.sock.",
+            "Error response from daemon: authorization denied by plugin",
+            "Error response from daemon: No such container: dapr_placement\n"
+            "Error response from daemon: authorization denied by plugin",
+            "Error response from daemon: No such container: dapr_placement_backup",
+        ):
+            with self.subTest(error=error):
+                self.reset_calls()
+                result = self.run_initializer(DOCKER_RM_ERROR=error)
+
+                self.assertEqual(1, result.returncode, result.stderr)
+                self.assertIn(error, result.stderr)
+                self.assertEqual(
+                    ["rm -f dapr_placement dapr_scheduler"],
+                    self.docker_calls.read_text(encoding="utf-8").splitlines(),
+                )
+                self.assertFalse(self.readiness_calls.exists())
 
     def test_refuses_startup_when_the_scheduler_offers_only_tcp(self):
         result = self.run_initializer(unavailable="scheduler")
@@ -297,6 +353,7 @@ class DaprRuntimeTests(unittest.TestCase):
         for interrupted, operation, count in (
             (signal.SIGHUP, "dapr init", 1),
             (signal.SIGINT, "docker run -d --name dapr_placement", 1),
+            (signal.SIGTERM, "docker rm -f dapr_placement dapr_scheduler", 1),
             (signal.SIGTERM, "readiness", 2),
         ):
             with self.subTest(signal=interrupted, operation=operation):
@@ -313,3 +370,4 @@ class DaprRuntimeTests(unittest.TestCase):
                 self.assertEqual(128 + interrupted, process.returncode, stderr)
                 self.assertNotIn("--version", self.calls.read_text(encoding="utf-8"))
                 self.assert_stalled_jobs_stopped(count)
+                self.assertEqual([], list(self.root.glob("dapr-docker-cleanup.*")))
