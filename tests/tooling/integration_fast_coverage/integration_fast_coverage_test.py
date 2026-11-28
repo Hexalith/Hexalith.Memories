@@ -73,6 +73,43 @@ class IntegrationFastCoverageVerifierTests(unittest.TestCase):
 
         self.assertEqual(requirements, MODULE.missing_requirements(requirements, passed))
 
+    def test_fast_catalog_rejects_missing_predecessor_proofs(self):
+        catalog = REPO_ROOT / "tools" / "integration-fast-required-surfaces.txt"
+        requirements = MODULE.load_requirements(catalog)
+        proofs = (
+            (
+                "source-inventory-failed-predecessor",
+                "Hexalith.Memories.IntegrationTests.Ingestion.SourceInventoryProducerIntegrationTests",
+                "ConclusivelyUnscheduledRetryDoesNotHideTheFailedPredecessor",
+                "OnlyProvenPreSchedulingFailuresCanSettleAfterSerializedRecreation",
+            ),
+            (
+                "referenced-source-predecessor-ownership",
+                "Hexalith.Memories.IntegrationTests.Ingestion.ReferencedSourceProducerIntegrationTests",
+                "FailedReingestionCopiesPriorSourceAndRequiresOwnershipToReconcileAcrossRestart",
+                "MissingInventoryNeverSubstitutesForExactLegacyFailedWorkflowProof",
+            ),
+        )
+        for surface, class_name, method_name, sibling_method in proofs:
+            with self.subTest(surface=surface), tempfile.TemporaryDirectory() as temp:
+                results = Path(temp)
+                other_passed = [
+                    (key, required_class, required_method or "Run", "Passed")
+                    for key, (required_class, required_method) in requirements.items()
+                    if key != surface
+                ]
+                sibling_passed = ("sibling", class_name, sibling_method, "Passed")
+                self._write_trx(results, [*other_passed, sibling_passed])
+
+                missing = self._verify(results, catalog)
+                self.assertEqual(1, missing.returncode, missing.stdout + missing.stderr)
+                self.assertIn(f"{surface}: {class_name}.{method_name}", missing.stderr)
+
+                proof_passed = ("proof", class_name, method_name, "Passed")
+                self._write_trx(results, [*other_passed, sibling_passed, proof_passed])
+                complete = self._verify(results, catalog)
+                self.assertEqual(0, complete.returncode, complete.stderr)
+
     def test_load_requirements_supports_class_and_exact_method_entries(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "requirements.txt"

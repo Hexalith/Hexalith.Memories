@@ -14,6 +14,7 @@ using System.Text.Json;
 using Shouldly;
 
 /// <summary>Tier-2 guards for the Story 13.7 Ollama and OIDC fake endpoints.</summary>
+[Trait("Category", "Integration")]
 public sealed class OllamaOidcFakeServerTests
 {
     [Fact]

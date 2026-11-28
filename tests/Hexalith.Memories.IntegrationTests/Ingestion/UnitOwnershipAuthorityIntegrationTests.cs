@@ -17,6 +17,7 @@ using StackExchange.Redis;
 
 /// <summary>Actual Redis issuance, exact historical reconciliation and physical erasure across connection recreation.</summary>
 [Collection("RedisStack")]
+[Trait("Category", "Integration")]
 public sealed class UnitOwnershipAuthorityIntegrationTests(RedisStackFixture redis, FalkorDbFixture graph) : IClassFixture<FalkorDbFixture>
 {
     /// <summary>Fresh annotation admission reserves authority before graph/content writes; deletion cannot free its identity.</summary>

@@ -30,6 +30,7 @@ using Hexalith.Memories.Server.Infrastructure;
 
 /// <summary>Prior-owner claim checks become independently retained source bytes through actual payload, scheduler and failed-ingestion adapters.</summary>
 [Collection("RedisStack")]
+[Trait("Category", "Integration")]
 public sealed class ReferencedSourceProducerIntegrationTests(RedisStackFixture redis, DaprStateSidecarFixture state, FalkorDbFixture graph)
     : IClassFixture<DaprStateSidecarFixture>, IClassFixture<FalkorDbFixture>
 {

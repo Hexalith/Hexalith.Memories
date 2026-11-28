@@ -26,6 +26,7 @@ using Shouldly;
 /// <c>[Fact]</c>s, no fixture, no <c>DistributedApplicationTestingBuilder</c>. Project-source checks tie the
 /// Server packability and MCP PackageId cells that cannot be reflected from built assemblies.
 /// </summary>
+[Trait("Category", "Integration")]
 public sealed class PublicSurfaceStabilityTests
 {
     private const string DocRelativePath = "docs/dev/public-surface-stability.md";

@@ -21,6 +21,7 @@ using System.Security.Claims;
 
 /// <summary>Accepted escaped identifiers remain enumerable through the real producer and bounded public REST client.</summary>
 [Collection("RedisStack")]
+[Trait("Category", "Integration")]
 public sealed class InventoryWirePaginationIntegrationTests(RedisStackFixture redis)
 {
     [Fact]

@@ -30,6 +30,7 @@ using StackExchange.Redis;
 
 /// <summary>Actual tenant teardown and admission controls with Redis and a persisted Dapr claim-check store.</summary>
 [Collection("RedisStack")]
+[Trait("Category", "Integration")]
 public sealed class TenantIngestionLifecycleIntegrationTests(RedisStackFixture redis, DaprStateSidecarFixture state, FalkorDbFixture graph)
     : IClassFixture<DaprStateSidecarFixture>, IClassFixture<FalkorDbFixture>
 {

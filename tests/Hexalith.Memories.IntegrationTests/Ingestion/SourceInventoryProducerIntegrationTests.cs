@@ -32,6 +32,7 @@ using Hexalith.Memories.Server.Infrastructure;
 
 /// <summary>Executes the scheduler, producer activities and authenticated inventory endpoint against persisted Redis/graph state.</summary>
 [Collection("RedisStack")]
+[Trait("Category", "Integration")]
 public sealed class SourceInventoryProducerIntegrationTests(RedisStackFixture redis, FalkorDbFixture graph) : IClassFixture<FalkorDbFixture>
 {
     /// <summary>Preserves lost-acknowledgement recovery only with the original matching durable admission.</summary>

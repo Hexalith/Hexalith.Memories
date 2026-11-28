@@ -4,6 +4,7 @@ using Hexalith.Memories.IntegrationTests.Fixtures;
 using Shouldly;
 
 /// <summary>Private coordination refuses foreign/replayed requests and finishes owned cleanup on failures.</summary>
+[Trait("Category", "Integration")]
 public sealed class MemoryErasureProcessProtocolTests
 {
     /// <summary>A foreign secret and a replay cannot execute an owner operation; the next valid request still succeeds.</summary>
