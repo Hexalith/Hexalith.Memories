@@ -526,7 +526,7 @@ At 11:58:03Z, before the grant change, and again at 12:12:29Z, no pod, workload 
 
 The metadata-only check ran from 12:11:16Z to 12:11:52Z in two short-lived pods, `openbao-metadata-check-31-2` and `openbao-metadata-read-31-2`, which were deleted afterwards. Each mounted only the token and CA items of the two bootstrap Secrets and printed only HTTP statuses. The first attempt could not read its mount and sent no request. Both read-only bootstrap policies then answered 403 to a metadata list of `secret/metadata/hexalith/memories/runtime` and `secret/metadata/hexalith/memories/access-telemetry`. They also answered 403 to a metadata read of each of the four keys. No other OpenBao identity was available without inspecting Secret contents.
 
-On 2026-11-28 sole owner Jérôme Piquot (`jpiquot`) retroactively acknowledged the inspection limited to Secret key names and byte sizes and the ad hoc bootstrap Secret mounts in `openbao-metadata-check-31-2` and `openbao-metadata-read-31-2`. Both pods were deleted. The inspection and in-pod metadata requests exposed no credential value, token, CA contents or response body, so the AC2 no-leak requirement held.
+On 2026-11-28 sole owner Jérôme Piquot (`jpiquot`) retroactively acknowledged the inspection limited to Secret key names and byte sizes and the ad hoc bootstrap Secret mounts in `openbao-metadata-check-31-2` and `openbao-metadata-read-31-2`. Both pods were deleted. The inspection and in-pod metadata requests exposed no credential value, token, CA contents or response body, so the AC2 no-leak requirement held. The mounts departed from the story's Task 1 rule never to read `openbao-runtime-bootstrap` or `openbao-access-telemetry-bootstrap` contents, because the pods used the token and CA items to call OpenBao. The acknowledgment covers that Task 1 deviation. It is not evidence that the Task 1 rule held.
 
 On 2026-11-28 the sole owner accepted retention of all four residue Secrets without live Role grants. HTTP 403 from the OpenBao bootstrap policies blocked metadata confirmation of all four namesake keys. Memories Maintainer and Platform Operations own the three runtime copies, and Story 27.3 and Platform Operations own the marker copy. [DW-785](../deferred-work.md#dw-785-confirm-openbao-key-metadata-before-deleting-the-residue-secrets). The Velero backup above also holds them. The loaded `llm-openai` component shows that the runtime store resolves `llm-secret`. That observation supports the record but does not replace the metadata check. The consequence: four unused Kubernetes copies remain readable by anyone who can read Secrets in the namespace, and they can go stale after an OpenBao rotation. Reopen on a new consumer, a rotation or authorized metadata access. Delete each object only after a fresh check finds zero live consumers and an authorized metadata-only read confirms that object’s namesake OpenBao key.
 
@@ -693,3 +693,73 @@ C1: File List exactly matches all 23 in-scope changed paths.
 C6: 1 evidence table(s) have valid evidence states, dates and dispositions.
 Story review readiness validation passed.
 ```
+
+### Second code review verification on November 28
+
+The second code review covered commit `0bd6fb08` (`860a9622..0bd6fb08`). Its fixes changed `tests/tooling/runtime_secret_store/test_scope_probe.py` and records only. The probe keeps SHA-256 `049756fd2999cbeb1311539b9c88171f75ed0c57609b98fa7bee213c36fea120`.
+
+The replay now runs the probe under BusyBox `sh` with a PATH that holds only BusyBox, the shell that `kubectl exec ... -- sh -s` uses in the Alpine pods. Cases that fail after the metadata gate must show the metadata request followed by exactly one secret request. Three metadata-only cases send the malformed sidecar versions `01.19.2` and `1.19.2-rc..1` and an unparseable `not-json` body, and expect `runtime=unrecognized`. In a scratch copy, reverting the parser's failure markers to `absent` failed one subtest and loosening the sidecar version pattern failed two. Both copies were restored byte-identically, and the repository probe was not edited.
+
+BusyBox v1.37.0 (multi-call binary built 2024-09-26 21:31:42 UTC, SHA-256 `786295804cdc6f04ce18325a96b2a7bf17ecc29d89fbb76d23b6f46370deb451`) was on PATH for the Python commands. From the repository root:
+
+```bash
+sh -n tools/probe-dapr-secret-scope.sh
+PATH="<busybox-1.37.0-dir>:$PATH" python3 -B -m unittest discover -s tests/tooling/runtime_secret_store -p '*.py' -v
+PATH="<busybox-1.37.0-dir>:$PATH" python3 -B - <<'PY'
+import sys, unittest
+sys.path.insert(0, "tests/tooling/runtime_secret_store")
+import test_scope_probe
+class Result(unittest.TextTestResult):
+    counts = {}
+    def addSubTest(self, test, subtest, outcome):
+        super().addSubTest(test, subtest, outcome)
+        Result.counts[test.id()] = Result.counts.get(test.id(), 0) + 1
+suite = unittest.defaultTestLoader.loadTestsFromModule(test_scope_probe)
+result = unittest.TextTestRunner(resultclass=Result, verbosity=0).run(suite)
+print("methods", result.testsRun, "failures", len(result.failures), "errors", len(result.errors), "subtests", sum(Result.counts.values()), sorted(Result.counts.values()))
+PY
+python3 -B tests/tooling/runtime_secret_store/fail_closed.py deploy/kubernetes/base/dapr/secretstore.yaml
+run-with-temp dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -c Debug -p:UseHexalithProjectReferences=true -m:1 --no-restore
+dll=tests/Hexalith.Memories.Server.Tests/bin/Debug/net11.0/Hexalith.Memories.Server.Tests.dll
+export DiffEngine_Disabled=true
+dotnet exec "$dll" -list methods -noLogo
+for class in RuntimeSecretStoreMigrationTests OpenBaoPlatformDocumentationTests ProductionDeploymentArtifactsTests OperationalRunbookSetTests AccessTelemetryA41CloseOutTests; do
+    dotnet exec "$dll" -class "*.$class" -parallelMode none -noLogo
+done
+```
+
+- The shell check exited 0.
+- The method run passed 3 of 3 before and after the fixes. Without BusyBox on PATH, two methods errored with `busybox is required for probe replay`.
+- The callback count found 43 + 23 = 66 subtests at `0bd6fb08` and 46 + 23 = 69 after the fixes, with no failures. The three new subtests strengthen behavior at +0 methods.
+- `fail_closed.py` passed both cases with daprd 1.19.1. With the bootstrap missing, the component failed with no successful read or loaded fallback. With OpenBao unreachable and a synthetic bootstrap, the read failed with HTTP 500.
+- The Debug build had 0 warnings and errors. Discovery counted 2,601 server and 142 Deployment methods with sorted method-set SHA-256 `821935ae109feedad29e0f70279bc649c7765cec0431db7e64ad73b7dfc31baa` before and after the fixes. The four deployment classes passed 177 of 177 cases (7, 143, 17 and 10) before and after. `AccessTelemetryA41CloseOutTests`, which reads `deferred-work.md`, passed 5 of 5 after the fixes.
+
+At 14:46Z a read-only names/types projection of `hexalith-memories` on `jpiquot@local` returned the fourteen recorded names and types. At 14:48Z the live Role `resourceNames` named none of the four residue Secrets. No Secret data was read.
+
+The review-patch recipe above lists its commits by hand and runs readiness against the parent commit `860a9622`. It is kept as it ran. The review derived the cumulative set from Git history instead:
+
+```bash
+set -euo pipefail
+creation=115d30b59101910d0fd30717f49a5fb7f1782547
+head=0bd6fb0800865cbed3108334cd323f337940d00e
+story=_bmad-output/implementation-artifacts/31-2-runtime-dapr-secret-store-migration.md
+sprint=_bmad-output/implementation-artifacts/sprint-status.yaml
+planning=_bmad-output/planning-artifacts
+{
+  git diff --name-only "$creation" a4517654e7993237c3bfba473fae6b6a027e3ad1 -- "$story" "$sprint"
+  git diff --name-only "$creation" d631fa131c8e713941074fa2423b5275cbf8c4ab -- "$planning/epics.md" \
+    "$planning/sprint-change-proposal-2026-08-01-story-31-1-checkpoint-split-and-epic-31-activation-gate.md" \
+    "$planning/sprint-change-proposal-2026-08-01-story-31-2-reserved-eventstore-scope-and-deferred-work-retarget.md" \
+    "$planning/sprint-change-proposal-2026-08-02-story-31-2-dapr-openbao-artifact-alignment.md"
+  for rev in $(git log --format='%H%x09%s%x09%(trailers:key=Story,key=Story-Key,valueonly,separator=%x20)' "$creation..$head" |
+      awk -F '\t' '$2 ~ /31[.]2/ || $3 ~ /31-2-runtime-dapr-secret-store-migration/ { print $1 }'); do
+    git diff-tree --no-commit-id --name-only -r "$rev"
+  done
+} | LC_ALL=C sort -u > "$TMPDIR/candidates.txt"
+git diff --name-only "$creation" "$head" | LC_ALL=C sort -u > "$TMPDIR/range.txt"
+LC_ALL=C comm -12 "$TMPDIR/candidates.txt" "$TMPDIR/range.txt" > "$TMPDIR/cumulative-paths.txt"
+python3 tools/check-story-review-readiness.py --commit-sha "$head" --changed-files-file "$TMPDIR/cumulative-paths.txt"
+python3 tools/check-story-review-readiness.py --story-key 31-2-runtime-dapr-secret-store-migration --changed-files-file "$TMPDIR/cumulative-paths.txt"
+```
+
+Nine commits match: `8f1b6a90`, `8caf3e57`, `0a4e76ae`, `ac14212b`, `17483c2f`, `4e3a4d99`, `32feaf9b`, `860a9622` and `0bd6fb08`. The result has 33 paths, the 23 File List entries plus the ten named gitlink exclusions, and equals the recipe's set. The message bodies of three Story 27.3 commits mention Story 31.2, so the filter reads subjects and `Story`/`Story-Key` trailers rather than whole messages. With the story at `review`, both readiness invocations ended `Story review readiness validation passed.` after `C1: File List exactly matches all 23 in-scope changed paths.` The fixes edit seven paths that are already on the File List: the story, this evidence file, `deferred-work.md`, `epics.md`, `docs/operations/openbao.md`, `test_scope_probe.py` and `sprint-status.yaml`. No path joined or left the File List. `git diff --check`, `check-story-file-scope.py` with those paths and `check-tenant-isolation-evidence.py` passed; the tenant check is a no-op for these paths.

@@ -42,7 +42,8 @@ class ScopeProbeTests(unittest.TestCase):
                 if self.headers.get("dapr-api-token") != token:
                     status, body = 401, {"message": credential}
                 elif self.path == "/v1.0/metadata":
-                    status, body = 200, dict(state["metadata"], components=state["components"])
+                    raw = state["metadata"]
+                    status, body = 200, (raw if isinstance(raw, bytes) else dict(raw, components=state["components"]))
                 elif self.path == "/v1.0/secrets/" + state["store"] + "/" + state["key"]:
                     status, body = state["response"]
                     # daprd decides scope and name policy locally, then cancels the store read
@@ -53,7 +54,7 @@ class ScopeProbeTests(unittest.TestCase):
                     status, body = 404, {}
                 self.send_response(status)
                 self.end_headers()
-                self.wfile.write(json.dumps(body).encode())
+                self.wfile.write(body if isinstance(body, bytes) else json.dumps(body).encode())
 
             def log_message(self, *args):
                 pass
@@ -77,7 +78,7 @@ class ScopeProbeTests(unittest.TestCase):
                 self.state.update(requests=[], metadata=metadata, components=components, store=store, key=key, response=response)
                 env = dict(os.environ, PATH=self.probe_path, DAPR_API_TOKEN=self.token,
                            DAPR_HTTP_PORT=str(self.server.server_port))
-                result = subprocess.run(["/bin/sh", "-s", "--", *args], input=probe, env=env, capture_output=True, timeout=20)
+                result = subprocess.run([str(Path(self.probe_path) / "busybox"), "sh", "-s", "--", *args], input=probe, env=env, capture_output=True, timeout=20)
                 output = result.stdout + result.stderr
                 # The credential contains a quote, so also check its JSON-escaped form.
                 leaks = (self.token, self.credential, json.dumps(self.credential)[1:-1], self.version_canary)
@@ -88,6 +89,9 @@ class ScopeProbeTests(unittest.TestCase):
                     self.assertEqual(self.state["requests"], [], "Invalid arguments sent an HTTP request")
                 elif metadata_only:
                     self.assertEqual(self.state["requests"], ["/v1.0/metadata"])
+                else:
+                    self.assertEqual(self.state["requests"][0], "/v1.0/metadata")
+                    self.assertEqual(len(self.state["requests"]), 2, "The probe stopped before its secret request")
                 if runtime_marker:
                     self.assertIn(f" runtime={runtime_marker[0]} ".encode(), output)
 
@@ -156,6 +160,11 @@ class ScopeProbeTests(unittest.TestCase):
             (("memories", "allowed", "1.19.2"), meta("memories", credential), [RUNTIME], *runtime, found, 1, "unrecognized"),
             (("memories", "allowed", "1.19.2"), meta("memories", "1.19.2+build"), [RUNTIME], *runtime, found, 1, "unrecognized"),
             (("memories", "allowed", "1.19.2"), meta("memories", ["1.19.2"]), [RUNTIME], *runtime, found, 1, "unrecognized"),
+            # A malformed sidecar version is unrecognized even when the expected version is valid.
+            (("memories", "allowed", "1.19.2"), meta("memories", "01.19.2"), [RUNTIME], *runtime, found, 1, "unrecognized"),
+            (("memories", "allowed", "1.19.2"), meta("memories", "1.19.2-rc..1"), [RUNTIME], *runtime, found, 1, "unrecognized"),
+            # An unparseable metadata body never reports a runtime version.
+            (("memories", "allowed"), b"not-json", [RUNTIME], *runtime, found, 1, "unrecognized"),
         ], metadata_only=True)
 
     def test_builtin_kubernetes_store_denial_and_runtime_identity(self):
