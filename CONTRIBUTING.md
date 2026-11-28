@@ -516,11 +516,11 @@ The scheduled `.github/workflows/nightly.yml` workflow remains the Tier 3 slow i
 
 Build and test lanes initialize root-declared submodules under `references/` and use the SDK from `global.json`.
 `shared-ci` calls `Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml` at
-`81c88b34d09d34260b92d7f0928dbbc1c7446baa`, with a matching `builds-execution-sha`, a 20-minute
-budget, explicit `microsoft-testing-platform` and only `Contracts.Tests` selected. Integration and
-Aspire selections are empty. Shared consumer validation and coverage stay disabled: Memories keeps
-its package topology verifier and nine-project Coverlet contract locally. Contracts intentionally
-runs in both lanes until collector/report equivalence is proved. No collector or package pin changes.
+`87d45477c16fef2b3db706d2531e1cf3ff98640f`, with a matching `builds-execution-sha` and
+`build-timeout-minutes` set to `60`. The shared shard uses `microsoft-testing-platform` and selects
+only `Contracts.Tests`, with empty integration and Aspire selections. Shared consumer validation
+and coverage stay disabled. Contracts runs in both lanes until collector/report equivalence is
+proved.
 
 `build` runs with `always()` after `shared-ci` and `source-debug`; failure, cancellation, skipping or
 an unknown result from either dependency fails the stable check. Shared tests retain their TRX in
@@ -532,8 +532,8 @@ uses the repository audit policy without a new suppression.
 
 Scope/isolation/slice/readiness, web E2E, fast integration, deployment and SQL contract checks remain
 blocking local lanes. Explicit PR-title commitlint and scheduled slow integration/benchmarks retain
-their existing owners. The `ci_alignment` regression fixtures run inside `test-unit-contract` and
-exercise gate mutations and all build dependency-result combinations. See the
+their existing owners. The `test-unit-contract` job runs the `coverage_gate` fixtures to verify the
+required report inventory and coverage validation. See the
 [release runbook](docs/dev/release-runbook.md#shared-ci-adoption-and-rollback) for lane rollback.
 
 The `test-unit-contract` check uploads TRX plus per-project Cobertura reports as the 14-day

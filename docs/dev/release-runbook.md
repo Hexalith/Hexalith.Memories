@@ -64,15 +64,16 @@ aggregate, required-check semantics and remote branch-protection settings.
 
 | Previous owner | Current owner and check | Evidence / retained behavior | Rollback |
 | --- | --- | --- | --- |
-| Local Release portion of `build` | `shared-ci / build-and-test`, Builds `domain-ci.yml@6e7011fc754e74ac2a8864da1ce0b6d8f7178a48` | Release restore/build with warnings as errors; explicit Contracts MTP shard; `blocking-test-results`, seven days | Restore local Release steps from the baseline below |
+| Local Release portion of `build` | `shared-ci / build-and-test`, Builds `domain-ci.yml@87d45477c16fef2b3db706d2531e1cf3ff98640f` | Release restore/build with warnings as errors and an explicit Contracts MTP shard. `blocking-test-results` retained for seven days | Restore local Release steps from the baseline below |
 | Local Debug/source portion of `build` | `source-debug` | Debug source graph; at least three catalog tests, none failed/errors/skipped/not-run; `source-catalog-verification` XML uploaded even after test failure | Restore the original combined build job |
 | Required `build` status | Always-run local aggregate | Requires success from both shared and source jobs; unsuccessful/skipped/cancelled/unknown dependencies fail | Restore the original combined build job, preserving the `build` name |
-| Unit/contract and package validation | Local `test-unit-contract` | Seven Coverlet project reports, 76.5% line coverage, package topology; `test-unit-contract-results`, 14 days | Retain unchanged |
+| Unit/contract and package validation | Local `test-unit-contract` | Nine per-project Coverlet reports, 76.5% line coverage gate and package topology validation. `test-unit-contract-results` retained for 14 days | Retain unchanged |
 | Tenant-negative/scope/slice/readiness, web E2E, fast integration, deployment and SQL | Existing local jobs | Existing mandatory commands and failure artifacts; no advisory conversion | Retain unchanged |
 | Explicit PR-title commitlint, nightly slow integration and benchmarks | Existing workflows | Existing triggers, blocking tests and artifacts | Retain unchanged |
 
-Shared consumer validation and coverage remain disabled; the compatible shared shard selects only
-`Contracts.Tests`, with empty integration/Aspire selections and a 20-minute build timeout. The
+The `builds-execution-sha` input matches the pinned workflow revision above, and
+`build-timeout-minutes` is set to `60`. Shared consumer validation and coverage remain disabled.
+The shared shard selects only `Contracts.Tests`, with empty integration and Aspire selections. The
 shared workflow has no integration-exclusion input. The full local coverage lane therefore retains
 Contracts intentionally until collector/report equivalence is proved. Shared Release restore relies
 on `Directory.Build.props` audit policy; four local restores retain their existing explicit audit
