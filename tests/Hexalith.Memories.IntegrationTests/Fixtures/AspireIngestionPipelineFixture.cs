@@ -109,6 +109,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     private byte[]? _accessTelemetryClockFingerprint;
     private byte[]? _accessTelemetrySeedFingerprint;
     private string[] _accessTelemetrySeedValues = [];
+    private DaprTraceCapture? _daprTraceCapture;
     private string? _tempDaprConfigPath;
     private int _topologyLogStartIndex;
     private TestLogProvider _logProvider = new(0);
@@ -187,6 +188,10 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
     /// <summary>Gets the endpoint URI for the MCP server resource (Story 10.1).</summary>
     public Uri McpEndpoint { get; private set; } = null!;
+
+    /// <summary>Gets the receiver for a selected trace from this fixture's Dapr sidecars.</summary>
+    internal DaprTraceCapture DaprTraces => _daprTraceCapture
+        ?? throw new InvalidOperationException("The Dapr trace receiver has not started.");
 
     /// <summary>Symmetric signing key matching <c>src/Hexalith.Memories.Mcp/appsettings.Development.json</c>.</summary>
     public const string McpDevSigningKey = "hexalith-memories-test-signing-key-32b";
@@ -1534,6 +1539,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             _workflowReplaySafetyScope = EnvVarScope.Set("WorkflowReplaySafety__Enabled", "false");
             _randomizeProjectPortsScope = EnvVarScope.Set("MEMORIES_ASPIRE_RANDOMIZE_PROJECT_PORTS", "true");
 
+            _daprTraceCapture = await DaprTraceCapture.StartAsync().ConfigureAwait(false);
             _daprConfigPathScope = CreateDaprConfigOverrideIfNeeded();
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -1581,11 +1587,12 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     }
 
     /// <summary>Creates the complete ordered cleanup plan for fixture-owned startup resources.</summary>
-    /// <returns>All six cleanup slots required after a partial topology startup.</returns>
+    /// <returns>The cleanup slots required after a partial topology startup.</returns>
     internal IReadOnlyList<KeyValuePair<string, Func<Task>?>> CreateFailedInitializationCleanupActions()
         =>
         [
             new("topology", () => DisposeTopologyAsync(CancellationToken.None)),
+            new("dapr-trace-capture", DisposeDaprTraceCaptureAsync),
             new(
                 "environment-scopes",
                 () =>
@@ -2185,12 +2192,29 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     /// <inheritdoc/>
     public async ValueTask DisposeAsync()
     {
-        await DisposeTopologyAsync(CancellationToken.None).ConfigureAwait(false);
+        try
+        {
+            await DisposeTopologyAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+        finally
+        {
+            await DisposeDaprTraceCaptureAsync().ConfigureAwait(false);
+        }
+
         DisposeEnvVarScopes();
         DeleteTempDaprConfig();
         await RemoveFixtureDockerContainersAsync(_falkorVolumeName).ConfigureAwait(false);
         await RemoveDockerVolumeIfPresentAsync(_falkorVolumeName).ConfigureAwait(false);
         await RemoveDockerVolumeIfPresentAsync(_redisVolumeName).ConfigureAwait(false);
+    }
+
+    private async Task DisposeDaprTraceCaptureAsync()
+    {
+        if (_daprTraceCapture is { } capture)
+        {
+            _daprTraceCapture = null;
+            await capture.DisposeAsync().ConfigureAwait(false);
+        }
     }
 
     private TActor CreateActorProxy<TActor>(string actorId, string actorType)
@@ -2220,6 +2244,10 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             metadata:
               name: memories-config
             spec:
+              tracing:
+                samplingRate: "1"
+                zipkin:
+                  endpointAddress: "{{DaprTraces.ExportEndpoint}}"
               features:
                 - name: HotReload
                   enabled: false

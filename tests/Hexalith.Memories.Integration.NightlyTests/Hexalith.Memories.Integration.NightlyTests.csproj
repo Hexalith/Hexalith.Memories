@@ -109,6 +109,7 @@
     <Compile Include="..\Hexalith.Memories.IntegrationTests\Telemetry\FailFirstStateStore.cs" Link="Telemetry\FailFirstStateStore.cs" />
     <Compile Include="..\Hexalith.Memories.IntegrationTests\Telemetry\Infrastructure\AuditEventStreamReader.cs" Link="Telemetry\Infrastructure\AuditEventStreamReader.cs" />
     <Compile Include="..\Hexalith.Memories.IntegrationTests\Telemetry\Infrastructure\CliTracingHarness.cs" Link="Telemetry\Infrastructure\CliTracingHarness.cs" />
+    <Compile Include="..\Hexalith.Memories.IntegrationTests\Telemetry\Infrastructure\DaprTraceCapture.cs" Link="Telemetry\Infrastructure\DaprTraceCapture.cs" />
     <Compile Include="..\Hexalith.Memories.IntegrationTests\Telemetry\Infrastructure\InMemorySpanCollector.cs" Link="Telemetry\Infrastructure\InMemorySpanCollector.cs" />
     <Compile Include="..\Hexalith.Memories.IntegrationTests\Telemetry\Infrastructure\ServerActivityStreamReader.cs" Link="Telemetry\Infrastructure\ServerActivityStreamReader.cs" />
     <Compile Include="..\Hexalith.Memories.IntegrationTests\Telemetry\Infrastructure\TelemetryAsserts.cs" Link="Telemetry\Infrastructure\TelemetryAsserts.cs" />

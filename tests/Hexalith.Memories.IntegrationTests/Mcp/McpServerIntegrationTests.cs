@@ -24,7 +24,7 @@ using Xunit;
 /// </summary>
 [Collection("AspireIngestionPipeline")]
 [Trait("Category", "Integration")]
-public sealed class McpServerIntegrationTests
+public sealed partial class McpServerIntegrationTests
 {
     private static readonly string[] ExpectedToolNames =
     [

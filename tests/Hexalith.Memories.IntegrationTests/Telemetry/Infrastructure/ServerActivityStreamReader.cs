@@ -14,7 +14,7 @@ using Hexalith.Memories.Telemetry;
 using Microsoft.Extensions.Logging;
 
 /// <summary>
-/// Reads server-side test-only activity breadcrumbs emitted by
+/// Reads test-only activity breadcrumbs emitted by a selected Aspire resource through
 /// <see cref="Hexalith.Memories.ServiceDefaults.Extensions"/> when
 /// <see cref="InMemoryTelemetryEnvironment.EnvVar"/> is enabled.
 /// </summary>
@@ -26,7 +26,8 @@ internal static class ServerActivityStreamReader
         int minimumEvents,
         TimeSpan timeout,
         CancellationToken cancellationToken,
-        Func<CapturedServerActivity, bool>? matchPredicate = null)
+        Func<CapturedServerActivity, bool>? matchPredicate = null,
+        string resourceName = "memories")
     {
         ArgumentNullException.ThrowIfNull(fixture);
         ArgumentOutOfRangeException.ThrowIfNegative(logStartIndex);
@@ -48,7 +49,7 @@ internal static class ServerActivityStreamReader
                 cancellationToken.ThrowIfCancellationRequested();
             }
 
-            latest = ScanCapturedLogs(fixture.GetLogEntriesSince(logStartIndex), logStartIndex);
+            latest = ScanCapturedLogs(fixture.GetLogEntriesSince(logStartIndex), logStartIndex, resourceName);
             int matchingCount = matchPredicate is null
                 ? latest.Count
                 : latest.Count(matchPredicate);
@@ -87,14 +88,16 @@ internal static class ServerActivityStreamReader
     /// <summary>Parses activity breadcrumbs from the captured log tail.</summary>
     internal static IReadOnlyList<CapturedServerActivity> ScanCapturedLogs(
         IReadOnlyList<AspireIngestionPipelineFixture.CapturedLogEntry> entries,
-        int logStartIndex)
+        int logStartIndex,
+        string resourceName = "memories")
     {
         List<CapturedServerActivity> matches = [];
+        string resourceSuffix = $".Resources.{resourceName}";
         for (int i = 0; i < entries.Count; i++)
         {
             AspireIngestionPipelineFixture.CapturedLogEntry entry = entries[i];
-            if (!string.Equals(entry.Category, "memories", StringComparison.Ordinal)
-                && !entry.Category.EndsWith(".Resources.memories", StringComparison.Ordinal))
+            if (!string.Equals(entry.Category, resourceName, StringComparison.Ordinal)
+                && !entry.Category.EndsWith(resourceSuffix, StringComparison.Ordinal))
             {
                 continue;
             }
@@ -190,7 +193,7 @@ internal static class ServerActivityStreamReader
             : null;
 }
 
-/// <summary>Captured server-side activity breadcrumb written by the integration-only activity processor.</summary>
+/// <summary>Captured activity breadcrumb written by the integration-only activity processor.</summary>
 internal sealed record CapturedServerActivity(
     string Category,
     LogLevel Level,

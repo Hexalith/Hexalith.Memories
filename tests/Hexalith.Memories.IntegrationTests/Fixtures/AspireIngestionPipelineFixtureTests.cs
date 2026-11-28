@@ -797,7 +797,7 @@ public sealed class AspireIngestionPipelineFixtureTests
     }
 
     [Fact]
-    public void CreateFailedInitializationCleanupActions_ContainsAllSixOwnedResourceSlotsInOrder()
+    public void CreateFailedInitializationCleanupActions_ContainsAllOwnedResourceSlotsInOrder()
     {
         var fixture = new AspireIngestionPipelineFixture();
 
@@ -807,6 +807,7 @@ public sealed class AspireIngestionPipelineFixtureTests
         cleanupActions.Select(static slot => slot.Key).ShouldBe(
         [
             "topology",
+            "dapr-trace-capture",
             "environment-scopes",
             "temporary-dapr-config",
             "fixture-containers",

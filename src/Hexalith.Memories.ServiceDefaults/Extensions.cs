@@ -305,19 +305,20 @@ public static class Extensions
         //
         // In addition to the optional in-memory collector sink, the branch emits test-only server-side
         // activity breadcrumbs to stderr for relevant spans. The telemetry integration tests parse those
-        // breadcrumbs from the Aspire-captured resource log stream to prove the real server-side
-        // memories.search + AspNetCore spans exist without standing up a separate OTLP receiver.
+        // breadcrumbs from the Aspire-captured resource log stream to verify the Server and MCP spans.
         string? inMemoryFlag = Environment.GetEnvironmentVariable(InMemoryTelemetryEnvironment.EnvVar);
         if (InMemoryTelemetryEnvironment.IsEnabled(inMemoryFlag))
         {
             _ = builder.Services.AddOpenTelemetry()
-                .WithTracing(tracing => tracing.AddProcessor(sp =>
-                {
-                    ICollection<Activity>? collectorActivities = sp.GetService<IActivityCollector>()?.Activities;
-                    ILogger<IntegrationActivityProcessor> logger =
-                        sp.GetRequiredService<ILogger<IntegrationActivityProcessor>>();
-                    return new IntegrationActivityProcessor(collectorActivities, logger);
-                }));
+                .WithTracing(tracing => tracing
+                    .AddSource(IntegrationActivityProcessor.McpSourceName)
+                    .AddProcessor(sp =>
+                    {
+                        ICollection<Activity>? collectorActivities = sp.GetService<IActivityCollector>()?.Activities;
+                        ILogger<IntegrationActivityProcessor> logger =
+                            sp.GetRequiredService<ILogger<IntegrationActivityProcessor>>();
+                        return new IntegrationActivityProcessor(collectorActivities, logger);
+                    }));
         }
         else if (!string.IsNullOrEmpty(inMemoryFlag))
         {
@@ -333,8 +334,8 @@ public static class Extensions
     /// Story 8.4 — integration-only <see cref="BaseProcessor{T}"/> used under the
     /// <see cref="InMemoryTelemetryEnvironment.EnvVar"/> test gate. When an
     /// <see cref="IActivityCollector"/> is present it appends completed activities to the supplied
-    /// collection; regardless of collector presence it emits test-only server activity breadcrumbs to
-    /// stderr for the server-side spans the telemetry integration tests need to observe.
+    /// collection; regardless of collector presence it emits test-only activity breadcrumbs to
+    /// stderr for the Server and MCP spans the telemetry integration tests need to observe.
     /// </summary>
     /// <remarks>
     /// Story 8.5 widened the breadcrumb filter to include the StackExchange.Redis OTEL source, but
@@ -346,6 +347,15 @@ public static class Extensions
     internal sealed class IntegrationActivityProcessor : BaseProcessor<Activity>
     {
         internal const string AspNetCoreSourceName = "Microsoft.AspNetCore";
+
+        /// <summary>The MCP SDK source enabled for the integration-only trace proof.</summary>
+        internal const string McpSourceName = "Experimental.ModelContextProtocol";
+
+        /// <summary>The MCP SDK span name for the search tool.</summary>
+        internal const string McpSearchToolOperationName = "tools/call search_memory";
+
+        /// <summary>The .NET HTTP client source used for MCP service invocation.</summary>
+        internal const string HttpClientSourceName = "System.Net.Http";
 
         /// <summary>
         /// Story 8.5 — StackExchange.Redis OTEL ActivitySource name. Matches the upstream
@@ -410,7 +420,10 @@ public static class Extensions
             });
 
         /// <summary>
-        /// Story 8.4 + 8.5 — decides whether an activity should emit a stderr breadcrumb.
+        /// Decides whether an activity should emit a stderr breadcrumb.
+        /// <para>
+        /// Captures the MCP search tool span and its outgoing HTTP child without exporting tags.
+        /// </para>
         /// <para>
         /// Story 8.4 emits for the Memories ActivitySource OR AspNetCore Server spans. Story 8.5
         /// extends this to the Redis OTEL source, but ONLY when the parent chain reaches an
@@ -430,7 +443,16 @@ public static class Extensions
             }
 
             if (data.Kind == ActivityKind.Server
-                && string.Equals(data.Source.Name, AspNetCoreSourceName, StringComparison.Ordinal))
+                && (string.Equals(data.Source.Name, AspNetCoreSourceName, StringComparison.Ordinal)
+                    || IsMcpSearchTool(data)))
+            {
+                return true;
+            }
+
+            if (data.Kind == ActivityKind.Client
+                && string.Equals(data.Source.Name, HttpClientSourceName, StringComparison.Ordinal)
+                && data.Parent is { Kind: ActivityKind.Server } parent
+                && IsMcpSearchTool(parent))
             {
                 return true;
             }
@@ -451,6 +473,10 @@ public static class Extensions
 
             return false;
         }
+
+        private static bool IsMcpSearchTool(Activity activity)
+            => string.Equals(activity.Source.Name, McpSourceName, StringComparison.Ordinal)
+                && string.Equals(activity.OperationName, McpSearchToolOperationName, StringComparison.Ordinal);
 
         private static bool ParentChainReachesMemoriesOrAspNetCore(
             Activity activity,

@@ -15,6 +15,7 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 /// <summary>Minimal local HTTP server used by integration tests to script delayed and failing URL responses.</summary>
 public sealed class ScriptedHttpServer : IAsyncDisposable
@@ -43,13 +44,20 @@ public sealed class ScriptedHttpServer : IAsyncDisposable
 
     /// <summary>Starts the scripted server on a random loopback port.</summary>
     /// <param name="handler">Request handler that produces the scripted response.</param>
+    /// <param name="enableLogging">Whether the scripted server writes host and request logs.</param>
     /// <returns>The running server instance.</returns>
     public static async Task<ScriptedHttpServer> StartAsync(
-        Func<HttpRequest, CancellationToken, ValueTask<ScriptedHttpResponse>> handler)
+        Func<HttpRequest, CancellationToken, ValueTask<ScriptedHttpResponse>> handler,
+        bool enableLogging = true)
     {
         ArgumentNullException.ThrowIfNull(handler);
 
         WebApplicationBuilder builder = WebApplication.CreateBuilder(new WebApplicationOptions());
+        if (!enableLogging)
+        {
+            builder.Logging.ClearProviders();
+        }
+
         _ = builder.WebHost.ConfigureKestrel(options =>
             options.Listen(IPAddress.Loopback, 0, listenOptions => listenOptions.Protocols = HttpProtocols.Http1));
 
