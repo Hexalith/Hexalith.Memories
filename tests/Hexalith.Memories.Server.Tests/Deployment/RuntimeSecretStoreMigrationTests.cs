@@ -8,6 +8,7 @@ namespace Hexalith.Memories.Server.Tests.Deployment;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
+using Hexalith.Memories.Server.Tests.Telemetry.Infrastructure;
 using Hexalith.Memories.TestHelpers.Documentation;
 
 using Shouldly;
@@ -16,6 +17,7 @@ using YamlDotNet.RepresentationModel;
 
 using static ProductionDeploymentArtifactsTests;
 
+[Collection(TelemetryTestCollection.Name)]
 public sealed partial class RuntimeSecretStoreMigrationTests
 {
     private const string Artifacts = "_bmad-output/implementation-artifacts/";
