@@ -285,14 +285,25 @@ try {
                 try {
                     if (Test-Path -LiteralPath $trxPath -PathType Leaf) {
                         $trx = Read-TestReportXml $trxPath 'TRX file'
-                        $executed = [int]$trx.TestRun.ResultSummary.Counters.executed
-                        $notExecuted = [int]$trx.TestRun.ResultSummary.Counters.notExecuted
+                        $navigator = $trx.CreateNavigator()
+                        $summaryPath = "/*[local-name()='TestRun']/*[local-name()='ResultSummary']"
+                        $countersPath = "$summaryPath/*[local-name()='Counters']"
+                        $executed = [int]$navigator.Evaluate("string($countersPath/@executed)")
+                        $notExecuted = [int]$navigator.Evaluate("string($countersPath/@notExecuted)")
                         if ($executed -le 0) {
                             throw "Test project '$projectPath' executed zero tests for filter '$effectiveFilter'."
                         }
                         if ($null -ne $expectedExecutedTests -and
                             ($executed -ne $expectedExecutedTests -or $notExecuted -ne 0)) {
                             throw "Test project '$projectPath' must execute exactly $expectedExecutedTests tests with none skipped; TRX reported executed=$executed, notExecuted=$notExecuted."
+                        }
+
+                        if ($testExitCode -eq 0) {
+                            $outcome = $navigator.Evaluate("string($summaryPath/@outcome)")
+                            $failed = [int]$navigator.Evaluate("string($countersPath/@failed)")
+                            if ($outcome -eq 'Failed' -or $failed -gt 0) {
+                                throw "TRX reported a failure for test project '$projectPath' (outcome='$outcome', failed=$failed)."
+                            }
                         }
 
                         Write-Host "Executed $executed tests for $projectPath"

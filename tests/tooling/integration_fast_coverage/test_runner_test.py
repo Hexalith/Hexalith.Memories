@@ -504,6 +504,37 @@ os.waitpid(child, 0)
                 if status != "0":
                     self.assertIn("dotnet test failed (37)", result.stderr)
 
+    @unittest.skipUnless(shutil.which("pwsh"), "requires PowerShell 7")
+    def test_powershell_reads_trx_counter_attributes(self):
+        command = [*self.powershell, "-Filter", "Category=Benchmark", "-ResultsDirectory", "reports"]
+        cases = (
+            ("<Counters><executed>17</executed></Counters>", 1, "executed zero tests"),
+            ('<Counters executed="17"><notExecuted>1</notExecuted></Counters>', 0, "Executed 17 tests"),
+        )
+        for counters, status, diagnostic in cases:
+            with self.subTest(counters=counters):
+                self.environment["TEST_TRX"] = (
+                    '<TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">'
+                    f"<ResultSummary>{counters}</ResultSummary></TestRun>"
+                )
+                result = self.run_wrapper(command)
+                self.assertEqual(status, result.returncode, result.stderr)
+                self.assertIn(diagnostic, result.stderr if status else result.stdout)
+
+    @unittest.skipUnless(shutil.which("pwsh"), "requires PowerShell 7")
+    def test_powershell_rejects_failed_trx_on_native_success(self):
+        command = self.report_command(self.powershell, "reports")
+        cases = ((' outcome="Failed"', ""), (' outcome="Completed"', ' failed="1"'))
+        for outcome, counters in cases:
+            with self.subTest(outcome=outcome, counters=counters):
+                self.environment["TEST_TRX"] = (
+                    f'<TestRun><ResultSummary{outcome}><Counters executed="1"{counters} />'
+                    "</ResultSummary></TestRun>"
+                )
+                result = self.run_wrapper(command)
+                self.assertEqual(1, result.returncode, result.stdout)
+                self.assertIn("TRX reported a failure", result.stderr)
+
     def report_command(self, wrapper, destination):
         options = (
             ("--filter", "--results-directory") if wrapper == self.bash else ("-Filter", "-ResultsDirectory")
