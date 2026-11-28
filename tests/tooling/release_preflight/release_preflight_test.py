@@ -591,6 +591,104 @@ class ReleasePreflightTests(unittest.TestCase):
             self.assertNotEqual(0, result.returncode)
             self.assertIn("does not match the expected semver shape", result.stdout + result.stderr)
 
+    def test_all_version_inputs_enforce_semver_2(self):
+        markers = (
+            "The next release version is",
+            "There is no previous release, the next release version is",
+        )
+        cases = (
+            ("0.10.20", True),
+            ("1.2.3+001.Sha-ABC", True),
+            ("1.2.3-rc.0.01alpha.--+build.001", True),
+            ("01.2.3", False),
+            ("1.02.3", False),
+            ("1.2.03", False),
+            ("1.2.3-rc.01", False),
+            ("1.2.3-rc..1", False),
+            ("1.2.3+build.", False),
+            ("1.2.3-rc+", False),
+            ("1.2.3-rc+sha_123", False),
+            ("1.2.3-rc.١", False),
+            ("1.2.3 trailing text", False),
+            ("1.2.3 ", False),
+            ("", False),
+        )
+        with temporary_directory() as temp:
+            repo = Path(temp) / "work"
+            dry_run = Path(temp) / "dry-run.txt"
+            fallback_dry_run = Path(temp) / "fallback-dry-run.txt"
+            self._init_repo(repo)
+            # Keep even empty direct input local if it regresses to a dry run.
+            fallback_dry_run.write_text("The next release version is 9.9.9\n", encoding="utf-8")
+            for version, is_valid in cases:
+                for marker in (None, *markers):
+                    with self.subTest(version=version, marker=marker):
+                        if marker is None:
+                            result = self._run_preflight(
+                                repo, "-NextVersion", version,
+                                "-SemanticReleaseDryRunOutputPath", str(fallback_dry_run),
+                            )
+                            diagnostic = "does not match the expected semver shape"
+                        else:
+                            dry_run.write_text(
+                                f"[4:12:33 PM] [semantic-release] › ℹ  {marker} {version}\n",
+                                encoding="utf-8",
+                            )
+                            result = self._run_preflight(repo, "-SemanticReleaseDryRunOutputPath", str(dry_run))
+                            diagnostic = "malformed next-release marker"
+
+                        self.assertEqual(0 if is_valid else 1, result.returncode, result.stdout + result.stderr)
+                        if is_valid:
+                            self.assertIn(f"No stale release tag found for refs/tags/v{version}.", result.stdout)
+                        else:
+                            self.assertIn(diagnostic, result.stderr)
+
+    def test_next_version_rejects_trailing_newline(self):
+        with temporary_directory() as temp:
+            repo = Path(temp) / "work"
+            self._init_repo(repo)
+
+            result = self._run_preflight(repo, "-NextVersion", "1.2.3\n")
+
+            self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+            self.assertIn("does not match the expected semver shape", result.stderr)
+
+    def test_classification_only_validates_direct_version_without_probing(self):
+        with temporary_directory() as temp:
+            repo = Path(temp) / "unused"
+            env = self._environment()
+            env["HEXALITH_RELEASE_CLASSIFICATION_ONLY"] = "true"
+
+            accepted = self._run_preflight(repo, "-NextVersion", "1.2.3-rc.1+build", "-CheckDestinations", env=env)
+            rejected = self._run_preflight(repo, "-NextVersion", "1.2.3-rc.01", "-CheckDestinations", env=env)
+
+            self.assertEqual(0, accepted.returncode, accepted.stdout + accepted.stderr)
+            self.assertIn("classification only", accepted.stdout)
+            self.assertEqual(1, rejected.returncode, rejected.stdout + rejected.stderr)
+            self.assertIn("does not match the expected semver shape", rejected.stderr)
+
+    def test_invalid_semver_marker_fails_alongside_valid_version(self):
+        with temporary_directory() as temp:
+            repo = Path(temp) / "work"
+            dry_run = Path(temp) / "dry-run.txt"
+            self._init_repo(repo)
+            for marker in (
+                "The next release version is",
+                "There is no previous release, the next release version is",
+            ):
+                with self.subTest(marker=marker):
+                    dry_run.write_text(
+                        "The next release version is 1.2.3-rc.1+build.001\n"
+                        f"{marker} 1.2.3-rc.01\n",
+                        encoding="utf-8",
+                    )
+
+                    result = self._run_preflight(repo, "-SemanticReleaseDryRunOutputPath", str(dry_run))
+
+                    self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+                    self.assertIn("malformed next-release marker", result.stderr)
+                    self.assertIn("recognized terminal outcomes: next release version 1.2.3-rc.1+build.001", result.stderr)
+
     def test_first_release_marker_resolves_version(self):
         marker = "There is no previous release, the next release version is 1.0.0-beta.1"
         for record in (

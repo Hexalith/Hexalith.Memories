@@ -10,14 +10,14 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-# Semantic Release invokes verifyReleaseCmd during classification dry-runs. The caller's
-# outer preflight performs the real tag and destination checks after classification.
-if ($env:HEXALITH_RELEASE_CLASSIFICATION_ONLY -ceq 'true' -and $PSBoundParameters.ContainsKey('NextVersion')) {
-    Write-Host 'Semantic-release classification only; live release preflight is deferred to the caller.'
-    exit 0
-}
-
-$script:SemverPattern = '^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$'
+# SemVer 2.0.0 restricts leading zeros in core numbers and numeric prerelease identifiers.
+$numericIdentifier = '(?:0|[1-9][0-9]*)'
+$prereleaseIdentifier = "(?:$numericIdentifier|[0-9]*[A-Za-z-][0-9A-Za-z-]*)"
+$buildIdentifier = '[0-9A-Za-z-]+'
+$script:SemverPattern = [regex]::new(
+    "\A$numericIdentifier\.$numericIdentifier\.$numericIdentifier" +
+    "(?:-$prereleaseIdentifier(?:\.$prereleaseIdentifier)*)?" +
+    "(?:\+$buildIdentifier(?:\.$buildIdentifier)*)?\z")
 $script:DryRunReportedStaleCheckout = $false
 
 function Invoke-GitCommand {
@@ -126,6 +126,7 @@ function Get-NextReleaseVersionFromDryRun {
     $semanticReleaseLoggerPrefixPattern = '^\[[^\]\r\n]+\] \[semantic-release\] › ℹ  (?<message>.*)$'
     $nextVersionPrefix = "The next release version is"
     $firstReleaseVersionPrefix = "There is no previous release, the next release version is"
+    $versionMarkerPattern = "\A(?:$nextVersionPrefix|$firstReleaseVersionPrefix) (?<version>.*)\z"
     $noReleaseSentence = "There are no relevant changes, so no new version is released."
     $staleCheckoutSentence = "The local branch main is behind the remote one, therefore a new version won't be published."
     $parsedVersions = [System.Collections.Generic.List[string]]::new()
@@ -149,11 +150,10 @@ function Get-NextReleaseVersionFromDryRun {
 
         if ($message.StartsWith($nextVersionPrefix, [System.StringComparison]::Ordinal) -or
             $message.StartsWith($firstReleaseVersionPrefix, [System.StringComparison]::Ordinal)) {
-            $validVersionMatch = [regex]::Match(
-                $message,
-                "^(?:The next release version is|There is no previous release, the next release version is) (?<version>[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?)$")
-            if ($validVersionMatch.Success) {
-                $parsedVersions.Add($validVersionMatch.Groups["version"].Value)
+            $versionMatch = [regex]::Match($message, $versionMarkerPattern)
+            $candidate = $versionMatch.Groups["version"].Value
+            if ($versionMatch.Success -and $script:SemverPattern.IsMatch($candidate)) {
+                $parsedVersions.Add($candidate)
             }
             else {
                 $malformedVersionMarkers.Add($message)
@@ -261,6 +261,18 @@ function Test-RemoteTagCollision {
 }
 
 try {
+    $hasNextVersion = $PSBoundParameters.ContainsKey('NextVersion')
+    if ($hasNextVersion -and !$script:SemverPattern.IsMatch($NextVersion)) {
+        throw "NextVersion '$NextVersion' does not match the expected semver shape '<major>.<minor>.<patch>[-prerelease][+build]'. Pass the bare semver value (no leading 'v') or omit -NextVersion to let semantic-release dry-run compute it."
+    }
+
+    # Semantic Release invokes verifyReleaseCmd during classification dry-runs. The caller's
+    # outer preflight performs the real tag and destination checks after classification.
+    if ($hasNextVersion -and $env:HEXALITH_RELEASE_CLASSIFICATION_ONLY -ceq 'true') {
+        Write-Host 'Semantic-release classification only; live release preflight is deferred to the caller.'
+        exit 0
+    }
+
     # Force a known LASTEXITCODE baseline so the Invoke-GitCommand wrapper cannot inherit a stale
     # value from a prior step in the same pwsh session if the first git invocation fails to launch.
     $global:LASTEXITCODE = 0
@@ -281,13 +293,10 @@ try {
     }
 
     $version = $NextVersion
-    if ([string]::IsNullOrWhiteSpace($version)) {
+    if (!$hasNextVersion) {
         $dryRunOutput = Get-SemanticReleaseDryRunOutput
         $allowBareTerminalRecords = ![string]::IsNullOrWhiteSpace($SemanticReleaseDryRunOutputPath)
         $version = Get-NextReleaseVersionFromDryRun -DryRunOutput $dryRunOutput -AllowBareTerminalRecords $allowBareTerminalRecords
-    }
-    elseif ($version -notmatch $script:SemverPattern) {
-        throw "NextVersion '$version' does not match the expected semver shape '<major>.<minor>.<patch>[-prerelease|+build]'. Pass the bare semver value (no leading 'v') or omit -NextVersion to let semantic-release dry-run compute it."
     }
 
     if ([string]::IsNullOrWhiteSpace($version)) {
