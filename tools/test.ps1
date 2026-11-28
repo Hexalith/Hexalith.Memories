@@ -58,6 +58,17 @@ try {
         }
     }
 
+    function Read-TestReportXml([string]$Path, [string]$ReportName) {
+        try {
+            $report = [System.Xml.XmlDocument]::new()
+            $report.Load($Path)
+            return $report
+        }
+        catch {
+            throw "Unable to read $ReportName '$Path': $($_.Exception.Message)"
+        }
+    }
+
     $projectPaths = switch -Wildcard ($Filter) {
         'Category!=Integration' {
             Read-ProjectInventory 'tools/test-projects.unit-contract.txt'
@@ -235,43 +246,75 @@ try {
                 $process.Dispose()
             }
 
-            if ($Coverage -and -not [string]::IsNullOrWhiteSpace($projectResultsDirectory)) {
-                $canonical = Join-Path $projectResultsDirectory 'coverage.cobertura.xml'
-                if (-not (Test-Path -LiteralPath $canonical)) {
-                    $found = @(Get-ChildItem -LiteralPath $projectResultsDirectory -File |
-                        Where-Object {
-                            $_.Name -like 'coverage.cobertura*.xml' -or
-                            $_.Name -like '*.coverage.cobertura.xml'
-                        } |
-                        Sort-Object Name)
-                    if ($found.Count -eq 0) {
-                        throw "Test project produced no Cobertura report under '$projectResultsDirectory'."
+            # Inspect partial reports independently so they cannot mask the native test failure.
+            $reportErrors = [System.Collections.Generic.List[System.Management.Automation.ErrorRecord]]::new()
+            if ($Coverage -and $projectResultsDirectory) {
+                try {
+                    $canonical = Join-Path $projectResultsDirectory 'coverage.cobertura.xml'
+                    if (-not (Test-Path -LiteralPath $canonical -PathType Leaf)) {
+                        $found = @(Get-ChildItem -LiteralPath $projectResultsDirectory -File |
+                            Where-Object {
+                                $_.Name -like 'coverage.cobertura*.xml' -or
+                                $_.Name -like '*.coverage.cobertura.xml'
+                            } |
+                            Sort-Object Name)
+                        if ($found.Count -gt 0) {
+                            Copy-Item -LiteralPath $found[-1].FullName -Destination $canonical
+                        }
+                        elseif ($testExitCode -eq 0) {
+                            throw "Test project produced no Cobertura report under '$projectResultsDirectory'."
+                        }
+                        else {
+                            $canonical = $null
+                        }
                     }
-                    Copy-Item -LiteralPath $found[-1].FullName -Destination $canonical
+
+                    if ($canonical) {
+                        $coverageReport = Read-TestReportXml $canonical 'Cobertura report'
+                        if ($coverageReport.DocumentElement.LocalName -cne 'coverage') {
+                            throw "Invalid Cobertura report '$canonical': expected a coverage root element."
+                        }
+                    }
+                }
+                catch {
+                    $reportErrors.Add($_)
                 }
             }
 
             if ($trxPath) {
-                if (-not (Test-Path -LiteralPath $trxPath)) {
-                    throw "Expected TRX file '$trxPath' was not produced."
-                }
+                try {
+                    if (Test-Path -LiteralPath $trxPath -PathType Leaf) {
+                        $trx = Read-TestReportXml $trxPath 'TRX file'
+                        $executed = [int]$trx.TestRun.ResultSummary.Counters.executed
+                        $notExecuted = [int]$trx.TestRun.ResultSummary.Counters.notExecuted
+                        if ($executed -le 0) {
+                            throw "Test project '$projectPath' executed zero tests for filter '$effectiveFilter'."
+                        }
+                        if ($null -ne $expectedExecutedTests -and
+                            ($executed -ne $expectedExecutedTests -or $notExecuted -ne 0)) {
+                            throw "Test project '$projectPath' must execute exactly $expectedExecutedTests tests with none skipped; TRX reported executed=$executed, notExecuted=$notExecuted."
+                        }
 
-                [xml]$trx = Get-Content -LiteralPath $trxPath
-                $executed = [int]$trx.TestRun.ResultSummary.Counters.executed
-                $notExecuted = [int]$trx.TestRun.ResultSummary.Counters.notExecuted
-                if ($executed -le 0) {
-                    throw "Test project '$projectPath' executed zero tests for filter '$effectiveFilter'."
+                        Write-Host "Executed $executed tests for $projectPath"
+                    }
+                    elseif ($testExitCode -eq 0) {
+                        throw "Expected TRX file '$trxPath' was not produced."
+                    }
                 }
-                if ($null -ne $expectedExecutedTests -and
-                    ($executed -ne $expectedExecutedTests -or $notExecuted -ne 0)) {
-                    throw "Test project '$projectPath' must execute exactly $expectedExecutedTests tests with none skipped; TRX reported executed=$executed, notExecuted=$notExecuted."
+                catch {
+                    $reportErrors.Add($_)
                 }
-
-                Write-Host "Executed $executed tests for $projectPath"
             }
 
             if ($testExitCode -ne 0) {
-                throw "dotnet test failed ($testExitCode)"
+                foreach ($reportError in $reportErrors) {
+                    Write-Error -ErrorAction Continue -ErrorRecord $reportError
+                }
+
+                throw "dotnet test failed ($testExitCode) for $projectPath"
+            }
+            if ($reportErrors.Count -gt 0) {
+                throw $reportErrors[0]
             }
         }
     }

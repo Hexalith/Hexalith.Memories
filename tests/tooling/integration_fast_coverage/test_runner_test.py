@@ -412,13 +412,97 @@ os.waitpid(child, 0)
 
     @unittest.skipUnless(shutil.which("pwsh"), "requires PowerShell 7")
     def test_powershell_publishes_available_reports_after_native_failure(self):
-        self.environment.update(TEST_TRX=TRX, TEST_COVERAGE="<coverage/>", TEST_DOTNET_EXIT="37")
+        self.environment.update(TEST_DOTNET_EXIT="37", TEST_ATTACHMENT="test trace")
+        command = [*self.report_command(self.powershell, "reports"), "-Coverage"]
+        reports = self.root / "reports"
+
+        for trx, coverage in ((True, False), (False, True), (True, True)):
+            with self.subTest(trx=trx, coverage=coverage):
+                self.environment.pop("TEST_TRX", None)
+                self.environment.pop("TEST_COVERAGE", None)
+                if trx:
+                    self.environment["TEST_TRX"] = TRX
+                if coverage:
+                    self.environment["TEST_COVERAGE"] = "<coverage/>"
+
+                result = self.run_wrapper(command)
+                self.assertEqual(1, result.returncode, result.stderr)
+                self.assertIn("dotnet test failed (37)", result.stderr)
+                self.assertEqual(trx, "Executed 1 tests for" in result.stdout)
+                self.assertEqual(int(trx), len(list(reports.glob("*/*.trx"))))
+                cobertura = list(reports.glob("*/coverage.cobertura.xml"))
+                self.assertEqual(int(coverage), len(cobertura))
+                if coverage:
+                    self.assertEqual("<coverage/>\n", cobertura[0].read_text(encoding="utf-8"))
+                (attachment,) = reports.glob("*/attachments/trace.txt")
+                self.assertEqual("test trace\n", attachment.read_text(encoding="utf-8"))
+
+    @unittest.skipUnless(shutil.which("pwsh"), "requires PowerShell 7")
+    def test_powershell_preserves_native_failure_when_reports_are_missing(self):
+        self.environment["TEST_DOTNET_EXIT"] = "37"
         command = self.report_command(self.powershell, "reports")
-        result = self.run_wrapper([*command, "-Coverage"])
-        self.assertEqual(1, result.returncode, result.stderr)
-        self.assertIn("dotnet test failed (37)", result.stderr)
-        self.assertEqual(1, len(list((self.root / "reports").glob("*/*.trx"))))
-        self.assertEqual(1, len(list((self.root / "reports").glob("*/coverage.cobertura.xml"))))
+
+        for flags in ([], ["-Coverage"]):
+            with self.subTest(coverage=bool(flags)):
+                result = self.run_wrapper([*command, *flags])
+                self.assertEqual(1, result.returncode, result.stderr)
+                self.assertIn("native test failure", result.stderr)
+                self.assertIn("dotnet test failed (37)", result.stderr)
+                self.assertNotIn("Expected TRX file", result.stderr)
+                self.assertNotIn("produced no Cobertura report", result.stderr)
+
+    @unittest.skipUnless(shutil.which("pwsh"), "requires PowerShell 7")
+    def test_powershell_reports_invalid_trx_or_coverage(self):
+        command = [*self.report_command(self.powershell, "reports"), "-Coverage"]
+        cases = (
+            ("<TestRun>", "<coverage/>", "Unable to read TRX file", "*.trx"),
+            (TRX, "<coverage>", "Unable to read Cobertura report", "coverage.cobertura.xml"),
+            (TRX, "<unexpected/>", "expected a coverage root element", "coverage.cobertura.xml"),
+        )
+        for status in ("0", "37"):
+            for trx, coverage, diagnostic, report_pattern in cases:
+                with self.subTest(status=status, diagnostic=diagnostic):
+                    self.environment.update(TEST_DOTNET_EXIT=status, TEST_TRX=trx, TEST_COVERAGE=coverage)
+                    result = self.run_wrapper(command)
+                    self.assertEqual(1, result.returncode, result.stderr)
+                    self.assertIn(diagnostic, result.stderr)
+                    if status == "37":
+                        self.assertIn("dotnet test failed (37)", result.stderr)
+                        self.assertTrue(list((self.root / "reports").glob(f"*/{report_pattern}")))
+                    else:
+                        self.assertNotIn("dotnet test failed", result.stderr)
+
+    @unittest.skipUnless(shutil.which("pwsh"), "requires PowerShell 7")
+    def test_powershell_requires_reports_after_a_successful_test_process(self):
+        command = self.report_command(self.powershell, "reports")
+        missing_trx = self.run_wrapper(command)
+        self.assertEqual(1, missing_trx.returncode, missing_trx.stderr)
+        self.assertIn("Expected TRX file", missing_trx.stderr)
+
+        self.environment["TEST_TRX"] = TRX
+        missing_coverage = self.run_wrapper([*command, "-Coverage"])
+        self.assertEqual(1, missing_coverage.returncode, missing_coverage.stderr)
+        self.assertIn("produced no Cobertura report", missing_coverage.stderr)
+
+    @unittest.skipUnless(shutil.which("pwsh"), "requires PowerShell 7")
+    def test_powershell_preserves_benchmark_report_contract(self):
+        command = [*self.powershell, "-Filter", "Category=Benchmark", "-ResultsDirectory", "reports"]
+        for status, executed, skipped in (("0", 17, 0), ("0", 16, 0), ("0", 17, 1), ("37", 17, 0), ("37", 16, 0)):
+            with self.subTest(status=status, executed=executed, skipped=skipped):
+                self.environment.update(
+                    TEST_DOTNET_EXIT=status,
+                    TEST_TRX=f'<TestRun><ResultSummary><Counters executed="{executed}" notExecuted="{skipped}" />'
+                    '</ResultSummary></TestRun>',
+                )
+                result = self.run_wrapper(command)
+                valid_counts = executed == 17 and skipped == 0
+                self.assertEqual(int(status != "0" or not valid_counts), result.returncode, result.stderr)
+                if valid_counts:
+                    self.assertIn("Executed 17 tests for", result.stdout)
+                else:
+                    self.assertIn("must execute exactly 17 tests with none skipped", result.stderr)
+                if status != "0":
+                    self.assertIn("dotnet test failed (37)", result.stderr)
 
     def report_command(self, wrapper, destination):
         options = (
