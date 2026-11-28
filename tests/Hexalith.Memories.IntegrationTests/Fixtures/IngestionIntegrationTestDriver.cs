@@ -79,6 +79,53 @@ public sealed class IngestionIntegrationTestDriver
             : throw new InvalidOperationException("Case creation returned no case identifier.");
     }
 
+    /// <summary>Waits for case creation to reach the Redis and FalkorDB projections.</summary>
+    /// <param name="tenantId">Tenant identifier.</param>
+    /// <param name="caseId">Case identifier.</param>
+    /// <param name="cancellationToken">Cooperative cancellation.</param>
+    public async Task WaitForCaseProjectionAsync(
+        string tenantId,
+        string caseId,
+        CancellationToken cancellationToken = default)
+    {
+        using CancellationTokenSource wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        wait.CancelAfter(TimeSpan.FromMinutes(2));
+
+        IDatabase db = _fixture.RedisConnection.GetDatabase();
+        FalkorDB falkor = new(_fixture.FalkorDbConnection.GetDatabase());
+        string caseKey = $"{tenantId}:case:{caseId}";
+        var parameters = new Dictionary<string, object> { ["caseId"] = caseId };
+
+        try
+        {
+            while (true)
+            {
+                if (await db.KeyExistsAsync(caseKey).WaitAsync(wait.Token).ConfigureAwait(false))
+                {
+                    ResultSet result = await falkor.SelectGraph(tenantId)
+                        .QueryAsync("MATCH (c:Case {id: $caseId}) RETURN count(c) AS cnt", parameters)
+                        .WaitAsync(wait.Token)
+                        .ConfigureAwait(false);
+
+                    result.Count.ShouldBe(1);
+                    using IEnumerator<Record> rows = result.GetEnumerator();
+                    rows.MoveNext().ShouldBeTrue();
+                    if (rows.Current.GetValue<long>("cnt") == 1)
+                    {
+                        return;
+                    }
+                }
+
+                await Task.Delay(TimeSpan.FromMilliseconds(500), wait.Token).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException(
+                $"Case '{caseId}' was not projected to Redis and FalkorDB within the allotted time.", ex);
+        }
+    }
+
     /// <summary>Posts a URL ingestion request.</summary>
     /// <param name="tenantId">Tenant identifier.</param>
     /// <param name="caseId">Case identifier.</param>

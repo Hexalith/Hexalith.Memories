@@ -28,8 +28,13 @@ using CaseRecord = Hexalith.Memories.Contracts.V1.Case;
 public sealed partial class CaseEndpointIntegrationTests
 {
     private readonly AspireIngestionPipelineFixture _fixture;
+    private readonly IngestionIntegrationTestDriver _ingestion;
 
-    public CaseEndpointIntegrationTests(AspireIngestionPipelineFixture fixture) => _fixture = fixture;
+    public CaseEndpointIntegrationTests(AspireIngestionPipelineFixture fixture)
+    {
+        _fixture = fixture;
+        _ingestion = new IngestionIntegrationTestDriver(fixture);
+    }
 
     [Fact]
     public async Task PostCase_ThenList_ShouldReturnCreatedCase()
@@ -57,6 +62,8 @@ public sealed partial class CaseEndpointIntegrationTests
         created.LastUpdated.ShouldBeGreaterThanOrEqualTo(created.CreatedAt);
         createResponse.Headers.Location.ShouldNotBeNull();
         createResponse.Headers.Location!.ToString().ShouldContain($"/api/v1/tenants/{tenantId}/cases/{created.Id}");
+
+        await _ingestion.WaitForCaseProjectionAsync(tenantId, created.Id);
 
         using HttpResponseMessage listResponse = await _fixture.MemoriesClient.GetAsync($"/api/v1/tenants/{tenantId}/cases");
         listResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -149,7 +156,7 @@ public sealed partial class CaseEndpointIntegrationTests
         createdCase.ShouldNotBeNull();
         string caseId = createdCase.Id;
 
-        await WaitForCaseCreatedAsync(tenantId, caseId);
+        await _ingestion.WaitForCaseProjectionAsync(tenantId, caseId);
 
         // PUT member -- should return 201 (new)
         var memberInput = new AddCaseMemberInput("user-alice", CaseMemberType.User);
@@ -202,7 +209,7 @@ public sealed partial class CaseEndpointIntegrationTests
         createdCase.ShouldNotBeNull();
         string caseId = createdCase.Id;
 
-        await WaitForCaseCreatedAsync(tenantId, caseId);
+        await _ingestion.WaitForCaseProjectionAsync(tenantId, caseId);
 
         var memberInput = new AddCaseMemberInput("user-bob", CaseMemberType.User);
 
@@ -283,7 +290,7 @@ public sealed partial class CaseEndpointIntegrationTests
         CaseRecord? createdCase = await createCaseResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
         createdCase.ShouldNotBeNull();
 
-        await WaitForCaseCreatedAsync(tenantId, createdCase.Id);
+        await _ingestion.WaitForCaseProjectionAsync(tenantId, createdCase.Id);
 
         // DELETE a member that doesn't exist
         using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync(
@@ -309,7 +316,7 @@ public sealed partial class CaseEndpointIntegrationTests
         CaseRecord? createdCase = await createCaseResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
         createdCase.ShouldNotBeNull();
 
-        await WaitForCaseCreatedAsync(tenantId, createdCase.Id);
+        await _ingestion.WaitForCaseProjectionAsync(tenantId, createdCase.Id);
 
         // Add a member (creates :members key)
         var memberInput = new AddCaseMemberInput("user-alice", CaseMemberType.User);
@@ -343,7 +350,7 @@ public sealed partial class CaseEndpointIntegrationTests
         CaseRecord? createdCase = await createCaseResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
         createdCase.ShouldNotBeNull();
 
-        await WaitForCaseCreatedAsync(tenantId, createdCase.Id);
+        await _ingestion.WaitForCaseProjectionAsync(tenantId, createdCase.Id);
 
         // Add two members
         var member1 = new AddCaseMemberInput("user-alice", CaseMemberType.User);
@@ -383,7 +390,7 @@ public sealed partial class CaseEndpointIntegrationTests
         createdCase.ShouldNotBeNull();
         string caseId = createdCase.Id;
 
-        await WaitForCaseCreatedAsync(tenantId, caseId);
+        await _ingestion.WaitForCaseProjectionAsync(tenantId, caseId);
 
         // Add 1000 members via direct Redis (faster than 1000 HTTP calls)
         IDatabase redisDb = _fixture.RedisConnection.GetDatabase();
@@ -421,7 +428,7 @@ public sealed partial class CaseEndpointIntegrationTests
         CaseRecord? createdCase = await createCaseResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
         createdCase.ShouldNotBeNull();
 
-        await WaitForCaseCreatedAsync(tenantId, createdCase.Id);
+        await _ingestion.WaitForCaseProjectionAsync(tenantId, createdCase.Id);
 
         IDatabase redisDb = _fixture.RedisConnection.GetDatabase();
         string membersKey = $"{tenantId}:case:{createdCase.Id}:members";
@@ -459,7 +466,7 @@ public sealed partial class CaseEndpointIntegrationTests
         createdCase.ShouldNotBeNull();
         string caseId = createdCase.Id;
 
-        await WaitForCaseCreatedAsync(tenantId, caseId);
+        await _ingestion.WaitForCaseProjectionAsync(tenantId, caseId);
 
         // Fire 10 parallel PUTs for the same memberId
         var memberInput = new AddCaseMemberInput("user-concurrent", CaseMemberType.User);
@@ -858,7 +865,7 @@ public sealed partial class CaseEndpointIntegrationTests
         createResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
         CaseRecord? createdCase = await createResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
         createdCase.ShouldNotBeNull();
-        await WaitForCaseCreatedAsync(tenantId, createdCase.Id);
+        await _ingestion.WaitForCaseProjectionAsync(tenantId, createdCase.Id);
 
         // Delete empty case
         using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync(
@@ -937,7 +944,7 @@ public sealed partial class CaseEndpointIntegrationTests
         createResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
         CaseRecord? createdCase = await createResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
         createdCase.ShouldNotBeNull();
-        await WaitForCaseCreatedAsync(tenantId, createdCase.Id);
+        await _ingestion.WaitForCaseProjectionAsync(tenantId, createdCase.Id);
 
         // Add a member
         var memberInput = new AddCaseMemberInput("user-cleanup-test", CaseMemberType.User);
@@ -984,7 +991,7 @@ public sealed partial class CaseEndpointIntegrationTests
         createResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
         CaseRecord? createdCase = await createResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
         createdCase.ShouldNotBeNull();
-        await WaitForCaseCreatedAsync(tenantId, createdCase.Id);
+        await _ingestion.WaitForCaseProjectionAsync(tenantId, createdCase.Id);
 
         // Delete case
         using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync(
@@ -1011,7 +1018,7 @@ public sealed partial class CaseEndpointIntegrationTests
         createResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
         CaseRecord? createdCase = await createResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
         createdCase.ShouldNotBeNull();
-        await WaitForCaseCreatedAsync(tenantId, createdCase.Id);
+        await _ingestion.WaitForCaseProjectionAsync(tenantId, createdCase.Id);
 
         // First delete
         using HttpResponseMessage deleteResponse1 = await _fixture.MemoriesClient.DeleteAsync(
@@ -1218,27 +1225,6 @@ public sealed partial class CaseEndpointIntegrationTests
 
         throw new TimeoutException(
             $"Search results for deleted memory unit '{memoryUnitId}' did not clear; last total was {lastResult?.TotalCount.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "unknown"}.");
-    }
-
-    private async Task WaitForCaseCreatedAsync(string tenantId, string caseId)
-    {
-        DateTimeOffset deadline = DateTimeOffset.UtcNow.AddMinutes(2);
-        IDatabase db = _fixture.RedisConnection.GetDatabase();
-        string caseKey = $"{tenantId}:case:{caseId}";
-        var parameters = new Dictionary<string, object> { ["caseId"] = caseId };
-
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            if (await db.KeyExistsAsync(caseKey)
-                && await QueryGraphCountAsync(tenantId, "MATCH (c:Case {id: $caseId}) RETURN count(c) AS cnt", parameters) == 1)
-            {
-                return;
-            }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(500)).ConfigureAwait(false);
-        }
-
-        throw new TimeoutException($"Case '{caseId}' was not projected to Redis and FalkorDB within the allotted time.");
     }
 
     private async Task WaitForCaseDeletedAsync(

@@ -55,10 +55,13 @@ public sealed class BackupRestoreFidelityIntegrationTests
         string firstCaseId = await CreateCaseAsync(tenantId, "Restore fidelity case one");
         string secondCaseId = await CreateCaseAsync(tenantId, "Restore fidelity case two");
 
+        IngestionIntegrationTestDriver ingestion = new(_fixture);
+        await ingestion.WaitForCaseProjectionAsync(tenantId, firstCaseId);
+        await ingestion.WaitForCaseProjectionAsync(tenantId, secondCaseId);
+
         await AddCaseMemberAsync(tenantId, firstCaseId, "restore-user-one");
         await AddCaseMemberAsync(tenantId, secondCaseId, "restore-user-two");
 
-        IngestionIntegrationTestDriver ingestion = new(_fixture);
         string[] ingestionInstanceIds =
         [
             await ingestion.PostInlineIngestionAsync(

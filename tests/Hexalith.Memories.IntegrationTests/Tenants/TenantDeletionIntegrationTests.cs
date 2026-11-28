@@ -106,6 +106,9 @@ public sealed class TenantDeletionIntegrationTests
         await redisDb.HashSetAsync(orphanNaturalLanguageKey, "caseId", caseId);
         await redisDb.HashSetAsync(orphanLegacyNaturalLanguageKey, "caseId", caseId);
 
+        IngestionIntegrationTestDriver ingestion = new(_fixture);
+        await ingestion.WaitForCaseProjectionAsync(tenantId, caseId);
+
         using HttpResponseMessage memberResponse = await _fixture.MemoriesClient.PutAsJsonAsync(
             $"/api/v1/tenants/{tenantId}/cases/{caseId}/members/user-cleanup",
             new AddCaseMemberInput("user-cleanup", CaseMemberType.User),
