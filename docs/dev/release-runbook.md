@@ -1069,8 +1069,8 @@ digests and expire on 2027-02-25. [Release run 45980814935](https://github.com/H
 
 The owner workspace retains both archives, both packages, the receipt, the signature verification
 output, and per-entry hashes in `artifacts/release/dw-778-nuget-signing-identity/`. To repeat the
-comparison from the repository root, check the emitted SHA-256 digests against the table. The
-commands use the preserved archives when available and authenticated `gh` otherwise.
+comparison from the repository root, run the commands below. They verify the four archive and
+package SHA-256 digests and use the preserved archives when available and authenticated `gh` otherwise.
 
 ```bash
 run-with-temp bash -euo pipefail <<'BASH'
@@ -1082,7 +1082,10 @@ for artifact in 15190267812 15189689322; do
     gh api "repos/Hexalith/Hexalith.Memories/actions/artifacts/$artifact/zip" > "$TMPDIR/$artifact.zip"
   fi
 done
-sha256sum "$TMPDIR/15190267812.zip" "$TMPDIR/15189689322.zip"
+printf '%s  %s\n' \
+  ba01a0fbfd179fdfb63c14b2032f11c3c9442d87ae3f0221ec4bb1cfc741093c "$TMPDIR/15190267812.zip" \
+  95569b0a148da097a79065146c8849d50fed4973cfedeb432fc514c0406b0b88 "$TMPDIR/15189689322.zip" |
+  sha256sum --check
 url=https://api.nuget.org/v3-flatcontainer/hexalith.memories.contracts/4.1.4/hexalith.memories.contracts.4.1.4.nupkg
 status=$(curl --fail --silent --show-error --dump-header "$TMPDIR/headers" \
   --output "$TMPDIR/served.nupkg" --write-out '%{http_code}' "$url")
@@ -1131,7 +1134,10 @@ assert added == [".signature.p7s"] and not removed and not changed
 package_entries = runpy.run_path("tools/container-publication-contract.py")["package_entries"]
 assert package_entries(retained) == package_entries(served)
 PY
-sha256sum "$TMPDIR/retained.nupkg" "$TMPDIR/served.nupkg"
+printf '%s  %s\n' \
+  afef3a4dd855335880443e9d65f36db59a11f28cff02a7fac9bd6ff5a7931969 "$TMPDIR/retained.nupkg" \
+  d05bd7a7df86023b50173f2d49d2d36d661a1ef83005a180155053114ec714d0 "$TMPDIR/served.nupkg" |
+  sha256sum --check
 dotnet nuget verify --all "$TMPDIR/served.nupkg" | tee "$TMPDIR/verification"
 retained_sha512=$(openssl dgst -sha512 -binary "$TMPDIR/retained.nupkg" | base64 -w 0)
 grep -Fx "Content hash: $retained_sha512" "$TMPDIR/verification"
