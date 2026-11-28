@@ -1199,9 +1199,10 @@ archived: 2026-11-23
 ### DW-179: Story-10.x-McpTraceHopAspire (closes AC #12).
 
 origin: migrated from legacy ledger ("Deferred from: Story 10.2 Token-Budget Responses & Authentication (2026-04-25)"), 2026-09-01
-location: tests/Hexalith.Memories.IntegrationTests/Telemetry/AspireEndToEndTraceTests.cs::TraceHop_McpToServer_PreservesTraceparent
+location: tests/Hexalith.Memories.IntegrationTests/Mcp/McpServerIntegrationTests.Trace.cs; tests/Hexalith.Memories.IntegrationTests/Telemetry/Infrastructure/DaprTraceCapture.cs
 reason: - **Story-10.x-McpTraceHopAspire (closes AC #12).** `tests/Hexalith.Memories.IntegrationTests/Telemetry/AspireEndToEndTraceTests.cs::TraceHop_McpToServer_PreservesTraceparent` — assert MCP→Memories Server parent/child trace span relationship at Tier-3. Implementation requires a parallel breadcrumb path through the MCP Aspire process (the existing `AspireEndToEndTraceTests` uses an in-process collector for the CLI side and audit-log JSON breadcrumbs for the Server side; the MCP service emits ActivitySource spans into its own process and lacks an in-test exporter). 10.2 ships the prerequisite Tier-3 auth bearer-minting fixture (`AspireIngestionPipelineFixture.MintDevBearer`) so the trace-hop work can attach to it directly. Re-open trigger: nightly Tier-3 lane stabilizes against the new auth-required surface and an in-test exporter for the MCP process becomes affordable; or first observation of MCP→Server trace breakage in production OTel data.
-status: open
+status: done 2026-11-28
+resolution: f2dfda9d22203496c43ca0c1d0dad80e2d58f8e2 (follow-up ef169af067a241dde1591f23edfc5d278660b107) — The authenticated tool call verified seven causal spans, including each configured Dapr exporter role. The review follow-up also requires the exact test in the fast evidence catalog.
 note: 2026-11-24 — Skipped. End-to-end parent-span evidence needs an exporter and correlation harness across Aspire processes.
 
 ### DW-180: Story-10.x-McpAuthTier3ExtendedSuite. Additional Tier-3 cases beyond the four critical scenarios shipped in 10.2 (`PostMcp_NoAuthorizationHeader_ReturnsBearerChallenge`, `GetHealth_AllowsAnonymous`, `CallTool_ValidBearer_MatchingTenantClaim_Succeeds`, `CallTool_ValidBearer_CrossTenantClaim_ReturnsTenantForbidden`): expired-bearer test, clock-skew tolerance test (M3), cross-request alternating-tenants leak test (P2), tool-class lifetime convention test (P1). Tier-2 already covers expiry / clock-skew at unit level (`ConfigureJwtBearerOptionsTests`); cross-request leak is structurally prevented by `TenantClaimAuthorizationFilter`'s `InvalidOperationException` guard (P3). Re-open trigger: first nightly Tier-3 regression against the auth path, or first cross-request leakage report.
@@ -1249,6 +1250,7 @@ location: tests/Hexalith.Memories.IntegrationTests/Telemetry/AspireEndToEndTrace
 reason: - **Story-10.x-McpTraceHopAssertion.** `tests/Hexalith.Memories.IntegrationTests/Telemetry/AspireEndToEndTraceTests.cs` does not yet include an MCP-hop assertion — adding one is out of scope for 10.1 and tempting-but-fragile until 10.2 auth is wired (so the test does not need to mint bearer tokens). The MCP integration test (`McpServerIntegrationTests.CallSearchMemory_EndToEnd_ExecutesAcrossDaprHop`) covers a happy-path execution, but does NOT yet assert that the outbound trace contains a span resolving to the DAPR sidecar invocation path (`/v1.0/invoke/memories-server/method/*`). **Re-open trigger:** post-10.2 follow-up story or first observation that direct-HTTP regressions slip through.
 status: open
 note: 2026-11-24 — Skipped. The existing fixture cannot attribute and export the outbound sidecar span to the same request without a cross-process trace harness.
+note: 2026-11-28 — Skipped. The URL form in the entry is obsolete. The current MCP client uses the configured Dapr HTTP endpoint and a dapr-app-id routing header. DW-179 verifies the actual live causal trace.
 
 ### DW-186: Story-10.x-StatelessModeAuditFor10.2Auth: closed for bearer auth. Story 10.2 kept `WithHttpTransport(o => o.Stateless = true)` because the implemented flow is bearer-only and validates each request independently. Re-open if OAuth-PKCE, refresh-token rotation, sampling, or elicitation requires server-side session state.
 
@@ -5001,6 +5003,7 @@ location: _bmad-output/implementation-artifacts/spec-publish-approved-module-bas
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-publish-approved-module-baselines-2026-08-01.md` summary: Ensure scheduled nightly runs execute the fast integration lane. evidence: `.github/workflows/nightly.yml` declares a schedule but gates `integration-fast` exclusively on `workflow_dispatch`, causing scheduled runs to skip that verification job.
 status: open
 note: 2026-11-27 — Skipped. Scheduled fast integration selection belongs to the Hexalith.CiCd-owned nightly workflow. DW-731 also governs the next integration lane selection change.
+note: 2026-11-28 — Skipped. Scheduled workflow selection remains owned by Hexalith.CiCd. DW-731 verified the existing required fast lane.
 
 ### DW-697: Restrict filesystem permissions on temporary OpenBao bootstrap credentials.
 
@@ -5317,6 +5320,7 @@ reason: - source_spec: `_bmad-output/planning-artifacts/sprint-change-proposal-2
 status: open
 note: 2026-11-27 — Skipped. The parked qualification reopens only when the production deployment enables lifecycle writes. No production activation was selected for this batch.
 decision: 2026-11-01 keep-open — parked. Reopens only on the trigger: any Production deployment path (the Memories overlay or Platform composition through manifest reference `accesstelemetrylifecycle-enabled`) that sets `AccessTelemetryLifecycle:Enabled=true` or runs a lifecycle Deployment above zero replicas. "Do recommended", an available schedule window or new Platform capability does not reopen it. When triggered, re-plan from scratch against the real Production target; the 2026-10-25 → 2026-10-31 synthetic-target preparation (Spec 14 continuations, specs 15–26) is anti-template. Owner: Jérôme Piquot. Review: 2027-05-01 with DW-17. Follow-up, not scheduled: the five access-telemetry tooling CI lanes (`.github/workflows/ci.yml:368-397`) could move to nightly or be retired while this entry stays parked.
+note: 2026-11-28 — Skipped. Production lifecycle writes remain parked and the approved production-enablement trigger is pending.
 
 ## Deferred from: DW-719 independent review (2026-10-03)
 
@@ -5652,16 +5656,24 @@ resolution: The live two-tenant collision proof obtains both graphs with their o
 - source_spec: `_bmad-output/implementation-artifacts/spec-five-deferred-story-scope.md`
   summary: Support Setext parent and sibling scope boundaries with correct Markdown block context if that authoring syntax is adopted.
   evidence: Independent review confirmed the pre-existing ATX-only parser treats an underlined Setext title after an allowed list as ordinary content and can collect later bullets. Baseline and current implementations share this unsupported-syntax gap; CONTRIBUTING.md now requires ATX scope headings explicitly. A trial lookahead was withdrawn after review demonstrated false boundaries at thematic breaks and list continuations, plus incorrect handling of ordered markers within paragraphs. Correct support requires paragraph/list indentation context or an approved Markdown parser dependency. Owner: tooling maintainer. Reopen when Setext scope headings are proposed or found in authored artifacts; qualify both real headings and thematic-break, lazy-continuation, indented-list and ordered-marker controls before enabling support.
+  note: 2026-11-28 — Skipped. The repository still requires ATX scope headings. The adoption trigger remains unmet.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-five-deferred-commit-validation.md`
   summary: Reject empty repository commit messages permitted by explicit Git --allow-empty-message, including in history validation.
   evidence: Independent review and a disposable real-hook reproduction both created an empty-subject commit with exit 0 using git commit --allow-empty-message --file <empty-file>. The pinned commitlint CLI filters whitespace-only repository messages before applying rules (node_modules/@commitlint/cli/lib/cli.js:222-225), independently of defaultIgnores; this predates the five selected fixes. Ordinary Git rejects empty messages by default. Resolve through both the local hook and shared CI validation, without treating skipped empty messages as validated subjects.
+  note: 2026-11-28 — Skipped. The hosted history validator is owned by Hexalith.Builds. The entry requires both local and shared validation.
 
 ## Deferred from: review of spec-five-deferred-release-preflight.md (2026-10-28)
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-five-deferred-release-preflight.md`
-  summary: Validate release versions consistently against the complete SemVer grammar in direct input and both semantic-release terminal marker forms.
-  evidence: Independent disposable-repository execution confirms the grammar predates this change: baseline 46692dd0f6c7cd780608ce74fd827d81c481ae6d and changed tools/release-preflight.ps1 both exit 0 for invalid 01.0.0 and exit 1 for valid 1.0.0-beta.1+build.1 through ordinary next-version records and direct -NextVersion. The alternate first-release marker inherits the same grammar. Owner: release maintainer. Consequence: malformed version tags can pass preflight and valid prerelease-plus-build versions are refused. Reopen trigger: a version-parser hardening change or a release using these boundary forms.
+### DW-776: Validate release versions consistently against the complete SemVer grammar in direct input and both semantic-release terminal marker forms.
+
+origin: migrated from attended ledger ('Deferred from: review of spec-five-deferred-release-preflight.md (2026-10-28)'), 2026-11-28
+location: tools/release-preflight.ps1; tests/tooling/release_preflight/release_preflight_test.py
+source_spec: `_bmad-output/implementation-artifacts/spec-five-deferred-release-preflight.md`
+severity: medium
+reason: Independent disposable-repository execution confirms the grammar predates this change: baseline 46692dd0f6c7cd780608ce74fd827d81c481ae6d and changed tools/release-preflight.ps1 both exit 0 for invalid 01.0.0 and exit 1 for valid 1.0.0-beta.1+build.1 through ordinary next-version records and direct -NextVersion. The alternate first-release marker inherits the same grammar. Owner: release maintainer. Consequence: malformed version tags can pass preflight and valid prerelease-plus-build versions are refused. Reopen trigger: a version-parser hardening change or a release using these boundary forms.
+status: done 2026-11-28
+resolution: 067b8fac4f9d82f84f4b072e8d2b6f4f55c8c576 — One SemVer validator covers direct input and both release records. All 45 matrix cases and the 54-test preflight suite passed.
 
 ## Deferred from: review of spec-five-deferred-preflight-harness.md (2026-10-28)
 
@@ -5692,10 +5704,12 @@ resolution: The live two-tenant collision proof obtains both graphs with their o
 - source_spec: `_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-14.md`
   summary: Add a genuinely owner-only package fixture to the shared source-package boundary verification.
   evidence: Review B2 verified the existing ByteAether.Ulid assertion predates this correction and shared Builds already declares that package; it cannot prove preservation of an owner-only addition. This pre-existing coverage gap can miss a future regression dropping an owner-specific package. Current resolver correction and 92-case result remain valid; no package loss was observed. Owner: Platform qualification maintainers; reopen when strengthening source-packages.props coverage.
+  note: 2026-11-28 — Skipped. The fixture is owned by Hexalith.Platform's eng/helm-qualification suite.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-14.md`
   summary: Assert exact single-occurrence cryptography catalogue pins in the Commons source-package boundary evaluation.
   evidence: Review B3 verified both original and corrected tests apply pin assertions to Platform composition, while Commons evaluation checks only ByteAether.Ulid presence. This pre-existing coverage gap could miss Commons-specific pin removal or duplication; no current incorrect version was demonstrated. Owner: Platform qualification maintainers; reopen with the Commons boundary test-hardening change.
+  note: 2026-11-28 — Skipped. The fixture is owned by Hexalith.Platform's eng/helm-qualification suite.
 
 ## Deferred from: Epic 27 retro item 62 Dapr app-token Production guard review (2026-11-01)
 
@@ -5908,9 +5922,15 @@ resolution: The live two-tenant collision proof obtains both graphs with their o
   retarget: 2026-11-15 — D3 satisfies the tag-refusal half through the release rollback rule (v3.0.19–v3.0.25 refused). Remaining owner/reopen trigger: Jérôme Piquot marks the affected GitHub Releases do-not-deploy. No external release edit was performed; a fixed later release does not close this action. See parity row `do-not-deploy`.
 
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-30-4-five-image-publication-contract.md`
-  summary: Align the pre-existing CI-ownership documentation with the current shared CI build timeout and eight-project coverage lane.
-  evidence: Review R3-B6 (low; pre-existing), corrected in review round 4 (R4-B13). `docs/dev/release-runbook.md:45` still says "Seven Coverlet project reports" and `:50` says "a 20-minute build timeout". `CONTRIBUTING.md:506-507` says `shared-ci` calls `Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml` at `81c88b34d09d34260b92d7f0928dbbc1c7446baa` with "a 20-minute budget", while `.github/workflows/ci.yml:171` uses `6e7011fc754e74ac2a8864da1ce0b6d8f7178a48`. Those lines date from aa097b52 (Story 30.1). External commits 3d6e4662 (shared build timeout), 73510013 and 7e2e87e8 (which moved the `ci.yml` pin off 81c88b34 and then to 6e7011fc) and 246157a7 (eighth coverage project, DomainService.Tests) made them stale. Owner: Jérôme Piquot. Consequence: contributors read the wrong timeout, Builds workflow pin and coverage inventory. Reopen trigger: the next edit to the CI-ownership table or the CONTRIBUTING CI section.
+### DW-779: Align the pre-existing CI-ownership documentation with the current shared CI build timeout and eight-project coverage lane.
+
+origin: migrated from attended ledger ('Deferred from: code review of spec-30-4-five-image-publication-contract.md round 3 (2026-11-10)'), 2026-11-28
+location: CONTRIBUTING.md; docs/dev/release-runbook.md
+source_spec: `_bmad-output/implementation-artifacts/spec-30-4-five-image-publication-contract.md`
+severity: low
+reason: Review R3-B6 (low; pre-existing), corrected in review round 4 (R4-B13). `docs/dev/release-runbook.md:45` still says "Seven Coverlet project reports" and `:50` says "a 20-minute build timeout". `CONTRIBUTING.md:506-507` says `shared-ci` calls `Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml` at `81c88b34d09d34260b92d7f0928dbbc1c7446baa` with "a 20-minute budget", while `.github/workflows/ci.yml:171` uses `6e7011fc754e74ac2a8864da1ce0b6d8f7178a48`. Those lines date from aa097b52 (Story 30.1). External commits 3d6e4662 (shared build timeout), 73510013 and 7e2e87e8 (which moved the `ci.yml` pin off 81c88b34 and then to 6e7011fc) and 246157a7 (eighth coverage project, DomainService.Tests) made them stale. Owner: Jérôme Piquot. Consequence: contributors read the wrong timeout, Builds workflow pin and coverage inventory. Reopen trigger: the next edit to the CI-ownership table or the CONTRIBUTING CI section.
+status: done 2026-11-28
+resolution: 4c7cb7efb3ed918b3b8c3d09ef940186e511b278 (follow-up 7d7ca81c10b58960093fa806d39e6b2b8a69f103) — The docs now match the active Builds pin, execution SHA, 60-minute timeout, and nine-report Coverlet inventory. All 26 coverage fixtures and the source cross-check passed.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-4-five-image-publication-contract.md`
   summary: Establish whether the shared CI Builds workflow pin is meant to differ from the Builds publication qualification profile (unverified medium).
@@ -6019,6 +6039,7 @@ resolution: 1faf94b28d67ddbf888ae3b9172300be14eff01e (follow-up 39f8acaad2899f33
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-4-five-image-publication-contract.md`
   summary: Enroll the failed-retry and fresh-candidate producer integration proofs in normal CI execution (medium).
   evidence: R7-V1 pre-verified gap; SourceInventoryProducerIntegrationTests and ReferencedSourceProducerIntegrationTests have no Category=Integration trait on their classes, assembly or RedisStack collection, while CI filters by that category and unit-contract inventory excludes this project. Owner: Memories ingestion/test maintainer. Consequence: predecessor-status and coverage assertions can remain unexecuted while normal lanes pass. Reopen trigger: assign the integration category, register critical methods in tools/integration-fast-required-surfaces.txt, and retain passing required TRX records for the running/mismatched/fenced/tombstoned predecessor cases.
+  note: 2026-11-28 — Skipped. The proof is included in DW-731's eight-class enrollment and exact predecessor TRX catalog. This duplicate did not count toward the batch.
 
 - source_spec: `spec-30-4-five-image-publication-contract.md`
   summary: Make tracked annotation scheduling retries repair an accepted schedule instead of attempting the same workflow again (R8-B8).
@@ -6070,10 +6091,15 @@ resolution: 1faf94b28d67ddbf888ae3b9172300be14eff01e (follow-up 39f8acaad2899f33
   status: open
   evidence: Frozen D1 requires policy `Hexalith/Hexalith.Memories/recover-partial-release.yml/production`, with `vars.NUGET_USER`. Owner: Jérôme Piquot. Consequence: absent-package recovery refuses at NuGet/login until the policy exists; image/asset-only recovery can proceed. Reopen trigger: owner configures the policy and an explicitly authorized exact-source recovery login retains successful policy-bound proof. No policy setting or live login was attempted during implementation.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-30-5-partial-release-recovery.md`
-  summary: Verify the NuGet repository-signing ZIP-entry identity rule against real retained and nuget.org-served bytes.
-  status: open
-  evidence: Offline fixtures compare every original ZIP entry and permit only repository `.signature.p7s` addition; they are no live NuGet compatibility proof. Owner: Jérôme Piquot. Consequence: live signing compatibility remains unverified and no live recovery credit is claimed. Reopen trigger: an authorized read-only download comparison of a real retained nupkg with its nuget.org-served counterpart retains exact hashes and entry differences proving the rule; any mismatch requires an owner-reviewed identity decision.
+### DW-778: Verify the NuGet repository-signing ZIP-entry identity rule against real retained and nuget.org-served bytes.
+
+origin: migrated from attended ledger ('Deferred from: Story 30.5 remaining prerequisites and validation (2026-11-15)'), 2026-11-28
+location: docs/dev/release-runbook.md
+source_spec: `_bmad-output/implementation-artifacts/spec-30-5-partial-release-recovery.md`
+severity: medium
+reason: Offline fixtures compare every original ZIP entry and permit only repository `.signature.p7s` addition; they are no live NuGet compatibility proof. Owner: Jérôme Piquot. Consequence: live signing compatibility remains unverified and no live recovery credit is claimed. Reopen trigger: an authorized read-only download comparison of a real retained nupkg with its nuget.org-served counterpart retains exact hashes and entry differences proving the rule; any mismatch requires an owner-reviewed identity decision.
+status: done 2026-11-28
+resolution: 57ff19d1dd376002b3c6bacae47501760c644cdc (follow-up 679f0617f071dc12e61d7963ecdf91c3f3db812a) — An immutable v4.1.4 release receipt binds the retained Contracts package. Independent ZIP readers, the production comparator, and NuGet signature verification confirmed identical original entries and the repository signature as the sole added entry.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-30-5-partial-release-recovery.md`
   summary: Reconcile the existing committed Builds gitlink and qualification profile before broad release qualification can pass.
@@ -6127,8 +6153,10 @@ resolution: 1faf94b28d67ddbf888ae3b9172300be14eff01e (follow-up 39f8acaad2899f33
 
 ### DW-731: Sixty untagged IntegrationTests source methods have no automatic CI lane
 
+location: tests/Hexalith.Memories.IntegrationTests; tools/integration-fast-required-surfaces.txt
 - ID: 30.8-UNTAGGED-INTEGRATION
-- Status: open
+status: done 2026-11-28
+resolution: 448ac4b8b6a51de160d25d6d3b5416e926828283 — The exact hosted selector ran all 145 formerly omitted cases across eight classes. All 735 discovery identities matched TRX, with 731 passes and four existing skips. Removing either predecessor proof failed the coverage check.
 note: 2026-11-27 — Skipped. Automatic integration selection requires its own lane qualification, including the flaky producer case and exact discovered-versus-executed identities. Hosted lane ownership remains with Hexalith.CiCd.
 - Source story: 30.8 — Restore the orphaned Integration tests and guard CI lane selection
 - Target artifact: `tests/Hexalith.Memories.IntegrationTests/Fixtures/OllamaOidcFakeServerTests.cs` (11 methods), `Fixtures/PublicSurfaceStabilityTests.cs` (5), `Ingestion/InventoryWirePaginationIntegrationTests.cs` (1), `Ingestion/MemoryErasureProcessProtocolTests.cs` (5), `Ingestion/ReferencedSourceProducerIntegrationTests.cs` (4), `Ingestion/SourceInventoryProducerIntegrationTests.cs` (17), `Ingestion/TenantIngestionLifecycleIntegrationTests.cs` (5), `Ingestion/UnitOwnershipAuthorityIntegrationTests.cs` (12); all paths after the first share the IntegrationTests project root.
@@ -6209,18 +6237,26 @@ note: 2026-11-27 — Skipped. The 100K-unit workload certification, Story 34.39 
   summary: Close the Dapr built-in `kubernetes` secret-store path, which gives the memories, memories-mcp and access-telemetry sidecars Kubernetes Secret reads outside OpenBao and the secret allow-lists.
   evidence: Story 31.2 review finding Blind 1 (high, pre-existing deployment defect). At 2026-11-22T15:51:51Z an in-pod metadata-only request listed `kubernetes` / `secretstores.kubernetes` in memories-675fd5d64-5zqpv beside both Vault stores, and as the only secret store in memories-mcp-55d65d86d6-hh6mr. No tracked Configuration (`memories-config`, `memories-mcp-config`, lifecycle or clock) scopes `storeName: kubernetes`, so Dapr allows every name there. No workload sets `dapr.io/disable-builtin-k8s-secret-store`. The memories Role grants get on nine names, including `openbao-runtime-bootstrap`. No read through that store was attempted. Owner: Platform Operations / Memories Maintainer. Consequence: until this is closed, AC1's "outside the DAPR secret-store boundary" clause cannot hold, and the memories application can likely obtain the OpenBao runtime token through its own sidecar. Fix: disable the built-in store on every Dapr workload, or add a `kubernetes` deny scope to each Configuration, then apply and re-probe. Owner decision needed first: the base and production deployment files are PG-ONPREM-2 profile inputs, and component secretKeyRef resolution must be shown to survive the change. Reopen trigger: any change to Dapr workload annotations or Configuration secret scopes, or the next production overlay apply.
   note: 2026-11-27 — Skipped. Blocked on Platform Operations approval for PG-ONPREM-2 profile inputs and live component resolution proof.
+  note: 2026-11-28 — Skipped. Platform Operations approval and live component-reference verification are still required for PG-ONPREM-2 profile inputs.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-31-2-runtime-dapr-secret-store-migration.md`
   summary: Run the runtime secret-store probe regression test (`tests/tooling/runtime_secret_store/test_scope_probe.py`) in an automated lane, with a BusyBox that supports `nc -e` on PATH.
   evidence: Story 31.2 review (verification gap, medium). No workflow, hook or script discovers `tests/tooling/runtime_secret_store`, and no runner installs BusyBox. The test is the only guard against a return of the half-close transport that made daprd cancel permitted OpenBao reads during the 15:18Z live replay. The fix edits `.github/workflows/ci.yml`, which Hexalith.CiCd owns, so propose it there. Owner: Memories Maintainer, with Hexalith.CiCd. Reopen trigger: any change to `tools/probe-dapr-secret-scope.sh`, or the next live replay.
+  note: 2026-11-28 — Skipped. Hosted enrollment and BusyBox provisioning belong to Hexalith.CiCd.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-31-2-runtime-dapr-secret-store-migration.md`
   summary: Establish whether `tools/verify-access-telemetry-c1-linkage.ps1` hits the same daprd cancel-on-half-close defect through its `printf ... | nc -w 5 127.0.0.1 3500` request (unverified medium).
   evidence: Story 31.2 review (maybe-false). The 31.2 evidence shows that BusyBox nc half-closes at stdin EOF and that daprd then cancels an in-flight secret-store read. The linkage tool sends state requests the same way at line 316. It is parked under DW-730, so nothing runs it today. Settle by replaying its request against a local daprd with an outbound-backed store, or by switching to the `nc -e` transport used by the 31.2 probe. Owner: Story 27.3 / Memories Maintainer. Reopen trigger: DW-730's production-enablement trigger fires.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-five-deferred-tenant-isolation-diagnostics.md`
-  summary: Report incomplete Redis key coverage when a known cluster shard has no reachable primary.
-  evidence: The scanner proceeds with any connected primary and does not account for expected slot ownership. A cluster-topology check needs to distinguish missing shard coverage from a disconnected seed or a completed failover.
+### DW-774: Report incomplete Redis key coverage when a known cluster shard has no reachable primary.
+
+origin: migrated from attended ledger ('Deferred from the 2026-11-20 repository audit'), 2026-11-28
+location: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs
+source_spec: `_bmad-output/implementation-artifacts/spec-five-deferred-tenant-isolation-diagnostics.md`
+severity: medium
+reason: The scanner proceeds with any connected primary and does not account for expected slot ownership. A cluster-topology check needs to distinguish missing shard coverage from a disconnected seed or a completed failover.
+status: open
+note: 2026-11-28 — Skipped. A live three-primary Redis 7.4 test showed StackExchange.Redis 3.4.35 blocks current topology queries with AllowAdmin=false, and ConfigureAsync left a discovered primary’s migrating-slot view stale. A supported fresh read path is required to distinguish healthy, failover, and incomplete coverage.
 
 ### DW-737: Set a byte budget for individual stored values displayed in tenant isolation evidence.
 
@@ -6263,13 +6299,20 @@ resolution: 7f546eccb050674c5ccf65f5cea808431d38a234 — The Bash wrapper preser
 
 ## Deferred from: review of spec-ten-deferred-story-scope-hooks.md (2026-11-24)
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-ten-deferred-story-scope-hooks.md`
-  summary: Represent literal Git filenames in the story review-readiness File List.
-  evidence: A disposable repository proved C1 cannot represent a filename containing a literal newline or backslash, even when File Scope authorizes the parent glob. The Markdown path grammar needs a lossless representation for that case.
+### DW-775: Represent literal Git filenames in the story review-readiness File List.
+
+origin: migrated from attended ledger ('Deferred from: review of spec-ten-deferred-story-scope-hooks.md (2026-11-24)'), 2026-11-28
+location: tools/check-story-review-readiness.py; CONTRIBUTING.md; tests/tooling/story_review_readiness/story_artifact_resolution_test.py
+source_spec: `_bmad-output/implementation-artifacts/spec-ten-deferred-story-scope-hooks.md`
+severity: medium
+reason: A disposable repository proved C1 cannot represent a filename containing a literal newline or backslash, even when File Scope authorizes the parent glob. The Markdown path grammar needs a lossless representation for that case.
+status: done 2026-11-28
+resolution: b7f49e3396b5008508a075e4edece5c2d6a41046 — Canonical JSON path bullets preserve exact Git path identities in File List and Exclusions. All 15 local readiness tests and 22 story-scope controls passed.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-ten-deferred-story-scope-hooks.md`
   summary: Preserve literal Git filenames in the hosted story-scope job.
   evidence: The hosted job still sends Git's C-quoted, newline-delimited path list. A disposable reproduction showed the legacy parser reports a different path for a filename containing a newline. Hexalith.CiCd owns the workflow.
+  note: 2026-11-28 — Skipped. Local NUL-delimited inputs are covered by DW-775. Lossless hosted input and routine execution of the literal-filename regressions require a Hexalith.CiCd change.
 
 ## Deferred from review of spec-ten-deferred-projection-registry.md (2026-11-24)
 
@@ -6346,9 +6389,15 @@ reason: The verifier applies its deadline to its own wait while the actor receiv
 status: done 2026-11-28
 resolution: 51ed43854b3ac31a65054ace33842185e43bbb8a — The verifier propagates its deadline and caller cancellation through the typed Dapr actor request. All 176 focused tests and three focused Release checks passed, including foreign-marker rejection without mutation. An isolated Dapr 1.19.1 run observed cancellation at both HTTP hops and verified that a fresh follow-up filled the cache.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-six-deferred-bootstrap-graph-and-mapping.md`
-  summary: Verify and document first-index creation during mixed-version Memories rollouts.
-  evidence: Dapr Redis 1.19.1 rejects missing-ETag updates to rows marked FirstWrite. A running pre-fix writer can still create an index without the marker between an upgraded writer’s read and creation attempt. Existing rows with an ETag still use compare-and-save. Settle safe initialization while both versions can receive writes.
+### DW-777: Verify and document first-index creation during mixed-version Memories rollouts.
+
+origin: migrated from attended ledger ('Deferred from the review of the six-item bootstrap, graph, and mapping batch (2026-11-27)'), 2026-11-28
+location: docs/operations/upgrade-migration.md; tests/Hexalith.Memories.IntegrationTests/EventStore/DaprStateStoreLiveSidecarTests.cs
+source_spec: `_bmad-output/implementation-artifacts/spec-six-deferred-bootstrap-graph-and-mapping.md`
+severity: medium
+reason: Dapr Redis 1.19.1 rejects missing-ETag updates to rows marked FirstWrite. A running pre-fix writer can still create an index without the marker between an upgraded writer’s read and creation attempt. Existing rows with an ETag still use compare-and-save. Settle safe initialization while both versions can receive writes.
+status: done 2026-11-28
+resolution: 2b9e49bcf079034ffa12c59a20f523fff4dfb6a8 (follow-up f787262af2a6994cbd6fcef9c7f4a38fdb124737) — The live Dapr/Redis cases confirmed the mixed-writer failure and the ETag controls. The upgrade runbook records the paused-writer cutover and persisted canary. Thirteen live cases and ten runbook checks passed.
 
 ## Deferred from full test verification of the six-item batch (2026-11-27)
 
@@ -6480,18 +6529,46 @@ resolution: a6a277ff6fc794a8d408b6bfb783f59bc7bee6cd — Slim install and pre-re
 
 ## Deferred from review of test execution and verification follow-ups (2026-11-28)
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-deferred-test-execution-and-verification-follow-ups.md`
-  summary: Protect active test runs when results directories overlap by ancestry.
-  evidence: A run that owns reports can recursively remove reports/child while a separate POSIX invocation holds the child directory lease. Verify safe behavior in both start orders without changing same-directory lease semantics.
+### DW-771: Protect active test runs when results directories overlap by ancestry.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-deferred-test-execution-and-verification-follow-ups.md`
-  summary: Preserve PowerShell test failures when TRX or Cobertura output is missing.
-  evidence: PowerShell validates expected reports before reporting the native test failure. A dotnet exit of 37 with no TRX is reported as a missing-TRX error. Preserve available diagnostics and validate a successful run's report requirements.
+origin: migrated from attended ledger ('Deferred from review of test execution and verification follow-ups (2026-11-28)'), 2026-11-28
+location: tools/prepare-test-results.py; tests/tooling/integration_fast_coverage/test_runner_test.py
+source_spec: `_bmad-output/implementation-artifacts/spec-deferred-test-execution-and-verification-follow-ups.md`
+severity: high
+reason: A run that owns reports can recursively remove reports/child while a separate POSIX invocation holds the child directory lease. Verify safe behavior in both start orders without changing same-directory lease semantics.
+status: done 2026-11-28
+resolution: b37b7ca87aa4d8b38c1ff45c2eef0f78fadc1ffb — Shared POSIX ancestor leases and an exclusive destination lease prevent damage in both overlap orders and allow disjoint runs. The focused suite passed 27 tests and the NTFS WSL-to-WSL probe passed. Native and mixed execution follow-up is DW-780.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-deferred-test-execution-and-verification-follow-ups.md`
-  summary: Distinguish absent Dapr containers from Docker pre-cleanup failures.
-  evidence: The bootstrap tolerates non-timeout docker rm failures for absent containers. It also discards daemon and permission failures. Preserve legitimate first-run behavior and retain operational diagnostics when cleanup fails.
+### DW-772: Preserve PowerShell test failures when TRX or Cobertura output is missing.
+
+origin: migrated from attended ledger ('Deferred from review of test execution and verification follow-ups (2026-11-28)'), 2026-11-28
+location: tools/test.ps1; tests/tooling/integration_fast_coverage/test_runner_test.py
+source_spec: `_bmad-output/implementation-artifacts/spec-deferred-test-execution-and-verification-follow-ups.md`
+severity: medium
+reason: PowerShell validates expected reports before reporting the native test failure. A dotnet exit of 37 with no TRX is reported as a missing-TRX error. Preserve available diagnostics and validate a successful run's report requirements.
+status: done 2026-11-28
+resolution: 7073b4ea5767cfc010409f07296b87223c17294e (follow-up 453c7b0a5e41468b3e04820b2aa5fbcbd97a73df, 10cc6518188e715c66a527fddda4f4cef2ff0661) — The wrapper retains the native failure and publishes partial evidence. Successful results require valid XML and real TRX counters, and explicitly failed TRX cannot pass. Focused Linux and native Windows regressions passed.
+
+### DW-773: Distinguish absent Dapr containers from Docker pre-cleanup failures.
+
+origin: migrated from attended ledger ('Deferred from review of test execution and verification follow-ups (2026-11-28)'), 2026-11-28
+location: tools/init-dapr-runtime.sh; tests/tooling/integration_fast_coverage/dapr_runtime_test.py
+source_spec: `_bmad-output/implementation-artifacts/spec-deferred-test-execution-and-verification-follow-ups.md`
+severity: medium
+reason: The bootstrap tolerates non-timeout docker rm failures for absent containers. It also discards daemon and permission failures. Preserve legitimate first-run behavior and retain operational diagnostics when cleanup fails.
+status: done 2026-11-28
+resolution: c546d436a042e38f099050f45fc2a86eee95f2d0 (follow-up c78d08f0bd0d66d83b4b633049fdc0c454837434) — Exact legacy absence is tolerated, and other failures preserve Docker diagnostics and stop startup. A fault-injected EXIT cleanup retains the primary status. All 12 Dapr tooling tests and an isolated Docker CLI protocol probe passed.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-deferred-test-execution-and-verification-follow-ups.md`
   summary: Run the native Windows results cleanup and lease regressions in routine verification.
   evidence: The checked-in discovery lane runs on Ubuntu and the native fixture skips there. The native Windows tests passed locally. Automated Windows enrollment belongs to Hexalith.CiCd.
+  note: 2026-11-28 — Skipped. Native smoke checks ran locally. Hosted Windows runner enrollment belongs to Hexalith.CiCd.
+
+### DW-780: Protect active overlapping results runs on native Windows and mixed Windows/WSL checkouts.
+
+origin: focused review of DW-771, 2026-11-28
+location: tools/prepare-test-results.ps1; tools/prepare-test-results.py; tests/tooling/integration_fast_coverage/test_runner_test.py
+source_spec: `_bmad-output/implementation-artifacts/spec-dw-771-results-ancestry.md`
+severity: high
+reason: On NTFS a native or mixed descendant can occupy an active ancestor's report path. A native Windows ancestor also deleted a WSL descendant's sentinel before refusing. Verify fail-before-cleanup in both start orders with native and mixed ownership, preserve same-directory lease behavior and independently usable sibling destinations, and exercise recovery after the owning process exits.
+status: open
