@@ -81,12 +81,6 @@ public sealed partial class EventIngestionPipelineIntegrationTests
         description[5].ToString().ShouldNotBeNullOrWhiteSpace();
         description[6].ToString().ShouldBe("ai");
 
-        var graph = new FalkorDB(_fixture.FalkorDbConnection.GetDatabase()).SelectGraph(tenantId);
-        ResultSet graphResult = await graph.QueryAsync(
-            "MATCH (unit:MemoryUnit {id: $id}) RETURN unit.isStub AS isStub",
-            new Dictionary<string, object> { ["id"] = unit.MemoryUnitId }).WaitAsync(token);
-        graphResult.ShouldHaveSingleItem().GetValue<bool>("isStub").ShouldBeFalse();
-
         string workflow = Uri.EscapeDataString(DedupKeyBuilder.BuildKey(tenantId, caseId, eventId));
         while (true)
         {
@@ -103,6 +97,13 @@ public sealed partial class EventIngestionPipelineIntegrationTests
 
             await Task.Delay(TimeSpan.FromMilliseconds(50), token);
         }
+
+        // Graph and semantic activities complete independently before the workflow completes.
+        var graph = new FalkorDB(_fixture.FalkorDbConnection.GetDatabase()).SelectGraph(tenantId);
+        ResultSet graphResult = await graph.QueryAsync(
+            "MATCH (unit:MemoryUnit {id: $id}) RETURN unit.isStub AS isStub",
+            new Dictionary<string, object> { ["id"] = unit.MemoryUnitId }).WaitAsync(token);
+        graphResult.ShouldHaveSingleItem().GetValue<bool>("isStub").ShouldBeFalse();
     }
 
     [Fact]
