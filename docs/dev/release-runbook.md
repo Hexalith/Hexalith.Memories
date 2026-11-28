@@ -1038,12 +1038,101 @@ tag read.
     and the incident; the owner investigates the destination. Never overwrite or delete the member.
   - Registry immutability/race policy: obtain authoritative server-policy evidence before claiming
     protection against a concurrent writer; the terminal client probe cannot prove atomic exclusion.
-  - NuGet ZIP-entry/signing compatibility: fixtures exercise the signing-entry rule; a real signed
-    package-to-retained-asset comparison remains unverified. The owner retains that read-only proof
-    before claiming live compatibility. These fixtures supply no live publication qualification.
 - `tools/publish-release.ps1` writes the cross-family audit record to
   `artifacts/release/publish-summary.json`. The release workflow uploads that aggregate summary and
   its child summaries even on failure, and creates one reconciliation issue for an aggregate
   `partial-publish` state.
 - If exact-source push CI reports a test failure, investigate the failing CI lane and rerun that lane after a fix. A failed or missing exact-source `ci.yml` run blocks dispatch.
 - Never print, copy, or store the `NUGET_API_KEY` value in logs, docs, screenshots, or repo files.
+
+### NuGet repository-signing readback (DW-778)
+
+On 2026-11-28, a read-only comparison of `Hexalith.Memories.Contracts` `4.1.4` found that
+NuGet.org added only `.signature.p7s` (12,983 bytes). All six original ZIP entries had identical
+uncompressed bytes. The lists of removed and changed entries were both empty. Recovery's
+`package_entries` comparator agreed, and `dotnet nuget verify --all` verified a NuGet.org
+repository signature whose content hash matched the retained package's SHA-512. [NuGet package](https://www.nuget.org/packages/Hexalith.Memories.Contracts/4.1.4)
+
+The v4.1.4 tag and successful release attempt 1 point to commit
+`e5e3be99157db3a843c6e714a3b9b4bf1d55aa2a`. This newer release supplies the pre-publication
+`release/package-identity.json` receipt. Both downloaded artifact ZIPs matched GitHub's SHA-256
+digests and expire on 2027-02-25. [Release run 45980814935](https://github.com/Hexalith/Hexalith.Memories/actions/runs/45980814935)
+
+| Input | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `release-packages` ZIP, artifact `15190267812` | 3,290,185 | `ba01a0fbfd179fdfb63c14b2032f11c3c9442d87ae3f0221ec4bb1cfc741093c` |
+| `release-publication-evidence` ZIP, artifact `15189689322` | 168,488 | `95569b0a148da097a79065146c8849d50fed4973cfedeb432fc514c0406b0b88` |
+| Retained `.nupkg`, matching the release receipt | 366,760 | `afef3a4dd855335880443e9d65f36db59a11f28cff02a7fac9bd6ff5a7931969` |
+| NuGet-served `.nupkg`, matching NuGet's `x-ms-meta-sha512` response header | 379,847 | `d05bd7a7df86023b50173f2d49d2d36d661a1ef83005a180155053114ec714d0` |
+| Added `.signature.p7s` (uncompressed) | 12,983 | `01b7ae4d2b6186c59fa9edd9f515d1bbae6eb46b7a30695b54c4b14f216ec1a8` |
+
+The owner workspace retains both archives, both packages, the receipt, the signature verification
+output, and per-entry hashes in `artifacts/release/dw-778-nuget-signing-identity/`. To repeat the
+comparison from the repository root, check the emitted SHA-256 digests against the table. The
+commands use the preserved archives when available and authenticated `gh` otherwise.
+
+```bash
+run-with-temp bash -euo pipefail <<'BASH'
+evidence=artifacts/release/dw-778-nuget-signing-identity
+for artifact in 15190267812 15189689322; do
+  if test -r "$evidence/$artifact.zip"; then
+    cp "$evidence/$artifact.zip" "$TMPDIR/$artifact.zip"
+  else
+    gh api "repos/Hexalith/Hexalith.Memories/actions/artifacts/$artifact/zip" > "$TMPDIR/$artifact.zip"
+  fi
+done
+sha256sum "$TMPDIR/15190267812.zip" "$TMPDIR/15189689322.zip"
+url=https://api.nuget.org/v3-flatcontainer/hexalith.memories.contracts/4.1.4/hexalith.memories.contracts.4.1.4.nupkg
+status=$(curl --fail --silent --show-error --dump-header "$TMPDIR/headers" \
+  --output "$TMPDIR/served.nupkg" --write-out '%{http_code}' "$url")
+test "$status" = 200
+python3 -B - "$TMPDIR" <<'PY'
+import base64
+import hashlib
+import json
+import runpy
+import sys
+from pathlib import Path
+from zipfile import ZipFile
+
+work = Path(sys.argv[1])
+retained = work / "retained.nupkg"
+served = work / "served.nupkg"
+name = "Hexalith.Memories.Contracts.4.1.4.nupkg"
+with ZipFile(work / "15190267812.zip") as archive:
+    retained.write_bytes(archive.read(name))
+with ZipFile(work / "15189689322.zip") as archive:
+    receipt = json.loads(archive.read("release/package-identity.json"))
+assert receipt["sourceSha"] == "e5e3be99157db3a843c6e714a3b9b4bf1d55aa2a"
+assert receipt["version"] == "4.1.4"
+record, = (item for item in receipt["packages"] if item["file"] == name)
+assert record["id"] == "Hexalith.Memories.Contracts"
+retained_bytes = retained.read_bytes()
+assert record["sha256"] == hashlib.sha256(retained_bytes).hexdigest()
+assert record["size"] == len(retained_bytes)
+served_sha512 = base64.b64encode(hashlib.sha512(served.read_bytes()).digest()).decode()
+headers = (line.partition(":") for line in (work / "headers").read_text().splitlines())
+assert any(key.lower() == "x-ms-meta-sha512" and value.strip() == served_sha512
+           for key, _, value in headers)
+
+def zip_entries(path):
+    with ZipFile(path) as archive:
+        entries = {info.filename: archive.read(info) for info in archive.infolist()}
+        assert len(entries) == len(archive.infolist())
+        return entries
+
+before, after = zip_entries(retained), zip_entries(served)
+added = sorted(after.keys() - before.keys())
+removed = sorted(before.keys() - after.keys())
+changed = sorted(name for name in before.keys() & after.keys() if before[name] != after[name])
+print(f"Added {added}, removed {removed}, changed {changed}")
+assert added == [".signature.p7s"] and not removed and not changed
+package_entries = runpy.run_path("tools/container-publication-contract.py")["package_entries"]
+assert package_entries(retained) == package_entries(served)
+PY
+sha256sum "$TMPDIR/retained.nupkg" "$TMPDIR/served.nupkg"
+dotnet nuget verify --all "$TMPDIR/served.nupkg" | tee "$TMPDIR/verification"
+retained_sha512=$(openssl dgst -sha512 -binary "$TMPDIR/retained.nupkg" | base64 -w 0)
+grep -Fx "Content hash: $retained_sha512" "$TMPDIR/verification"
+BASH
+```
