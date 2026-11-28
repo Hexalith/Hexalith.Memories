@@ -516,7 +516,7 @@ The scheduled `.github/workflows/nightly.yml` workflow remains the Tier 3 slow i
 
 Build and test lanes initialize root-declared submodules under `references/` and use the SDK from `global.json`.
 `shared-ci` calls `Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml` at
-`87d45477c16fef2b3db706d2531e1cf3ff98640f`, with a matching `builds-execution-sha` and
+`aebabdadadffa108801992253c7910f37437b115`, with a matching `builds-execution-sha` and
 `build-timeout-minutes` set to `60`. The shared shard uses `microsoft-testing-platform` and selects
 only `Contracts.Tests`, with empty integration and Aspire selections. Shared consumer validation
 and coverage stay disabled. Contracts runs in both lanes until collector/report equivalence is

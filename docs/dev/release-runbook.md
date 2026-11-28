@@ -64,7 +64,7 @@ aggregate, required-check semantics and remote branch-protection settings.
 
 | Previous owner | Current owner and check | Evidence / retained behavior | Rollback |
 | --- | --- | --- | --- |
-| Local Release portion of `build` | `shared-ci / build-and-test`, Builds `domain-ci.yml@87d45477c16fef2b3db706d2531e1cf3ff98640f` | Release restore/build with warnings as errors and an explicit Contracts MTP shard. `blocking-test-results` retained for seven days | Restore local Release steps from the baseline below |
+| Local Release portion of `build` | `shared-ci / build-and-test`, Builds `domain-ci.yml@aebabdadadffa108801992253c7910f37437b115` | Release restore/build with warnings as errors and an explicit Contracts MTP shard. `blocking-test-results` retained for seven days | Restore local Release steps from the baseline below |
 | Local Debug/source portion of `build` | `source-debug` | Debug source graph; at least three catalog tests, none failed/errors/skipped/not-run; `source-catalog-verification` XML uploaded even after test failure | Restore the original combined build job |
 | Required `build` status | Always-run local aggregate | Requires success from both shared and source jobs; unsuccessful/skipped/cancelled/unknown dependencies fail | Restore the original combined build job, preserving the `build` name |
 | Unit/contract and package validation | Local `test-unit-contract` | Nine per-project Coverlet reports, 76.5% line coverage gate and package topology validation. `test-unit-contract-results` retained for 14 days | Retain unchanged |
@@ -98,7 +98,7 @@ settings observed at the time. Story 30.1 made no remote settings changes.
 ## Current Release Contract
 
 - An operator dispatches `.github/workflows/release.yml` from the current `main` tip. Normal pushes run CI and never publish. The source job proves the selected SHA is the live main tip with a successful completed `ci.yml` push run for that exact SHA, and checks that the production environment has required reviewers and a branch deployment policy. Administrator approval bypass is permitted when enabled in the environment settings. The protected `production` job runs only after that proof succeeds; it reads back protection again before publication.
-- The production job calls pinned `prepare-domain-release@87d45477c16fef2b3db706d2531e1cf3ff98640f` with the identical `builds-execution-sha` and `expected-package-count: 10`. It restores and builds; only when publication is enabled does it then repeat the exact-source CI proof, because a frozen run exits its publish gate before that repeat. The caller validates the package manifest, checks local/remote tag and every versioned package/image destination, then reproves source immediately before OIDC login and `npx semantic-release`. Application tests are owned by exact-source CI and are not repeated in release. Semantic-release then drives the prepare, publish, and post-publish
+- The production job calls pinned `prepare-domain-release@aebabdadadffa108801992253c7910f37437b115` with the identical `builds-execution-sha` and `expected-package-count: 10`. It restores and builds; only when publication is enabled does it then repeat the exact-source CI proof, because a frozen run exits its publish gate before that repeat. The caller validates the package manifest, checks local/remote tag and every versioned package/image destination, then reproves source immediately before OIDC login and `npx semantic-release`. Application tests are owned by exact-source CI and are not repeated in release. Semantic-release then drives the prepare, publish, and post-publish
   phases through its plugin chain —
   `pack-release.ps1` and
   `publish-release.ps1` are not invoked as separate workflow steps; they are invoked by
@@ -305,7 +305,7 @@ workflow contract tests in the same pull request.
 full-SHA identity. The same rule covers any job, in any workflow, that holds `contents: write`,
 `id-token: write` or `write-all`, whether declared on the job, inherited from the workflow, or
 received from the repository default token. Hexalith.Builds actions run at the approved execution
-pin `87d45477c16fef2b3db706d2531e1cf3ff98640f`, never `@main`. Each third-party action runs at the
+pin `aebabdadadffa108801992253c7910f37437b115`, never `@main`. Each third-party action runs at the
 commit its major tag resolved to on 2026-11-16, and the line carries that tag as a comment:
 
 | Action | Tag | Pinned SHA |

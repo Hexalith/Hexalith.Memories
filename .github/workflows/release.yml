@@ -49,7 +49,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Hexalith/Hexalith.Builds
-          ref: 87d45477c16fef2b3db706d2531e1cf3ff98640f
+          ref: aebabdadadffa108801992253c7910f37437b115
           path: .hexalith/builds-execution
           persist-credentials: false
           submodules: false
@@ -91,10 +91,10 @@ jobs:
 
       - name: Prepare guarded release from pinned Builds
         id: prepare
-        uses: Hexalith/Hexalith.Builds/Github/prepare-domain-release@87d45477c16fef2b3db706d2531e1cf3ff98640f
+        uses: Hexalith/Hexalith.Builds/Github/prepare-domain-release@aebabdadadffa108801992253c7910f37437b115
         with:
           solution: Hexalith.Memories.slnx
-          builds-execution-sha: 87d45477c16fef2b3db706d2531e1cf3ff98640f
+          builds-execution-sha: aebabdadadffa108801992253c7910f37437b115
           expected-package-count: '10'
           package-manifest: tools/release-packages.json
           source-ci-workflow: ci.yml

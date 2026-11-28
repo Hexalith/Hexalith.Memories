@@ -69,7 +69,7 @@ class ReleaseDispatchTests(unittest.TestCase):
 
 
     def test_release_pin_is_approved_and_profile_tracks_the_gitlink(self):
-        approved = "87d45477c16fef2b3db706d2531e1cf3ff98640f"
+        approved = "aebabdadadffa108801992253c7910f37437b115"
         self.assertEqual(approved, self.source.APPROVED_BUILDS_SHA)
         self.assertEqual(approved, self.destination.APPROVED_BUILDS_SHA)
         profile = json.loads((ROOT / "tools/builds-publication-qualification.json").read_text(encoding="utf-8"))

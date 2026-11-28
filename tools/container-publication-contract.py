@@ -24,7 +24,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 
-APPROVED_BUILDS_SHA = "87d45477c16fef2b3db706d2531e1cf3ff98640f"
+APPROVED_BUILDS_SHA = "aebabdadadffa108801992253c7910f37437b115"
 # Keep previous release revisions available for recovery of their retained artifacts.
 RECOVERY_BUILDS_SHAS = {
     "81c88b34d09d34260b92d7f0928dbbc1c7446baa",
@@ -32,6 +32,7 @@ RECOVERY_BUILDS_SHAS = {
     "38e038d1179b1c829ba47a45bfa0a4683ea5e2a5",
     "b80f3e85fc803f71bf7b2809965db0aceafdc3c5",
     APPROVED_BUILDS_SHA,
+    "87d45477c16fef2b3db706d2531e1cf3ff98640f",
     "62876129eaa035e78bd0324419231f07d43a07b8",
 }
 PLATFORMS = ["linux/amd64", "linux/arm64"]
