@@ -5266,9 +5266,15 @@ resolution: 8761278acccc0190a11ff92d84ed41f16a6e71a8 (follow-up b81c111e167bb9d0
   evidence: Concurrent `DaprApplicationTokenMiddleware` change. Restrict the bypass to test/Development, or document and test missing-overlay vs env fallback.
   note: 2026-11-27 — Skipped. Already resolved for Production. The middleware ignores the override there and DaprTokenStartupValidator rejects configured overrides at startup. Existing tests prove both outcomes.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-31-1-openbao-platform-hardening-and-documentation-2.md`
-  summary: `DaprTokenEnvironmentCollection` comment and duplicate `UseSetting` paths disagree with the overlay design.
-  evidence: Concurrent Dapr test-host work. Align the comment, use the collection name constant, and keep a single configuration path.
+### DW-770: `DaprTokenEnvironmentCollection` comment and duplicate `UseSetting` paths disagree with the overlay design.
+
+origin: migrated from attended ledger ('Deferred from: code review of 31-1-openbao-platform-hardening-and-documentation.md (2026-09-07)'), 2026-11-28
+location: tests/Hexalith.Memories.Server.Tests/Authentication/DaprTokenEnvironmentCollection.cs; tests/Hexalith.Memories.Server.Tests/EventStoreIntegration/EventStoreWebAppFactory.cs; tests/Hexalith.Memories.Server.Tests/Telemetry/AccessTelemetryLifecycle/AccessTelemetryDaprHttpClientFactoryTests.cs; tests/Hexalith.Memories.Server.Tests/Telemetry/AccessTelemetryLifecycle/AccessTelemetryQualificationWorkloadTests.cs
+source_spec: `_bmad-output/implementation-artifacts/spec-31-1-openbao-platform-hardening-and-documentation-2.md`
+severity: low
+reason: Concurrent Dapr test-host work. Align the comment, use the collection name constant, and keep a single configuration path.
+status: done 2026-11-28
+resolution: b5ffa821ab2d058db06d0ff52122126e0a3e6e1e — The EventStore test factory uses one Development-only token override and token-mutating telemetry tests reference the shared collection name. A source Debug build and 92 focused tests passed with inherited synthetic app and sidecar tokens. Review fixes bdba7a74 passed focused checks.
 
 ### DW-753: `tools/init-dapr-runtime.sh` starts placement/scheduler without waiting for ports 50005/50006.
 
@@ -5374,16 +5380,21 @@ decision: 2026-11-01 keep-open — parked. Reopens only on the trigger: any Prod
   summary: Validate complete selected-Pod schema before non-Running observations are filtered away.
   Evidence: Root independently reproduced null phase, invalid phase string and Pending missing name beside a valid Running Pod returning observed on both baseline 905e6628 and the corrected collector. The pre-existing phase filter ignores those malformed siblings. Current real selected identities were independently complete and typed; no captured gate authority is broadened. Exact synthetic results: `/tmp/c1-15-review3-root-finding-verification.log`.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-27-21-runtime-control-plane-identity-6.md`
-  ID: 27.21-C1.15-DAPR-SCALAR-TYPES
-  Status: open
-  Source story: 27-21-runtime-and-control-plane-identity
-  Target artifact: tools/verify-access-telemetry-c1.ps1; tests/tooling/access_telemetry_c1/runtime_control_plane_identity_test.py
-  Owner: Deployment Adapter Developer
-  Re-open trigger: the next Dapr metadata raw-type maintenance change.
-  Acceptance criteria: require actual JSON strings for metadata id/runtimeVersion before casting; negative regressions reject singleton arrays and other scalar/root types without exposing secrets, hashing rejected metadata or continuing the alpha probe.
-  summary: Reject singleton-array Dapr scalar identity values before PowerShell comparison casts.
-  Evidence: Root independently reproduced id and runtimeVersion singleton arrays returning an observed packet on both baseline 905e6628 and current source. The casts are pre-existing; this is separate from Pod raw-type follow-up 27.21-C1.15-RAW-IDENTITY-TYPES. Current real Dapr values were independently observed as strings. Exact synthetic results: `/tmp/c1-15-review3-root-finding-verification.log`.
+### DW-767: Reject singleton-array Dapr scalar identity values before PowerShell comparison casts.
+
+origin: migrated from attended ledger ('Deferred from: Story 27.21 final framed review (2026-10-04)'), 2026-11-28
+location: tools/verify-access-telemetry-c1.ps1; tests/tooling/access_telemetry_c1/runtime_control_plane_identity_test.py
+source_spec: `_bmad-output/implementation-artifacts/spec-27-21-runtime-control-plane-identity-6.md`
+severity: medium
+reason: Root independently reproduced id and runtimeVersion singleton arrays returning an observed packet on both baseline 905e6628 and current source. The casts are pre-existing; this is separate from Pod raw-type follow-up 27.21-C1.15-RAW-IDENTITY-TYPES. Current real Dapr values were independently observed as strings. Exact synthetic results: `/tmp/c1-15-review3-root-finding-verification.log`.
+status: done 2026-11-28
+resolution: 188e3a455d441d5cc7c6fd3e1e1f403e958000df — Legacy C1.15 requires string id and runtimeVersion values before comparison and hashing. Ten malformed identity cases and a valid fixture passed, and three focused PG2 tests confirmed the existing version pin and diagnostics.
+legacy-id: 27.21-C1.15-DAPR-SCALAR-TYPES
+source-story: 27-21-runtime-and-control-plane-identity
+previous-location: tools/verify-access-telemetry-c1.ps1; tests/tooling/access_telemetry_c1/runtime_control_plane_identity_test.py
+owner: Deployment Adapter Developer
+re-open-trigger: the next Dapr metadata raw-type maintenance change.
+acceptance-criteria: require actual JSON strings for metadata id/runtimeVersion before casting; negative regressions reject singleton arrays and other scalar/root types without exposing secrets, hashing rejected metadata or continuing the alpha probe.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-27-21-runtime-control-plane-identity-6.md`
   ID: 27.21-C1.15-CONTAINER-INSTANCE-DRIFT
@@ -5488,9 +5499,15 @@ decision: 2026-11-01 keep-open — parked. Reopens only on the trigger: any Prod
   summary: bmad-build, the official implementation route, has no `_bmad/custom/bmad-build*.toml`, so `story-scope-guard.md`, `story-phase-ledger.md`, `epic-ac-verification.md` and `remediation-runtime-checklist.md` never load when it authors or implements a spec.
   evidence: Every Story 27.4 spec (four, since 2026-09-02) lacks a Change Log, File List, Historical Context Classification, Slice Proof, checkpoint table and Epic AC Verification section; `tools/check-story-slice-scope.py --require-record` exits 1 on the reviewed change set. Fix edits customization files and the resolver fixture (`tests/tooling/bmad_customization/bmad_customization_test.py`), so it is out of review scope. Owner: BMAD process maintainer. Reopen trigger: wire the four policies into bmad-build (and bmad-build-auto) the same way the story-authoring routes are wired, then extend the fixture.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-4.md`
-  summary: `tools/check-story-review-readiness.py:771` resolves a sprint story key only to `<key>.md` or `spec-<key>.md`, so numbered follow-up specs (`spec-<key>-2.md` and later) are never selected by story key and the gate no-ops green on the original spec.
-  evidence: 2026-10-06: `--story-key 27-4-retention-verification-operations-runbook-and-a41-close-out` selected the 2026-09-02 spec and printed `Artifact carries no ledger, File List, or evidence table; check is a no-op.` (exit 0). Pre-existing tooling limitation. Owner: BMAD process maintainer. Reopen trigger: the gate selects the latest active numbered spec for a key (or fails closed on ambiguity), with tests under `tests/tooling/`.
+### DW-768: `tools/check-story-review-readiness.py:771` resolves a sprint story key only to `<key>.md` or `spec-<key>.md`, so numbered follow-up specs (`spec-<key>-2.md` and later) are never selected by story key and the gate no-ops green on the original spec.
+
+origin: migrated from attended ledger ('Deferred from: code review of spec-27-4-retention-verification-operations-runbook-and-a41-close-out-4.md (2026-10-06)'), 2026-11-28
+location: tools/check-story-review-readiness.py; tests/tooling/story_review_readiness/story_artifact_resolution_test.py
+source_spec: `_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-4.md`
+severity: medium
+reason: 2026-10-06: `--story-key 27-4-retention-verification-operations-runbook-and-a41-close-out` selected the 2026-09-02 spec and printed `Artifact carries no ledger, File List, or evidence table; check is a no-op.` (exit 0). Pre-existing tooling limitation. Owner: BMAD process maintainer. Reopen trigger: the gate selects the latest active numbered spec for a key (or fails closed on ambiguity), with tests under `tests/tooling/`.
+status: done 2026-11-28
+resolution: 6392ab48e5ae668db0e87edd7c537c6a7f535290 — Explicit sprint story keys select the latest active numbered specification, with same-revision ambiguity refused and exact pins preserved. Five focused and 22 adjacent tests passed. Historical Story 27.4 reran C1 against active revision 4 and rejected an out-of-scope change the baseline missed.
 
 ## Deferred from: second-pass review patch application of spec-27-4-retention-verification-operations-runbook-and-a41-close-out-4.md (2026-10-06)
 
@@ -5503,9 +5520,16 @@ decision: 2026-11-01 keep-open — parked. Reopens only on the trigger: any Prod
 - source_spec: `_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-4.md`
   summary: The `b7a4377a` recompile of `epic-27-context.md` also dropped content that the existing Technical Decisions deferral does not list. The losses are: Requirements scope "Search, ingestion, mutation, and rejected access" (now "search/access operations"), the "malformed" tenant-scope fail-closed case, startup qualification/configuration fail-closed, the short-expiry-window crossing, the PostgreSQL pod/process zero-loss bound, and the Dapr-only lifecycle sentences.
   evidence: `git diff ed4528d5 -- _bmad-output/implementation-artifacts/epic-27-context.md` shows each removed line. `docs/dev/adr-27.1-001-access-telemetry-lifecycle.md` still carries the decisions (for example `:133`, `:166`, `:235`). bmad-build step-01 loads a valid epic context instead of the raw planning docs, so agents lose them. This is an agent-context file, so the fix is deferred. Settle it by recompiling or diffing against the ADR and architecture spine together with the earlier Technical Decisions deferral.
-- source_spec: `_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-4.md`
-  summary: `tools/check-story-review-readiness.py:83` `VALID_STATUSES` lacks bmad-build's `in-review` status, so a bmad-build spec under review fails C3 and skips the C1 File List comparison.
-  evidence: 2026-10-06: the `--story-key spec-27-4-…-close-out-4 --changed-files-file <21 paths>` run exited 1 with `C3: status 'in-review' is not one of backlog, ready-for-dev, in-progress, review, done.` and `C1: status 'in-review' is outside {in-progress, review}; cumulative-diff comparison skipped.` The same bytes with `in-progress` pass. This is a pre-existing vocabulary mismatch between bmad-build (draft/ready-for-dev/in-progress/in-review/done) and the gate. Owner: BMAD process maintainer.
+### DW-769: `tools/check-story-review-readiness.py:83` `VALID_STATUSES` lacks bmad-build's `in-review` status, so a bmad-build spec under review fails C3 and skips the C1 File List comparison.
+
+origin: migrated from attended ledger ('Deferred from: patch-application review of spec-27-4-retention-verification-operations-runbook-and-a41-close-out-4.md (2026-10-06)'), 2026-11-28
+location: tools/check-story-review-readiness.py; tests/tooling/story_review_readiness/story_artifact_resolution_test.py; CONTRIBUTING.md
+source_spec: `_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-4.md`
+severity: medium
+reason: 2026-10-06: the `--story-key spec-27-4-…-close-out-4 --changed-files-file <21 paths>` run exited 1 with `C3: status 'in-review' is not one of backlog, ready-for-dev, in-progress, review, done.` and `C1: status 'in-review' is outside {in-progress, review}; cumulative-diff comparison skipped.` The same bytes with `in-progress` pass. This is a pre-existing vocabulary mismatch between bmad-build (draft/ready-for-dev/in-progress/in-review/done) and the gate. Owner: BMAD process maintainer.
+status: done 2026-11-28
+resolution: 5ca990742d4920e06fd520838da5fcb8d6804827 — BMAD in-review runs the same File List, phase ledger and evidence gates as review and agrees with the canonical sprint status. Five new CLI cases and the complete 10-test readiness suite passed. Review fixes 408a2064 passed focused checks.
+
 - source_spec: `_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-4.md`
   summary: The Story 27.22 deferred-work entries added in `f5beeed5`/`8b9d87ab`/`b969cf32` are missing spaces, with run-together tokens such as "Story27.4", "Story27.22", "exit0" and "identity20/20". A search for "Story 27.4" therefore misses their no-credit disclaimers.
   evidence: `grep -c 'Story27\.' _bmad-output/implementation-artifacts/deferred-work.md` returns 6 (2026-10-06). The text is pre-existing Story 27.22 ledger text that Story 27.4 must not modify. Owner: Story 27.22 owner (Deployment Adapter Developer).
@@ -5541,13 +5565,20 @@ resolution: eac9d4aa3c9218e60ca8c1e6a8450be788791346 (follow-up 98cd0d5998c624fc
   evidence: V1: .github/workflows/ci.yml:297 discovers access_telemetry_c1 only; its fake transport manufactures normalized clientAddr values. The real valid-session and old-inet-projection regression tests are in the separate manual access_telemetry_c1_sql_contract lane. A restored a.client_addr::text projection can pass CI fixtures while refusing valid actual IPv4 sessions. This predates the Story 27.4 resumption. Reopen with automated isolated discovery and documented Docker/PowerShell/OpenSSL/pinned-image setup, proving the real projection mutation fails the gate.
   note: 2026-11-27 — Skipped. Already enrolled. The access-telemetry-sql-contract CI job pulls the approved PostgreSQL child and discovers the real SQL suite, including the old-projection regression.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-4.md`
-  summary: Deployment Adapter Developer owns a regression proving C1.16 source drift after target observation blocks positive publication.
-  evidence: V2: linkage_test.py's existing drift fixtures change sources before contact, while the SQL-contract lane imports selected functions and never runs the final collector publication path. Removing the final Assert-LinkageSourcesStable call at tools/verify-access-telemetry-c1-linkage.ps1:885 is not caught by those tests. This predates the Story 27.4 resumption. Reopen with a copied-input mutation after an observed target call that asserts the drift blocker, null observations and neutral gate fields.
+### DW-765: Deployment Adapter Developer owns a regression proving C1.16 source drift after target observation blocks positive publication.
+
+origin: migrated from attended ledger ('Deferred from: offline resumption review of spec-27-4-retention-verification-operations-runbook-and-a41-close-out-4.md (2026-10-07)'), 2026-11-28
+location: tests/tooling/access_telemetry_c1/linkage_test.py
+source_spec: `_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-4.md`
+severity: medium
+reason: V2: linkage_test.py's existing drift fixtures change sources before contact, while the SQL-contract lane imports selected functions and never runs the final collector publication path. Removing the final Assert-LinkageSourcesStable call at tools/verify-access-telemetry-c1-linkage.ps1:885 is not caught by those tests. This predates the Story 27.4 resumption. Reopen with a copied-input mutation after an observed target call that asserts the drift blocker, null observations and neutral gate fields.
+status: done 2026-11-28
+resolution: 2f518bbf2db3ed8414000b209b14354182fe2729 — A copied configuration mutation after the backend pod recheck blocks positive publication and retains the exact allowed source hashes with neutral fields. All 27 linkage tests passed, and the focused regression failed against a copy with the final stability guard removed.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-5.md`
   summary: Verify Memories gateway composition adopts the workload issuer client credentials required by the already committed EventStore dependency advance.
   evidence: V1 (medium, pre-existing): EventStore Server/Configuration/ServiceCollectionExtensions.cs:88 requires workload issuer client credentials in authority mode; the EventStore AppHost supplies them at Program.cs:338, but src/Hexalith.Memories.AppHost/Program.cs:289 does not. EventStoreAppHostResourceGraphTests.cs:52 checks the model with Keycloak disabled without authentication assertions; its gateway startup test at :145 is skipped, and AspireIngestionPipelineFixture.cs:1264 substitutes an in-memory command store. Consequence: authority-backed gateway startup can fail issuer options validation while composition tests pass. Owner: AppHost/EventStore integration maintainers. Reopen with a Memories authority-backed model test asserting required workload client credentials and executed gateway startup proof. The gitlink advance predates this handoff run; no dependency or gateway source changed here.
+  note: 2026-11-28 — Skipped. The standalone AppHost baseline reproduced the gateway process exiting with code 134. This item requires executed authority-backed gateway startup proof.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-pg2-c1-p1-authenticated-bootstrap-and-receipts-2.md`
   summary: Bind any future P1 consumer verdict to the immutable receipt, status and subject bytes or their verified digests.
@@ -5572,6 +5603,7 @@ resolution: eac9d4aa3c9218e60ca8c1e6a8450be788791346 (follow-up 98cd0d5998c624fc
 - source_spec: `/home/administrator/projects/hexalith/memories/_bmad-output/implementation-artifacts/spec-pg-onprem-2-c1-p1-http-retrieval-and-status.md`
   summary: Add isolated production server TLS tests for successful system trust and refusal when offline CRL evidence is absent.
   evidence: The local-root server trap refuses under system trust regardless of server CRL policy; an isolated system-trusted root and current offline CRL fixture is unavailable here, so a server-side NoCheck regression would not fail existing tests.
+  note: 2026-11-28 — Skipped. The adapter and its TLS fixture are owned by the separate Hexalith.Platform repository. The production trust proof also requires an isolated, system-trusted current CRL fixture.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-4-tenant-context-requalification.md`
   summary: Restore stable Aspire fixture startup for token-free sidecar and authenticated HTTP graph checks.
@@ -6304,9 +6336,16 @@ resolution: The replay-safety drain accounts for annotation child ingestion whil
 
 ## Deferred from the review of the six-item bootstrap, graph, and mapping batch (2026-11-27)
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-six-deferred-bootstrap-graph-and-mapping.md`
-  summary: Propagate the tenant verifier’s lookup deadline into the Dapr embedding configuration actor read.
-  evidence: The verifier applies its deadline to its own wait while the actor receives the caller token. Add a controlled live state read to verify deadline propagation across both Dapr hops and verify that an expired result cannot fill the cache.
+### DW-766: Propagate the tenant verifier’s lookup deadline into the Dapr embedding configuration actor read.
+
+origin: migrated from attended ledger ('Deferred from the review of the six-item bootstrap, graph, and mapping batch (2026-11-27)'), 2026-11-28
+location: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs; tests/Hexalith.Memories.Server.Tests/Ingestion/CancellationTrackingActorHandler.cs; tests/Hexalith.Memories.Server.Tests/Ingestion/TenantEmbeddingConfigProviderTests.cs; tests/Hexalith.Memories.Server.Tests/Tenants/TenantIsolationVerifierTests.cs; _bmad-output/implementation-artifacts/spec-dw-766-tenant-verifier-deadline.md
+source_spec: `_bmad-output/implementation-artifacts/spec-six-deferred-bootstrap-graph-and-mapping.md`
+severity: medium
+reason: The verifier applies its deadline to its own wait while the actor receives the caller token. Add a controlled live state read to verify deadline propagation across both Dapr hops and verify that an expired result cannot fill the cache.
+status: done 2026-11-28
+resolution: 51ed43854b3ac31a65054ace33842185e43bbb8a — The verifier propagates its deadline and caller cancellation through the typed Dapr actor request. All 176 focused tests and three focused Release checks passed, including foreign-marker rejection without mutation. An isolated Dapr 1.19.1 run observed cancellation at both HTTP hops and verified that a fresh follow-up filled the cache.
+
 - source_spec: `_bmad-output/implementation-artifacts/spec-six-deferred-bootstrap-graph-and-mapping.md`
   summary: Verify and document first-index creation during mixed-version Memories rollouts.
   evidence: Dapr Redis 1.19.1 rejects missing-ETag updates to rows marked FirstWrite. A running pre-fix writer can still create an index without the marker between an upgraded writer’s read and creation attempt. Existing rows with an ETag still use compare-and-save. Settle safe initialization while both versions can receive writes.
@@ -6399,18 +6438,60 @@ resolution: 17d986b3e0951dcbf166d946847895a964186c8f (follow-up 966f16b73bb88b0f
 
 ## Deferred from the review of test runner and fixture reliability (2026-11-27)
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-deferred-test-execution-reliability.md`
-  summary: Anchor PowerShell test-results cleanup to the directory that passed ownership validation.
-  evidence: The ownership marker and recursive deletion are separate pathname operations. A concurrent parent replacement can redirect cleanup. Verify that an unrelated destination survives replacement on the PowerShell platforms supported by the runner.
+### DW-761: Anchor PowerShell test-results cleanup to the directory that passed ownership validation.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-deferred-test-execution-reliability.md`
-  summary: Keep Bash report generation bound to the verified results destination after cleanup.
-  evidence: DW-752 anchors recursive cleanup to opened directories. The harness closes those handles before invoking dotnet and later uses pathname-based reports. Test a parent replacement during the handoff before adopting a safe output transfer.
+origin: migrated from attended ledger ('Deferred from the review of test runner and fixture reliability (2026-11-27)'), 2026-11-28
+location: tools/test.ps1; tools/prepare-test-results.ps1; tools/prepare-test-results.py; tests/tooling/integration_fast_coverage/test_runner_test.py; CONTRIBUTING.md
+source_spec: `_bmad-output/implementation-artifacts/spec-deferred-test-execution-reliability.md`
+severity: high
+reason: The ownership marker and recursive deletion are separate pathname operations. A concurrent parent replacement can redirect cleanup. Verify that an unrelated destination survives replacement on the PowerShell platforms supported by the runner.
+status: done 2026-11-28
+resolution: 0f2c57146a071882a07a6dc40901f8110135257f — Handle-relative cleanup preserves unrelated files during parent or destination replacement. Linux tooling passed 27 tests; the native Windows regression and report/coverage smoke passed separately. The WSL UNC redirector is refused before cleanup.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-deferred-test-execution-reliability.md`
-  summary: Coordinate simultaneous wrapper invocations that select one results directory.
-  evidence: The ownership marker allows repeated use of a directory and carries no active-run lease. Simultaneous Bash or PowerShell executions can clear each other's report files. Preserve repeatable and mixed-wrapper use while testing same-destination overlap.
+### DW-762: Keep Bash report generation bound to the verified results destination after cleanup.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-deferred-test-execution-reliability.md`
-  summary: Bound the Dapr setup commands that precede the service readiness check.
-  evidence: DW-753 bounds the readiness phase and retry attempts. Slim installation and Docker client commands can still consume the enclosing job deadline if they stall. Qualify command timeouts against a deliberately stalled fake launcher without changing cleanup ownership.
+origin: migrated from attended ledger ('Deferred from the review of test runner and fixture reliability (2026-11-27)'), 2026-11-28
+location: tools/test.sh; tests/tooling/integration_fast_coverage/test_runner_test.py; tools/prepare-test-results.py
+source_spec: `_bmad-output/implementation-artifacts/spec-deferred-test-execution-reliability.md`
+severity: medium
+reason: DW-752 anchors recursive cleanup to opened directories. The harness closes those handles before invoking dotnet and later uses pathname-based reports. Test a parent replacement during the handoff before adopting a safe output transfer.
+status: done 2026-11-28
+resolution: fc39c9dfb8d3a91935f47c34bb2dc1610483c55d — Verified destination descriptors stay open through private staging, validation and publication. The runner passed 18 cases with one platform skip, both Python runtimes passed 13 Bash cases, and a real .NET run verified TRX, Cobertura and attachment layout. Review fixes eb36d016 passed focused checks.
+
+### DW-763: Coordinate simultaneous wrapper invocations that select one results directory.
+
+origin: migrated from attended ledger ('Deferred from the review of test runner and fixture reliability (2026-11-27)'), 2026-11-28
+location: tools/test.sh; tools/test.ps1; tests/tooling/integration_fast_coverage/test_runner_test.py; tools/prepare-test-results.py; tools/prepare-test-results.ps1
+source_spec: `_bmad-output/implementation-artifacts/spec-deferred-test-execution-reliability.md`
+severity: medium
+reason: The ownership marker allows repeated use of a directory and carries no active-run lease. Simultaneous Bash or PowerShell executions can clear each other's report files. Preserve repeatable and mixed-wrapper use while testing same-destination overlap.
+status: done 2026-11-28
+resolution: 24188883e8f1c391ce24464556bd0ebcf1f4e459 — Bash and PowerShell hold a destination lease through private staging and report publication. Linux tooling passed 36 cases, two Windows-only cases passed natively, and mixed Windows/WSL overlap, reuse and hard-kill recovery were verified. Review fixes eb36d016, 9692ad82 passed focused checks.
+
+### DW-764: Bound the Dapr setup commands that precede the service readiness check.
+
+origin: migrated from attended ledger ('Deferred from the review of test runner and fixture reliability (2026-11-27)'), 2026-11-28
+location: tools/init-dapr-runtime.sh; tests/tooling/integration_fast_coverage/dapr_runtime_test.py
+source_spec: `_bmad-output/implementation-artifacts/spec-deferred-test-execution-reliability.md`
+severity: medium
+reason: DW-753 bounds the readiness phase and retry attempts. Slim installation and Docker client commands can still consume the enclosing job deadline if they stall. Qualify command timeouts against a deliberately stalled fake launcher without changing cleanup ownership.
+status: done 2026-11-28
+resolution: a6a277ff6fc794a8d408b6bfb783f59bc7bee6cd — Slim install and pre-readiness Docker commands use per-operation budgets and owned process-group cleanup. Six focused cases passed with both timeout implementations. The broader tooling run passed 39 cases with two Windows-only skips. Review fixes 7ca91333 passed focused checks.
+
+## Deferred from review of test execution and verification follow-ups (2026-11-28)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-deferred-test-execution-and-verification-follow-ups.md`
+  summary: Protect active test runs when results directories overlap by ancestry.
+  evidence: A run that owns reports can recursively remove reports/child while a separate POSIX invocation holds the child directory lease. Verify safe behavior in both start orders without changing same-directory lease semantics.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-deferred-test-execution-and-verification-follow-ups.md`
+  summary: Preserve PowerShell test failures when TRX or Cobertura output is missing.
+  evidence: PowerShell validates expected reports before reporting the native test failure. A dotnet exit of 37 with no TRX is reported as a missing-TRX error. Preserve available diagnostics and validate a successful run's report requirements.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-deferred-test-execution-and-verification-follow-ups.md`
+  summary: Distinguish absent Dapr containers from Docker pre-cleanup failures.
+  evidence: The bootstrap tolerates non-timeout docker rm failures for absent containers. It also discards daemon and permission failures. Preserve legitimate first-run behavior and retain operational diagnostics when cleanup fails.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-deferred-test-execution-and-verification-follow-ups.md`
+  summary: Run the native Windows results cleanup and lease regressions in routine verification.
+  evidence: The checked-in discovery lane runs on Ubuntu and the native fixture skips there. The native Windows tests passed locally. Automated Windows enrollment belongs to Hexalith.CiCd.
