@@ -16,6 +16,8 @@ using Hexalith.Memories.TestHelpers.Documentation;
 
 using Shouldly;
 
+using YamlDotNet.RepresentationModel;
+
 /// <summary>Story 31.1 — executable guard binding <c>docs/operations/openbao.md</c> to the deployed
 /// OpenBao <c>hexalith-keys</c> platform and to the four manifests under <c>deploy/openbao/</c>.
 /// <para>
@@ -380,13 +382,24 @@ public sealed partial class OpenBaoPlatformDocumentationTests
             "The smoke test must keep verifying OpenBao's TLS identity, by any spelling.");
 
         // The Job must project only the CA. Without `items` the whole Secret is mounted, which hands the
-        // server private key to a throwaway status pod. Story 31.1 second-pass code review 2026-07-28:
-        // asserting the presence of the ca.crt entry did not stop a SECOND entry being added beside it, so
-        // the projection is now pinned to exactly one key.
-        smokeTest.ShouldContain("items:\n              - key: ca.crt", Case.Sensitive, "smoke-test.yaml must project only ca.crt from Secret openbao-server-tls.");
-        Regex.Matches(smokeTest, @"^\s+- key: ", RegexOptions.Multiline, TimeSpan.FromSeconds(5)).Count.ShouldBe(
-            1,
-            "smoke-test.yaml must project exactly one Secret key; a second entry returns the server private key to the status pod.");
+        // server private key to a throwaway status pod. Parse structurally via YamlDotNet so key ordering
+        // or whitespace differences (e.g. `- path: tls.key\n  key: tls.key`) cannot bypass the single-key guard.
+        var smokeYaml = new YamlStream();
+        using (var smokeReader = new StringReader(smokeTest))
+        {
+            smokeYaml.Load(smokeReader);
+        }
+
+        YamlMappingNode smokeRoot = smokeYaml.Documents.Select(static d => d.RootNode).OfType<YamlMappingNode>().Single();
+        var volumes = (YamlSequenceNode)smokeRoot["spec"]["template"]["spec"]["volumes"];
+        var tlsVolume = volumes.Children.OfType<YamlMappingNode>()
+            .Single(static v => v.Children.ContainsKey("secret")
+                && ((YamlMappingNode)v["secret"])["secretName"].ToString() == "openbao-server-tls");
+        var secretSpec = (YamlMappingNode)tlsVolume["secret"];
+        var projectedItems = ((YamlSequenceNode)secretSpec["items"]).Children.OfType<YamlMappingNode>().ToArray();
+        projectedItems.Length.ShouldBe(1, "smoke-test.yaml must project exactly one Secret key; a second entry returns the server private key to the status pod.");
+        projectedItems[0]["key"].ToString().ShouldBe("ca.crt");
+        projectedItems[0]["path"].ToString().ShouldBe("ca.crt");
         smokeTest.ShouldNotContain("- key: tls.key", Case.Sensitive, "The server private key must never be projected into the status pod.");
     }
 
@@ -1213,10 +1226,13 @@ public sealed partial class OpenBaoPlatformDocumentationTests
             DocRelativePath,
             EvidenceRelativePath,
             CreateStoryEvidenceRelativePath,
+            "docs/operations/openbao-peer-tls-eval-01.md",
+            "docs/governance/openbao-independent-security-review.md",
             "deploy/openbao/values.yaml",
             "deploy/openbao/namespace.yaml",
             "deploy/openbao/service-account-hardening.yaml",
             "deploy/openbao/smoke-test.yaml",
+            "deploy/openbao/server-tls-identities.cnf",
         ];
 
     /// <summary>Collapses every whitespace run to one space so a narrative assertion is independent of
@@ -1238,7 +1254,7 @@ public sealed partial class OpenBaoPlatformDocumentationTests
     private static IReadOnlyList<string> FindUnexpectedLongRuns(string text)
     {
         var unexpected = new List<string>();
-        foreach ((string pattern, bool requireMixedDensity) in new[] { ("[0-9a-fA-F]{32,}", false), ("[A-Za-z0-9+/]{40,}={0,2}", true) })
+        foreach ((string pattern, bool requireMixedDensity) in new[] { ("[0-9a-fA-F]{32,}", false), ("[A-Za-z0-9+/_-]{40,}={0,2}", true) })
         {
             foreach (Match match in Regex.Matches(text, pattern, RegexOptions.None, TimeSpan.FromSeconds(5)))
             {
@@ -1264,6 +1280,13 @@ public sealed partial class OpenBaoPlatformDocumentationTests
     private static readonly string[] PublishedIdentifierMarkers =
         ["cluster_id", "cluster id", "uid", "resourceversion", "deployment-id", "deployment id"];
 
+    /// <summary>Whole-word matcher for <see cref="PublishedIdentifierMarkers"/>. Substring matching allowed
+    /// <c>uid</c> to fire inside <c>uuid</c>, <c>guide</c>, <c>guidance</c>, and <c>guid</c>.</summary>
+    private static readonly Regex PublishedIdentifierMarkerPattern = new(
+        @"(?<![A-Za-z0-9])(" + string.Join("|", PublishedIdentifierMarkers.Select(Regex.Escape)) + @")(?![A-Za-z0-9])",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        TimeSpan.FromSeconds(5));
+
     /// <summary>Finds UUID-shaped values that no identifier label on their own line accounts for.</summary>
     private static IReadOnlyList<string> FindUnexpectedUuids(string text)
     {
@@ -1278,7 +1301,7 @@ public sealed partial class OpenBaoPlatformDocumentationTests
             int lineEnd = text.IndexOf('\n', match.Index);
             string line = text[lineStart..(lineEnd < 0 ? text.Length : lineEnd)];
 
-            if (!PublishedIdentifierMarkers.Any(marker => line.Contains(marker, StringComparison.OrdinalIgnoreCase))
+            if (!PublishedIdentifierMarkerPattern.IsMatch(line)
                 && !unexpected.Contains(match.Value))
             {
                 unexpected.Add(match.Value);
@@ -1302,8 +1325,36 @@ public sealed partial class OpenBaoPlatformDocumentationTests
         lineEnd = lineEnd < 0 ? text.Length : lineEnd;
         string line = text[lineStart..lineEnd];
 
-        string context = line.TrimStart().StartsWith('|') ? line : ReadParagraph(text, lineStart, lineEnd);
+        if (line.TrimStart().StartsWith('|'))
+        {
+            return PublishedDigestMarkerPattern.IsMatch(line)
+                || PublishedDigestMarkerPattern.IsMatch(ReadTableHeaderLine(text, lineStart));
+        }
+
+        string context = ReadParagraph(text, lineStart, lineEnd);
         return PublishedDigestMarkerPattern.IsMatch(context);
+    }
+
+    private static string ReadTableHeaderLine(string text, int lineStart)
+    {
+        int currentStart = lineStart;
+        int headerStart = lineStart;
+        while (currentStart > 0)
+        {
+            int prevEnd = currentStart - 1;
+            int prevStart = prevEnd == 0 ? 0 : text.LastIndexOf('\n', prevEnd - 1) + 1;
+            string prevLine = text[prevStart..prevEnd];
+            if (!prevLine.TrimStart().StartsWith('|'))
+            {
+                break;
+            }
+
+            headerStart = prevStart;
+            currentStart = prevStart;
+        }
+
+        int headerEnd = text.IndexOf('\n', headerStart);
+        return text[headerStart..(headerEnd < 0 ? text.Length : headerEnd)];
     }
 
     private static string ReadParagraph(string text, int lineStart, int lineEnd)

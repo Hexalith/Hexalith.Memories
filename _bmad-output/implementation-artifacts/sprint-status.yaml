@@ -48,7 +48,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-05T17:40:39+02:00
-last_updated: '11-28-2026 16:41'
+last_updated: '11-28-2026 17:02'
 project: memories
 project_key: NOKEY
 tracking_system: file-system
@@ -584,7 +584,7 @@ development_status:
   # (Story 31.1 checkpoint split and Epic 31 activation gate). It now binds on Story 31.1's
   # documentation checkpoints C1/C2/C3/C4a/C5a/C6 rather than on Story 31.1 reaching 'done'.
   # On 2026-11-22, Jérôme Piquot (`jpiquot`) closed Story 31.1 by sole-owner risk acceptance for C4b, C5b and C7. No independent countersignatures were obtained. EVAL-01 remains open with Platform Operations.
-  epic-31: in-progress
+  epic-31: done
   31-1-openbao-platform-hardening-and-documentation: done
   31-2-runtime-dapr-secret-store-migration: done
   epic-31-retrospective: done
@@ -999,7 +999,7 @@ action_items:
       to use a non-releasing type, after 12 releases were triggered solely by such
       commits"
     owner: "Amelia, John"
-    status: open
+    status: in-progress
     ref: "_bmad-output/implementation-artifacts/epic-27-retro-2026-11-01.md"
   - id: "epic-27-retro-item-70-amend-lesson-l15-to-date-the-reference-f"
     epic: 27
@@ -1310,7 +1310,7 @@ action_items:
       retire or fold overlays/production-dapr-1.19 so render-production-deployment.ps1
       publishes the hardened manifest (retro F1, F7)"
     owner: "Amelia, Platform Operations (jpiquot)"
-    status: open
+    status: in-progress
     ref: "_bmad-output/implementation-artifacts/epic-31-retro-2026-11-28.md"
   - id: "epic-31-retro-item-103-register-and-remediate-eval-01-openbao-p"
     epic: 31
@@ -1319,7 +1319,7 @@ action_items:
       approve and execute spec-31-1-eval-01-peer-tls-remediation.md, and verify CA-validating
       TLS across all three pods (retro F2)"
     owner: "Jérôme Piquot (Platform Operations)"
-    status: open
+    status: in-progress
     ref: "_bmad-output/implementation-artifacts/epic-31-retro-2026-11-28.md"
   - id: "epic-31-retro-item-104-close-story-31-1-31-2-security-guard-byp"
     epic: 31
@@ -1332,7 +1332,7 @@ action_items:
       and 31-2-*.md, and normalize deploy/dapr/components/secretstore.yaml to LF per
       .gitattributes (retro F5, F9)"
     owner: "Amelia, Murat"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-31-retro-2026-11-28.md"
   - id: "epic-31-retro-item-105-close-epic-31-ci-and-runtime-output-veri"
     epic: 31
@@ -1345,7 +1345,7 @@ action_items:
       reject CR/LF in DAPR_API_TOKEN in tools/probe-dapr-secret-scope.sh, and track
       DW-781 BusyBox CI enrollment with Hexalith.CiCd (retro F6, F7)"
     owner: "Murat, Amelia"
-    status: open
+    status: in-progress
     ref: "_bmad-output/implementation-artifacts/epic-31-retro-2026-11-28.md"
   - id: "epic-31-retro-item-106-reconcile-epic-31-records-and-reassess-t"
     epic: 31
@@ -1358,7 +1358,7 @@ action_items:
       stale PG-ONPREM-1/substitution references in epics.md and epic-31-context.md,
       and move epic-31 to done in sprint-status.yaml (retro F3)"
     owner: "Paige, John"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-31-retro-2026-11-28.md"
   - id: "epic-31-retro-item-107-execute-time-bounded-and-live-cluster-pl"
     epic: 31
@@ -1383,7 +1383,7 @@ action_items:
       for solo-contributor repos, and prohibit bulk submodule pointer rewrites inside
       story commits without origin/main verification (retro L1, L2, L3, L4, L5)"
     owner: "Jérôme Piquot, John, Amelia"
-    status: open
+    status: in-progress
     ref: "_bmad-output/implementation-artifacts/epic-31-retro-2026-11-28.md"
   - id: "epic-31-retro-item-109-register-epic-31-structural-debt-in-defe"
     epic: 31
@@ -1395,5 +1395,5 @@ action_items:
       port/YAML edge cases, and enforce concise story/evidence artifacts per hexalith-llm-instructions.md:365-366
       (retro F7, F8, F9)"
     owner: "Winston, Amelia"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-31-retro-2026-11-28.md"

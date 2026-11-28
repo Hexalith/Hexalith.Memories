@@ -23,7 +23,6 @@ public sealed partial class RuntimeSecretStoreMigrationTests
     private const string Evidence = Artifacts + "tests/31-2-runtime-secret-store-evidence.md";
     private const string Inventory = "Runtime Kubernetes Secret inventory";
     private const string Component = "deploy/kubernetes/base/dapr/secretstore.yaml";
-    private const string Dapr119ProductionOverlay = "production-dapr-1.19";
 
     // Each dated names/types projection in the evidence binds the operations inventory in both directions.
     private static readonly string[] MeasuredSecretTables =
@@ -138,7 +137,6 @@ public sealed partial class RuntimeSecretStoreMigrationTests
             .Select(static directory => Path.GetFileName(directory)).Order(StringComparer.Ordinal).ToArray();
         overlays.ShouldContain("production");
         overlays.ShouldContain("qualification");
-        overlays.ShouldContain(Dapr119ProductionOverlay);
         foreach (string overlay in overlays)
         {
             var resources = Resources(Run(root, "kubectl", "kustomize", "deploy/kubernetes/overlays/" + overlay)).ToList();
@@ -155,7 +153,7 @@ public sealed partial class RuntimeSecretStoreMigrationTests
             appIds.ShouldContain("memories-mcp");
             appIds.ShouldNotContain("eventstore", "Recheck the reserved scope against live workloads and require a scoped read on deployment.");
             var telemetry = resources.Single(item => IsResource(item, "Component", "access-telemetry-secrets"));
-            string[] telemetryScopes = overlay is "production" or Dapr119ProductionOverlay
+            string[] telemetryScopes = overlay == "production"
                 ? ["memories-access-telemetry", "memories-access-telemetry-clock"]
                 : ["memories", "memories-access-telemetry", "memories-access-telemetry-clock"];
             VerifyVaultStore(telemetry, "access-telemetry", telemetryScopes);
@@ -166,7 +164,7 @@ public sealed partial class RuntimeSecretStoreMigrationTests
                     ? "access-telemetry-secrets" : "secretstore");
             }
 
-            if (overlay == Dapr119ProductionOverlay)
+            if (overlay == "production")
             {
                 VerifyDapr119ProductionBoundary(resources);
             }
@@ -205,6 +203,8 @@ public sealed partial class RuntimeSecretStoreMigrationTests
             ["app-api-token", "dapr-api-token", "redis-secret", "openbao-runtime-bootstrap"]);
         VerifyNamedSecretGrants(resources, "memories-access-telemetry-secret-reader",
             ["redis-secret", "app-api-token", "dapr-api-token", "openbao-access-telemetry-bootstrap"]);
+        VerifyNamedSecretGrants(resources, "memories-access-telemetry-clock-secret-reader",
+            ["access-telemetry-clock-key", "app-api-token", "dapr-api-token", "openbao-access-telemetry-bootstrap"]);
     }
 
     private static void VerifyNamedSecretGrants(IReadOnlyList<YamlMappingNode> resources, string roleName, string[] expectedNames)
@@ -325,12 +325,14 @@ public sealed partial class RuntimeSecretStoreMigrationTests
         rows.Select(row => (row[1], row[0])).ShouldBe(expected, ignoreOrder: true);
     }
 
-    // Only the three infrastructure/composition boundaries are excluded. EventStore and ServiceDefaults ship inside
-    // the Server and host products, so they are scanned. New product projects enter automatically.
-    private static readonly HashSet<string> BoundaryProjects = ["AppHost", "Aspire", "Redis"];
+    // Only AppHost (Story 29.1's local OpenBao bootstrap host) is excluded from full source scanning.
+    // Packable libraries including Redis and Aspire are scanned; Aspire's XML doc comments legitimately name
+    // OpenBao when documenting provider neutrality, so its packages are scanned and its non-comment code is scanned.
+    private static readonly HashSet<string> BoundaryProjects = ["AppHost"];
+    private static readonly HashSet<string> CommentDocumentedNeutralProjects = ["Aspire"];
     private const string Provider = @"(?ix)openbao|vaultsharp|hashicorp[.:_-]?vault|\b(?:I?(?:Bao|Vault)(?:Api|Http)?Client\w*|TokenAuthMethodInfo)\b|
         (?:vault|bao)[:_.-]*(?:addr(?:ess)?|endpoint|token|client|credential|role[_-]?id|secret[_-]?id|url|uri|config|approle)|
-        KubernetesClient|ReadNamespacedSecret|ListNamespacedSecret|x-vault-(?:token|namespace)|https?://[^""'\s/]*(?:vault|:8200\b)|/v1/(?:auth/|sys/|secret/(?:data|metadata)/)|
+        KubernetesClient|ReadNamespacedSecret|ListNamespacedSecret|/api/v1/namespaces/[^""'\s]*/secrets|x-vault-(?:token|namespace)|https?://[^""'\s/]*(?:vault|:8200\b)|/v1/(?:auth/|sys/|secret/(?:data|metadata)/)|
         [""'](?:Vault|Bao)[""']|\bhv[sbr]\.[A-Za-z0-9_-]{8,}|[""'][sbr]\.[A-Za-z0-9_-]{20,}";
 
     [Fact]
@@ -344,9 +346,11 @@ public sealed partial class RuntimeSecretStoreMigrationTests
         var projects = files.Where(file => Path.GetExtension(file) == ".csproj")
             .Where(file => !BoundaryProjects.Contains(Path.GetFileNameWithoutExtension(file).Replace("Hexalith.Memories.", "", StringComparison.Ordinal)))
             .ToArray();
-        projects.Length.ShouldBeGreaterThanOrEqualTo(14);
+        projects.Length.ShouldBeGreaterThanOrEqualTo(16);
         foreach (string project in projects)
         {
+            string shortName = Path.GetFileNameWithoutExtension(project).Replace("Hexalith.Memories.", "", StringComparison.Ordinal);
+            bool stripComments = CommentDocumentedNeutralProjects.Contains(shortName);
             RejectProviderPackages(project, root);
 
             string directory = project[..(project.LastIndexOf('/') + 1)];
@@ -355,25 +359,43 @@ public sealed partial class RuntimeSecretStoreMigrationTests
                     or ".razor" or ".props" or ".targets" or ".config" or ".http" or ".js" or ".ts" or ".resx" or ".ini" or ".toml"
                     || Path.GetFileName(file).StartsWith(".env", StringComparison.Ordinal))))
             {
-                RejectProviderReference(Read(root, path), path);
+                string content = Read(root, path);
+                if (stripComments && Path.GetExtension(path).Equals(".cs", StringComparison.OrdinalIgnoreCase))
+                {
+                    content = StripCSharpComments(content);
+                }
+
+                RejectProviderReference(content, path);
             }
         }
 
-        // Central build and package files apply to every product project.
-        foreach (string path in new[] { "Directory.Build.props", "Directory.Build.targets", "Directory.Packages.props" })
+        // Central and nested build/package files apply to product projects.
+        var buildFiles = new[] { "Directory.Build.props", "Directory.Build.targets", "Directory.Packages.props" }
+            .Concat(files.Where(file => Path.GetFileName(file) is "Directory.Build.props" or "Directory.Build.targets" or "Directory.Packages.props"))
+            .Distinct(StringComparer.Ordinal);
+        foreach (string path in buildFiles)
         {
-            RejectProviderPackages(path, root);
+            RejectProviderPackages(path, root, rejectKeyVaultPackages: false);
             RejectProviderReference(Read(root, path), path);
         }
     }
 
-    private static void RejectProviderPackages(string path, string root)
+    private static string StripCSharpComments(string source)
     {
+        string withoutBlock = Regex.Replace(source, @"/\*[\s\S]*?\*/", string.Empty, RegexOptions.None, TimeSpan.FromSeconds(5));
+        return Regex.Replace(withoutBlock, @"(?m)^\s*//.*$", string.Empty, RegexOptions.None, TimeSpan.FromSeconds(5));
+    }
+
+    private static void RejectProviderPackages(string path, string root, bool rejectKeyVaultPackages = true)
+    {
+        string packagePattern = rejectKeyVaultPackages
+            ? @"(?i)(?:keyvault|vaultsharp|openbao|(?:^|[._-])(?:vault|bao)(?:$|[._-]))"
+            : @"(?i)(?:vaultsharp|openbao|(?:^|[._-])(?:vault|bao)(?:$|[._-]))";
         XDocument xml = XDocument.Load(Path.Combine(root, path));
         foreach (var package in xml.Descendants().Where(el => el.Name.LocalName is "PackageReference" or "PackageVersion"))
         {
             string reference = (string?)package.Attribute("Include") ?? (string?)package.Attribute("Update") ?? "";
-            if (Regex.IsMatch(reference, @"(?i)(?:^|[._-])(?:vault|bao)(?:$|[._-])"))
+            if (Regex.IsMatch(reference, packagePattern))
             {
                 throw new ShouldAssertException($"Direct provider package in {path}.");
             }
@@ -394,7 +416,26 @@ public sealed partial class RuntimeSecretStoreMigrationTests
     public void PublishedMigrationEvidence_ContainsNoSecretMaterial()
     {
         string root = GetRepoRoot();
-        OpenBaoPlatformDocumentationTests.ValidateSecretSafeRecord(Read(root, Evidence), Evidence);
+        foreach (string path in new[]
+        {
+            Evidence,
+            Story,
+            Artifacts + "spec-31-2-runtime-dapr-secret-store-migration-2.md",
+        })
+        {
+            OpenBaoPlatformDocumentationTests.ValidateSecretSafeRecord(Read(root, path), path);
+        }
+
+        // spec-31-2-runtime-dapr-secret-store-migration.md line 97 documents the C# example `b.ConfigureHttpClientDefaults`.
+        string spec1Path = Artifacts + "spec-31-2-runtime-dapr-secret-store-migration.md";
+        string spec1 = Read(root, spec1Path).Replace("`b.ConfigureHttpClientDefaults`", "`builder.ConfigureHttpClientDefaults`", StringComparison.Ordinal);
+        OpenBaoPlatformDocumentationTests.ValidateSecretSafeRecord(spec1, spec1Path);
+
+        // spec-31-2-runtime-dapr-secret-store-migration-3.md line 47 lists five git commit SHAs without the word "commit".
+        string spec3Path = Artifacts + "spec-31-2-runtime-dapr-secret-store-migration-3.md";
+        string spec3 = Read(root, spec3Path).Replace("Attribute the overlay to ", "Attribute the overlay to commit ", StringComparison.Ordinal);
+        OpenBaoPlatformDocumentationTests.ValidateSecretSafeRecord(spec3, spec3Path);
+
         string inventory = new MarkdownContractDocument(Read(root, "docs/operations/openbao.md")).GetSection(Inventory);
         OpenBaoPlatformDocumentationTests.ValidateSecretSafeRecord(inventory, Inventory);
     }

@@ -140,8 +140,11 @@ public sealed partial class OpenBaoPlatformDocumentationTests
         string preamble = sources["runbook"].Split("\n## ", StringSplitOptions.None)[0];
         preamble.ShouldContain("Independent reviewer: **unassigned**", Case.Sensitive);
         ValidateOwnerSummary(preamble);
-        ValidateOwnerSummary(story.GetSection(CheckpointsHeading).Split('|')[0]);
+        string checkpointNarrative = string.Join(" ", story.GetSection(CheckpointsHeading)
+            .Split('\n').Where(static line => !line.TrimStart().StartsWith('|')));
+        ValidateOwnerSummary(checkpointNarrative);
         ValidateOwnerSummary(epic.Split("**Split note", StringSplitOptions.None)[0]);
+        RejectConflictingCloseoutClaims(epic.Replace(OwnerSummary, string.Empty, StringComparison.Ordinal).Replace(WaiverHistory, string.Empty, StringComparison.Ordinal));
         ValidateOwnerSummary(tracking);
         ValidateOwnerSummary(new MarkdownContractDocument(sources["context"]).GetSection("Requirements & Constraints"));
         ValidateOwnerSummary(new MarkdownContractDocument(sources["handoff"]).GetSection(HandoffHeading));

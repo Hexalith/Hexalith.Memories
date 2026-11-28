@@ -61,6 +61,21 @@ public sealed class ConfigShowGoldenFileTests
     }
 
     [Fact]
+    public void ConfigShowCommand_JsonFormat_WithToken_EmitsTokenConfiguredTrueWithoutLeakingSecret()
+    {
+        string output = InvokeConfigShow(
+            endpoint: new Uri("https://memories.example.com/"),
+            apiToken: "synthetic-" + Guid.NewGuid().ToString("N"),
+            sourceName: "FlagConfigurationSource",
+            format: OutputFormat.Json);
+
+        using var document = System.Text.Json.JsonDocument.Parse(output);
+        var data = document.RootElement.GetProperty("data");
+        data.GetProperty("tokenConfigured").GetBoolean().ShouldBeTrue();
+        data.GetProperty("endpoint").GetString().ShouldBe("https://memories.example.com/");
+    }
+
+    [Fact]
     public void HumanFormatter_Direct_MatchesCommandOutput()
     {
         // Cross-check: formatter in isolation should produce the same bytes as the end-to-end invocation.
@@ -82,7 +97,7 @@ public sealed class ConfigShowGoldenFileTests
         writer.ToString().ShouldBe(expected);
     }
 
-    private static string InvokeConfigShow(Uri endpoint, string? apiToken, string sourceName)
+    private static string InvokeConfigShow(Uri endpoint, string? apiToken, string sourceName, OutputFormat format = OutputFormat.Human)
     {
         IServiceCollection services = CliServices.BuildCollection();
 
@@ -105,7 +120,7 @@ public sealed class ConfigShowGoldenFileTests
         using var stderr = new StringWriter() { NewLine = "\n" };
         console.Out = stdout;
         console.Error = stderr;
-        console.Format = OutputFormat.Human;
+        console.Format = format;
 
         Command command = ConfigShowCommand.Build(provider);
         int exitCode = command.Parse(Array.Empty<string>()).Invoke();

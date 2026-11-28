@@ -5251,8 +5251,8 @@ location: _bmad-output/implementation-artifacts/tests/31-1-openbao-platform-evid
 source_spec: `_bmad-output/implementation-artifacts/spec-31-1-openbao-platform-hardening-and-documentation.md`
 severity: medium (unverified)
 reason: Evidence §8.8 names NetworkPolicy `deployment-seal-external` with no `.spec`. The `hexalith-keys` policy was captured and matched the 2026-07-28 table; this extra policy was not, so a second ingress source on 8200 would be invisible while the bound NetworkPolicy probe still reads as unchanged. Pre-existing relative to this continuation’s frozen probe list (nodes, replicas, HA, `hexalith-keys` NetworkPolicy, automount, secret names/types). - ID: 31.1-CR-NP-SPEC - Status: open - Source story: 31-1-openbao-platform-hardening-and-documentation - Target artifact: `_bmad-output/implementation-artifacts/tests/31-1-openbao-platform-evidence.md` - Re-open trigger: `kubectl -n openbao get networkpolicy deployment-seal-external -o jsonpath='{.spec}'` against `jpiquot@local` shows whether the policy admits extra 8200 sources.
-status: open
-note: 2026-11-27 — Skipped. Story 31.1 evidence section 9.2 already captured the additive NetworkPolicy and documented its TCP/8200 ingress. A current read-only check found the same rules.
+status: done 2026-11-28
+note: 2026-11-28 (Epic 31 retro A5) — Closed. Story 31.1 evidence section 9.2 (2026-11-16) captured the additive `deployment-seal-external` NetworkPolicy `.spec` (admitting `traefik` pods and `192.168.1.30/32` on TCP/8200) and documented it in `docs/operations/openbao.md:362`; a 2026-11-27 read-only check confirmed the same rules.
 
 ### DW-756: Telemetry, consistency, and MCP WebAppFactory hosts omit `Hexalith:Dapr:ApplicationTokenOverride`, so leaked `APP_API_TOKEN` can 401 those in-memory hosts.
 
@@ -6574,7 +6574,7 @@ origin: Story 31.2 November 28 rollout-spec review (Edge 6), 2026-11-28
 location: references/Hexalith.McpCli/tools/proprietary-surfaces/v1/amendments/1.0.14.json
 source_spec: `_bmad-output/implementation-artifacts/spec-31-2-runtime-dapr-secret-store-migration-2.md`
 severity: medium
-reason: Lines 1440–1443 of the exact-source census pin `tools/probe-dapr-secret-scope.sh` for the memories-mcp identity at SHA-256 `b932a85ad5dfb7491984b24e36fc9722962162b6bcb71491323b5528b38ab895`, the probe bytes from commit `0a4e76ae` through `3662d5be`. File the amendment in Hexalith.McpCli for the final probe bytes, SHA-256 `049756fd2999cbeb1311539b9c88171f75ed0c57609b98fa7bee213c36fea120` at commit `0bd6fb08`, before the next Memories gitlink update there. Re-derive the target if the probe changes again. Owner: Memories Maintainer with the McpCli owner.
+reason: Lines 1440–1443 of the exact-source census pin `tools/probe-dapr-secret-scope.sh` for the memories-mcp identity at SHA-256 `b932a85ad5dfb7491984b24e36fc9722962162b6bcb71491323b5528b38ab895`, the probe bytes from commit `0a4e76ae` through `3662d5be`. File the amendment in Hexalith.McpCli for the final probe bytes, SHA-256 `d1c13491052c5e7f556c95b86d0611d2d6eee65de90698dfefd2e471957ea7df` (updated from `049756fd2999cbeb1311539b9c88171f75ed0c57609b98fa7bee213c36fea120` after Epic 31 retro A4 added CR/LF token validation), before the next Memories gitlink update there. Re-derive the target if the probe changes again. Owner: Memories Maintainer with the McpCli owner.
 status: open
 
 ### DW-783: Resolve the isolated sidecar version skew
@@ -6623,7 +6623,7 @@ source_spec: `_bmad-output/implementation-artifacts/spec-31-2-runtime-dapr-secre
 severity: high
 reason: The approved live rollout used scoped candidate patches. Align the tracked overlays with the candidate’s pinned Dapr 1.19.2 sidecar image, built-in store deny scope and narrowed grants. The tracked base, production and qualification still keep the old grants and omit the deny scope. Applying them to their respective targets can reopen the built-in path and grant residue access. Without the deny scope the built-in store returns any Secret that the sidecar's ServiceAccount may get, including `openbao-runtime-bootstrap` for memories, so the application could obtain the runtime OpenBao token through its own sidecar. Preserve telemetry bootstrap while the live telemetry component scopes memories. Reopen before an overlay apply or on a PG-ONPREM-2 requalification decision. Owners: Platform Operations and Memories Maintainer.
 status: open
-note: Live bypass closed 2026-11-28. The November 22 Blind 1 review observed the unscoped Kubernetes store through sidecar metadata. Platform Operations and the Memories Maintainer added the deny scope to all four live Configurations on November 28. The five running 1.19.2 sidecars returned HTTP 403 to the synthetic built-in-store check, and permitted Vault reads passed. The sole owner accepted C2. See [the rollout evidence](tests/31-2-runtime-secret-store-evidence.md#built-in-kubernetes-store-and-vault-probe-matrix).
+note: Live bypass closed 2026-11-28. The November 22 Blind 1 review observed the unscoped Kubernetes store through sidecar metadata. Platform Operations and the Memories Maintainer added the deny scope to all four live Configurations on November 28. The five running 1.19.2 sidecars returned HTTP 403 to the synthetic built-in-store check, and permitted Vault reads passed. The sole owner accepted C2. See [the rollout evidence](tests/31-2-runtime-secret-store-evidence.md#built-in-kubernetes-store-and-vault-probe-matrix). 2026-11-28 (Epic 31 retro A1): `deploy/kubernetes/overlays/production/kustomization.yaml` is now aligned with live Dapr `1.19.2` digest pins, `{storeName: kubernetes, defaultAccess: deny}` across all four Configurations, and `op: test`-guarded removal of all four residue Secret grants; `deploy/kubernetes/overlays/production-dapr-1.19` is retired. `deploy/kubernetes/base` and `deploy/kubernetes/overlays/qualification` remain unchanged until a PG-ONPREM-2 requalification decision, and CI workflow Dapr `1.19.2` pin alignment stays with `Hexalith.CiCd`.
 
 ### DW-788: Decide Velero backup retention and record storage controls
 
@@ -6652,3 +6652,22 @@ severity: medium
 reason: Unverified. The Story 31.2 evidence shows that BusyBox nc half-closes at stdin EOF and that daprd then cancels an in-flight secret-store read. The linkage tool sends state requests the same way, through `printf ... | nc -w 5 127.0.0.1 3500` at line 316. It is parked under DW-730, so nothing runs it today. Settle by replaying its request against a local daprd with an outbound-backed store, or by switching to the `nc -e` transport used by the Story 31.2 probe. Owner: Story 27.3 / Memories Maintainer. Reopen trigger: DW-730's production-enablement trigger fires.
 status: open
 note: Moved from the free-form list nested under DW-735, where it had no ID.
+
+### DW-791: Remediate EVAL-01 OpenBao peer-TLS SAN omission on hexalith-keys-1 and hexalith-keys-2
+
+origin: Epic 31 retrospective A2 (Story 31.1 2026-11-16 AI security evaluation & 2026-11-22 sole-owner closeout), 2026-11-28
+location: deploy/openbao/server-tls-identities.cnf; docs/operations/openbao-peer-tls-eval-01.md; _bmad-output/implementation-artifacts/spec-31-1-eval-01-peer-tls-remediation.md
+source_spec: `_bmad-output/implementation-artifacts/spec-31-1-eval-01-peer-tls-remediation.md`
+severity: high
+reason: The shared live OpenBao leaf certificate in Secret `openbao-server-tls` covers `hexalith-keys-0` and the Service DNS names but omits `hexalith-keys-1` and `hexalith-keys-2` DNS SANs, causing CA-verifying hostname failures on peers 1 and 2 (`EVAL-01`). `spec-31-1-eval-01-peer-tls-remediation.md` remains `status: draft` and unapproved. Approve and execute the peer-TLS leaf rotation under Platform Operations and verify CA-validating TLS across all three pods without exposing private keys. Owner: Jérôme Piquot (Platform Operations).
+status: open
+note: Registered in `deferred-work.md` by Epic 31 retrospective A2 so the High-severity live platform finding is visible to deferred-work sweeps.
+
+### DW-792: Consolidate Epic 31 deployment test structural debt and OpenBao constant duplication
+
+origin: Epic 31 retrospective A8 (F7, F8, F9), 2026-11-28
+location: tests/Hexalith.Memories.Server.Tests/Deployment/OpenBaoPlatformDocumentationTests.cs; tests/Hexalith.Memories.Server.Tests/Deployment/ProductionDeploymentArtifactsTests.cs; tests/tooling/runtime_secret_store/fail_closed.py
+source_spec: `_bmad-output/implementation-artifacts/epic-31-retro-2026-11-28.md`
+severity: low
+reason: Consolidate the nine duplicated Deployment `ResolveRepoRoot`/`ReadRepoFile` helpers onto `RepositoryRootLocator`, split `OpenBaoPlatformDocumentationTests` (2,829 lines across four partial files) into cohesive validator/test types, standardize Deployment YAML assertions on `YamlDotNet`, unify scattered OpenBao image and KV-prefix constants (linked to `epic-29-retro-item-85`), harden `fail_closed.py` ephemeral-port allocation, and keep future story/evidence artifacts concise per `hexalith-llm-instructions.md:365-366`. Reopen trigger: next edit to `OpenBaoPlatformDocumentationTests` or `ProductionDeploymentArtifactsTests`. Owners: Winston, Amelia.
+status: open

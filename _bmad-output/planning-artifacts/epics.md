@@ -6030,7 +6030,7 @@ So that the secret-management boundary is reviewable on its own evidence before 
 
 ### Story 31.2: Runtime Dapr Secret-Store Migration to `hashicorp.vault`
 
-**Status:** ready-for-dev (create-story 2026-07-28). **Owner:** Memories Maintainer + security reviewer.
+**Status:** done (2026-11-28; Epic 31 retrospective `accepted-with-open-items`). **Owner:** Memories Maintainer + security reviewer.
 
 **Split note (2026-07-27).** Created by approved Sprint Change Proposal 2026-07-27 executing DW 27.3-CR16, from the pre-split Story 31.1.
 
@@ -6063,7 +6063,7 @@ So that runtime secret resolution crosses one reviewed boundary and every remain
 
 **Sole-owner scope decision (2026-11-28):** Administrator Jérôme Piquot (`jpiquot`) approved the shared Dapr control-plane upgrade and non-CSI recovery work as Platform Operations prerequisites for the Story 31.2 rollout. Platform Operations owned the backup, isolated restore rehearsal, empty-tenant confirmation and intake pause and drain. C2 covers the enforced Memories runtime boundary and its `production-dapr-1.19` candidate. Platform Operations retains the remaining work, including the isolated sidecar skew ([DW-783](../implementation-artifacts/deferred-work.md#dw-783-resolve-the-isolated-sidecar-version-skew)), tracked overlay alignment ([DW-787](../implementation-artifacts/deferred-work.md#dw-787-align-the-tracked-overlays-with-live-secret-store-enforcement)), backup controls ([DW-788](../implementation-artifacts/deferred-work.md#dw-788-decide-velero-backup-retention-and-record-storage-controls)) and restore probe behavior ([DW-789](../implementation-artifacts/deferred-work.md#dw-789-align-redis-and-falkordb-startup-probes-with-password-newline-handling)). The other Story 31.2 deferrals, DW-781 through DW-790, name their owners.
 
-**Retained by Story 27.3:** the access-telemetry-specific secret components and the `PG-ONPREM-1` secret backing remain in Story 27.3 adapter scope and are not migrated by this story.
+**Retained by Story 27.3:** the access-telemetry-specific secret components and the `PG-ONPREM-1` secret backing remain in Story 27.3 adapter scope and are not migrated by this story. *(Updated 2026-11-28, Epic 31 retro A1/A5: Story 27.3 AC6 replaced the retired Kubernetes-store verifier substitution with staged TLS OpenBao in commit `8a5fa3c6` and adopted profile `PG-ONPREM-2` on 2026-10-04; `deploy/kubernetes/overlays/production` now carries the Dapr `1.19.2` sidecar pin, built-in `kubernetes` deny scopes, and residue Role removals directly, and `deploy/kubernetes/overlays/production-dapr-1.19` is retired.)*
 
 
 ## Epic 33: Trust Scoped Hybrid Answers

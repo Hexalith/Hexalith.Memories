@@ -59,7 +59,6 @@ public sealed class ProductionDeploymentArtifactsTests
 
     [Theory]
     [InlineData("production")]
-    [InlineData("production-dapr-1.19")]
     [InlineData("qualification")]
     public void KubernetesOverlay_ServerCanReadOnlyItsNamedConversationComponent(string overlay)
     {
@@ -460,14 +459,23 @@ public sealed class ProductionDeploymentArtifactsTests
         string role = GetDocument(rendered, "Role", "memories-dapr-secret-reader");
 
         role.ShouldContain("resourceNames:");
-        role.ShouldContain("- redis-secret");
-        role.ShouldContain("- llm-secret");
-        role.ShouldContain("- google-embedding-api-key");
-        role.ShouldContain("- memories-embedding-client-secret");
-        role.ShouldContain("- openbao-runtime-bootstrap");
+        ReadYamlSequence(role, "resourceNames").ShouldBe(
+            ["app-api-token", "dapr-api-token", "redis-secret", "openbao-runtime-bootstrap"],
+            ignoreOrder: true);
 
-        // Retro item 63: the Server account cannot read the disabled lifecycle's bootstrap secret.
-        ReadYamlSequence(role, "resourceNames").ShouldNotContain("openbao-access-telemetry-bootstrap");
+        // Epic 31 retro A1 / DW-787: Production grants neither the disabled lifecycle bootstrap nor the four residue Secrets.
+        foreach (string excluded in new[]
+        {
+            "openbao-access-telemetry-bootstrap",
+            "llm-secret",
+            "google-embedding-api-key",
+            "memories-embedding-client-secret",
+            "access-telemetry-marker-key",
+        })
+        {
+            ReadYamlSequence(role, "resourceNames").ShouldNotContain(excluded);
+        }
+
         role.ShouldContain("verbs:");
         role.ShouldContain("- get");
         role.ShouldNotContain("- list");
@@ -662,7 +670,7 @@ public sealed class ProductionDeploymentArtifactsTests
         // Each workload reads exactly its own secrets, and only by get.
         foreach ((string role, string[] resourceNames) in new[]
         {
-            ("memories-access-telemetry-secret-reader", new[] { "access-telemetry-marker-key", "redis-secret", "app-api-token", "dapr-api-token", "openbao-access-telemetry-bootstrap" }),
+            ("memories-access-telemetry-secret-reader", new[] { "redis-secret", "app-api-token", "dapr-api-token", "openbao-access-telemetry-bootstrap" }),
             ("memories-access-telemetry-clock-secret-reader", new[] { "access-telemetry-clock-key", "app-api-token", "dapr-api-token", "openbao-access-telemetry-bootstrap" }),
         })
         {

@@ -163,9 +163,7 @@ Operations; this approval would authorize no seal/data/credential recovery actio
 ## Evidence and authority limits
 
 Preserve every existing attested report and covered prefix byte-for-byte. Record
-EVAL-01 technical disposition separately after actual approved execution. C4b,
-C5b and C7 remain pending / not complete without completion dates; Story 31.1
-stays in-progress until authentic independent sign-off. Advisory, seal, ingress,
+EVAL-01 technical disposition separately after actual approved execution. *(Updated 2026-11-28, Epic 31 retro A2/A5: on 2026-11-22 Jérôme Piquot closed Story 31.1 by sole-owner risk acceptance for C4b, C5b and C7 without independent countersignature; EVAL-01 remains open with Platform Operations and is registered in `deferred-work.md` as `DW-791`.)* Advisory, seal, ingress,
 audit, recovery and other findings stay outside this operation. A successful peer
 status check proves neither a real retry_join nor Raft failover or Production qualification.
 

@@ -31,6 +31,9 @@ public sealed partial class OpenBaoPlatformDocumentationTests
     [InlineData(11)]
     [InlineData(12)]
     [InlineData(13)]
+    [InlineData(14)]
+    [InlineData(15)]
+    [InlineData(16)]
     public void SecretShapeGuard_RejectsEachCategoryWithoutDisclosingScannedInput(int control)
     {
         // Keep candidate text out of theory arguments, assertion messages, and public case identities.
@@ -42,6 +45,9 @@ public sealed partial class OpenBaoPlatformDocumentationTests
             "Unseal Key 1: synthetic", "Recovery Key 2: synthetic", "Initial Root Token: synthetic",
             "01234567-89ab-cdef-0123-456789abcdef", new string('a', 40),
             "9Xk2Lm4Qp7Rt1Vw8Zc3Nb6Hj5Fd0Gs2Ay4Ue7Ik9Ol1Pr3Tw5=",
+            "9Xk2Lm4Qp7Rt1Vw-Zc3Nb6Hj5Fd0Gs_Ay4Ue7Ik9Ol1Pr3Tw5=",
+            "See upgrade guide: 01234567-89ab-cdef-0123-456789abcdef",
+            "Secret UUID: 01234567-89ab-cdef-0123-456789abcdef",
         ];
         const string before = "SYNTHETIC-SURROUNDING-BEFORE";
         const string after = "SYNTHETIC-SURROUNDING-AFTER";

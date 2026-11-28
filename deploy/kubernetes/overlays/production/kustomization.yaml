@@ -32,6 +32,26 @@ patches:
       - op: remove
         path: /scopes/0
   - target:
+      group: dapr.io
+      version: v1alpha1
+      kind: Configuration
+      name: memories(-mcp|-access-telemetry|-access-telemetry-clock)?-config
+    patch: |-
+      - op: add
+        path: /spec/secrets/scopes/-
+        value:
+          storeName: kubernetes
+          defaultAccess: deny
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: memories(-mcp|-access-telemetry|-access-telemetry-clock)?
+    patch: |-
+      - op: add
+        path: /spec/template/metadata/annotations/dapr.io~1sidecar-image
+        value: ghcr.io/dapr/daprd:1.19.2@sha256:7839fbb66d4be24ec52e347bec2dca66a91bef3079d8c8d57676f6d3ef92654f
+  - target:
       group: rbac.authorization.k8s.io
       version: v1
       kind: Role
@@ -42,6 +62,37 @@ patches:
         value: openbao-access-telemetry-bootstrap
       - op: remove
         path: /rules/0/resourceNames/8
+      - op: test
+        path: /rules/0/resourceNames/6
+        value: access-telemetry-marker-key
+      - op: remove
+        path: /rules/0/resourceNames/6
+      - op: test
+        path: /rules/0/resourceNames/5
+        value: memories-embedding-client-secret
+      - op: remove
+        path: /rules/0/resourceNames/5
+      - op: test
+        path: /rules/0/resourceNames/4
+        value: google-embedding-api-key
+      - op: remove
+        path: /rules/0/resourceNames/4
+      - op: test
+        path: /rules/0/resourceNames/3
+        value: llm-secret
+      - op: remove
+        path: /rules/0/resourceNames/3
+  - target:
+      group: rbac.authorization.k8s.io
+      version: v1
+      kind: Role
+      name: memories-access-telemetry-secret-reader
+    patch: |-
+      - op: test
+        path: /rules/0/resourceNames/0
+        value: access-telemetry-marker-key
+      - op: remove
+        path: /rules/0/resourceNames/0
 configMapGenerator:
   - name: memories-production-config
     behavior: merge

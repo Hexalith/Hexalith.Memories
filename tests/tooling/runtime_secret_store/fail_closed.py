@@ -57,7 +57,7 @@ spec:
 """)
         source = component.read_text()
         expected = "https://hexalith-keys.openbao.svc.cluster.local:8200"
-        if source.count(expected) != 1 or source.count("\nscopes:") != 1:
+        if source.count(expected) != 1 or source.count("\nscopes:") != 1 or "\nauth:" in source:
             raise ValueError("Unexpected tracked component structure")
         source = source.replace(expected, UNREACHABLE)
         source = source.replace("\nscopes:", "\nauth:\n  secretStore: bootstrap\nscopes:")

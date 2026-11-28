@@ -38,6 +38,10 @@ esac
 port=${DAPR_HTTP_PORT:-3500}
 case "$port" in ''|*[!0-9]*) exit 2 ;; esac
 : "${DAPR_API_TOKEN:?missing in-pod Dapr API token}"
+# Reject CR/LF in the token so a trailing-newline Secret cannot inject raw HTTP headers.
+case "$DAPR_API_TOKEN" in *'
+'*) exit 2 ;; esac
+printf '%s' "$DAPR_API_TOKEN" | busybox awk '/\r/ { exit 1 }' || exit 2
 busybox date -u '+%FT%TZ'
 
 request() {

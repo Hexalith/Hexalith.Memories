@@ -166,6 +166,15 @@ class ScopeProbeTests(unittest.TestCase):
             # An unparseable metadata body never reports a runtime version.
             (("memories", "allowed"), b"not-json", [RUNTIME], *runtime, found, 1, "unrecognized"),
         ], metadata_only=True)
+        for bad_token in (self.token + "\n", self.token + "\r"):
+            with self.subTest(bad_token_repr=repr(bad_token[-1])):
+                self.state["requests"] = []
+                env = dict(os.environ, PATH=self.probe_path, DAPR_API_TOKEN=bad_token,
+                           DAPR_HTTP_PORT=str(self.server.server_port))
+                result = subprocess.run([str(Path(self.probe_path) / "busybox"), "sh", "-s", "--", "memories", "allowed", "1.19.2"],
+                                        input=PROBE.read_bytes(), env=env, capture_output=True, timeout=20)
+                self.assertEqual(result.returncode, 2)
+                self.assertEqual(self.state["requests"], [], "CR/LF token must fail closed before HTTP I/O")
 
     def test_builtin_kubernetes_store_denial_and_runtime_identity(self):
         credential = self.credential

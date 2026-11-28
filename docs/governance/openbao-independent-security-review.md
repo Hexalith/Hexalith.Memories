@@ -265,3 +265,7 @@ closeout draft remain open. No waiver, migration activation or Production qualif
 ## Story 31.1 disposition on 2026-11-22
 
 On 2026-11-22, Jérôme Piquot (`jpiquot`) closed Story 31.1 by sole-owner risk acceptance for C4b, C5b and C7. No independent countersignatures were obtained. EVAL-01 remains open with Platform Operations. The earlier handoff and technical signature record the independent-review request and its status on November 16. The July C7 waiver expired on 2026-10-26. The November 16 technical evaluation requested changes. The owner declaration, its scope and the peer-TLS remediation reference are recorded in [platform evidence section 4](../../_bmad-output/implementation-artifacts/tests/31-1-openbao-platform-evidence.md#4-security-reviewer-evaluation-task-6-checkpoint-c7).
+
+## Epic 31 retrospective reconciliation on 2026-11-28
+
+The pre-sign-off handoff header and checkpoint table above (`lines 1–263`, including the 17,729-byte covered prefix) are preserved verbatim as the historical November 16 record. Their `in-progress`/`pending` statements are superseded by Story 31.1's 2026-11-22 sole-owner closeout, Story 31.2's 2026-11-28 completion (which reassessed the Story 31.2-activation trigger), Epic 31's `accepted-with-open-items` verdict, and `DW-791` in `deferred-work.md` tracking `EVAL-01`.

@@ -77,3 +77,24 @@ class CommitlintConfigTests(unittest.TestCase):
         self.assertNotEqual(0, result.returncode, stdio(result))
         self.assertIn("type-empty", stdio(result))
         self.assertIn("subject-empty", stdio(result))
+
+    def test_bare_story_and_placeholder_subjects_are_rejected(self) -> None:
+        for message in (
+            "fix: story 31.1",
+            "fix: stpry 31.1",
+            "fix: story 31.2",
+            "fix: epic 30",
+            "fix: context epic 30",
+            "fix: submodules",
+            "fix: sweep",
+            "fix: releasefix: submodules",
+        ):
+            with self.subTest(message=message):
+                result = run_commitlint(message)
+                self.assertNotEqual(0, result.returncode, stdio(result))
+                self.assertIn("no-bare-story-subject", stdio(result))
+
+    def test_descriptive_subject_naming_story_is_accepted(self) -> None:
+        result = run_commitlint("test(dapr): Close Story 31.2 with the second review fixes")
+
+        self.assertEqual(0, result.returncode, stdio(result))
