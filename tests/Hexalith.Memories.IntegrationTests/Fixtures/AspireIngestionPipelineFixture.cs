@@ -2348,12 +2348,13 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         }
     }
 
-    /// <summary>Allocates direct, distinct host ports for the fixture-owned Redis and FalkorDB containers.</summary>
+    /// <summary>Allocates direct, distinct host ports for the fixture-owned Redis, FalkorDB, and OpenBao containers.</summary>
     /// <param name="resources">The test application model before endpoint allocation.</param>
     internal static void ConfigureOwnedBackendPorts(IEnumerable<IResource> resources)
     {
         Configure("memories-vectors", "redis");
         Configure("memories-graphs", "falkordb");
+        Configure("openbao", "http");
 
         void Configure(string resourceName, string endpointName)
         {

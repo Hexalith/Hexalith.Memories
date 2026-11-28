@@ -178,8 +178,9 @@ public sealed class AspireIngestionPipelineFixtureTests
         falkorEndpoint.IsExplicitlyProxied.ShouldBe(false);
         falkorEndpoint.Port.ShouldBe(0);
         falkorEndpoint.TargetPort.ShouldBe(6379);
-        openBaoEndpoint.IsExplicitlyProxied.ShouldBeNull();
-        openBaoEndpoint.Port.ShouldBeNull();
+        openBaoEndpoint.IsExplicitlyProxied.ShouldBe(false);
+        openBaoEndpoint.Port.ShouldBe(0);
+        openBaoEndpoint.TargetPort.ShouldBe(8200);
     }
 
     [Fact]

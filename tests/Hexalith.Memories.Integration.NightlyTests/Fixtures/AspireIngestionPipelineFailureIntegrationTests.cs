@@ -36,7 +36,7 @@ public sealed class AspireIngestionPipelineFailureIntegrationTests
             {
                 await CaptureOwnedTopologyAsync(app, cancellationToken);
                 expectedRedis = ExpectedDiagnostic(app, "memories-vectors", "redis", 6379, proxied: false);
-                expectedOpenBao = ExpectedDiagnostic(app, "openbao", "http", 8200, proxied: true);
+                expectedOpenBao = ExpectedDiagnostic(app, "openbao", "http", 8200, proxied: false);
                 throw injectedFailure;
             });
 
