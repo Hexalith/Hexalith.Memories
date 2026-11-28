@@ -28,7 +28,9 @@ public sealed class RuntimeSecretStoreBootstrapTests
         using Process process = Process.Start(start) ?? throw new InvalidOperationException("Could not start the bootstrap probe.");
         string result = await process.StandardOutput.ReadToEndAsync();
         await process.WaitForExitAsync();
-        process.ExitCode.ShouldBe(0, "The disposable Vault component must fail to load when its bootstrap is absent.");
+        process.ExitCode.ShouldBe(
+            0,
+            $"The disposable Vault component must fail to load when its bootstrap is absent. Probe output: {result.Trim()}");
         result.Contains("component failed, no successful read or loaded fallback", StringComparison.Ordinal).ShouldBeTrue();
     }
 }

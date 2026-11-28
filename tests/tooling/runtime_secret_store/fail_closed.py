@@ -84,8 +84,10 @@ spec:
         for flag, port in zip(flags, ports):
             command.extend([flag, str(port)])
         read_status, stores = None, []
-        with subprocess.Popen(command, cwd=fixture, env=environment, stdout=subprocess.PIPE,
-                              stderr=subprocess.STDOUT) as process:
+        log_path = fixture / "daprd.log"
+        # Polling readiness must not leave daprd blocked on an undrained pipe.
+        with log_path.open("wb") as log, subprocess.Popen(
+                command, cwd=fixture, env=environment, stdout=log, stderr=subprocess.STDOUT) as process:
             try:
                 deadline = time.monotonic() + 15
                 succeeded = False
@@ -107,12 +109,12 @@ spec:
                     time.sleep(0.01)
                 if read_status is None:
                     succeeded |= successful_read(ports[0])
-                diagnostic = process.communicate(timeout=10)[0]
+                process.wait(timeout=10)
             finally:
                 if process.poll() is None:
                     process.kill()
-                    process.communicate()
-        return process.returncode, read_status, stores, diagnostic, succeeded
+                    process.wait()
+        return process.returncode, read_status, stores, log_path.read_bytes(), succeeded
 
 
 def missing_bootstrap(component):
