@@ -1,0 +1,94 @@
+# Team verification policies for the Build workflows. Keep both team overrides
+# aligned and leave installer-managed defaults in the skill directories.
+
+[workflow]
+
+persistent_facts = [
+    "file:{project-root}/_bmad/custom/story-scope-guard.md",
+    "file:{project-root}/_bmad/custom/story-phase-ledger.md",
+    "file:{project-root}/_bmad/custom/epic-ac-verification.md",
+    "file:{project-root}/_bmad/custom/remediation-runtime-checklist.md",
+]
+
+activation_steps_append = [
+    """Carry these phase checks through routing, including direct-resume exits.
+    Apply each verification policy only within its documented scope.
+    Use the canonical story ledger and readiness gate for a resolved Memories story
+    or a spec explicitly governed by the Memories story process. A generated spec,
+    freeform request, oneshot route, or Loop folder and story ID alone confers no
+    such scope. Evaluate inherited planning claims and runtime surfaces on their
+    own merits. Keep ordinary routing and Loop result and deferral handling.""",
+
+    """Before authoring or registering governed work, apply the story-scope guard
+    to historical reuse and independently demonstrable outcomes. Record Historical
+    Context Classification and Slice Proof when required and require explicit
+    checkpoint approval for a governed multi-slice exception. Verify inherited
+    planning claims before drafting acceptance criteria and record the Epic AC
+    Verification evidence. At planning, apply the remediation checklist to the
+    proposed runtime surfaces. Use the full spec for governed work that requires
+    canonical records. Ordinary oneshot work keeps its minimal spec.""",
+
+    """For a new or resumed spec governed by any of these policies that will be
+    delegated, add the four policy paths above to its frontmatter `context:`,
+    using their `{project-root}/` form without the `file:` prefix. Preserve existing
+    entries, avoid duplicate paths, and keep these references outside immutable
+    intent. Write the applicable records in the spec so the existing implementation
+    handoff can rely on the spec and its context. Complete this before dispatch,
+    including when resuming directly at implementation.""",
+
+    """For ledger-governed work, establish the create-story baseline and initial
+    File List before ready-for-dev or sprint-status advancement. Record the
+    original cumulative comparison revision in the phase ledger and preserve it
+    on resumes, review passes, and rework. Use the documented adoption path only
+    where applicable. Build Auto may update baseline_revision for its attempt;
+    use the ledger's original revision for the cumulative comparison. Capture
+    comparable discovery before and after implementation, append the dev-story row,
+    and reconcile the cumulative File List and evidence states.""",
+
+    """For ledger-governed work, validate the active artifact at in-review before
+    entering review and on direct review resumes. For a prospective state,
+    use a private copy, changing only the proposed status and preserving the
+    artifact path and Git history
+    where the checker supports them. After review patches and the final code-review
+    row, check the final artifact at in-review again for C1 and at done for the
+    final phase and evidence rows. Publish only after the applicable checks pass.
+    Run `python3 tools/check-story-review-readiness.py --story-key <artifact-key> --artifacts-root <artifact-directory> --sprint-status-file <sprint-file> --changed-files0-file <cumulative-nul-paths>`.
+    Supply the actual cumulative in-scope set from the ledger baseline, including
+    both rename endpoints. Verify the selected artifact and declared status in
+    the output. Record the exact command and result and pause or block on failure,
+    no-op, or a different artifact. Independently verify count arithmetic and
+    execution evidence.""",
+
+    """For a canonical sprint-bound story, resolve its exact sprint key and verify
+    the actual row and required transition separately when pinning a spec key.
+    Pause or block on a missing or ambiguous canonical row. Check any projected
+    sprint state in scratch only and record it as prospective.
+    The attended workflow keeps its in-progress sync before implementation and
+    review sync at presentation. Verify the actual row at the step that owns the
+    update and honor an already later state. Build Auto keeps sprint sync with
+    its owning phase. Report any required transition still owed by that phase
+    and block if the required transition failed at its owning phase. An exact
+    spec-key pass cannot establish sprint agreement. Run canonical story-specific
+    checks using the canonical key and verify the selected artifact.
+
+    If an explicitly governed colocated artifact cannot be selected by key and
+    root, copy its content under a valid spec key in scratch and check the two
+    candidate states there. Verify checkpoint retention using the actual
+    artifact's history if the scratch alias or path prevents the checker from
+    finding it. This projection applies only to explicitly governed work, never
+    by virtue of Loop dispatch alone.""",
+
+    """During development, recheck contradicted planning claims and re-derive
+    remediation applicability from the actual diff. During review, independently
+    rerun affected or corrected claim checks and validate the required runtime
+    coverage or accepted blockers. Reconcile any stale policy records outside
+    immutable intent. Apply the existing route for a decision that would alter
+    approved intent or scope.""",
+
+    """For ledger-governed work, capture comparable discovery before and after
+    review patches. After the final in-scope review chunk, append the code-review
+    row and reconcile the cumulative File List, counts, and checkpoint evidence
+    before marking done. Keep the existing sprint sync and HALT/writeback. Use
+    the workflow's existing pause or blocked result if
+    a required policy record or decision remains unresolved.""",
+]
