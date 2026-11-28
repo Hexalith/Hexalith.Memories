@@ -80,7 +80,7 @@ def prepared_results(root, results):
         directory = checkout
         current = root
         bindings = [(None, root, directory)]
-        for component in components:
+        for index, component in enumerate(components, start=1):
             parent = directory
             current /= component
             try:
@@ -95,12 +95,14 @@ def prepared_results(root, results):
             descriptors.callback(os.close, directory)
             bindings.append((parent, component, directory))
 
-        # Lock the verified directory itself. Closing the descriptor releases
-        # the lease even if the runner exits without cleaning up.
-        try:
-            fcntl.flock(directory, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError as error:
-            raise ValueError(f"is in use by another test run. Refusing to use '{results}'.") from error
+            # Hold shared ancestor leases before walking farther. An exclusive
+            # destination lease then prevents cleanup by an ancestor and writes
+            # by a descendant. All leases expire when the descriptors close.
+            mode = fcntl.LOCK_EX if index == len(components) else fcntl.LOCK_SH
+            try:
+                fcntl.flock(directory, mode | fcntl.LOCK_NB)
+            except BlockingIOError as error:
+                raise ValueError(f"is in use by another test run. Refusing to use '{results}'.") from error
 
         empty = not os.listdir(directory)
         if not empty and not has_ownership_marker(directory, results, descriptors):

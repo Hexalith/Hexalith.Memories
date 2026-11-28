@@ -211,6 +211,55 @@ class IntegrationTestRunnerTests(unittest.TestCase):
         self.assert_overlapping_run(self.bash, self.powershell)
         self.assert_overlapping_run(self.powershell, self.bash)
 
+    def test_bash_refuses_runs_that_overlap_by_ancestry(self):
+        self.assert_ancestry_overlap_is_refused(self.bash, self.bash)
+
+    @unittest.skipUnless(shutil.which("pwsh"), "requires PowerShell 7")
+    def test_wrappers_share_results_leases_across_ancestry(self):
+        self.assert_ancestry_overlap_is_refused(self.powershell, self.powershell)
+        self.assert_ancestry_overlap_is_refused(self.bash, self.powershell)
+        self.assert_ancestry_overlap_is_refused(self.powershell, self.bash)
+
+    def assert_ancestry_overlap_is_refused(self, owner_wrapper, contender_wrapper):
+        self.environment["TEST_TRX"] = TRX
+        for ancestor_first in (True, False):
+            with self.subTest(owner=owner_wrapper[0], contender=contender_wrapper[0], ancestor_first=ancestor_first):
+                fixture = Path(tempfile.mkdtemp(dir=self.root))
+                ancestor = fixture / "reports"
+                descendant = ancestor / "nested" / "deeper"
+                owner_results, contender_results = (ancestor, descendant) if ancestor_first else (descendant, ancestor)
+                if not ancestor_first:
+                    ancestor.mkdir()
+                    (ancestor / RESULTS_MARKER).write_bytes(RESULTS_SIGNATURE)
+                    (ancestor / "previous.txt").write_text("previous report", encoding="utf-8")
+
+                owner_command = self.report_command(owner_wrapper, str(owner_results.relative_to(self.root)))
+                contender = self.report_command(contender_wrapper, str(contender_results.relative_to(self.root)))
+                with tempfile.TemporaryDirectory() as scratch:
+                    start, release = (Path(scratch) / name for name in ("start", "release"))
+                    owner, log = self.start_report_owner(owner_command, start, release)
+                    active_report = owner_results / "active-report.txt"
+                    active_report.write_text("owner data", encoding="utf-8")
+                    calls = self.calls.read_bytes()
+
+                    refused = self.run_wrapper(contender)
+                    self.assertEqual(1, refused.returncode, refused.stderr)
+                    self.assertIn("in use by another test run", refused.stderr)
+                    self.assertEqual(calls, self.calls.read_bytes())
+                    self.assertEqual("owner data", active_report.read_text(encoding="utf-8"))
+                    if ancestor_first:
+                        self.assertFalse(descendant.parent.exists())
+                    else:
+                        self.assertEqual("previous report", (ancestor / "previous.txt").read_text(encoding="utf-8"))
+
+                    sibling = owner_results.with_name(owner_results.name + "-sibling")
+                    separate = self.run_wrapper(self.report_command(contender_wrapper, str(sibling.relative_to(self.root))))
+                    self.assertEqual(0, separate.returncode, separate.stderr)
+                    self.assertEqual([TRX], [path.read_text(encoding="utf-8").strip() for path in sibling.glob("*/*.trx")])
+                    release.touch()
+                    self.assertEqual(0, owner.wait(timeout=120), log.read_text(encoding="utf-8"))
+                    self.assertEqual([TRX], [path.read_text(encoding="utf-8").strip() for path in owner_results.glob("*/*.trx")])
+
     def assert_overlapping_run(self, owner_wrapper, contender_wrapper):
         self.environment["TEST_TRX"] = TRX
         owner_command = self.report_command(owner_wrapper, "reports/nested")
