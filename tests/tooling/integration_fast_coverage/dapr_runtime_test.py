@@ -276,6 +276,22 @@ class DaprRuntimeTests(unittest.TestCase):
                 )
                 self.assertFalse(self.readiness_calls.exists())
 
+    def test_log_removal_failure_preserves_the_docker_error(self):
+        rm = self.root / "bin/rm"
+        rm.write_text(
+            "#!/bin/sh\nprintf '%s\\n' 'rm: fixture denied log removal' >&2\nexit 2\n",
+            encoding="utf-8",
+        )
+        rm.chmod(0o755)
+        docker_error = "Error response from daemon: authorization denied by plugin"
+
+        with self.start_initializer(DOCKER_RM_ERROR=docker_error) as process:
+            _, stderr = process.communicate(timeout=10)
+
+        self.assertEqual(1, process.returncode, stderr)
+        self.assertIn(docker_error, stderr)
+        self.assertIn("rm: fixture denied log removal", stderr)
+
     def test_refuses_startup_when_the_scheduler_offers_only_tcp(self):
         result = self.run_initializer(unavailable="scheduler")
 

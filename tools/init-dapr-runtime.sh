@@ -47,7 +47,8 @@ stop_jobs() {
     wait_for_job_after_kill "$pid"
   done < <(jobs -p)
   if [[ -n "$docker_cleanup_log" ]]; then
-    rm -f -- "$docker_cleanup_log"
+    # Keep the initializer's exit status if log removal fails.
+    rm -f -- "$docker_cleanup_log" || true
   fi
 }
 
