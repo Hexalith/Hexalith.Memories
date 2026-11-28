@@ -139,6 +139,12 @@ Cobertura lines by normalized repository path and line number, deduplicates coll
 copies, and fails on missing, malformed, incomplete, or below-threshold evidence. CI retains the TRX
 and per-project Cobertura files together in the `test-unit-contract-results` artifact for 14 days.
 
+Concurrent runs must use disjoint results directories. On Linux, macOS, and NTFS, the wrappers
+refuse to prepare an active directory or an overlapping ancestor or descendant. For a checkout
+on a WSL-mounted Windows drive, keep Windows interop enabled and make `powershell.exe` available
+on `PATH`. Keep the checkout and results on the same NTFS mount so the wrappers can coordinate
+directory leases with native Windows.
+
 ### Benchmark quality gate
 
 The benchmark project requires Docker because its three end-to-end suite tests use the pinned Redis

@@ -1,8 +1,10 @@
 """Exercise integration selectors and report handling without Docker."""
 
+from contextlib import contextmanager
 import ctypes
 import os
 from pathlib import Path
+import runpy
 import shutil
 import signal
 import subprocess
@@ -10,6 +12,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 
 TOOLS = Path(__file__).resolve().parents[3] / "tools"
@@ -213,6 +216,33 @@ class IntegrationTestRunnerTests(unittest.TestCase):
 
     def test_bash_refuses_runs_that_overlap_by_ancestry(self):
         self.assert_ancestry_overlap_is_refused(self.bash, self.bash)
+
+    @unittest.skipUnless(sys.platform == "linux", "requires Linux mount metadata")
+    def test_results_lease_refuses_crossed_windows_mounts(self):
+        needs_windows_lease = runpy.run_path(str(TOOLS / "prepare-test-results.py"))["needs_windows_lease"]
+        mounts = (
+            b"1 0 0:1 / / rw - ext4 /dev/root rw\n"
+            b"2 1 0:2 / /mnt/c rw - 9p C: rw,aname=drvfs;path=C:\\;uid=1000\n"
+            b"3 2 0:3 / /mnt/c/checkout/other rw - ext4 /dev/root rw\n"
+        )
+        checkout = Path("/mnt/c/checkout")
+        with mock.patch.object(Path, "read_bytes", return_value=mounts):
+            self.assertTrue(needs_windows_lease(checkout, checkout / "reports"))
+            self.assertFalse(needs_windows_lease(Path("/home/repo"), Path("/home/repo/reports")))
+            for root, results in (
+                (Path("/mnt"), checkout / "reports"),
+                (checkout, checkout / "other" / "reports"),
+                (Path("/mnt/c"), checkout),
+            ):
+                with self.subTest(root=root, results=results):
+                    with self.assertRaisesRegex(ValueError, "must stay within one mounted filesystem"):
+                        needs_windows_lease(root, results)
+        with mock.patch.object(Path, "read_bytes", side_effect=FileNotFoundError):
+            with mock.patch.dict(os.environ, clear=True):
+                self.assertFalse(needs_windows_lease(checkout, checkout / "reports"))
+                os.environ["WSL_DISTRO_NAME"] = "fixture"
+                with self.assertRaisesRegex(ValueError, "requires readable mount information"):
+                    needs_windows_lease(checkout, checkout / "reports")
 
     @unittest.skipUnless(shutil.which("pwsh"), "requires PowerShell 7")
     def test_wrappers_share_results_leases_across_ancestry(self):
@@ -1171,3 +1201,285 @@ class WindowsTestResultsCleanupTests(unittest.TestCase):
                     self.assertEqual(1, refused.returncode, refused.stderr)
                     self.assertIn("empty or runner-owned directory", refused.stderr)
                     self.assertEqual("user managed", sentinel.read_text(encoding="utf-8"))
+
+
+@unittest.skipUnless(
+    os.name == "nt" or (shutil.which("pwsh.exe") and shutil.which("wslpath")),
+    "requires native Windows or WSL with Windows PowerShell interop",
+)
+class WindowsTestResultsAncestryTests(unittest.TestCase):
+    def setUp(self):
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        self.checkout = Path(scratch.name) / "checkout"
+        self.powershell = shutil.which("pwsh" if os.name == "nt" else "pwsh.exe")
+        if self.powershell is None:
+            self.skipTest("requires PowerShell 7")
+        windows_scratch = self.windows_path(self.checkout.parent)
+        if windows_scratch[1:3] != ":\\":
+            self.skipTest("requires a local NTFS scratch volume")
+        volume_format = subprocess.check_output(
+            [self.powershell, "-NoProfile", "-Command", f"([IO.DriveInfo]::new('{windows_scratch[:2]}')).DriveFormat"],
+            text=True, timeout=15,
+        ).strip()
+        if volume_format != "NTFS":
+            self.skipTest("requires a local NTFS scratch volume")
+        self.checkout.mkdir()
+        for filename in ("prepare-test-results.ps1", "prepare-test-results.py"):
+            shutil.copy2(TOOLS / filename, self.checkout / filename)
+        (self.checkout / "run.ps1").write_text(
+            'param([string]$Relative, [string]$Control)\n'
+            '$ErrorActionPreference = "Stop"\n'
+            '$components = $Relative -split "/"\n'
+            '$results = Join-Path $PSScriptRoot $Relative\n'
+            '$runProjects = {\n'
+            '    param($Staging)\n'
+            '    if ($Control) {\n'
+            '        [IO.File]::WriteAllText("$Control.pid", [string]$PID)\n'
+            '        [IO.File]::WriteAllText("$Control.ready", "")\n'
+            '        $deadline = [DateTime]::UtcNow.AddMinutes(2)\n'
+            '        while (-not [IO.File]::Exists("$Control.release")) {\n'
+            '            if ([DateTime]::UtcNow -ge $deadline) { throw "Timed out waiting for release" }\n'
+            '            Start-Sleep -Milliseconds 20\n'
+            '        }\n'
+            '    }\n'
+            '    $project = [IO.Directory]::CreateDirectory((Join-Path $Staging "project"))\n'
+            '    [IO.File]::WriteAllText((Join-Path $project.FullName "fixture.trx"), "fixture report")\n'
+            '}\n'
+            'try { & (Join-Path $PSScriptRoot "prepare-test-results.ps1") $PSScriptRoot $results $components $runProjects }\n'
+            'catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }\n',
+            encoding="utf-8",
+        )
+        (self.checkout / "run.py").write_text(
+            'import os, sys, time\n'
+            'from pathlib import Path\n'
+            'control = sys.argv[1]\n'
+            'if control:\n'
+            '    Path(control + ".pid").write_text(str(os.getpid()), encoding="utf-8")\n'
+            '    Path(control + ".ready").touch()\n'
+            '    deadline = time.monotonic() + 120\n'
+            '    while not Path(control + ".release").exists():\n'
+            '        if time.monotonic() >= deadline: raise SystemExit("Timed out waiting for release")\n'
+            '        time.sleep(0.02)\n'
+            'project = Path(os.environ["MEMORIES_TEST_REPORT_STAGING"]) / "project"\n'
+            'project.mkdir()\n'
+            '(project / "fixture.trx").write_text("fixture report", encoding="utf-8")\n'
+            'if control: Path(control + ".finished").touch()\n',
+            encoding="utf-8",
+        )
+
+    def windows_path(self, path):
+        if os.name == "nt":
+            return str(path)
+        return subprocess.check_output(["wslpath", "-w", str(path)], text=True, timeout=15).strip()
+
+    def command(self, runtime, results, control=None):
+        relative = results.relative_to(self.checkout).as_posix()
+        if runtime == "Windows":
+            return [
+                self.powershell, "-NoProfile", "-File", self.windows_path(self.checkout / "run.ps1"),
+                relative, self.windows_path(control) if control else "",
+            ]
+        return [
+            sys.executable, "prepare-test-results.py", str(self.checkout), str(results),
+            "--results-directory", sys.executable, "run.py", str(control or ""),
+        ]
+
+    @contextmanager
+    def active_run(self, runtime, results, control):
+        log = control.with_suffix(".log")
+        with log.open("wb") as output, subprocess.Popen(
+            self.command(runtime, results, control), cwd=self.checkout, stdout=output, stderr=subprocess.STDOUT,
+        ) as owner:
+            try:
+                self.wait_for_receipt(control.with_suffix(".ready"), log, owner)
+                yield owner
+            finally:
+                control.with_suffix(".release").touch()
+                owner.wait(timeout=120)
+
+    def wait_for_receipt(self, receipt, log, owner=None):
+        deadline = time.monotonic() + 30
+        while not receipt.exists():
+            if (owner is not None and owner.poll() is not None) or time.monotonic() >= deadline:
+                self.fail(f"Did not observe {receipt}: {log.read_text(encoding='utf-8', errors='replace')}")
+            time.sleep(0.02)
+
+    def run_contender(self, runtime, results):
+        return subprocess.run(
+            self.command(runtime, results), cwd=self.checkout,
+            capture_output=True, check=False, text=True, errors="replace", timeout=120,
+        )
+
+    def kill_windows_process(self, pid):
+        subprocess.run(
+            ["taskkill.exe", "/F", "/PID", pid], capture_output=True, check=True, timeout=30,
+        )
+
+    def assert_published(self, results):
+        self.assertEqual("fixture report", (results / "project" / "fixture.trx").read_text(encoding="utf-8"))
+        self.assertEqual(RESULTS_SIGNATURE, (results / RESULTS_MARKER).read_bytes())
+
+    def test_overlapping_native_and_mixed_runs_preserve_reports(self):
+        pairs = [("Windows", "Windows")]
+        if os.name != "nt":
+            pairs.extend([("Windows", "WSL"), ("WSL", "Windows")])
+        for owner_runtime, contender_runtime in pairs:
+            for ancestor_first in (True, False):
+                with self.subTest(owner=owner_runtime, contender=contender_runtime, ancestor_first=ancestor_first):
+                    case = self.checkout / f"{owner_runtime}-{contender_runtime}-{ancestor_first}"
+                    ancestor = case / "reports"
+                    descendant = ancestor / "nested" / "deeper"
+                    control = case / "owner"
+                    case.mkdir()
+                    if ancestor_first:
+                        owner_results, contender_results = ancestor, descendant
+                    else:
+                        owner_results, contender_results = descendant, ancestor
+                        ancestor.mkdir()
+                        (ancestor / RESULTS_MARKER).write_bytes(RESULTS_SIGNATURE)
+                        (ancestor / "stale.txt").write_text("previous report", encoding="utf-8")
+
+                    with self.active_run(owner_runtime, owner_results, control) as owner:
+                        sentinel = owner_results / "active.txt"
+                        sentinel.write_text("active report", encoding="utf-8")
+                        for target in (contender_results, owner_results):
+                            refused = self.run_contender(contender_runtime, target)
+                            self.assertEqual(1, refused.returncode, refused.stderr)
+                            self.assertIn("in use by another test run", refused.stderr)
+                            self.assertEqual("active report", sentinel.read_text(encoding="utf-8"))
+                        if ancestor_first:
+                            self.assertFalse(descendant.parent.exists())
+                        else:
+                            self.assertEqual("previous report", (ancestor / "stale.txt").read_text(encoding="utf-8"))
+                        sibling = owner_results.with_name(owner_results.name + "-sibling")
+                        separate = self.run_contender(contender_runtime, sibling)
+                        self.assertEqual(0, separate.returncode, separate.stderr)
+                        self.assert_published(sibling)
+                    self.assertEqual(0, owner.returncode, control.with_suffix(".log").read_text(errors="replace"))
+                    self.assert_published(owner_results)
+
+    def test_windows_and_wsl_leases_are_released_on_abrupt_owner_exit(self):
+        pairs = [("Windows", "Windows")] if os.name == "nt" else [("Windows", "WSL"), ("WSL", "Windows")]
+        for owner_runtime, contender_runtime in pairs:
+            with self.subTest(owner=owner_runtime, contender=contender_runtime):
+                control = self.checkout / owner_runtime
+                ancestor = self.checkout / "reports" / owner_runtime
+                ancestor.mkdir(parents=True)
+                (ancestor / RESULTS_MARKER).write_bytes(RESULTS_SIGNATURE)
+                results = ancestor / "nested" / "reports"
+                with self.active_run(owner_runtime, results, control) as owner:
+                    if owner_runtime == "Windows" and os.name != "nt":
+                        pid = control.with_suffix(".pid").read_text(encoding="utf-8")
+                        self.kill_windows_process(pid)
+                    else:
+                        owner.kill()
+                    owner.wait(timeout=120)
+                if owner_runtime == "WSL":
+                    self.wait_for_receipt(control.with_suffix(".finished"), control.with_suffix(".log"))
+                for target in (results, ancestor):
+                    recovered = self.run_contender(contender_runtime, target)
+                    self.assertEqual(0, recovered.returncode, recovered.stderr)
+                    self.assert_published(target)
+
+    @unittest.skipUnless(os.name == "posix", "requires WSL interop")
+    def test_wsl_refuses_safely_when_windows_lease_helper_fails_to_start(self):
+        (self.checkout / "prepare-test-results.ps1").write_text(
+            'param([switch]$LeaseOnly)\n[Console]::Error.WriteLine("lease test startup failure")\nexit 37\n',
+            encoding="utf-8",
+        )
+        results = self.checkout / "reports"
+        results.mkdir()
+        (results / RESULTS_MARKER).write_bytes(RESULTS_SIGNATURE)
+        stale = results / "previous.txt"
+        stale.write_text("previous report", encoding="utf-8")
+        refused = self.run_contender("WSL", results)
+        self.assertEqual(1, refused.returncode, refused.stderr)
+        self.assertIn("lease test startup failure", refused.stderr)
+        self.assertIn("could not acquire the Windows results lease", refused.stderr)
+        self.assertEqual("previous report", stale.read_text(encoding="utf-8"))
+
+    @unittest.skipUnless(os.name == "posix", "requires WSL interop")
+    def test_wsl_refuses_ambiguous_windows_components_before_opening_them(self):
+        for component in (r"first\else", r"first\.git", "first:stream", "first.", "first ", "COM1.log"):
+            with self.subTest(component=component):
+                refused = self.run_contender("WSL", self.checkout / component)
+                self.assertEqual(1, refused.returncode, refused.stderr)
+                self.assertIn("ambiguous on Windows", refused.stderr)
+                self.assertFalse(any(self.checkout.glob("first*")))
+        literal = self.checkout / "cache~1"
+        accepted = self.run_contender("WSL", literal)
+        self.assertEqual(0, accepted.returncode, accepted.stderr)
+        self.assert_published(literal)
+
+    def test_unowned_target_is_refused_without_creating_a_lease_stream(self):
+        results = self.checkout / "unowned"
+        results.mkdir()
+        (results / RESULTS_MARKER).write_text("invalid ownership signature", encoding="utf-8")
+        (results / "sentinel").write_text("user data", encoding="utf-8")
+        for runtime in (("Windows",) if os.name == "nt" else ("Windows", "WSL")):
+            with self.subTest(runtime=runtime):
+                refused = self.run_contender(runtime, results)
+                self.assertEqual(1, refused.returncode, refused.stderr)
+                self.assertIn("empty or runner-owned directory", refused.stderr)
+                self.assertEqual("user data", (results / "sentinel").read_text(encoding="utf-8"))
+                path = self.windows_path(results).replace("'", "''")
+                streams = subprocess.check_output(
+                    [self.powershell, "-NoProfile", "-Command", f"(Get-Item -LiteralPath '{path}' -Stream *).Stream"],
+                    text=True, timeout=15,
+                )
+                self.assertNotIn("hexalith-memories-test-results-lease", streams)
+
+    @unittest.skipUnless(os.name == "posix", "requires WSL interop")
+    def test_wsl_stops_owned_projects_when_the_native_lease_is_lost(self):
+        bridge_pid = self.checkout / "bridge.pid"
+        helper = self.checkout / "prepare-test-results.ps1"
+        original = helper.read_text(encoding="utf-8")
+        ready = "[Console]::WriteLine('ready')"
+        self.assertEqual(1, original.count(ready))
+        helper.write_text(original.replace(
+            ready,
+            "[IO.File]::WriteAllText((Join-Path $request.root 'bridge.pid'), [string]$PID)\n        " + ready,
+        ), encoding="utf-8")
+        results = self.checkout / "reports" / "nested"
+        control = self.checkout / "owner"
+        with self.active_run("WSL", results, control) as owner:
+            child_pid = control.with_suffix(".pid").read_text(encoding="utf-8")
+            self.kill_windows_process(bridge_pid.read_text(encoding="utf-8"))
+            self.assertEqual(1, owner.wait(timeout=15))
+            self.assertIn("lost the Windows results lease", control.with_suffix(".log").read_text(errors="replace"))
+            self.assertFalse(Path(f"/proc/{child_pid}").exists(), "project process survived lease loss")
+        self.assertFalse(control.with_suffix(".finished").exists())
+        self.assertFalse((results / "project").exists())
+        recovered = self.run_contender("Windows", results)
+        self.assertEqual(0, recovered.returncode, recovered.stderr)
+        self.assert_published(results)
+
+    @unittest.skipUnless(os.name == "posix", "requires WSL interop")
+    def test_wsl_preserves_sigterm_while_waiting_for_windows_lease_startup(self):
+        (self.checkout / "prepare-test-results.ps1").write_text(
+            'param([switch]$LeaseOnly)\n'
+            '$request = ConvertFrom-Json -InputObject ([Console]::ReadLine())\n'
+            '[IO.File]::WriteAllText((Join-Path $request.root "bridge.pid"), [string]$PID)\n'
+            'Start-Sleep -Seconds 30\n',
+            encoding="utf-8",
+        )
+        results = self.checkout / "reports"
+        pid_file = self.checkout / "bridge.pid"
+        log = self.checkout / "owner.log"
+        with log.open("wb") as output, subprocess.Popen(
+            self.command("WSL", results), cwd=self.checkout, stdout=output, stderr=subprocess.STDOUT,
+        ) as owner:
+            try:
+                self.wait_for_receipt(pid_file, log, owner)
+                owner.terminate()
+                self.assertEqual(143, owner.wait(timeout=10), log.read_text(errors="replace"))
+            finally:
+                if pid_file.exists():
+                    subprocess.run(
+                        ["taskkill.exe", "/F", "/PID", pid_file.read_text(encoding="utf-8")],
+                        capture_output=True, check=False, timeout=30,
+                    )
+                if owner.poll() is None:
+                    owner.kill()
+        self.assertFalse(results.exists())

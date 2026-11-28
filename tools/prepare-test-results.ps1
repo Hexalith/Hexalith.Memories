@@ -2,7 +2,8 @@ param(
     [string]$RepositoryRoot,
     [string]$ResultsRoot,
     [string[]]$Components,
-    [scriptblock]$RunProjects
+    [scriptblock]$RunProjects,
+    [switch]$LeaseOnly
 )
 
 function Invoke-StagedTestProjects([string]$Staging, [scriptblock]$Publish) {
@@ -22,7 +23,7 @@ function Invoke-StagedTestProjects([string]$Staging, [scriptblock]$Publish) {
     }
 }
 
-if (-not $IsWindows) {
+if (-not ($IsWindows -or $PSVersionTable.PSEdition -eq 'Desktop')) {
     $python = Get-Command python3 -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($null -eq $python) {
         throw '-ResultsDirectory requires python3 for descriptor-relative cleanup on Linux and macOS.'
@@ -69,8 +70,8 @@ if (-not $IsWindows) {
     return
 }
 
-if (-not ('WindowsTestResultsCleanup' -as [type])) {
-    Add-Type -TypeDefinition @'
+if (-not ('WindowsTestResultsLease' -as [type])) {
+    Add-Type -ErrorAction Stop -TypeDefinition @'
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -79,9 +80,10 @@ using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Win32.SafeHandles;
 
-public sealed class WindowsTestResultsCleanup : IDisposable
+public sealed class WindowsTestResultsLease : IDisposable
 {
     private const string Marker = ".hexalith-memories-test-results";
+    private const string LeaseStream = ":hexalith-memories-test-results-lease:$DATA";
     private static readonly byte[] Signature = Encoding.UTF8.GetBytes("Hexalith.Memories test results v1\n");
     private const uint ListDirectory = 0x1;
     private const uint ReadData = 0x1;
@@ -103,13 +105,14 @@ public sealed class WindowsTestResultsCleanup : IDisposable
     private const int FileDispositionInfoEx = 21;
 
     private readonly List<SafeFileHandle> handles = new List<SafeFileHandle>();
+    private readonly List<SafeFileHandle> leases = new List<SafeFileHandle>();
     private FileStream marker;
 
-    private WindowsTestResultsCleanup() { }
+    private WindowsTestResultsLease() { }
 
-    public static WindowsTestResultsCleanup Prepare(string repository, string results, string[] components)
+    public static WindowsTestResultsLease Prepare(string repository, string results, string[] components, bool leaseOnly)
     {
-        var owner = new WindowsTestResultsCleanup();
+        var owner = new WindowsTestResultsLease();
         var handles = owner.handles;
         try
         {
@@ -123,9 +126,21 @@ public sealed class WindowsTestResultsCleanup : IDisposable
             }
             RejectWslRedirector(root, repository);
 
-            string current = repository;
-            foreach (string component in components)
+            const uint NamedStreams = 0x00040000;
+            uint volumeFlags;
+            if (!GetVolumeInformationByHandleW(root, IntPtr.Zero, 0, IntPtr.Zero, IntPtr.Zero, out volumeFlags, IntPtr.Zero, 0))
             {
+                throw Failure("inspect the checkout volume for", repository, Marshal.GetLastWin32Error());
+            }
+            bool supportsLeases = (volumeFlags & NamedStreams) != 0;
+            if (leaseOnly && !supportsLeases)
+            {
+                return owner;
+            }
+            string current = repository;
+            for (int index = 0; index < components.Length; index++)
+            {
+                string component = components[index];
                 current = Path.Combine(current, component);
                 var directory = OpenRelative(handles[handles.Count - 1], component,
                     ListDirectory, OpenIf, DirectoryFile);
@@ -134,6 +149,22 @@ public sealed class WindowsTestResultsCleanup : IDisposable
                 {
                     throw new IOException("-ResultsDirectory must not traverse a symbolic link or reparse point at '" + current + "'.");
                 }
+                if (leaseOnly && !string.Equals(Path.GetFileName(FinalPath(directory, current, 0)),
+                    component, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new IOException("-ResultsDirectory must not use a Windows short-name alias at '" + current + "'.");
+                }
+                if (supportsLeases)
+                {
+                    // Alternate streams stay outside the directory entries used for ownership
+                    // checks and cleanup. WSL takes the same native share leases over interop.
+                    bool destinationLease = index == components.Length - 1;
+                    owner.leases.Add(OpenLease(directory, current, destinationLease));
+                }
+            }
+            if (leaseOnly)
+            {
+                return owner;
             }
 
             var destination = handles[handles.Count - 1];
@@ -146,8 +177,7 @@ public sealed class WindowsTestResultsCleanup : IDisposable
                 return owner;
             }
 
-            if (!entries.Exists(entry => entry.Key == Marker &&
-                (entry.Value & (FileAttributes.ReparsePoint | FileAttributes.Directory)) == 0))
+            if (!HasMarkerEntry(entries))
             {
                 throw Unowned(results);
             }
@@ -175,10 +205,17 @@ public sealed class WindowsTestResultsCleanup : IDisposable
     {
         try
         {
-            marker?.Dispose();
+            if (marker != null)
+            {
+                marker.Dispose();
+            }
         }
         finally
         {
+            for (int index = leases.Count - 1; index >= 0; index--)
+            {
+                leases[index].Dispose();
+            }
             for (int index = handles.Count - 1; index >= 0; index--)
             {
                 handles[index].Dispose();
@@ -209,7 +246,8 @@ public sealed class WindowsTestResultsCleanup : IDisposable
 
             // Create each child relative to the held parent. A name collision
             // fails without opening, replacing, or merging into a prior entry.
-            if (entry is DirectoryInfo directory)
+            var directory = entry as DirectoryInfo;
+            if (directory != null)
             {
                 using (var child = OpenRelative(destination, entry.Name, ListDirectory, Create, DirectoryFile))
                 {
@@ -228,7 +266,66 @@ public sealed class WindowsTestResultsCleanup : IDisposable
         }
     }
 
-    private static FileStream OpenMarker(SafeFileHandle directory, string results, bool create)
+    private static SafeFileHandle OpenLease(SafeFileHandle directory, string path, bool exclusive)
+    {
+        FileShare share = exclusive ? FileShare.None : FileShare.Read;
+        if (exclusive)
+        {
+            // An existing stream can be leased without changing its metadata.
+            // For the first use, inspect ownership before creating the stream.
+            var existing = OpenLeaseStream(directory, path, Open, share);
+            if (existing != null)
+            {
+                return existing;
+            }
+            var entries = ReadEntries(directory, path);
+            if (entries.Count != 0)
+            {
+                if (!HasMarkerEntry(entries))
+                {
+                    throw Unowned(path);
+                }
+                using (var marker = OpenMarker(directory, path, create: false, share: FileShare.ReadWrite))
+                {
+                    if (!HasOwnershipMarker(marker))
+                    {
+                        throw Unowned(path);
+                    }
+                }
+            }
+        }
+        return OpenLeaseStream(directory, path, OpenIf, share);
+    }
+
+    private static SafeFileHandle OpenLeaseStream(SafeFileHandle directory, string path, uint disposition, FileShare share)
+    {
+        try
+        {
+            return OpenRelative(directory, LeaseStream, ReadData, disposition, 0, share);
+        }
+        catch (IOException error)
+        {
+            var native = error.InnerException as Win32Exception;
+            if (native != null && native.NativeErrorCode == 32)
+            {
+                throw InUse(path, error);
+            }
+            if (disposition == Open && native != null &&
+                (native.NativeErrorCode == 2 || native.NativeErrorCode == 3))
+            {
+                return null;
+            }
+            throw;
+        }
+    }
+
+    private static bool HasMarkerEntry(List<KeyValuePair<string, FileAttributes>> entries)
+    {
+        return entries.Exists(entry => entry.Key == Marker &&
+            (entry.Value & (FileAttributes.ReparsePoint | FileAttributes.Directory)) == 0);
+    }
+
+    private static FileStream OpenMarker(SafeFileHandle directory, string results, bool create, FileShare share = FileShare.None)
     {
         // An exclusive open blocks other Windows processes and WSL processes
         // opening this marker. The OS releases the handle on abnormal exit.
@@ -236,12 +333,16 @@ public sealed class WindowsTestResultsCleanup : IDisposable
         try
         {
             handle = OpenRelative(directory, Marker, create ? WriteData : ReadData,
-                create ? Create : Open, NonDirectoryFile, FileShare.None);
+                create ? Create : Open, NonDirectoryFile, share);
         }
-        catch (IOException error) when (error.InnerException is Win32Exception native &&
-            (native.NativeErrorCode == 32 || native.NativeErrorCode == 80 || native.NativeErrorCode == 183))
+        catch (IOException error)
         {
-            throw new IOException("-ResultsDirectory is in use by another test run. Refusing to use '" + results + "'.", error);
+            var native = error.InnerException as Win32Exception;
+            if (native != null && (native.NativeErrorCode == 32 || native.NativeErrorCode == 80 || native.NativeErrorCode == 183))
+            {
+                throw InUse(results, error);
+            }
+            throw;
         }
         try
         {
@@ -256,6 +357,11 @@ public sealed class WindowsTestResultsCleanup : IDisposable
             handle.Dispose();
             throw;
         }
+    }
+
+    private static IOException InUse(string path, IOException error)
+    {
+        return new IOException("-ResultsDirectory is in use by another test run. Refusing to use '" + path + "'.", error);
     }
 
     private static IOException Unowned(string results)
@@ -382,7 +488,8 @@ public sealed class WindowsTestResultsCleanup : IDisposable
 
     private static FileAttributes Attributes(SafeFileHandle handle, string name)
     {
-        if (!GetFileInformationByHandleEx(handle, FileAttributeTagInfo, out ulong info, sizeof(ulong)))
+        ulong info;
+        if (!GetFileInformationByHandleEx(handle, FileAttributeTagInfo, out info, sizeof(ulong)))
         {
             throw Failure("inspect", name, Marshal.GetLastWin32Error());
         }
@@ -409,8 +516,10 @@ public sealed class WindowsTestResultsCleanup : IDisposable
             // Open the reparse point itself so no lookup can leave the parent handle.
             // Deny delete sharing to pin Windows bindings until cleanup finishes.
             const uint SynchronousNoReparse = 0x00200020;
-            int status = NtCreateFile(out SafeFileHandle handle, access | ReadAttributes | Synchronize,
-                ref attributes, out _, IntPtr.Zero, 0, share, disposition,
+            SafeFileHandle handle;
+            IoStatusBlock ioStatus;
+            int status = NtCreateFile(out handle, access | ReadAttributes | Synchronize,
+                ref attributes, out ioStatus, IntPtr.Zero, 0, share, disposition,
                 kind | SynchronousNoReparse, IntPtr.Zero, 0);
             GC.KeepAlive(parent);
             if (status < 0)
@@ -441,24 +550,29 @@ public sealed class WindowsTestResultsCleanup : IDisposable
     private static void RejectWslRedirector(SafeFileHandle root, string repository)
     {
         const uint FileNameOpened = 0x8;
-        var path = new StringBuilder(512);
-        uint length = GetFinalPathNameByHandleW(root, path, path.Capacity, FileNameOpened);
-        if (length >= path.Capacity)
-        {
-            path.EnsureCapacity(checked((int)length + 1));
-            length = GetFinalPathNameByHandleW(root, path, path.Capacity, FileNameOpened);
-        }
-        if (length == 0 || length >= path.Capacity)
-        {
-            throw Failure("identify the checkout filesystem for", repository, Marshal.GetLastWin32Error());
-        }
-        string name = path.ToString();
+        string name = FinalPath(root, repository, FileNameOpened);
         // The WSL redirector can enumerate the parent when queried through a relative directory handle.
         if (name.StartsWith(@"\\?\UNC\wsl.localhost\", StringComparison.OrdinalIgnoreCase) ||
             name.StartsWith(@"\\?\UNC\wsl$\", StringComparison.OrdinalIgnoreCase))
         {
             throw new IOException("-ResultsDirectory cannot safely prepare a WSL UNC checkout from Windows PowerShell. Run the wrapper from within WSL.");
         }
+    }
+
+    private static string FinalPath(SafeFileHandle handle, string name, uint flags)
+    {
+        var path = new StringBuilder(512);
+        uint length = GetFinalPathNameByHandleW(handle, path, path.Capacity, flags);
+        if (length >= path.Capacity)
+        {
+            path.EnsureCapacity(checked((int)length + 1));
+            length = GetFinalPathNameByHandleW(handle, path, path.Capacity, flags);
+        }
+        if (length == 0 || length >= path.Capacity)
+        {
+            throw Failure("identify the Windows path for", name, Marshal.GetLastWin32Error());
+        }
+        return path.ToString();
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -490,6 +604,10 @@ public sealed class WindowsTestResultsCleanup : IDisposable
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true, ExactSpelling = true)]
     private static extern uint GetFinalPathNameByHandleW(SafeFileHandle handle, StringBuilder path, int capacity, uint flags);
 
+    [DllImport("kernel32.dll", SetLastError = true, ExactSpelling = true)]
+    private static extern bool GetVolumeInformationByHandleW(SafeFileHandle handle, IntPtr label, int labelSize,
+        IntPtr serialNumber, IntPtr maximumComponentLength, out uint flags, IntPtr fileSystem, int fileSystemSize);
+
     [DllImport("ntdll.dll")]
     private static extern int NtCreateFile(out SafeFileHandle handle, uint access, ref ObjectAttributes attributes,
         out IoStatusBlock status, IntPtr allocationSize, uint fileAttributes, FileShare share, uint disposition,
@@ -516,6 +634,28 @@ public sealed class WindowsTestResultsCleanup : IDisposable
 '@
 }
 
+if ($LeaseOnly) {
+    # WSL provides the Windows checkout and relative components over stdin. It
+    # keeps the pipe open until report publication or process exit.
+    $ErrorActionPreference = 'Stop'
+    try {
+        $request = ConvertFrom-Json -InputObject ([Console]::ReadLine())
+        $owner = [WindowsTestResultsLease]::Prepare($request.root, $request.root, $request.components, $true)
+    }
+    catch {
+        [Console]::Error.WriteLine($_.Exception.Message)
+        exit 1
+    }
+    try {
+        [Console]::WriteLine('ready')
+        [void][Console]::ReadLine()
+    }
+    finally {
+        $owner.Dispose()
+    }
+    return
+}
+
 $staging = $null
 if ($RunProjects) {
     $temporaryRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
@@ -527,7 +667,7 @@ if ($RunProjects) {
 }
 
 try {
-    $owner = [WindowsTestResultsCleanup]::Prepare($RepositoryRoot, $ResultsRoot, $Components)
+    $owner = [WindowsTestResultsLease]::Prepare($RepositoryRoot, $ResultsRoot, $Components, $false)
     try {
         if ($RunProjects) {
             Invoke-StagedTestProjects $staging {
