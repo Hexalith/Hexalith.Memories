@@ -207,6 +207,20 @@ public sealed class OpenTelemetryRegistrationTests
     }
 
     [Theory]
+    [InlineData(null)]
+    [InlineData("true")]
+    public void InMemoryTelemetry_WhenDisabled_DoesNotSubscribeToMcpSdk(string? flag)
+    {
+        using EnvVarScope _ = EnvVarScope.Set(InMemoryTelemetryEnvironment.EnvVar, flag);
+        HostApplicationBuilder builder = BuildHostBuilder();
+        using ServiceProvider provider = builder.Services.BuildServiceProvider();
+        provider.GetRequiredService<TracerProvider>().ShouldNotBeNull();
+
+        using ActivitySource source = new(Extensions.IntegrationActivityProcessor.McpSourceName);
+        source.HasListeners().ShouldBeFalse();
+    }
+
+    [Theory]
     [InlineData("")]
     [InlineData("0")]
     [InlineData("true")]

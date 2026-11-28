@@ -73,7 +73,7 @@ class IntegrationFastCoverageVerifierTests(unittest.TestCase):
 
         self.assertEqual(requirements, MODULE.missing_requirements(requirements, passed))
 
-    def test_fast_catalog_rejects_missing_predecessor_proofs(self):
+    def test_fast_catalog_rejects_missing_exact_proofs(self):
         catalog = REPO_ROOT / "tools" / "integration-fast-required-surfaces.txt"
         requirements = MODULE.load_requirements(catalog)
         proofs = (
@@ -88,6 +88,12 @@ class IntegrationFastCoverageVerifierTests(unittest.TestCase):
                 "Hexalith.Memories.IntegrationTests.Ingestion.ReferencedSourceProducerIntegrationTests",
                 "FailedReingestionCopiesPriorSourceAndRequiresOwnershipToReconcileAcrossRestart",
                 "MissingInventoryNeverSubstitutesForExactLegacyFailedWorkflowProof",
+            ),
+            (
+                "mcp-trace-parent",
+                "Hexalith.Memories.IntegrationTests.Mcp.McpServerIntegrationTests",
+                "TraceHop_McpToServer_PreservesTraceparent",
+                "ListTools_EndToEnd_ReturnsFourToolsWithTypedSchemas",
             ),
         )
         for surface, class_name, method_name, sibling_method in proofs:

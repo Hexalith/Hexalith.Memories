@@ -102,6 +102,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     private readonly EmbeddingProviderTestMode _providerMode;
     private readonly EmbeddingProviderSecret? _embeddingProviderSecret;
     private readonly bool _allowPrivateHosts;
+    private readonly bool _captureMcpTrace;
     private readonly Func<DistributedApplication, CancellationToken, Task>? _beforeClientSetup;
     private readonly string _openBaoRuntimeSeedJson;
     private readonly string _openBaoRuntimeCanary = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
@@ -110,6 +111,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     private byte[]? _accessTelemetrySeedFingerprint;
     private string[] _accessTelemetrySeedValues = [];
     private DaprTraceCapture? _daprTraceCapture;
+    private IReadOnlyDictionary<string, string>? _daprTraceConfigs;
     private string? _tempDaprConfigPath;
     private int _topologyLogStartIndex;
     private TestLogProvider _logProvider = new(0);
@@ -137,7 +139,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
     /// <summary>Initializes a new instance of the <see cref="AspireIngestionPipelineFixture"/> class.</summary>
     public AspireIngestionPipelineFixture()
-        : this(EmbeddingProviderTestMode.GoogleFake, embeddingProviderSecret: null)
+        : this(EmbeddingProviderTestMode.GoogleFake, embeddingProviderSecret: null, captureMcpTrace: true)
     {
     }
 
@@ -146,16 +148,19 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     /// <param name="embeddingProviderSecret">Optional DAPR secret-store entry for provider-specific tests.</param>
     /// <param name="allowPrivateHosts">Whether URL ingestion may reach test-owned private hosts.</param>
     /// <param name="beforeClientSetup">Optional test callback after the initial Memories health gate on each topology start.</param>
+    /// <param name="captureMcpTrace">Whether to collect span links from the MCP and Memories sidecars.</param>
     internal AspireIngestionPipelineFixture(
         EmbeddingProviderTestMode providerMode,
         EmbeddingProviderSecret? embeddingProviderSecret,
         bool allowPrivateHosts = true,
-        Func<DistributedApplication, CancellationToken, Task>? beforeClientSetup = null)
+        Func<DistributedApplication, CancellationToken, Task>? beforeClientSetup = null,
+        bool captureMcpTrace = false)
     {
         _providerMode = providerMode;
         _embeddingProviderSecret = embeddingProviderSecret;
         _allowPrivateHosts = allowPrivateHosts;
         _beforeClientSetup = beforeClientSetup;
+        _captureMcpTrace = captureMcpTrace;
         var runtimeSeeds = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             [OpenBaoRuntimeCanarySecretName] = _openBaoRuntimeCanary,
@@ -1539,7 +1544,11 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             _workflowReplaySafetyScope = EnvVarScope.Set("WorkflowReplaySafety__Enabled", "false");
             _randomizeProjectPortsScope = EnvVarScope.Set("MEMORIES_ASPIRE_RANDOMIZE_PROJECT_PORTS", "true");
 
-            _daprTraceCapture = await DaprTraceCapture.StartAsync().ConfigureAwait(false);
+            if (_captureMcpTrace)
+            {
+                _daprTraceCapture = await DaprTraceCapture.StartAsync().ConfigureAwait(false);
+            }
+
             _daprConfigPathScope = CreateDaprConfigOverrideIfNeeded();
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -1552,7 +1561,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                 startupException,
                 _app,
                 _providerMode,
-                CreateFailedInitializationCleanupActions()).ConfigureAwait(false);
+                CreateFixtureCleanupActions()).ConfigureAwait(false);
             throw;
         }
     }
@@ -1586,9 +1595,9 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         await RethrowAfterCleanupAsync(startupException, cleanupActions).ConfigureAwait(false);
     }
 
-    /// <summary>Creates the complete ordered cleanup plan for fixture-owned startup resources.</summary>
-    /// <returns>The cleanup slots required after a partial topology startup.</returns>
-    internal IReadOnlyList<KeyValuePair<string, Func<Task>?>> CreateFailedInitializationCleanupActions()
+    /// <summary>Creates the ordered cleanup plan for fixture-owned resources.</summary>
+    /// <returns>The same cleanup slots for normal disposal and partial topology startup.</returns>
+    internal IReadOnlyList<KeyValuePair<string, Func<Task>?>> CreateFixtureCleanupActions()
         =>
         [
             new("topology", () => DisposeTopologyAsync(CancellationToken.None)),
@@ -1638,6 +1647,25 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         ArgumentNullException.ThrowIfNull(cleanupActions);
         ArgumentNullException.ThrowIfNull(attachCleanupFailures);
 
+        IReadOnlyList<Exception> cleanupFailures = await RunFixtureCleanupAsync(cleanupActions).ConfigureAwait(false);
+        if (cleanupFailures.Count > 0)
+        {
+            try
+            {
+                attachCleanupFailures(startupException, cleanupFailures);
+            }
+            catch (Exception)
+            {
+                // Cleanup diagnostics are best-effort and must never replace the startup failure.
+            }
+        }
+
+        ExceptionDispatchInfo.Capture(startupException).Throw();
+    }
+
+    private static async Task<IReadOnlyList<Exception>> RunFixtureCleanupAsync(
+        IReadOnlyList<KeyValuePair<string, Func<Task>?>> cleanupActions)
+    {
         List<Exception> cleanupFailures = [];
         foreach (KeyValuePair<string, Func<Task>?> cleanupSlot in cleanupActions)
         {
@@ -1658,19 +1686,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             }
         }
 
-        if (cleanupFailures.Count > 0)
-        {
-            try
-            {
-                attachCleanupFailures(startupException, cleanupFailures);
-            }
-            catch (Exception)
-            {
-                // Cleanup diagnostics are best-effort and must never replace the startup failure.
-            }
-        }
-
-        ExceptionDispatchInfo.Capture(startupException).Throw();
+        return cleanupFailures;
     }
 
     private static void TryAttachCleanupFailures(
@@ -2192,20 +2208,11 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     /// <inheritdoc/>
     public async ValueTask DisposeAsync()
     {
-        try
+        IReadOnlyList<Exception> cleanupFailures = await RunFixtureCleanupAsync(CreateFixtureCleanupActions()).ConfigureAwait(false);
+        if (cleanupFailures.Count > 0)
         {
-            await DisposeTopologyAsync(CancellationToken.None).ConfigureAwait(false);
+            throw new AggregateException("The Aspire fixture could not release all owned resources.", cleanupFailures);
         }
-        finally
-        {
-            await DisposeDaprTraceCaptureAsync().ConfigureAwait(false);
-        }
-
-        DisposeEnvVarScopes();
-        DeleteTempDaprConfig();
-        await RemoveFixtureDockerContainersAsync(_falkorVolumeName).ConfigureAwait(false);
-        await RemoveDockerVolumeIfPresentAsync(_falkorVolumeName).ConfigureAwait(false);
-        await RemoveDockerVolumeIfPresentAsync(_redisVolumeName).ConfigureAwait(false);
     }
 
     private async Task DisposeDaprTraceCaptureAsync()
@@ -2236,18 +2243,12 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         string providerSecretEntry = _embeddingProviderSecret is null
             ? string.Empty
             : $"{Environment.NewLine}          - {_embeddingProviderSecret.Name}";
-        File.WriteAllText(
-            _tempDaprConfigPath,
-            $$"""
+        string baseConfig = $$"""
             apiVersion: dapr.io/v1alpha1
             kind: Configuration
             metadata:
               name: memories-config
             spec:
-              tracing:
-                samplingRate: "1"
-                zipkin:
-                  endpointAddress: "{{DaprTraces.ExportEndpoint}}"
               features:
                 - name: HotReload
                   enabled: false
@@ -2263,15 +2264,38 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                     defaultAccess: deny
                     allowedSecrets:
                       - access-telemetry-marker-key
-            """);
+            """;
+        File.WriteAllText(_tempDaprConfigPath, baseConfig);
+
+        if (_daprTraceCapture is { } capture)
+        {
+            _daprTraceConfigs = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["memories-mcp"] = WriteTraceConfig("config-mcp.yaml", capture.McpExportEndpoint),
+                [_daprAppId] = WriteTraceConfig("config-server.yaml", capture.ServerExportEndpoint),
+            };
+        }
 
         return EnvVarScope.Set("MEMORIES_DAPR_CONFIG_PATH", _tempDaprConfigPath);
+
+        string WriteTraceConfig(string fileName, Uri endpoint)
+        {
+            string path = Path.Combine(tempDirectory, fileName);
+            // The probe supplies a sampled parent. Keep the fixture's existing Dapr sampler defaults.
+            File.WriteAllText(path, baseConfig + Environment.NewLine + $$"""
+              tracing:
+                zipkin:
+                  endpointAddress: "{{endpoint}}"
+            """);
+            return path;
+        }
     }
 
     private void DeleteTempDaprConfig()
     {
         DeleteFixtureOwnedTempDaprDirectory(_tempDaprConfigPath, _daprAppId);
         _tempDaprConfigPath = null;
+        _daprTraceConfigs = null;
     }
 
     /// <summary>
@@ -2361,16 +2385,22 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     }
 
     /// <summary>Allocates fixture-owned sidecar listeners without opening default-port proxies before daprd starts.</summary>
-    internal static void ConfigureOwnedDaprPorts(IEnumerable<IResource> resources)
+    /// <param name="resources">Resources in the fixture's application model.</param>
+    /// <param name="traceConfigs">Optional Dapr config overrides keyed by the exporting application ID.</param>
+    internal static void ConfigureOwnedDaprPorts(IEnumerable<IResource> resources, IReadOnlyDictionary<string, string>? traceConfigs = null)
     {
         foreach (IResource resource in resources.OfType<IDaprSidecarResource>())
         {
             foreach (DaprSidecarOptionsAnnotation annotation in resource.Annotations.OfType<DaprSidecarOptionsAnnotation>().ToArray())
             {
+                DaprSidecarOptions options = annotation.Options;
+                string? config = options.AppId is { } appId && traceConfigs?.TryGetValue(appId, out string? traceConfig) == true
+                    ? traceConfig
+                    : options.Config;
                 resource.Annotations.Remove(annotation);
                 resource.Annotations.Add(annotation with
                 {
-                    Options = annotation.Options with { DaprHttpPort = null, DaprGrpcPort = null, MetricsPort = null },
+                    Options = options with { DaprHttpPort = null, DaprGrpcPort = null, MetricsPort = null, Config = config },
                 });
             }
         }
@@ -2424,7 +2454,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         {
             context.EnvironmentVariables["Ingestion__UrlFetcher__AllowPrivateHosts"] = _allowPrivateHosts ? "true" : "false";
         }));
-        ConfigureOwnedDaprPorts(_builder.Resources);
+        ConfigureOwnedDaprPorts(_builder.Resources, _daprTraceConfigs);
         ConfigureOwnedBackendPorts(_builder.Resources);
         ParameterResource accessSeedParameter = _builder.Resources
             .OfType<ParameterResource>()

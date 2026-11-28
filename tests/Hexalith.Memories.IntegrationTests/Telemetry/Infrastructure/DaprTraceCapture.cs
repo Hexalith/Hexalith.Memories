@@ -16,15 +16,19 @@ using Microsoft.AspNetCore.Http;
 /// <summary>Receives Dapr's Zipkin exports on loopback and retains only parent links for the selected trace.</summary>
 internal sealed class DaprTraceCapture : IAsyncDisposable
 {
-    private const string ExportPath = "/api/v2/spans";
+    private const string McpExportPath = "/mcp/api/v2/spans";
+    private const string ServerExportPath = "/server/api/v2/spans";
     private const int MaxCapturedSpans = 128;
-    private readonly Dictionary<string, string> _parents = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (string ParentSpanId, bool IsMcp)> _parents = new(StringComparer.Ordinal);
     private readonly object _gate = new();
     private ScriptedHttpServer _server = null!;
     private string? _traceId;
 
-    /// <summary>Gets the listener address for the fixture-owned Dapr sidecars.</summary>
-    internal Uri ExportEndpoint => _server.GetUri(ExportPath);
+    /// <summary>Gets the listener address for the MCP sidecar's exporter.</summary>
+    internal Uri McpExportEndpoint => _server.GetUri(McpExportPath);
+
+    /// <summary>Gets the listener address for the Memories Server sidecar's exporter.</summary>
+    internal Uri ServerExportEndpoint => _server.GetUri(ServerExportPath);
 
     /// <summary>Starts the receiver before the sidecars read their tracing configuration.</summary>
     /// <returns>The receiver owned by the fixture.</returns>
@@ -51,42 +55,43 @@ internal sealed class DaprTraceCapture : IAsyncDisposable
     /// <param name="ancestorSpanId">The outbound HTTP span ID read from the MCP process.</param>
     /// <param name="timeout">The maximum wait for batched Dapr exports.</param>
     /// <param name="cancellationToken">Cancels the wait.</param>
-    /// <returns>The recorded Dapr span IDs, starting closest to the Server.</returns>
-    internal async Task<IReadOnlyList<string>> ReadParentChainAsync(
+    /// <returns>The recorded MCP and Server Dapr sidecar span IDs.</returns>
+    internal async Task<(string McpSpanId, string ServerSpanId)> ReadParentChainAsync(
         string? firstSpanId,
         string ancestorSpanId,
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
         Stopwatch stopwatch = Stopwatch.StartNew();
-        do
+        TimeSpan pollInterval = TimeSpan.FromMilliseconds(200);
+        while (true)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            TimeSpan remaining;
             lock (_gate)
             {
-                List<string> chain = [];
-                string? current = firstSpanId;
-                while (current is not null && _parents.TryGetValue(current, out string? parent) && !chain.Contains(current))
+                if (firstSpanId is not null
+                    && firstSpanId != ancestorSpanId
+                    && _parents.TryGetValue(firstSpanId, out var server) && !server.IsMcp
+                    && server.ParentSpanId != ancestorSpanId
+                    && _parents.TryGetValue(server.ParentSpanId, out var mcp) && mcp.IsMcp
+                    && mcp.ParentSpanId == ancestorSpanId)
                 {
-                    chain.Add(current);
-                    if (parent == ancestorSpanId)
-                    {
-                        return chain;
-                    }
+                    return (server.ParentSpanId, firstSpanId);
+                }
 
-                    current = parent;
+                remaining = timeout - stopwatch.Elapsed;
+                if (remaining <= TimeSpan.Zero)
+                {
+                    string capturedLinks = string.Join(", ", _parents.Select(pair =>
+                        $"{(pair.Value.IsMcp ? "MCP" : "Server")} sidecar {pair.Key} parent {pair.Value.ParentSpanId}"));
+                    throw new InvalidOperationException(
+                        $"Dapr trace {_traceId} did not connect Server parent {firstSpanId} to MCP HTTP span {ancestorSpanId}. "
+                        + $"Captured links: {capturedLinks}.");
                 }
             }
 
-            await Task.Delay(TimeSpan.FromMilliseconds(200), cancellationToken).ConfigureAwait(false);
-        }
-        while (stopwatch.Elapsed < timeout);
-
-        lock (_gate)
-        {
-            string capturedLinks = string.Join(", ", _parents.Select(pair => $"{pair.Key} parent {pair.Value}"));
-            throw new InvalidOperationException(
-                $"Dapr trace {_traceId} did not connect Server parent {firstSpanId} to MCP HTTP span {ancestorSpanId}. "
-                + $"Captured links: {capturedLinks}.");
+            await Task.Delay(remaining < pollInterval ? remaining : pollInterval, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -95,7 +100,8 @@ internal sealed class DaprTraceCapture : IAsyncDisposable
 
     private async ValueTask<ScriptedHttpResponse> ReceiveAsync(HttpRequest request, CancellationToken cancellationToken)
     {
-        if (!HttpMethods.IsPost(request.Method) || request.Path != ExportPath)
+        bool isMcpExport = request.Path == McpExportPath;
+        if (!HttpMethods.IsPost(request.Method) || (!isMcpExport && request.Path != ServerExportPath))
         {
             return ScriptedHttpResponse.Text(string.Empty, HttpStatusCode.NotFound);
         }
@@ -133,7 +139,7 @@ internal sealed class DaprTraceCapture : IAsyncDisposable
                             && TryReadSpanId(span, "id", out string spanId)
                             && TryReadSpanId(span, "parentId", out string parentId))
                         {
-                            _parents.TryAdd(spanId, parentId);
+                            _parents.TryAdd(spanId, (parentId, isMcpExport));
                         }
                     }
                 }

@@ -139,22 +139,27 @@ public sealed class AspireIngestionPipelineFixtureTests
         remote.ShouldNotContain("192.0.2.1");
     }
 
-    [Fact]
-    public void OwnedSidecarListenersUseAllocatedPortsAndRetainExactRuntimeOptions()
+    [Theory]
+    [InlineData(null, "owned.yaml")]
+    [InlineData("other-app", "owned.yaml")]
+    [InlineData("exact-owner", "trace.yaml")]
+    public void OwnedSidecarListenersUseAllocatedPortsAndRetainExactRuntimeOptions(string? traceAppId, string expectedConfig)
     {
         var builder = Aspire.Hosting.DistributedApplication.CreateBuilder();
         _ = Aspire.Hosting.IDistributedApplicationResourceBuilderExtensions.WithDaprSidecar(
             builder.AddProject<Projects.Hexalith_Memories_Server>("owned"), sidecar =>
                 sidecar.WithOptions(new CommunityToolkit.Aspire.Hosting.Dapr.DaprSidecarOptions
                 { AppId = "exact-owner", DaprHttpPort = 3500, DaprGrpcPort = 50001, MetricsPort = 9090, Config = "owned.yaml" }));
-        AspireIngestionPipelineFixture.ConfigureOwnedDaprPorts(builder.Resources);
+        AspireIngestionPipelineFixture.ConfigureOwnedDaprPorts(builder.Resources, traceAppId is null
+            ? null
+            : new Dictionary<string, string>(StringComparer.Ordinal) { [traceAppId] = "trace.yaml" });
         var options = builder.Resources.OfType<CommunityToolkit.Aspire.Hosting.Dapr.IDaprSidecarResource>().Single().Annotations
             .OfType<CommunityToolkit.Aspire.Hosting.Dapr.DaprSidecarOptionsAnnotation>().Single().Options;
         options.DaprHttpPort.ShouldBeNull();
         options.DaprGrpcPort.ShouldBeNull();
         options.MetricsPort.ShouldBeNull();
         options.AppId.ShouldBe("exact-owner");
-        options.Config.ShouldBe("owned.yaml");
+        options.Config.ShouldBe(expectedConfig);
     }
 
     [Fact]
@@ -797,12 +802,12 @@ public sealed class AspireIngestionPipelineFixtureTests
     }
 
     [Fact]
-    public void CreateFailedInitializationCleanupActions_ContainsAllOwnedResourceSlotsInOrder()
+    public void CreateFixtureCleanupActions_ContainsAllOwnedResourceSlotsInOrder()
     {
         var fixture = new AspireIngestionPipelineFixture();
 
         IReadOnlyList<KeyValuePair<string, Func<Task>?>> cleanupActions =
-            fixture.CreateFailedInitializationCleanupActions();
+            fixture.CreateFixtureCleanupActions();
 
         cleanupActions.Select(static slot => slot.Key).ShouldBe(
         [

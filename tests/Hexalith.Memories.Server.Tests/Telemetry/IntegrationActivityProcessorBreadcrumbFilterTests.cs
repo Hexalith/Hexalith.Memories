@@ -176,6 +176,38 @@ public sealed class IntegrationActivityProcessorBreadcrumbFilterTests
         Extensions.IntegrationActivityProcessor.ShouldEmitActivityBreadcrumb(activity).ShouldBeFalse();
     }
 
+    [Theory]
+    [InlineData("tools/call unrelated", ActivityKind.Server)]
+    [InlineData(Extensions.IntegrationActivityProcessor.McpSearchToolOperationName, ActivityKind.Client)]
+    public void Mcp_RejectsUnrelatedSpan(string operation, ActivityKind kind)
+    {
+        using ActivitySource source = new(Extensions.IntegrationActivityProcessor.McpSourceName);
+        using ActivityListener listener = Listener();
+        ActivitySource.AddActivityListener(listener);
+
+        using Activity? activity = source.StartActivity(operation, kind);
+        activity.ShouldNotBeNull();
+        Extensions.IntegrationActivityProcessor.ShouldEmitActivityBreadcrumb(activity).ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData(AspNetCoreSourceName, "HTTP request")]
+    [InlineData(Extensions.IntegrationActivityProcessor.McpSourceName, "tools/call unrelated")]
+    public void HttpClient_RejectsSpanWithUnrelatedParent(string parentSourceName, string parentOperation)
+    {
+        using ActivitySource parentSource = new(parentSourceName);
+        using ActivitySource clientSource = new(Extensions.IntegrationActivityProcessor.HttpClientSourceName);
+        using ActivityListener listener = Listener();
+        ActivitySource.AddActivityListener(listener);
+
+        using Activity? parent = parentSource.StartActivity(parentOperation, ActivityKind.Server);
+        using Activity? outbound = clientSource.StartActivity("System.Net.Http.HttpRequestOut", ActivityKind.Client);
+        parent.ShouldNotBeNull();
+        outbound.ShouldNotBeNull();
+        outbound.Parent.ShouldBeSameAs(parent);
+        Extensions.IntegrationActivityProcessor.ShouldEmitActivityBreadcrumb(outbound).ShouldBeFalse();
+    }
+
     private static ActivityListener Listener()
         => new()
         {

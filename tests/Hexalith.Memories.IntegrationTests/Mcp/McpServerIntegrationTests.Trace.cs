@@ -107,7 +107,7 @@ public sealed partial class McpServerIntegrationTests
         mcpTool.ParentSpanId.ShouldBe(clientToolSpanId);
         mcpHttp.ParentSpanId.ShouldBe(mcpTool.SpanId);
         serverSearch.ParentSpanId.ShouldBe(serverHttp.SpanId);
-        IReadOnlyList<string> daprSpanIds = await _fixture.DaprTraces.ReadParentChainAsync(
+        (string mcpSidecarSpanId, string serverSidecarSpanId) = await _fixture.DaprTraces.ReadParentChainAsync(
             serverHttp.ParentSpanId,
             mcpHttp.SpanId,
             timeout,
@@ -115,8 +115,8 @@ public sealed partial class McpServerIntegrationTests
 
         _output.WriteLine($"Trace {expectedTraceId} parent-to-child chain\n"
             + $"client tool {clientToolSpanId} -> MCP tool {mcpTool.SpanId} -> MCP HTTP {mcpHttp.SpanId} -> "
-            + string.Join(" -> ", daprSpanIds.Reverse().Select(id => $"Dapr {id}"))
-            + $" -> Server HTTP {serverHttp.SpanId} -> Server search {serverSearch.SpanId}.");
+            + $"MCP sidecar {mcpSidecarSpanId} -> Server sidecar {serverSidecarSpanId} -> "
+            + $"Server HTTP {serverHttp.SpanId} -> Server search {serverSearch.SpanId}.");
     }
 
     private static CapturedServerActivity SelectTraceSpan(
