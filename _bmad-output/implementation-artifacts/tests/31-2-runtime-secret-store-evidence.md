@@ -416,7 +416,7 @@ The approved recovery-point and restore-rehearsal evidence and the deployment's 
 
 ## Dapr 1.19.2 rollout on 2026-11-28
 
-Jérôme Piquot (`jpiquot`), sole owner, approved two decisions on 2026-11-28 in the spec `spec-31-2-runtime-dapr-secret-store-migration-2.md`. Option B is the approved non-CSI maintenance procedure for `jpiquot@local`: a one-off Velero backup of `hexalith-memories` to `scaleway-kube-green`, paired with an explicit empty-tenant confirmation, an isolated restore in a disposable namespace that is then removed, and a minimal single-cluster intake pause and drain checklist. Option A approves dropping the residue grants and deleting the four residue Secrets after zero live consumers and a metadata-only OpenBao key check. Its safety rail retains, without a grant, any Secret whose namesake key is not confirmed.
+Jérôme Piquot (`jpiquot`), sole owner, approved two decisions on 2026-11-28 in the spec `spec-31-2-runtime-dapr-secret-store-migration-2.md`. Option B is the approved non-CSI maintenance procedure for `jpiquot@local`: a one-off Velero backup of `hexalith-memories` to `scaleway-kube-green`, paired with an explicit empty-tenant confirmation, an isolated restore in a disposable namespace that is then removed, and a minimal single-cluster intake pause and drain checklist. Platform Operations owned the recovery prerequisites and the shared control-plane upgrade. Option A approved dropping the residue grants and deleting each Secret after confirming zero live consumers and independently confirming its namesake key through an OpenBao metadata-only read. The safety rail retains Secrets without a live grant while that metadata check is blocked.
 
 All writes used a kubectl v1.34.9 client against Kubernetes v1.34.9. The workspace kubectl v1.36.1 was used for no write. No Secret value, token, CA, ACL or response body was printed or stored. Secret inspections were limited to names, types, key names, byte sizes, references and managed-field owners.
 
@@ -456,7 +456,7 @@ Restore `hexalith-memories-31-2-rehearsal-2` ran from 11:52:03Z to 11:52:41Z int
 | FalkorDB key count | 0 | 0 |
 | PostgreSQL ready, rows in dapr_metadata / lifecycle_state, tables | ready, 3 / 0, 2 | ready, 3 / 0, 2 |
 
-The synthetic password files ended with a newline, which the Redis and FalkorDB startup probes passed and the `--requirepass` argument dropped. Those probes therefore failed in the rehearsal, and the parity checks trimmed the newline. From 11:53:40Z to 11:55:23Z the namespace was deleted, and the three released rehearsal volumes were switched from Retain to Delete and removed by the provisioner. The modifier ConfigMap was deleted. The Restore record remains in `velero`.
+The synthetic password files ended with a newline, which the Redis and FalkorDB startup probes passed and the `--requirepass` argument dropped. Those probes therefore failed in the rehearsal, and the parity checks trimmed the newline. From 11:53:40Z to 11:55:23Z the namespace was deleted, and the three released rehearsal volumes were switched from Retain to Delete and removed by the provisioner. The modifier ConfigMap was deleted. The Restore record remains in `velero`. On 2026-11-28 sole owner Jérôme Piquot (`jpiquot`) accepted the Option B restore rehearsal using the verified data parity and documented Redis and FalkorDB startup-probe newline caveat. The startup probes failed against the synthetic password files. Platform Operations retains the backup storage and retention controls and shares startup-probe alignment with the Memories Maintainer. [DW-788](../deferred-work.md#dw-788-decide-velero-backup-retention-and-record-storage-controls) and [DW-789](../deferred-work.md#dw-789-align-redis-and-falkordb-startup-probes-with-password-newline-handling).
 
 ### Rollback inputs and scoped live diff
 
@@ -464,7 +464,7 @@ From 11:32:41Z to 11:33:01Z the pre-change objects were saved as owner-only JSON
 
 The control-plane values were derived without reading the Helm release. The dapr-1.18.1 chart, sha256 `d518bd2e2f783c5b38b7a644596426fd278449e9cd74acf4a37be213e8812e7b`, rendered with `global.ha.enabled=true`, `dapr_scheduler.cluster.storageClassName=openebs-hostpath-retain` and `dapr_scheduler.etcdSpaceQuota=16Gi`. Each of its 45 non-Secret objects matched the live object. The trust-bundle Secret data has managed-field owner `sentry`, and the release owns none of it. The dapr-1.19.2 chart, sha256 `3c0e68d61dccf6dc30bf153cb7bd47b50dbe5f8cb889ec2d72b2ec38fa725efa`, matches the Helm index digest. Its `kubectl diff` against the live objects changed only version labels and images, the injector sidecar image, the scheduler compaction retention from 1000000 to the new default 10000, the sentry credentials volume mode from 420 to 288 and Service `appProtocol` fields. It also added Role and RoleBinding `dapr-scheduler-pods`. No StatefulSet claim template changed. `helm upgrade --dry-run=server` rendered the same 45 objects with the scheduler claim at 16Gi on `openebs-hostpath-retain`. The `configurations` and `workflowaccesspolicies` CRDs gained fields only. The `subscriptions` CRD file is unchanged between the charts and carries a placeholder webhook namespace, so it was not applied.
 
-The Memories patches derive from `deploy/kubernetes/overlays/production-dapr-1.19`. A server dry run of fifteen JSON patches showed only these changes:
+The Memories patches derive from `deploy/kubernetes/overlays/production-dapr-1.19`, introduced by commit `17483c2f0a9310c5e27043fe7a38048b726784de`. A server dry run of fifteen JSON patches showed only these changes:
 
 - `memories-config`, `memories-mcp-config`, `memories-access-telemetry-config` and `memories-access-telemetry-clock-config` each gain `{storeName: kubernetes, defaultAccess: deny}`.
 - `memories-dapr-secret-reader` loses `llm-secret`, `google-embedding-api-key`, `memories-embedding-client-secret` and `access-telemetry-marker-key`. It keeps `openbao-access-telemetry-bootstrap` beyond the overlay's four names, because the live `access-telemetry-secrets` still scopes `memories`.
@@ -472,7 +472,7 @@ The Memories patches derive from `deploy/kubernetes/overlays/production-dapr-1.1
 - The four Deployments gain annotation `dapr.io/sidecar-image` with `ghcr.io/dapr/daprd:1.19.2@sha256:7839fbb66d4be24ec52e347bec2dca66a91bef3079d8c8d57676f6d3ef92654f`.
 - The five `ext-secrets-1-isolated` templates declare their daprd container explicitly, so each changes that container image from `ghcr.io/dapr/daprd:1.18.1` to the same digest. A local daprd 1.19.2 binary accepts every flag those templates pass.
 
-No application image, replica count, PostgreSQL object or component scope changed.
+The live rollout used these scoped candidate patches and preserved application images, replica counts, PostgreSQL objects, component scopes and the live telemetry bootstrap grant. A full `production-dapr-1.19` render inherits the production overlay. It sets lifecycle, clock and PostgreSQL replicas to zero, removes `memories` from `access-telemetry-secrets` and `access-telemetry-config`, and omits `openbao-access-telemetry-bootstrap` from the memories Role.
 
 ### Control-plane upgrade
 
@@ -490,7 +490,7 @@ At 12:04Z the five templates moved to the 1.19.2 digest. `ext-secrets-1-custody`
 
 The `eventstore` application failed at startup with the 1.19.2 sidecar. Its first state save returned `ERR ACL failure in script: User eventstore has no permissions to run the 'type' command`. The daprd 1.19.2 Redis state store save script calls `TYPE`, and the `registry-state` ACL user does not permit it. `tenants` uses the same Redis state store pattern with its own ACL user from the same ACL Secret, which was not inspected. At 12:10:02Z both Deployments were rolled back to their previous revisions and were Ready on 1.18.1 at 12:10:12Z. Running a 1.18.1 sidecar on the 1.19.2 control plane is unsourced as a supported state: Dapr documents no support window for it. The [Kubernetes upgrade guide](https://docs.dapr.io/operations/hosting/kubernetes/kubernetes-upgrade/) notes only that sidecars running an older Dapr version can use only the Placement service, which stays deployed here. Before the upgrade, both 1.18.1 sidecars already logged a hot-reload abort for their actor state store every minute, and they still do.
 
-Platform Operations owns this blocker for `ext-secrets-1-isolated`. Reopen it when the `registry-state` ACL users allow `TYPE` or a Dapr release changes that script. Then move both templates to the pinned 1.19.2 digest and repeat the startup check.
+Platform Operations owns this blocker for `ext-secrets-1-isolated`. If the `registry-state` ACL users gain `TYPE` access, move both templates to the pinned 1.19.2 digest and repeat the startup check. If Dapr fixes the script, first verify the fix and then pin and test that release.
 
 ### Built-in Kubernetes store and Vault probe matrix
 
@@ -526,7 +526,9 @@ At 11:58:03Z, before the grant change, and again at 12:12:29Z, no pod, workload 
 
 The metadata-only check ran from 12:11:16Z to 12:11:52Z in two short-lived pods, `openbao-metadata-check-31-2` and `openbao-metadata-read-31-2`, which were deleted afterwards. Each mounted only the token and CA items of the two bootstrap Secrets and printed only HTTP statuses. The first attempt could not read its mount and sent no request. Both read-only bootstrap policies then answered 403 to a metadata list of `secret/metadata/hexalith/memories/runtime` and `secret/metadata/hexalith/memories/access-telemetry`. They also answered 403 to a metadata read of each of the four keys. No other OpenBao identity was available without inspecting Secret contents.
 
-No namesake key was confirmed, so under the approved safety rail all four Secrets stay, without any RBAC grant. Owner jpiquot approved that disposition on 2026-11-28. The Velero backup above also holds them. The loaded `llm-openai` component shows that the runtime store resolves `llm-secret`. That observation supports the record but does not replace the metadata check. The consequence: four unused Kubernetes copies remain readable by anyone who can read Secrets in the namespace, and they can go stale after an OpenBao rotation. Reopen when an identity with metadata read on both prefixes confirms the four keys, then delete each confirmed Secret.
+On 2026-11-28 sole owner Jérôme Piquot (`jpiquot`) retroactively acknowledged the inspection limited to Secret key names and byte sizes and the ad hoc bootstrap Secret mounts in `openbao-metadata-check-31-2` and `openbao-metadata-read-31-2`. Both pods were deleted. The inspection and in-pod metadata requests exposed no credential value, token, CA contents or response body, so the AC2 no-leak requirement held.
+
+On 2026-11-28 the sole owner accepted retention of all four residue Secrets without live Role grants. HTTP 403 from the OpenBao bootstrap policies blocked metadata confirmation of all four namesake keys. Memories Maintainer and Platform Operations own the three runtime copies, and Story 27.3 and Platform Operations own the marker copy. [DW-785](../deferred-work.md#dw-785-confirm-openbao-key-metadata-before-deleting-the-residue-secrets). The Velero backup above also holds them. The loaded `llm-openai` component shows that the runtime store resolves `llm-secret`. That observation supports the record but does not replace the metadata check. The consequence: four unused Kubernetes copies remain readable by anyone who can read Secrets in the namespace, and they can go stale after an OpenBao rotation. Reopen on a new consumer, a rotation or authorized metadata access. Delete each object only after a fresh check finds zero live consumers and an authorized metadata-only read confirms that object’s namesake OpenBao key.
 
 ### Secret names and types after the Dapr 1.19.2 rollout
 
@@ -549,7 +551,7 @@ Measured 2026-11-28T12:12:29Z with the names/types projection from the read-only
 | redis-secret | Opaque |
 | registry-credentials | kubernetes.io/dockerconfigjson |
 
-The fourteen names and types equal the November 22 projection.
+The fourteen names and types equal the November 22 projection. On 2026-11-28 sole owner Jérôme Piquot (`jpiquot`) accepted C2 based on the live Memories enforcement and its checked-in `production-dapr-1.19` candidate, including the recorded retention of the four grantless residue Secrets. The 1.18.1 sidecar skew in `ext-secrets-1-isolated` and alignment of the tracked base, production and qualification overlays remain separately owned. [DW-783](../deferred-work.md#dw-783-resolve-the-isolated-sidecar-version-skew) and [DW-787](../deferred-work.md#dw-787-align-the-tracked-overlays-with-live-secret-store-enforcement).
 
 ### Intake resume and final state
 
@@ -565,23 +567,129 @@ dll=tests/Hexalith.Memories.Server.Tests/bin/Debug/net11.0/Hexalith.Memories.Ser
 export DiffEngine_Disabled=true
 dotnet exec "$dll" -list methods -noLogo
 dotnet exec "$dll" -class '*.RuntimeSecretStoreMigrationTests' -class '*.OpenBaoPlatformDocumentationTests' -class '*.ProductionDeploymentArtifactsTests' -parallel none -noLogo
-python3 -B -m unittest discover -s tests/tooling/runtime_secret_store -v
+python3 -B -m unittest discover -s tests/tooling/runtime_secret_store -p '*.py' -v
 git diff --check
 python3 tools/check-tenant-isolation-evidence.py --changed-files-file <changed>
 ```
 
-The build at 12:19:46Z–12:20:09Z succeeded with 0 warnings and 0 errors. Discovery counted 2,601 server methods, 142 of them in Deployment: 7 migration, 45 platform and 15 production. The sorted method-set SHA-256 is `821935ae109feedad29e0f70279bc649c7765cec0431db7e64ad73b7dfc31baa`. This phase added no xUnit method. It changed `Inventory_CoversJulyAndMeasuredNamesInBothDirections` so that both dated names/types projections bind the operations inventory. Other stories changed the lane after November 22, so no reconciliation with the 2,482 count is claimed.
+The build at 12:19:46Z–12:20:09Z succeeded with 0 warnings and 0 errors. The post-rollout discovery observed 2,601 server methods, 142 of them in Deployment (7 migration, 45 platform and 15 production). The matching pre-rollout totals of 2,601 and 142 are inferred from the no-discovery-change rollout diff. The separate patch baseline at commit `860a9622559a7fdaac2838250cc504b9cc39303c` directly observed both counts before the review fixes. A retrospective independent rebuild on 2026-11-28 checked out the exact pre-rollout commit `3662d5be96c8960ea09c83a93a7ea1df33762c7d` in a disposable Git clone with pinned root submodules. `dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -c Debug -p:UseHexalithProjectReferences=true -m:1` passed with zero warnings and errors. Direct discovery with the command in this record observed 2,601 server and 142 Deployment methods and the same sorted method-set SHA-256. The sorted method-set SHA-256 is `821935ae109feedad29e0f70279bc649c7765cec0431db7e64ad73b7dfc31baa`. This phase added no xUnit method. It changed `Inventory_CoversJulyAndMeasuredNamesInBothDirections` so that both dated names/types projections bind the operations inventory. The November Debug lane reconciles as 2,475 + 7 Story 31.2 methods + 119 external methods = 2,601. Deployment reconciles as 133 + 7 + 2 = 142. The external interval was `0a4e76ae..3662d5be`, including the two Deployment methods from DW-550 (`de86d4dae59cc1b6b9e991eb6dc0b6251b0369ab`) and DW-576 (`2ec5b64226a0da96821a282050753136186563bf`).
 
 At 12:27Z `epic-31-context.md` was corrected to carry Story 31.1's exact sole-owner sentence in its Requirements & Constraints section. A rerun then passed all 167 cases of the three classes: migration 7, platform 143 and production 17. `OperationalRunbookSetTests` passed 10 of 10, and `python3 -B -m unittest discover -s tests/tooling/runtime_secret_store -p '*.py'` passed 3 of 3 with BusyBox 1.37.0. Adding a synthetic name to the November 28 projection failed the inventory method, and the restored file matched its original SHA-256.
 
-The Python discovery passed 3 test methods. Before the review fixes below, the probe methods ran 23 and 18 synthetic loopback subTests. Each of four temporary probe mutations failed its targeted subTests, and the probe was restored to SHA-256 `9f8324eb8eabf3733f1a22f75469b5571e3fd70fea41fb304ec713db3a33b711`. The mutations accepted a 500 for the built-in check, skipped the runtime-version gate, printed an unrecognized runtime version, and skipped the identity check. In the third case the canary-leak assertion failed. No generated token or credential appeared in any probe output.
+The Python lane at the rollout baseline had two methods: one Story 31.2 probe method with 13 subtests and the external bootstrap collector method from commit `d67ae5d728f87555542d30e3d28751cca02a248a`. The rollout added one probe method. Before the review fixes below, the three Python methods passed and the two probe methods ran 23 and 18 synthetic loopback subtests. Each of four temporary probe mutations failed its targeted subTests, and the probe was restored to SHA-256 `9f8324eb8eabf3733f1a22f75469b5571e3fd70fea41fb304ec713db3a33b711`. The mutations accepted a 500 for the built-in check, skipped the runtime-version gate, printed an unrecognized runtime version, and skipped the identity check. In the third case the canary-leak assertion failed. No generated token or credential appeared in any probe output.
 
 `git diff --check` exited 0. The tenant checker printed `No tenant-isolation surface changed; evidence check is a no-op.` for the changed files since baseline `3662d5be`.
 
 ### Review replay and fixes on November 28
 
-The review recorded an independent replay. At 12:28Z a read found all four live Configurations with `{storeName: kubernetes, defaultAccess: deny}` and no `allowedSecrets` on that scope. From 12:29:06Z to 12:29:19Z the 14-row probe matrix above replayed with identical results. At 12:40Z `kubectl auth can-i get secret/<name>` for each of the four residue names, and `kubectl auth can-i list secrets`, answered no for all eight ServiceAccounts in `hexalith-memories`.
+The review recorded an independent replay. At 12:28Z a read found all four live Configurations with `{storeName: kubernetes, defaultAccess: deny}` and no `allowedSecrets` on that scope. From 12:29:06Z to 12:29:19Z the 14-row probe matrix above replayed with identical results, using the same live probe bytes with SHA-256 `9f8324eb8eabf3733f1a22f75469b5571e3fd70fea41fb304ec713db3a33b711`. At 12:40Z `kubectl auth can-i get secret/<name>` for each of the four residue names, and `kubectl auth can-i list secrets`, answered no for all eight ServiceAccounts in `hexalith-memories`.
 
-After the review the probe was tightened. A non-empty expected version must now match the version shape the parser prints, so the placeholder words `absent` and `unrecognized` and `+build` suffixes exit 2. The `builtin` check now requires an expected version. The probe is now at SHA-256 `a80c0d44bd7b1167a170660725ed731878143438d2c96282802377341fe25bd8`. Every live call above passed `1.19.2`, which the tightened probe still accepts. The test gained rows for both placeholder words, for a bare `builtin` run, for the app IDs `Memories` and `memorie\163` and for a lifecycle outside-name read answering 200 with the field. Each row expects failure. The probe methods now run 25 and 21 subTests, 46 in all. `python3 -B -m unittest discover -s tests/tooling/runtime_secret_store -p '*.py'` passed 3 of 3 with BusyBox 1.37.0. Deleting the app-ID gate failed the two app-ID rows, deleting the version-shape check failed the two placeholder rows, and deleting the `builtin` version requirement failed the bare row. Each time the probe was restored to the same SHA-256.
+After the review the probe was tightened. A non-empty expected version must now match the version shape the parser prints, so the placeholder words `absent` and `unrecognized` and `+build` suffixes exit 2. The `builtin` check now requires an expected version. The resulting prior-review probe had SHA-256 `a80c0d44bd7b1167a170660725ed731878143438d2c96282802377341fe25bd8` and was verified locally. Every live call above passed `1.19.2`, which the tightened probe still accepts. The test gained rows for both placeholder words, for a bare `builtin` run, for the app IDs `Memories` and `memorie\163` and for a lifecycle outside-name read answering 200 with the field. Each row expects failure. The probe methods then ran 25 and 21 subtests, 46 in all. The rollout and prior review together moved the Python lane from 2 to 3 methods (story delta +1) and 13 to 46 probe subtests (story delta +33). From creation, 0 + 2 Story 31.2 methods + 1 external bootstrap collector method = 3. `python3 -B -m unittest discover -s tests/tooling/runtime_secret_store -p '*.py'` passed 3 of 3 with BusyBox 1.37.0. Deleting the app-ID gate failed the two app-ID rows, deleting the version-shape check failed the two placeholder rows, and deleting the `builtin` version requirement failed the bare row. Each time the probe was restored to the same SHA-256.
 
 The operations inventory regained the dropped reopen triggers. It now states that a production overlay apply would also restore the residue grants, and that the clock deny scope is proven structurally only.
+
+### Review patch verification on November 28
+
+The live rollout and 12:29Z replay used probe SHA-256 `9f8324eb8eabf3733f1a22f75469b5571e3fd70fea41fb304ec713db3a33b711`. The prior-review probe had SHA-256 `a80c0d44bd7b1167a170660725ed731878143438d2c96282802377341fe25bd8`. The initial patch used SHA-256 `3a218c5e7178b78ed97fa161e3b24d21d662b04ae9fccc8fbd1689fa73a0c758`. The amended probe has SHA-256 `049756fd2999cbeb1311539b9c88171f75ed0c57609b98fa7bee213c36fea120`. Both patch versions were verified with synthetic loopback responses.
+
+```bash
+sh -n tools/probe-dapr-secret-scope.sh
+python3 -B -m unittest discover -s tests/tooling/runtime_secret_store -p '*.py' -v
+run-with-temp dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -c Debug -p:UseHexalithProjectReferences=true -m:1 --no-restore
+dll=tests/Hexalith.Memories.Server.Tests/bin/Debug/net11.0/Hexalith.Memories.Server.Tests.dll
+export DiffEngine_Disabled=true
+dotnet exec "$dll" -list methods -noLogo
+for class in RuntimeSecretStoreMigrationTests OpenBaoPlatformDocumentationTests ProductionDeploymentArtifactsTests OperationalRunbookSetTests; do
+    dotnet exec "$dll" -class "*.$class" -parallelMode none -noLogo
+done
+```
+
+The shell check exited 0. With the Ubuntu `busybox-static` package (BusyBox 1.37.0) on PATH, the initial patch passed all three methods and 56 probe subtests. The amended full discovery command above passed all three methods. The focused command `python3 -B -m unittest discover -s tests/tooling/runtime_secret_store -p test_scope_probe.py -v` passed both probe methods with 66 subtests (43 argument and Vault cases, 23 built-in cases). The phase adds zero methods and 20 subtests, from 46 to 66. From creation the story accounts for two methods and 66 subtests, and the external diagnostics work accounts for one method. Subtests pipe the probe into POSIX sh on stdin with a PATH containing only BusyBox. They check exact exits 0, 1 and 2, zero requests for malformed arguments, and only the metadata request for failed metadata gates. Version diagnostics distinguish exact match, mismatch, unchecked, absent and unrecognized. Both output streams stayed free of the synthetic token, credential, its JSON-escaped form and the SemVer-shaped canary.
+
+The Debug source build passed with zero warnings or errors. Discovery before and after the patch counted 2,601 server methods and 142 Deployment methods with sorted method-set SHA-256 `821935ae109feedad29e0f70279bc649c7765cec0431db7e64ad73b7dfc31baa` both times. The initial patch passed 177/177 cases (7 migration, 143 platform, 17 production and 10 runbook), with zero skips. The amended Debug source build passed again and all four classes passed 177/177 cases with zero skips on the amended worktree. Direct execution of `dotnet exec "$dll" -method '*.Inventory_CoversJulyAndMeasuredNamesInBothDirections' -method '*.PublishedMigrationEvidence_ContainsNoSecretMaterial' -parallelMode none -noLogo` passed both methods. In a disposable copy, the migration method alone exited 1 on November 22 and November 28 separately for a duplicate row, a missing row, a name change, a type change and a duplicated name at the same row count. Changing the same type in both tables also exited 1. The amended guard rejected an extra July duplicate and a duplicate substituted at the same row count, for 13 rejected controls total. Both the untouched and byte-restored copies exited 0.
+
+### Review patch path reconciliation
+
+The July creation baseline is commit `115d30b59101910d0fd30717f49a5fb7f1782547`. The review patch baseline is commit `860a9622559a7fdaac2838250cc504b9cc39303c`. The rollout-spec baseline is commit `3662d5be96c8960ea09c83a93a7ea1df33762c7d`. The ten dependency gitlinks were recorded by commit `8caf3e576498a4f927291b677d86f343e0d65fb4` and are excluded individually in the story's File List Exclusions.
+
+The historical name-status comparison matched 22/22 story-owned paths (16 added and six modified). The current patch touches ten paths (nine modified plus the untracked follow-up spec, treated as an addition). The cumulative name-status comparison matches 23/23 story-owned paths (17 added and six modified). The independently derived cumulative input includes all ten named gitlinks so the readiness tool applies the exclusions. No story path was renamed or deleted. The ten-path rollout interval begins after the candidate overlay was added by commit `17483c2f0a9310c5e27043fe7a38048b726784de`.
+
+Run the following block under `run-with-temp bash` from the repository root. Historical candidates come from the creation, approved planning changes and implementation commits. The cumulative list also includes the ten reviewed patch paths declared below and the dependency commit's gitlinks. Only the numbered spec can enter from untracked files. The list is independent of the story File List and excludes unrelated worktree changes.
+
+```bash
+set -euo pipefail
+# Public Git commit identifiers for the reviewed intervals.
+creation=115d30b59101910d0fd30717f49a5fb7f1782547
+patch=860a9622559a7fdaac2838250cc504b9cc39303c
+gitlinks=8caf3e576498a4f927291b677d86f343e0d65fb4
+story=_bmad-output/implementation-artifacts/31-2-runtime-dapr-secret-store-migration.md
+sprint=_bmad-output/implementation-artifacts/sprint-status.yaml
+planning=_bmad-output/planning-artifacts
+spec=_bmad-output/implementation-artifacts/spec-31-2-runtime-dapr-secret-store-migration-3.md
+cat > "$TMPDIR/reviewed-paths.txt" <<'PATHS'
+_bmad-output/implementation-artifacts/31-2-runtime-dapr-secret-store-migration.md
+_bmad-output/implementation-artifacts/deferred-work.md
+_bmad-output/implementation-artifacts/spec-31-2-runtime-dapr-secret-store-migration-3.md
+_bmad-output/implementation-artifacts/sprint-status.yaml
+_bmad-output/implementation-artifacts/tests/31-2-runtime-secret-store-evidence.md
+_bmad-output/planning-artifacts/epics.md
+docs/operations/openbao.md
+tests/Hexalith.Memories.Server.Tests/Deployment/RuntimeSecretStoreMigrationTests.cs
+tests/tooling/runtime_secret_store/test_scope_probe.py
+tools/probe-dapr-secret-scope.sh
+PATHS
+mapfile -t reviewed_paths < "$TMPDIR/reviewed-paths.txt"
+git diff --name-status --find-renames=100% "$creation" "$patch" > "$TMPDIR/historical.tsv"
+git diff --name-status --find-renames=100% "$patch" -- "${reviewed_paths[@]}" > "$TMPDIR/patch.tsv"
+git ls-files --others --exclude-standard -- "$spec" | sed 's/^/A\t/' > "$TMPDIR/untracked.tsv"
+cat "$TMPDIR/untracked.tsv" >> "$TMPDIR/patch.tsv"
+{
+  git diff --name-only "$creation" a4517654e7993237c3bfba473fae6b6a027e3ad1 -- "$story" "$sprint"
+  git diff --name-only "$creation" d631fa131c8e713941074fa2423b5275cbf8c4ab -- "$planning/epics.md" \
+    "$planning/sprint-change-proposal-2026-08-01-story-31-1-checkpoint-split-and-epic-31-activation-gate.md" \
+    "$planning/sprint-change-proposal-2026-08-01-story-31-2-reserved-eventstore-scope-and-deferred-work-retarget.md" \
+    "$planning/sprint-change-proposal-2026-08-02-story-31-2-dapr-openbao-artifact-alignment.md"
+  for rev in 8f1b6a90d4016cb64c751e946ed7d0c36a100cee 0a4e76ae291bed67feb9c1aae5eafc8e4c3e3217 17483c2f0a9310c5e27043fe7a38048b726784de 32feaf9b36099b00c35a7bc2e869d9ab53f4de76 860a9622559a7fdaac2838250cc504b9cc39303c; do
+    git diff-tree --no-commit-id --name-only -r "$rev"
+  done
+} | LC_ALL=C sort -u > "$TMPDIR/historical-candidates.txt"
+awk -F '\t' 'NR==FNR { path[$0]; next } $2 in path' \
+  "$TMPDIR/historical-candidates.txt" "$TMPDIR/historical.tsv" > "$TMPDIR/historical-story.tsv"
+git diff-tree --no-commit-id --name-only -r "$gitlinks" > "$TMPDIR/gitlinks.txt"
+{
+  cat "$TMPDIR/historical-candidates.txt" "$TMPDIR/gitlinks.txt"
+  cat "$TMPDIR/reviewed-paths.txt"
+} | LC_ALL=C sort -u > "$TMPDIR/cumulative-candidates.txt"
+mapfile -t cumulative_paths < "$TMPDIR/cumulative-candidates.txt"
+git diff --name-status --find-renames=100% "$creation" -- "${cumulative_paths[@]}" > "$TMPDIR/cumulative-story.tsv"
+cat "$TMPDIR/untracked.tsv" >> "$TMPDIR/cumulative-story.tsv"
+cut -f2- "$TMPDIR/patch.tsv" > "$TMPDIR/patch-paths.txt"
+cut -f2- "$TMPDIR/cumulative-story.tsv" > "$TMPDIR/cumulative-paths.txt"
+test "$(wc -l < "$TMPDIR/historical-story.tsv")" -eq 22
+test "$(wc -l < "$TMPDIR/patch-paths.txt")" -eq 10
+test "$(wc -l < "$TMPDIR/cumulative-paths.txt")" -eq 33
+git diff --unified=0 "$patch" -- "$planning/epics.md" "$sprint"
+git diff --name-status 3662d5be96c8960ea09c83a93a7ea1df33762c7d "$patch"
+git diff --name-status 1bf1937c1f86fd6ce4e2f6957721bbecf83b1b35 3662d5be96c8960ea09c83a93a7ea1df33762c7d -- tests/tooling/runtime_secret_store \
+  tests/Hexalith.Memories.IntegrationTests/Deployment/RuntimeSecretStoreBootstrapTests.cs
+git diff --check "$patch" -- "${reviewed_paths[@]}"
+python3 tools/check-tenant-isolation-evidence.py --changed-files-file "$TMPDIR/patch-paths.txt"
+python3 tools/check-story-file-scope.py --commit-sha "$patch" --changed-files-file "$TMPDIR/patch-paths.txt"
+python3 tools/check-story-review-readiness.py --commit-sha "$patch" --changed-files-file "$TMPDIR/cumulative-paths.txt"
+```
+
+The zero-context comparison showed a single epic hunk (`@@ -6061,0 +6062,2`) adding the dated Story 31.2 scope decision and its trailing blank line. The single sprint hunk (`@@ -548 +548`) changes the exact Story 31.2 row from `in-progress` to `review`. The path gate covers the files and these hunk comparisons verify partial ownership.
+
+`git diff --check` exited 0. Tenant-isolation evidence on the ten actual patch paths exited 0 and printed `No tenant-isolation surface changed; evidence check is a no-op.` The file-scope check on the same inputs exited 0 and printed `Story file scope validation passed.`
+
+The readiness command used the patch baseline commit for Story-Key resolution and the independently prepared cumulative file list. With the story and sprint status at `review`, it exited 0:
+
+```text
+Selected story key: 31-2-runtime-dapr-secret-store-migration
+Story source: trailer
+Story artifact: _bmad-output/implementation-artifacts/31-2-runtime-dapr-secret-store-migration.md
+Declared status: review
+C1: File List exactly matches all 23 in-scope changed paths.
+C6: 1 evidence table(s) have valid evidence states, dates and dispositions.
+Story review readiness validation passed.
+```

@@ -545,7 +545,7 @@ development_status:
   # On 2026-11-22, Jérôme Piquot (`jpiquot`) closed Story 31.1 by sole-owner risk acceptance for C4b, C5b and C7. No independent countersignatures were obtained. EVAL-01 remains open with Platform Operations.
   epic-31: in-progress
   31-1-openbao-platform-hardening-and-documentation: done
-  31-2-runtime-dapr-secret-store-migration: in-progress
+  31-2-runtime-dapr-secret-store-migration: review
   epic-31-retrospective: optional
 
 # Action items recorded from epic retrospectives. status: open | in-progress | done

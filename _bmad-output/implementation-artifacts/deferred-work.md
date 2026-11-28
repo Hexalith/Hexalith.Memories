@@ -6234,17 +6234,6 @@ note: 2026-11-27 — Skipped. The 100K-unit workload certification, Story 34.39 
 - Evidence: The retained-key limit is 65,536, including per-unit aliases on the tracked path. Owner: ingestion and performance maintainers. Measure key cardinality by input shape, admission behavior and deletion completeness across the target workload. Size any subsequent partitioning change from the observed distribution.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-31-2-runtime-dapr-secret-store-migration.md`
-  summary: Close the Dapr built-in `kubernetes` secret-store path, which gives the memories, memories-mcp and access-telemetry sidecars Kubernetes Secret reads outside OpenBao and the secret allow-lists.
-  evidence: Story 31.2 review finding Blind 1 (high, pre-existing deployment defect). At 2026-11-22T15:51:51Z an in-pod metadata-only request listed `kubernetes` / `secretstores.kubernetes` in memories-675fd5d64-5zqpv beside both Vault stores, and as the only secret store in memories-mcp-55d65d86d6-hh6mr. No tracked Configuration (`memories-config`, `memories-mcp-config`, lifecycle or clock) scopes `storeName: kubernetes`, so Dapr allows every name there. No workload sets `dapr.io/disable-builtin-k8s-secret-store`. The memories Role grants get on nine names, including `openbao-runtime-bootstrap`. No read through that store was attempted. Owner: Platform Operations / Memories Maintainer. Consequence: until this is closed, AC1's "outside the DAPR secret-store boundary" clause cannot hold, and the memories application can likely obtain the OpenBao runtime token through its own sidecar. Fix: disable the built-in store on every Dapr workload, or add a `kubernetes` deny scope to each Configuration, then apply and re-probe. Owner decision needed first: the base and production deployment files are PG-ONPREM-2 profile inputs, and component secretKeyRef resolution must be shown to survive the change. Reopen trigger: any change to Dapr workload annotations or Configuration secret scopes, or the next production overlay apply.
-  note: 2026-11-27 — Skipped. Blocked on Platform Operations approval for PG-ONPREM-2 profile inputs and live component resolution proof.
-  note: 2026-11-28 — Skipped. Platform Operations approval and live component-reference verification are still required for PG-ONPREM-2 profile inputs.
-
-- source_spec: `_bmad-output/implementation-artifacts/spec-31-2-runtime-dapr-secret-store-migration.md`
-  summary: Run the runtime secret-store probe regression test (`tests/tooling/runtime_secret_store/test_scope_probe.py`) in an automated lane, with a BusyBox that supports `nc -e` on PATH.
-  evidence: Story 31.2 review (verification gap, medium). No workflow, hook or script discovers `tests/tooling/runtime_secret_store`, and no runner installs BusyBox. The test is the only guard against a return of the half-close transport that made daprd cancel permitted OpenBao reads during the 15:18Z live replay. The fix edits `.github/workflows/ci.yml`, which Hexalith.CiCd owns, so propose it there. Owner: Memories Maintainer, with Hexalith.CiCd. Reopen trigger: any change to `tools/probe-dapr-secret-scope.sh`, or the next live replay.
-  note: 2026-11-28 — Skipped. Hosted enrollment and BusyBox provisioning belong to Hexalith.CiCd.
-
-- source_spec: `_bmad-output/implementation-artifacts/spec-31-2-runtime-dapr-secret-store-migration.md`
   summary: Establish whether `tools/verify-access-telemetry-c1-linkage.ps1` hits the same daprd cancel-on-half-close defect through its `printf ... | nc -w 5 127.0.0.1 3500` request (unverified medium).
   evidence: Story 31.2 review (maybe-false). The 31.2 evidence shows that BusyBox nc half-closes at stdin EOF and that daprd then cancels an in-flight secret-store read. The linkage tool sends state requests the same way at line 316. It is parked under DW-730, so nothing runs it today. Settle by replaying its request against a local daprd with an outbound-backed store, or by switching to the `nc -e` transport used by the 31.2 probe. Owner: Story 27.3 / Memories Maintainer. Reopen trigger: DW-730's production-enablement trigger fires.
 
@@ -6573,43 +6562,87 @@ severity: high
 reason: On NTFS a native or mixed descendant can occupy an active ancestor's report path. A native Windows ancestor also deleted a WSL descendant's sentinel before refusing. Verify fail-before-cleanup in both start orders with native and mixed ownership, preserve same-directory lease behavior and independently usable sibling destinations, and exercise recovery after the owning process exits.
 status: open
 
+### DW-781: Enroll the runtime secret-store probe suite in CI
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-31-2-runtime-dapr-secret-store-migration-2.md`
-  summary: Run `tests/tooling/runtime_secret_store/test_scope_probe.py` in an automated lane now that the existing probe-CI deferral's reopen trigger fired: Story 31.2 changed `tools/probe-dapr-secret-scope.sh` and ran the 2026-11-28 live replay.
-  evidence: Story 31.2 review (verification gap, pre-verified). No `unittest discover` step in `.github/workflows/ci.yml` names `tests/tooling/runtime_secret_store`, so the new built-in store, per-check store selection and runtime-version gates are caught only by a manual run with BusyBox. The CI change belongs to Hexalith.CiCd. Owner: Memories Maintainer with Hexalith.CiCd.
+origin: Story 31.2 November 22 verification gap, November 28 rollout-spec review, and November 28 parent review (verification-gap and patch P9), 2026-11-28
+location: tests/tooling/runtime_secret_store/test_scope_probe.py; tools/probe-dapr-secret-scope.sh; .github/workflows/ci.yml
+source_spec: `_bmad-output/implementation-artifacts/spec-31-2-runtime-dapr-secret-store-migration-2.md`
+severity: medium
+reason: The loopback suite covers the cancel-on-half-close transport regression, built-in-store policy, per-check store selection and runtime identity. It runs manually with BusyBox and has no workflow, hook or tools/test.sh enrollment. The original probe-change and live-replay triggers fired on November 28. Hexalith.CiCd owns the CI change, including provisioning a BusyBox with nc -e. Memories Maintainer owns the handoff.
+status: open
+note: Consolidates the original `_bmad-output/implementation-artifacts/spec-31-2-runtime-dapr-secret-store-migration.md` entry and the subsequent rollout and parent review deferrals.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-31-2-runtime-dapr-secret-store-migration-2.md`
-  summary: File a Hexalith.McpCli proprietary-surface census amendment for the changed `tools/probe-dapr-secret-scope.sh` bytes before the next Memories gitlink bump in McpCli.
-  evidence: `references/Hexalith.McpCli/tools/proprietary-surfaces/v1/amendments/1.0.14.json` lines 1440–1443 pin `tools/probe-dapr-secret-scope.sh` (identity `memories-mcp`) at SHA-256 `b932a85ad5dfb7491984b24e36fc9722962162b6bcb71491323b5528b38ab895`, the HEAD bytes before Story 31.2. The working-tree bytes differ, so the exact-source census will flag that entry. The amendment belongs in the McpCli repository. Owner: Memories Maintainer with the McpCli owner.
+### DW-782: Update the McpCli proprietary-surface census for the probe
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-31-2-runtime-dapr-secret-store-migration-2.md`
-  summary: Move `eventstore` and `tenants` in `ext-secrets-1-isolated` from daprd 1.18.1 to the pinned 1.19.2 digest once the `registry-state` Redis ACL users permit `TYPE`.
-  evidence: On 2026-11-28 the daprd 1.19.2 Redis state-store save script called `TYPE`, and eventstore failed with `ERR ACL failure in script: User eventstore has no permissions to run the 'type' command`. Both Deployments were rolled back to their 1.18.1 revisions at 12:10Z and run Ready beside the 1.19.2 control plane. No official Dapr statement bounding a sustained sidecar/control-plane minor-version skew was found, so close the skew instead of leaving it open-ended. Owner: Platform Operations. Reopen: the ACL changes, a Dapr release changes the script, or the next control-plane upgrade.
+origin: Story 31.2 November 28 rollout-spec review (Edge 6), 2026-11-28
+location: references/Hexalith.McpCli/tools/proprietary-surfaces/v1/amendments/1.0.14.json
+source_spec: `_bmad-output/implementation-artifacts/spec-31-2-runtime-dapr-secret-store-migration-2.md`
+severity: medium
+reason: The exact-source census pins the previous probe bytes for the memories-mcp identity. File the amendment in Hexalith.McpCli for the final probe bytes before the next Memories gitlink update there. Owner: Memories Maintainer with the McpCli owner.
+status: open
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-31-2-runtime-dapr-secret-store-migration-2.md`
-  summary: Diagnose the per-minute actor state-store hot-reload abort logged by the 1.18.1 `eventstore` and `tenants` sidecars in `ext-secrets-1-isolated`.
-  evidence: Story 31.2 rollout evidence (2026-11-28): both sidecars logged the abort every minute before the Dapr 1.19.2 control-plane upgrade and still do after their rollback. Pre-existing and not caused by Story 31.2. Owner: Platform Operations.
+### DW-783: Resolve the isolated sidecar version skew
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-31-2-runtime-dapr-secret-store-migration-2.md`
-  summary: Confirm the namesake OpenBao keys of the four retained residue Secrets (`llm-secret`, `google-embedding-api-key`, `memories-embedding-client-secret`, `access-telemetry-marker-key`) with an operator metadata-only read, then delete each confirmed Secret.
-  evidence: The owner approved deletion on 2026-11-28, subject to a metadata-only key check. The read-only Dapr bootstrap policies answered HTTP 403 to metadata list and read, so all four stay without a Role grant. At 12:40Z `kubectl auth can-i get secret/<name>` and `kubectl auth can-i list secrets` answered `no` for all eight ServiceAccounts. The owner's operator identity can run `bao kv metadata get -mount=secret hexalith/memories/runtime/<name>`, or `hexalith/memories/access-telemetry/access-telemetry-marker-key`, without reading a value. Owner: Jérôme Piquot (`jpiquot`) as Platform Operations and Memories Maintainer, and Story 27.3 for the marker. Target: before backup `hexalith-memories-31-2-pre-dapr-1192` expires on 2026-12-28.
+origin: Story 31.2 November 28 control-plane rollout, 2026-11-28
+location: ext-secrets-1-isolated eventstore and tenants Deployments, registry-state Redis ACL
+source_spec: `_bmad-output/implementation-artifacts/spec-31-2-runtime-dapr-secret-store-migration-2.md`
+severity: medium
+reason: Dapr 1.19.2 state saves call TYPE and the eventstore ACL denied it. Both Deployments were rolled back to 1.18.1 and were Ready alongside the 1.19.2 control plane. If the ACL permits TYPE, retest both Deployments on the pinned 1.19.2 digest. If Dapr fixes the save script, verify the fix and pin that release before testing startup. Revisit before the next control-plane upgrade. Owner: Platform Operations.
+status: open
+note: The sole owner accepted Story 31.2 C2 with this separately owned skew recorded.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-31-2-runtime-dapr-secret-store-migration-2.md`
-  summary: Record the non-CSI Velero restore procedure and the Dapr 1.19.2 rollout lessons in `docs/operations/backup-restore.md` and `docs/operations/upgrade-migration.md`.
-  evidence: The 2026-11-28 rehearsal showed four things. Restores from `includeClusterResources: false` backups, including the `forgejo-hourly` schedule, keep `spec.volumeName` and stay Pending unless a resource modifier removes it. A stuck Restore needed a Velero Deployment restart. `dapr upgrade` resets chart values and passes the trust bundle as release values, so the upgrade used Helm with derived values. A deny-all intake pause breaks the memories-mcp upstream health check. These lessons exist only in the Story 31.2 evidence. Owner: Platform Operations and Memories Maintainer.
+### DW-784: Diagnose periodic actor state-store hot-reload aborts
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-31-2-runtime-dapr-secret-store-migration-2.md`
-  summary: Align the tracked base and production overlay with the live `kubernetes` deny scope, the pinned daprd 1.19.2 image and the narrowed Roles, or record an owner decision. A production overlay apply would otherwise reopen the built-in store path and restore the four residue grants.
-  evidence: On 2026-11-28 Story 31.2 applied the `production-dapr-1.19` patches live. `deploy/kubernetes/base` and `overlays/production` stayed unchanged as PG-ONPREM-2 profile inputs. The live part of the earlier entry "Close the Dapr built-in `kubernetes` secret-store path" is now closed, and this tracked-manifest part remains. Owner: Platform Operations and Memories Maintainer. Needs a PG-ONPREM-2 profile re-qualification decision.
+origin: Story 31.2 November 28 rollout evidence, 2026-11-28
+location: ext-secrets-1-isolated eventstore and tenants Dapr sidecars
+source_spec: `_bmad-output/implementation-artifacts/spec-31-2-runtime-dapr-secret-store-migration-2.md`
+severity: medium
+reason: Both 1.18.1 sidecars logged the abort every minute before the control-plane upgrade and after their rollback. Diagnose against the actor state-store configuration and runtime version before the next sidecar rollout. Owner: Platform Operations.
+status: open
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-31-2-runtime-dapr-secret-store-migration-2.md`
-  summary: Decide the retention of Velero backup `hexalith-memories-31-2-pre-dapr-1192`, which copies every `hexalith-memories` Secret, including both OpenBao bootstrap Secrets, to `scaleway-kube-green` until 2026-12-28.
-  evidence: The approved Option B backup excluded no Secrets. Its copies sit outside the OpenBao boundary in object storage, and the storage's at-rest encryption and readers are not recorded. Delete the backup once the rollback window closes, or record those storage controls. Owner: Platform Operations (Jérôme Piquot, `jpiquot`).
+### DW-785: Confirm OpenBao key metadata before deleting the residue Secrets
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-31-2-runtime-dapr-secret-store-migration-2.md`
-  summary: Align the Redis and FalkorDB startup probes with the `--requirepass` handling of a trailing newline in the password Secret.
-  evidence: In the 2026-11-28 restore rehearsal the synthetic password files ended in a newline. The startup probes kept the newline, `--requirepass` dropped it, and the probes then failed authentication. A rotated production Secret ending in a newline would break those pods the same way. Pre-existing manifest behavior, not caused by Story 31.2. Owner: Platform Operations and Memories Maintainer.
+origin: Story 31.2 November 28 rollout and sole-owner retention decision D3, 2026-11-28
+location: hexalith-memories llm-secret, google-embedding-api-key, memories-embedding-client-secret, access-telemetry-marker-key
+source_spec: `_bmad-output/implementation-artifacts/spec-31-2-runtime-dapr-secret-store-migration-2.md`
+severity: medium
+reason: OpenBao returned HTTP 403 to metadata list and read under both bootstrap policies. All four Secrets remain without live grants. Unused namespace copies and their Velero copies remain readable by authorized readers and can go stale after rotation. Delete each copy only after a fresh check finds zero live consumers and an authorized metadata-only read on the correct prefix confirms its namesake key. Target the check before the backup expires on 2026-12-28. Jérôme Piquot owns the operator check under Platform Operations with the Memories Maintainer. Story 27.3 shares ownership of the telemetry marker.
+status: open
+note: The November 28 12:40Z authorization replay found no get on these names or list on Secrets among all eight live namespace ServiceAccounts.
 
-## Deferred from: code review of 31-2-runtime-dapr-secret-store-migration.md (2026-11-28)
+### DW-786: Document the non-CSI restore and Dapr upgrade procedure
 
-- `tests/tooling/runtime_secret_store/test_scope_probe.py` runs in no automated CI lane (absent from `.github/workflows/ci.yml`, `.github/workflows/nightly.yml`, `.github/workflows/recover-partial-release.yml`, and `tools/test.sh`) and requires BusyBox on `PATH`. Pre-verified verification gap (`verification-gap`, `medium`); `.github/workflows/ci.yml` is owned by `Hexalith.CiCd` (`hexalith-llm-instructions.md:339`). Consolidates with the earlier Story 31.2 probe-CI deferrals during patch P9.
+origin: Story 31.2 November 28 rollout-spec review (Blind 19), 2026-11-28
+location: docs/operations/backup-restore.md; docs/operations/upgrade-migration.md
+source_spec: `_bmad-output/implementation-artifacts/spec-31-2-runtime-dapr-secret-store-migration-2.md`
+severity: medium
+reason: A non-CSI restore needed a modifier to clear spec.volumeName, and a stuck Restore needed a Velero restart. The Dapr CLI upgrade did not preserve Helm values and the deny-all intake pause blocked the MCP upstream check. Document the recovery and upgrade lessons before repeating this maintenance procedure. Owners: Platform Operations and Memories Maintainer.
+status: open
+
+### DW-787: Align the tracked overlays with live secret-store enforcement
+
+origin: Story 31.2 November 22 built-in-store deferral and November 28 rollout and sole-owner C2 decision D2, 2026-11-28
+location: deploy/kubernetes/base; deploy/kubernetes/overlays/production; deploy/kubernetes/overlays/qualification; deploy/kubernetes/overlays/production-dapr-1.19
+source_spec: `_bmad-output/implementation-artifacts/spec-31-2-runtime-dapr-secret-store-migration-2.md`
+severity: high
+reason: The approved live rollout used scoped candidate patches. Align the tracked overlays with the candidate’s pinned Dapr 1.19.2 sidecar image, built-in store deny scope and narrowed grants. The tracked base, production and qualification still keep the old grants and omit the deny scope. Applying them to their respective targets can reopen the built-in path and grant residue access. Preserve telemetry bootstrap while the live telemetry component scopes memories. Reopen before an overlay apply or on a PG-ONPREM-2 requalification decision. Owners: Platform Operations and Memories Maintainer.
+status: open
+note: Live bypass closed 2026-11-28. The November 22 Blind 1 review observed the unscoped Kubernetes store through sidecar metadata. Platform Operations and the Memories Maintainer added the deny scope to all four live Configurations on November 28. The five running 1.19.2 sidecars returned HTTP 403 to the synthetic built-in-store check, and permitted Vault reads passed. The sole owner accepted C2. See [the rollout evidence](tests/31-2-runtime-secret-store-evidence.md#built-in-kubernetes-store-and-vault-probe-matrix).
+
+### DW-788: Decide Velero backup retention and record storage controls
+
+origin: Story 31.2 November 28 Option B restore and sole-owner decision D6, 2026-11-28
+location: Velero backup hexalith-memories-31-2-pre-dapr-1192, scaleway-kube-green
+source_spec: `_bmad-output/implementation-artifacts/spec-31-2-runtime-dapr-secret-store-migration-2.md`
+severity: medium
+reason: The backup includes all namespace Secrets, including both OpenBao bootstraps, through its 2026-12-28 expiration. The record has no at-rest encryption or reader inventory for the off-cluster copy. When the rollback window closes, decide whether to remove the backup or record the storage protections and readers. Owner: Platform Operations (Jérôme Piquot).
+status: open
+
+### DW-789: Align Redis and FalkorDB startup probes with password newline handling
+
+origin: Story 31.2 November 28 Option B restore and sole-owner decision D6, 2026-11-28
+location: Redis and FalkorDB startup probe definitions in deploy/kubernetes/base
+source_spec: `_bmad-output/implementation-artifacts/spec-31-2-runtime-dapr-secret-store-migration-2.md`
+severity: medium
+reason: The synthetic password files ended in a newline. The startup probes included the newline and --requirepass dropped it, so startup checks failed while parity succeeded with a trimmed password. A rotation can reproduce the failure. Reopen at the next restore rehearsal or before rotating these Secrets. Owners: Platform Operations and Memories Maintainer.
+status: open

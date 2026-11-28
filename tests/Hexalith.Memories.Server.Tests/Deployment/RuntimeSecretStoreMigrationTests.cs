@@ -296,20 +296,25 @@ public sealed partial class RuntimeSecretStoreMigrationTests
         }
 
         string history = new MarkdownContractDocument(Read(root, Story)).GetSection("Measured Runtime State At Creation");
-        var expected = Regex.Matches(history.Split("**Kubernetes Secrets present", StringSplitOptions.None)[1], @"(?m)^\| `([\w-]+)` \|")
-            .Select(m => ("hexalith-memories", m.Groups[1].Value)).ToHashSet();
+        MatchCollection july = Regex.Matches(history.Split("**Kubernetes Secrets present", StringSplitOptions.None)[1], @"(?m)^\| `([\w-]+)` \|");
+        july.Count.ShouldBe(15);
+        var expected = july
+            .Select(m => (Namespace: "hexalith-memories", Name: m.Groups[1].Value)).ToHashSet();
         expected.Count.ShouldBe(15);
+        // Both November projections contain the same July names, except for the absent PostgreSQL Secret.
+        var november = expected.Where(secret => secret.Name != "access-telemetry-postgresql")
+            .Select(secret => (Name: secret.Name, Type: secret.Name == "registry-credentials" ? "kubernetes.io/dockerconfigjson" : "Opaque"))
+            .ToArray();
+        november.Length.ShouldBe(14);
+
         var evidence = new MarkdownContractDocument(Read(root, Evidence));
         foreach (string table in MeasuredSecretTables)
         {
-            var measured = evidence.GetTableRows(table);
-            measured.ShouldNotBeEmpty(table);
-            foreach (var row in measured)
-            {
-                row.Count.ShouldBe(2);
-                row.All(cell => !string.IsNullOrWhiteSpace(cell)).ShouldBeTrue();
-                expected.Add(("hexalith-memories", row[0]));
-            }
+            evidence.GetTableHeader(table).ShouldBe(["Secret", "Type"]);
+            var measured = evidence.GetTableRows(table).Select(row => (Name: row[0], Type: row[1])).ToArray();
+            measured.Length.ShouldBe(14, table);
+            measured.Select(row => row.Name).Distinct(StringComparer.Ordinal).Count().ShouldBe(14, table);
+            measured.ShouldBe(november, ignoreOrder: true, customMessage: table);
         }
 
         foreach (string platform in new[] { "openbao-seal", "openbao-server-tls", "hexalith-keys-pki", "openbao-operator-credentials" })

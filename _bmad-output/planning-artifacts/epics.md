@@ -6059,6 +6059,8 @@ So that runtime secret resolution crosses one reviewed boundary and every remain
 
 **Owned-paths correction note (2026-08-02):** Approved Sprint Change Proposal 2026-08-02 (Story 31.2 Dapr/OpenBao artifact alignment) corrected the first widened copy, which retained the superseded `CR17` and conditional verifier ownership after Story 31.2 itself had already moved to `CR29`/`CR30` and marked the verifier out of scope.
 
+**Sole-owner scope decision (2026-11-28):** Administrator Jérôme Piquot (`jpiquot`) approved the shared Dapr control-plane upgrade and non-CSI recovery work as Platform Operations prerequisites for the Story 31.2 rollout. Platform Operations owned the backup, isolated restore rehearsal, empty-tenant confirmation and intake pause and drain. C2 covers the enforced Memories runtime boundary and its `production-dapr-1.19` candidate. Platform Operations retains the remaining work, including the isolated sidecar skew, tracked overlay alignment, backup controls and restore probe behavior, with the other owners named in [deferred work](../implementation-artifacts/deferred-work.md#dw-781-enroll-the-runtime-secret-store-probe-suite-in-ci).
+
 **Retained by Story 27.3:** the access-telemetry-specific secret components and the `PG-ONPREM-1` secret backing remain in Story 27.3 adapter scope and are not migrated by this story.
 
 

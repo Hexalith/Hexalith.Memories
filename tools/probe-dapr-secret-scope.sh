@@ -1,16 +1,24 @@
 #!/bin/sh
-# Execute on stdin in the application container. Requires BusyBox sh, awk and nc.
+# Execute on stdin in the application container.
+# Requires the BusyBox sh, awk, date, timeout, nc (-e), and cat applets.
 # Usage: sh -s -- <app-id> <check> [expected-runtime-version]
 set +x
 set -eu
+export LC_ALL=C
+case "$#" in 2|3) ;; *) exit 2 ;; esac
 app=$1
 check=$2
-version=${3:-}
+version=${3-}
 # The app ID reaches awk -v, which would interpret backslash escapes, so only a fixed shape passes.
 case "$app" in ''|*[!a-z0-9-]*) exit 2 ;; esac
-# A version must have the shape the parser reports, never its placeholder words.
-case "$version" in *[!0-9A-Za-z.-]*) exit 2 ;; esac
-if [ -n "$version" ] && ! printf '%s\n' "$version" | busybox grep -Eqx '[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?'; then exit 2; fi
+# Share the SemVer grammar without build metadata. Numeric identifiers have no leading zeros.
+version_number='(0|[1-9][0-9]*)'
+prerelease_id="($version_number|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)"
+version_pattern="^${version_number}[.]${version_number}[.]${version_number}(-${prerelease_id}([.]${prerelease_id})*)?$"
+if [ "$#" -eq 3 ]; then
+    case "$version" in *[!0-9A-Za-z.-]*) exit 2 ;; esac
+    printf '%s\n' "$version" | busybox awk -v pattern="$version_pattern" 'END { exit ($0 !~ pattern) }' || exit 2
+fi
 store=secretstore
 stype=secretstores.hashicorp.vault
 field=password
@@ -30,7 +38,7 @@ esac
 port=${DAPR_HTTP_PORT:-3500}
 case "$port" in ''|*[!0-9]*) exit 2 ;; esac
 : "${DAPR_API_TOKEN:?missing in-pod Dapr API token}"
-date -u '+%FT%TZ'
+busybox date -u '+%FT%TZ'
 
 request() {
     # nc -e hands the loopback socket to a child shell, which writes the request and reads
@@ -41,10 +49,11 @@ request() {
     busybox timeout 8 busybox nc -w 5 127.0.0.1 "$port" -e busybox sh -c '
         printf "GET %s HTTP/1.0\r\nHost: localhost\r\ndapr-api-token: %s\r\nConnection: close\r\n\r\n" "$1" "$DAPR_API_TOKEN"
         exec busybox cat >&2' probe-request "$1" 2>&1 >/dev/null |
-        busybox awk -v mode="$2" -v app="$app" -v store="$store" -v stype="$stype" -v field="$field" '
+        busybox awk -v mode="$2" -v app="$app" -v store="$store" -v stype="$stype" -v field="$field" \
+            -v versionPattern="$version_pattern" -v expectedVersion="$version" '
         # Parse the JSON structure, including escaped strings. Compare only known top-level
         # fields and entries inside components. Never print input or server error messages.
-        # The runtime version is printed only when it has the public version shape.
+        # The version diagnostic uses fixed markers or the caller-provided version.
         function ws() { sub(/^[ \t\r\n]+/, "", body) }
         function token(start,    n,text) {
             if (start != 1) { bad=1; return "" }
@@ -53,6 +62,7 @@ request() {
         function value(path,depth,    c,k,i,text) {
             ws(); c=substr(body,1,1)
             if (depth>64 || bad) { bad=1; return }
+            if (path=="/runtimeVersion") runtime="unrecognized"
             if (c=="{" || c=="[") {
                 body=substr(body,2); ws()
                 if (path=="/components" && c=="[") inventory=1
@@ -72,8 +82,10 @@ request() {
                 text=token(match(body,/^"([^"\\]|\\.)*"/))
                 if (path=="/id" && text=="\"" app "\"") identity=1
                 if (path=="/runtimeVersion") {
-                    runtime=substr(text,2,length(text)-2)
-                    if (runtime !~ /^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$/) runtime="unrecognized"
+                    text=substr(text,2,length(text)-2)
+                    if (text ~ versionPattern) {
+                        runtime=(expectedVersion=="" ? "unchecked" : (text==expectedVersion ? expectedVersion : "mismatch"))
+                    }
                 }
                 if (path=="/" field && length(text)>2) present=1
                 if (path=="/errorCode") {
@@ -100,10 +112,10 @@ request() {
         }
         { body=body $0 "\n"; if (length(body)>1048576) { bad=1; exit } }
         END {
-            if (!headersDone || bad) { print "0 invalid absent"; exit }
-            ws(); if (substr(body,1,1)!="{") { print status,"invalid absent"; exit }
+            if (!headersDone || bad) { print "0 invalid unrecognized"; exit }
+            ws(); if (substr(body,1,1)!="{") { print status,"invalid unrecognized"; exit }
             value("",0); ws()
-            if (bad || length(body)) { print status,"invalid absent"; exit }
+            if (bad || length(body)) { print status,"invalid unrecognized"; exit }
             if (mode=="metadata") {
                 for (i in names) { count++; matched+=types[i] }
                 if (status!=200 || !identity || !inventory) print status,"invalid",runtime
