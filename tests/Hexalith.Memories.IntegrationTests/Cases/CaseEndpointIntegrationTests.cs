@@ -247,6 +247,7 @@ public sealed partial class CaseEndpointIntegrationTests
         createCaseResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
         CaseRecord? createdCase = await createCaseResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
         createdCase.ShouldNotBeNull();
+        await _ingestion.WaitForCaseProjectionAsync(tenantId, createdCase.Id);
 
         using StringContent requestBody = new("{\"memberId\":\"user-alice\"}", Encoding.UTF8, "application/json");
         using HttpResponseMessage response = await _fixture.MemoriesClient.PutAsync(
@@ -514,6 +515,7 @@ public sealed partial class CaseEndpointIntegrationTests
         createResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
         CaseRecord? createdCase = await createResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
         createdCase.ShouldNotBeNull();
+        await _ingestion.WaitForCaseProjectionAsync(tenantId, createdCase.Id);
 
         string targetMuId = $"mu-{Guid.NewGuid():N}";
         await _fixture.RedisConnection.GetDatabase().HashSetAsync(
@@ -630,6 +632,7 @@ public sealed partial class CaseEndpointIntegrationTests
         createCaseResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
         CaseRecord? otherCase = await createCaseResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
         otherCase.ShouldNotBeNull();
+        await _ingestion.WaitForCaseProjectionAsync(tenantId, otherCase.Id);
 
         using HttpResponseMessage missingResponse = await _fixture.MemoriesClient.GetAsync(
             $"/api/v1/tenants/{tenantId}/cases/{caseId}/memory-units/missing-annotation-target/annotations");
@@ -712,10 +715,14 @@ public sealed partial class CaseEndpointIntegrationTests
         createResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
         CaseRecord? createdCase = await createResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
         createdCase.ShouldNotBeNull();
+        await _ingestion.WaitForCaseProjectionAsync(tenantId, createdCase.Id);
 
         using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync(
             $"/api/v1/tenants/{tenantId}/cases/{createdCase.Id}/memory-units/nonexistent-mu-id");
         deleteResponse.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        ErrorResponse? deleteError = await deleteResponse.Content.ReadFromJsonAsync<ErrorResponse>(MemoriesJsonContext.Options);
+        deleteError.ShouldNotBeNull();
+        deleteError.Code.ShouldBe("MEMORY_UNIT_NOT_FOUND");
     }
 
     [Fact]
@@ -739,6 +746,7 @@ public sealed partial class CaseEndpointIntegrationTests
         createCaseBResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
         CaseRecord? caseB = await createCaseBResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
         caseB.ShouldNotBeNull();
+        await _ingestion.WaitForCaseProjectionAsync(tenantId, caseB.Id);
 
         IngestionInput ingestionInput = new()
         {
@@ -756,11 +764,15 @@ public sealed partial class CaseEndpointIntegrationTests
         ingestResponse.StatusCode.ShouldBe(HttpStatusCode.Accepted);
 
         await WaitForContainsEdgeAsync(tenantId, caseA.Id);
+        _ = await WaitForCaseMemoryUnitCountAsync(tenantId, caseA.Id, expectedCount: 1);
         string muId = await GetFirstMemoryUnitIdAsync(tenantId, caseA.Id);
 
         using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync(
             $"/api/v1/tenants/{tenantId}/cases/{caseB.Id}/memory-units/{muId}");
         deleteResponse.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        ErrorResponse? deleteError = await deleteResponse.Content.ReadFromJsonAsync<ErrorResponse>(MemoriesJsonContext.Options);
+        deleteError.ShouldNotBeNull();
+        deleteError.Code.ShouldBe("MEMORY_UNIT_NOT_FOUND");
 
         using HttpResponseMessage getCaseAResponse = await _fixture.MemoriesClient.GetAsync(
             $"/api/v1/tenants/{tenantId}/cases/{caseA.Id}");
@@ -789,6 +801,7 @@ public sealed partial class CaseEndpointIntegrationTests
         createResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
         CaseRecord? createdCase = await createResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
         createdCase.ShouldNotBeNull();
+        await _ingestion.WaitForCaseProjectionAsync(tenantId, createdCase.Id);
 
         IDatabase redisDb = _fixture.RedisConnection.GetDatabase();
         await redisDb.HashSetAsync(
