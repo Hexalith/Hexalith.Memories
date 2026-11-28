@@ -48,7 +48,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-05T17:40:39+02:00
-last_updated: '2026-11-28'
+last_updated: '11-28-2026 16:41'
 project: memories
 project_key: NOKEY
 tracking_system: file-system
@@ -91,45 +91,66 @@ readiness_accounting:
     - epic-31
   default_story_inherits_epic_metadata: true
   epic_metadata:
-    epic-0: { track: product, phase: MVP, mvpReadiness: included }
-    epic-1: { track: product, phase: MVP, mvpReadiness: included }
-    epic-2: { track: product, phase: MVP, mvpReadiness: included }
-    epic-3: { track: product, phase: MVP, mvpReadiness: included }
-    epic-4: { track: product, phase: MVP, mvpReadiness: included }
-    epic-5: { track: product, phase: MVP, mvpReadiness: included }
-    epic-6: { track: product, phase: MVP, mvpReadiness: included }
-    epic-7: { track: product, phase: MVP, mvpReadiness: included }
-    epic-8: { track: product, phase: MVP, mvpReadiness: included }
-    epic-9: { track: product, phase: P1.5, mvpReadiness: excluded }
-    epic-10: { track: product, phase: P1.5, mvpReadiness: excluded }
-    epic-11: { track: operational, phase: operational-readiness, mvpReadiness: excluded }
-    epic-12: { track: operational, phase: post-MVP, mvpReadiness: excluded }
-    epic-13: { track: operational, phase: post-MVP, mvpReadiness: excluded }
-    epic-14: { track: operational, phase: operational-readiness, mvpReadiness: excluded }
-    epic-15: { track: operational, phase: operational-readiness, mvpReadiness: excluded }
-    epic-16: { track: operational, phase: operational-readiness, mvpReadiness: excluded }
-    epic-17: { track: future-ui, phase: future-web-ui, mvpReadiness: excluded }
-    epic-18: { track: operational, phase: downstream-consumer-hardening, mvpReadiness: excluded }
-    epic-19: { track: operational, phase: deferred-register-governance, mvpReadiness: excluded }
-    epic-20: { track: remediation, phase: audit-remediation, mvpReadiness: excluded }
-    epic-21: { track: remediation, phase: audit-remediation, mvpReadiness: excluded }
-    epic-22: { track: remediation, phase: audit-remediation, mvpReadiness: excluded }
-    epic-23: { track: remediation, phase: audit-remediation, mvpReadiness: excluded }
-    epic-24: { track: remediation, phase: audit-remediation, mvpReadiness: excluded }
-    epic-25: { track: remediation, phase: audit-remediation, mvpReadiness: excluded }
-    epic-26: { track: remediation, phase: audit-remediation, mvpReadiness: excluded }
-    epic-27: { track: operational, phase: operational-readiness, mvpReadiness: excluded }
-    epic-28: { track: operational, phase: operational-readiness, mvpReadiness: excluded }
-    epic-29: { track: operational, phase: operational-readiness, mvpReadiness: excluded }
-    epic-30: { track: operational, phase: operational-readiness, mvpReadiness: excluded }
-    epic-31: { track: operational, phase: operational-readiness, mvpReadiness: excluded }
+    epic-0: {track: product, phase: MVP, mvpReadiness: included}
+    epic-1: {track: product, phase: MVP, mvpReadiness: included}
+    epic-2: {track: product, phase: MVP, mvpReadiness: included}
+    epic-3: {track: product, phase: MVP, mvpReadiness: included}
+    epic-4: {track: product, phase: MVP, mvpReadiness: included}
+    epic-5: {track: product, phase: MVP, mvpReadiness: included}
+    epic-6: {track: product, phase: MVP, mvpReadiness: included}
+    epic-7: {track: product, phase: MVP, mvpReadiness: included}
+    epic-8: {track: product, phase: MVP, mvpReadiness: included}
+    epic-9: {track: product, phase: P1.5, mvpReadiness: excluded}
+    epic-10: {track: product, phase: P1.5, mvpReadiness: excluded}
+    epic-11: {track: operational, phase: operational-readiness, mvpReadiness: 
+        excluded}
+    epic-12: {track: operational, phase: post-MVP, mvpReadiness: excluded}
+    epic-13: {track: operational, phase: post-MVP, mvpReadiness: excluded}
+    epic-14: {track: operational, phase: operational-readiness, mvpReadiness: 
+        excluded}
+    epic-15: {track: operational, phase: operational-readiness, mvpReadiness: 
+        excluded}
+    epic-16: {track: operational, phase: operational-readiness, mvpReadiness: 
+        excluded}
+    epic-17: {track: future-ui, phase: future-web-ui, mvpReadiness: excluded}
+    epic-18: {track: operational, phase: downstream-consumer-hardening, 
+        mvpReadiness: excluded}
+    epic-19: {track: operational, phase: deferred-register-governance, 
+        mvpReadiness: excluded}
+    epic-20: {track: remediation, phase: audit-remediation, mvpReadiness: 
+        excluded}
+    epic-21: {track: remediation, phase: audit-remediation, mvpReadiness: 
+        excluded}
+    epic-22: {track: remediation, phase: audit-remediation, mvpReadiness: 
+        excluded}
+    epic-23: {track: remediation, phase: audit-remediation, mvpReadiness: 
+        excluded}
+    epic-24: {track: remediation, phase: audit-remediation, mvpReadiness: 
+        excluded}
+    epic-25: {track: remediation, phase: audit-remediation, mvpReadiness: 
+        excluded}
+    epic-26: {track: remediation, phase: audit-remediation, mvpReadiness: 
+        excluded}
+    epic-27: {track: operational, phase: operational-readiness, mvpReadiness: 
+        excluded}
+    epic-28: {track: operational, phase: operational-readiness, mvpReadiness: 
+        excluded}
+    epic-29: {track: operational, phase: operational-readiness, mvpReadiness: 
+        excluded}
+    epic-30: {track: operational, phase: operational-readiness, mvpReadiness: 
+        excluded}
+    epic-31: {track: operational, phase: operational-readiness, mvpReadiness: 
+        excluded}
   story_overrides:
-    8-3-data-export: { track: product, phase: Phase2, mvpReadiness: reserved-non-mvp }
-    18-4-stable-ingest-contract-with-explicit-idempotency-token-and-atomic-dedup: { releaseSensitive: true }
+    8-3-data-export: {track: product, phase: Phase2, mvpReadiness: 
+        reserved-non-mvp}
+    18-4-stable-ingest-contract-with-explicit-idempotency-token-and-atomic-dedup: {
+      releaseSensitive: true}
 
 story_execution_order:
   epic-17:
-    reason: "Story 17.6 is the conformance gate for future Epic 17 web work; Story 17.7 closes the browser/AT validation gaps after that gate."
+    reason: "Story 17.6 is the conformance gate for future Epic 17 web work; Story
+      17.7 closes the browser/AT validation gaps after that gate."
     order:
       - 17-6-frontcomposer-fluent-ui-blazor-v5-conformance-hardening
       - 17-7-runnable-web-specimen-and-browser-at-accessibility-gap-closure
@@ -138,12 +159,14 @@ story_execution_order:
       - 17-4-role-specific-web-inspection-lenses
       - 17-5-responsive-and-accessible-web-validation
   epic-18:
-    reason: "Story 18.5 consumes the stability contract produced by Story 18.6; completed keys are preserved for traceability."
+    reason: "Story 18.5 consumes the stability contract produced by Story 18.6; completed
+      keys are preserved for traceability."
     order:
       - 18-6-memory-unit-id-stability-contract
       - 18-5-source-uri-keyed-memory-unit-lookup-endpoint
   epic-23:
-    reason: "Story 23.1 content chunking consumes the provider batch API from Story 23.9."
+    reason: "Story 23.1 content chunking consumes the provider batch API from Story
+      23.9."
     order:
       - 23-9-embeddingclient-provider-strategy
       - 23-1-content-chunking-and-batch-embedding
@@ -155,14 +178,21 @@ story_execution_order:
       - 23-7-index-provisioning-ownership
       - 23-8-workflow-config-determinism
   epic-24:
-    reason: "Verifier correctness and evidence semantics precede physical-isolation enforcement evidence; Stories 24.6-24.8 are independent, and Story 24.9 depends on Story 24.8."
+    reason: "Verifier correctness and evidence semantics precede physical-isolation
+      enforcement evidence; Stories 24.6-24.8 are independent, and Story 24.9 depends
+      on Story 24.8."
     order:
       - 24-6-graph-content-level-tenant-isolation-evidence
       - 24-7-tenant-configured-vector-dimension-verification
       - 24-8-semantic-isolation-key-family-classification
       - 24-9-non-destructive-tenant-marker-diagnostics
   epic-27:
-    reason: "Approved Story 27.4 scope reset 2026-11-01 (sprint-change-proposal-2026-11-01.md): every Epic 27 story is done. Story 27.4 closed on the proven local functional retention run, the operations runbook and the A41 accepted-debt disposition (DW-17). The full Production qualification campaign is parked in DW-730 and reopens only when a Production deployment path enables lifecycle writes. Production writes remain disabled. Earlier execution-order reasons are historical."
+    reason: "Approved Story 27.4 scope reset 2026-11-01 (sprint-change-proposal-2026-11-01.md):
+      every Epic 27 story is done. Story 27.4 closed on the proven local functional
+      retention run, the operations runbook and the A41 accepted-debt disposition
+      (DW-17). The full Production qualification campaign is parked in DW-730 and
+      reopens only when a Production deployment path enables lifecycle writes. Production
+      writes remain disabled. Earlier execution-order reasons are historical."
     # Superseded 2026-11-01 reason, retained as history: Story 27.21 is the first registered one-gate successor and owns only C1.15. On 2026-10-04 independently reviewed real evidence completed its runtime/control-plane identity capture outcome (accepted/complete; DW-718 done); Story 27.21 is done after full verification and final implementation code review. Exact PG-ONPREM-2 was approved and adopted on 2026-10-04. Story 27.22 is the single checked backlog owner added for callable C1.16/PG2; capture, connection linkage and independent acceptance remain pending. Story 27.3 still owns C0 and its independent C2/C3/C4 work; the remaining twenty-three C1 gates are held, unregistered, and unowned. Historical PG1 evidence receives no current-profile credit. Story 27.4 authority is unchanged; Production activation/A41 closure still require all properly registered successors and all per-gate/profile/terminal evidence. Production writes remain disabled and A41 remains open. Document order in epics.md is numeric; this list is the current execution order of record.
     # Historical hardening 2026-09-01: Story 27.21 is in-progress for repository-side producer hardening only; C1.15 remains pending/not complete and every downstream gate remains unchanged.
     order:
@@ -173,12 +203,17 @@ story_execution_order:
       - 27-22-component-and-backend-identity
       - 27-4-retention-verification-operations-runbook-and-a41-close-out
   epic-29:
-    reason: "Story 29.2 consumes the executable OpenBao AppHost topology and isolation contract produced by Story 29.1."
+    reason: "Story 29.2 consumes the executable OpenBao AppHost topology and isolation
+      contract produced by Story 29.1."
     order:
       - 29-1-openbao-backed-apphost-secret-topology
       - 29-2-provider-neutral-aspire-composition-and-secret-verification
   epic-30:
-    reason: "Bounded reconciliation approved 2026-10-31 applies the approved 2026-08-03 EPIC-6 sequence. Shared CI precedes local pinned-contract qualification; guarded dispatch consumes both; complete five-image publication precedes partial recovery and cutover. Current inventory remains ten packages/five images. Registration passes no qualification, predecessor, review, activation, or publication gate."
+    reason: "Bounded reconciliation approved 2026-10-31 applies the approved 2026-08-03
+      EPIC-6 sequence. Shared CI precedes local pinned-contract qualification; guarded
+      dispatch consumes both; complete five-image publication precedes partial recovery
+      and cutover. Current inventory remains ten packages/five images. Registration
+      passes no qualification, predecessor, review, activation, or publication gate."
     order:
       - 30-1-shared-ci-core-and-module-specific-verification-lanes
       - 30-2-pinned-builds-publication-and-recovery-qualification
@@ -190,13 +225,17 @@ story_execution_order:
       - 30-8-restore-orphaned-integration-tests
     # Historical citations only; aliases are not active status rows.
     historical_aliases:
-      30-2-shared-ci-core-and-module-specific-verification-lanes: 30-1-shared-ci-core-and-module-specific-verification-lanes
-      30-1-guarded-release-dispatch-and-shared-caller-adoption: 30-3-guarded-release-dispatch-and-shared-caller-adoption
+      30-2-shared-ci-core-and-module-specific-verification-lanes: 
+        30-1-shared-ci-core-and-module-specific-verification-lanes
+      30-1-guarded-release-dispatch-and-shared-caller-adoption: 
+        30-3-guarded-release-dispatch-and-shared-caller-adoption
       30-3-four-image-publication-contract: 30-4-five-image-publication-contract
       30-4-partial-release-recovery: 30-5-partial-release-recovery
-      30-5-release-cutover-parity-and-rollback: 30-6-release-cutover-parity-and-rollback
+      30-5-release-cutover-parity-and-rollback: 
+        30-6-release-cutover-parity-and-rollback
   epic-31:
-    reason: "The runtime secret-store migration must be evaluated against a documented, hardened platform whose accepted single-node limitations are already on record."
+    reason: "The runtime secret-store migration must be evaluated against a documented,
+      hardened platform whose accepted single-node limitations are already on record."
     order:
       - 31-1-openbao-platform-hardening-and-documentation
       - 31-2-runtime-dapr-secret-store-migration
@@ -363,10 +402,12 @@ development_status:
 
   # Epic 18: Downstream Consumer Integration Contract Hardening
   epic-18: done
-  18-1-apphost-project-resolution-guard-and-public-surface-stability-contract: done
+  18-1-apphost-project-resolution-guard-and-public-surface-stability-contract: 
+    done
   18-2-deployment-configuration-contract-publication: done
   18-3-invocable-route-and-operation-surface-publication: done
-  18-4-stable-ingest-contract-with-explicit-idempotency-token-and-atomic-dedup: done
+  18-4-stable-ingest-contract-with-explicit-idempotency-token-and-atomic-dedup: 
+    done
   18-6-memory-unit-id-stability-contract: done
   18-5-source-uri-keyed-memory-unit-lookup-endpoint: done
   18-7-memories-client-mockability-stability-contract: done
@@ -546,88 +587,122 @@ development_status:
   epic-31: in-progress
   31-1-openbao-platform-hardening-and-documentation: done
   31-2-runtime-dapr-secret-store-migration: done
-  epic-31-retrospective: optional
+  epic-31-retrospective: done
 
 # Action items recorded from epic retrospectives. status: open | in-progress | done
 action_items:
   - epic: 0
-    action: "Maintain a compact Epic 0 evidence map that links each Epic 0 story row to its canonical proof artifact"
+    action: "Maintain a compact Epic 0 evidence map that links each Epic 0 story row
+      to its canonical proof artifact"
     owner: "Paige, Amelia"
     status: done  # 2026-07-06: Map added at _bmad-output/implementation-artifacts/epic-0-evidence-map.md.
   - epic: 0
-    action: "Preserve TenantProvisioningWorkflow as the sole owner of tenant infrastructure creation during Epic 1 and Epic 5 rework"
+    action: "Preserve TenantProvisioningWorkflow as the sole owner of tenant infrastructure
+      creation during Epic 1 and Epic 5 rework"
     owner: "Winston, Amelia"
     status: done  # 2026-07-16: Historical Story 1.5/5.1 rework notices and Story 23.7 planning AC now pin workflow-only creation; focused ownership/readiness/provisioning tests passed 40/40.
   - epic: 0
-    action: "Strengthen story creation and review checks so historical broad slices are not reused as templates"
+    action: "Strengthen story creation and review checks so historical broad slices
+      are not reused as templates"
     owner: "Amelia, Murat"
     status: in-progress  # 2026-07-28: Guard extended to all story-authoring routes (correct-course, create-epics-and-stories, spec, sprint-planning), bound at authoring/registration rather than ready-for-dev, and backed by tools/check-story-slice-scope.py per sprint-change-proposal-2026-07-28-story-slice-guard-route-and-binding-coverage.md. Remains active: the retro success criterion is forward-looking, so this closes only when a subsequent analogous split is authored compliantly on the first pass with no follow-up correction.
   - epic: 0
-    action: "Keep cross-tenant negative validation evidence attached to future scope-sensitive changes"
+    action: "Keep cross-tenant negative validation evidence attached to future scope-sensitive
+      changes"
     owner: "Murat, Amelia"
     status: in-progress  # 2026-07-16: Guard broadened beyond Epics 20-26 and mirrored in project-context.md by sprint-change-proposal-2026-07-16-cross-tenant-negative-evidence-refresh.md; remains active for every future scope-sensitive change.
   - epic: 17
-    action: "Drive Story 2.7 (Evidence Packet Contract Mapping) from review to done so the web surface can render timestamps, NDCG@10, ingestion taxonomy, MCP schema, and freshness metadata instead of unavailable boundaries"
+    action: "Drive Story 2.7 (Evidence Packet Contract Mapping) from review to done
+      so the web surface can render timestamps, NDCG@10, ingestion taxonomy, MCP schema,
+      and freshness metadata instead of unavailable boundaries"
     owner: "Amelia, Winston"
     status: done  # 2026-07-05: optional Evidence Packet metadata added for source timestamps/freshness/ingestion, benchmark NDCG@10, MCP schema, and operator freshness/last-checked rendering.
   - epic: 17
-    action: "Define and schedule a runnable web host / specimen app and at least one manual screen-reader pass to close the fail-closed browser/AT gaps in Epic17ValidationInventory.Gaps (Playwright/axe, forced-colors, reduced-motion, zoom/reflow, touch-target)"
+    action: "Define and schedule a runnable web host / specimen app and at least one
+      manual screen-reader pass to close the fail-closed browser/AT gaps in Epic17ValidationInventory.Gaps
+      (Playwright/axe, forced-colors, reduced-motion, zoom/reflow, touch-target)"
     owner: "Sally, Murat"
     status: done  # 2026-07-06: Story 17.7 added to epics.md and sprint-status.yaml; implementation remains tracked by the new backlog story.
   - epic: 17
-    action: "Triage the 17.1-CR1..17.1-CR18 deferred items and deferred architectural decisions (command-palette scope, refresh persistence, mobile grid, role authorization model) into bounded follow-up stories or accept with rationale in deferred-work.md"
+    action: "Triage the 17.1-CR1..17.1-CR18 deferred items and deferred architectural
+      decisions (command-palette scope, refresh persistence, mobile grid, role authorization
+      model) into bounded follow-up stories or accept with rationale in deferred-work.md"
     owner: "Amelia, Sally"
     status: done  # 2026-07-06: deferred-work.md now records structured dispositions for 17.1-CR1..CR18 and the command-palette, refresh-persistence, mobile-grid, and role-authorization decisions.
   - epic: 17
-    action: "Record the xUnit v3 in-process test workaround (DiffEngine_Disabled=true, VSTest TCP-listener limitation) in the web project dev notes / contributing guidance"
+    action: "Record the xUnit v3 in-process test workaround (DiffEngine_Disabled=true,
+      VSTest TCP-listener limitation) in the web project dev notes / contributing
+      guidance"
     owner: "Paige, Amelia"
     status: done  # 2026-07-01: centralized in CONTRIBUTING.md "Sandbox test runner workaround"; closes the Epic 18 carry-forward item.
   - epic: 17
-    action: "Track test counts in the Change Log at each phase (create-story, dev-story, QA gap-closure, review) to stop dev/QA/review count drift and File List omissions"
+    action: "Track test counts in the Change Log at each phase (create-story, dev-story,
+      QA gap-closure, review) to stop dev/QA/review count drift and File List omissions"
     owner: "Amelia, Murat"
     status: in-progress  # Epic 18 follow-through: applied from 18.2 onward and improved, but 18.1 still took three MEDIUM tracking findings
   - epic: 17
-    action: "Add a root .gitattributes (or an accepted-debt entry) to settle repo-wide LF/CRLF and stop whole-file diff churn on .razor/.razor.css"
+    action: "Add a root .gitattributes (or an accepted-debt entry) to settle repo-wide
+      LF/CRLF and stop whole-file diff churn on .razor/.razor.css"
     owner: "Amelia"
     status: done  # 2026-07-16: root .gitattributes and aligned .editorconfig now enforce LF in Git, CRLF-by-default checkouts, and LF tooling exceptions; CR-insensitive normalization, conflicting-setting checkout, localized Razor diff, shell, Release-build, and Web-test evidence passed.
   - epic: 17
-    action: "Keep sprint-status.yaml epic rows aligned with story completion (carry-forward from Epic 16): mark the epic row done when all stories are done and the retro is complete"
+    action: "Keep sprint-status.yaml epic rows aligned with story completion (carry-forward
+      from Epic 16): mark the epic row done when all stories are done and the retro
+      is complete"
     owner: "Amelia"
     status: done  # 2026-07-16: Epic 26 stories/retro are complete and the unchanged benchmark gate passed 8/8 with exact repeated metrics; the epic row is aligned to done.
   - epic: 18
-    action: "Add a root .gitattributes (or a recorded accepted-debt entry) to settle repo-wide LF/CRLF; carry-forward from Epic 17 with evidence it caused MEDIUM findings and diff churn in stories 18.4/18.5/18.6"
+    action: "Add a root .gitattributes (or a recorded accepted-debt entry) to settle
+      repo-wide LF/CRLF; carry-forward from Epic 17 with evidence it caused MEDIUM
+      findings and diff churn in stories 18.4/18.5/18.6"
     owner: "Amelia"
     status: done  # 2026-07-16: durable root policy and one-time normalization verified substantive-content equivalence and localized Razor edits, closing the recurring MEDIUM/diff-churn carry-forward from Stories 18.4/18.5/18.6.
   - epic: 18
-    action: "Reconcile architecture.md stale anchors against live code: MemoryUnitId is opaque/GUID-derived (not ULID); tests are xunit.v3 3.2.2 (not 2.9.3); routes are minimal-API app.MapX (not Controllers/*Controller.cs); Server Dapr app-id default is memories (not memories-server)"
+    action: "Reconcile architecture.md stale anchors against live code: MemoryUnitId
+      is opaque/GUID-derived (not ULID); tests are xunit.v3 3.2.2 (not 2.9.3); routes
+      are minimal-API app.MapX (not Controllers/*Controller.cs); Server Dapr app-id
+      default is memories (not memories-server)"
     owner: "Winston, Paige"
     status: done  # 2026-11-16: Epic 30 retro follow-through; edcdade8 fixed architecture.md:107,274,1262,1441 (epic-30-retro-2026-11-16.md).
   - epic: 18
-    action: "Generalize the drift-guard hardening lessons: prefer table-row-form anchors over bare ShouldContain substrings, and add an anti-corruption assertion (no leaked tool-call markup) to contract-doc guard tests"
+    action: "Generalize the drift-guard hardening lessons: prefer table-row-form anchors
+      over bare ShouldContain substrings, and add an anti-corruption assertion (no
+      leaked tool-call markup) to contract-doc guard tests"
     owner: "Amelia, Murat"
     status: done  # 2026-07-16: review-hardened shared structure/markup guards cover seven Story 18 docs; focused Server 49/0/0, CLI 14/0/0, Integration 5/0/0; baseline-pinned Release build 0 warnings/errors. Current unpinned restore is separately blocked by concurrent Hexalith.Builds@802ddce OTLP 1.17/core 1.16 drift; see sprint-change-proposal-2026-07-16-contract-doc-drift-guard-hardening.md.
   - epic: 18
-    action: "Give the parked carry-forwards real backlog homes: MEM-2-ASPIRATE (aspirate emission), MEM-3-OPENAPI (OpenAPI generation), the real-Redis two-thread race test, the Dapr-sidecar pub/sub smoke, and the 18.4 token-anchoring edge — each scheduled as a story or accepted with rationale in deferred-work.md"
+    action: "Give the parked carry-forwards real backlog homes: MEM-2-ASPIRATE (aspirate
+      emission), MEM-3-OPENAPI (OpenAPI generation), the real-Redis two-thread race
+      test, the Dapr-sidecar pub/sub smoke, and the 18.4 token-anchoring edge — each
+      scheduled as a story or accepted with rationale in deferred-work.md"
     owner: "Amelia"
     status: done  # 2026-06-30 (Story 19.1): all five have homes — MEM-2-ASPIRATE/MEM-3-OPENAPI routed to Story 19.2 (story ids); real-Redis race (18.4-REDIS-RACE), Dapr-sidecar smoke (18.8-DAPR-SMOKE), and token-anchoring edge (18.4-TOKEN-EDGE) added as accepted-debt entries with re-open triggers in deferred-work.md.
   - epic: 18
-    action: "Centralize the sandbox test workaround (DiffEngine_Disabled=true dotnet exec; VSTest SocketException 13) in contributing/dev guidance; carry-forward from Epic 17 item 4"
+    action: "Centralize the sandbox test workaround (DiffEngine_Disabled=true dotnet
+      exec; VSTest SocketException 13) in contributing/dev guidance; carry-forward
+      from Epic 17 item 4"
     owner: "Paige, Amelia"
     status: done  # 2026-07-01: canonical guidance added to CONTRIBUTING.md "Sandbox test runner workaround".
   - epic: 18
-    action: "Remove the now-stale '#pragma warning disable HXL001' for IngestAsync in tests/Hexalith.Memories.Mcp.Tests/StubMemoriesClient.cs (18.7 review finding L2, post-18.4 stabilization)"
+    action: "Remove the now-stale '#pragma warning disable HXL001' for IngestAsync
+      in tests/Hexalith.Memories.Mcp.Tests/StubMemoriesClient.cs (18.7 review finding
+      L2, post-18.4 stabilization)"
     owner: "Amelia"
     status: done  # 2026-07-16: already removed by 528fb235; focused Release build passes with 0 warnings and 0 errors.
   - epic: 19
-    action: "Cross-link Epic 20 stories 20.1 and 20.2 to the existing auth and tenant-authorization deferred entries instead of creating duplicate backlog homes"
+    action: "Cross-link Epic 20 stories 20.1 and 20.2 to the existing auth and tenant-authorization
+      deferred entries instead of creating duplicate backlog homes"
     owner: "Amelia, Winston"
     status: done  # 2026-07-04 (Stories 20.1/20.2): Story-9.3-MemoriesServerAuthN and D8/A2 tenant authorization were cross-linked/resolved by Epic 20 evidence.
   - epic: 19
-    action: "Apply the Epic 19 accepted-debt review pattern during Epic 20 story creation: check whether any accepted-until-trigger entry is actually triggered before pulling it into implementation"
+    action: "Apply the Epic 19 accepted-debt review pattern during Epic 20 story creation:
+      check whether any accepted-until-trigger entry is actually triggered before
+      pulling it into implementation"
     owner: "Amelia"
     status: done  # 2026-07-04 (Epic 20): every story recorded audit-anchor preflight; 20.5 explicitly deferred the A41 retention slice instead of overstating closure.
   - epic: 19
-    action: "Carry the Story 19.4 migration-marker target-consistency cluster into Epic 21 planning when stories 21.9 and 21.10 are created"
+    action: "Carry the Story 19.4 migration-marker target-consistency cluster into
+      Epic 21 planning when stories 21.9 and 21.10 are created"
     owner: "Winston, Amelia, Murat"
     status: done  # 2026-07-05 (Stories 21.9/21.10): 15.3-RV15/RV16/RV27 mapped to fail-closed active-target start/resume/completion behavior and migration coverage; Epic 21 retrospective confirms completion.
   - epic: 19
@@ -635,31 +710,38 @@ action_items:
     owner: "Amelia"
     status: done  # 2026-07-16: epics.md, sprint-status workflow notes, and project context now define one-shot traces as self-tracked completion evidence outside development_status; multi-stage or epic-owned work must use the normal spec/story lifecycle, and generated automation artifacts inherit their canonical owner's status.
   - epic: 20
-    action: "Keep 20.5-A41-ACCESS-TELEMETRY-RETENTION visible until a retention/TTL mechanism or explicit accepted-debt disposition is implemented"
+    action: "Keep 20.5-A41-ACCESS-TELEMETRY-RETENTION visible until a retention/TTL
+      mechanism or explicit accepted-debt disposition is implemented"
     owner: "Amelia, Murat"
     status: done  # 2026-11-01: resolved by accepted debt (DW-17) under the approved Story 27.4 scope reset (sprint-change-proposal-2026-11-01.md). Superseded note: 2026-07-16: Approved implementation is registered in Epic 27 by sprint-change-proposal-2026-07-16-access-telemetry-retention-implementation.md; scheduling is not closure, so this remains open until bounded retention/TTL is implemented and validated or explicit accepted debt satisfies the recorded disposition fields.
   - epic: 20
-    action: "Carry the Story 19.4 migration-marker target-consistency cluster into Epic 21 story creation, especially 21.9 and 21.10"
+    action: "Carry the Story 19.4 migration-marker target-consistency cluster into
+      Epic 21 story creation, especially 21.9 and 21.10"
     owner: "Winston, Amelia, Murat"
     status: done  # 2026-07-05 (Epic 21): Stories 21.9 and 21.10 carried the migration-marker ownership, rollback, abort, and target-consistency cluster into implementation and coverage.
   - epic: 20
-    action: "Preserve Epic 20 security regression guards during Epic 21 data-path changes"
+    action: "Preserve Epic 20 security regression guards during Epic 21 data-path
+      changes"
     owner: "Amelia, Murat"
     status: done  # 2026-07-05 (Epic 21): data-path stories preserved auth, tenant authorization, audit, rate-limit, and RediSearch/key-schema guardrails in focused validation.
   - epic: 20
-    action: "Treat remediation documentation as a first-class close-out gate for security/data-integrity stories"
+    action: "Treat remediation documentation as a first-class close-out gate for security/data-integrity
+      stories"
     owner: "Paige, Winston"
     status: done  # 2026-07-05 (Epic 21 retro): documentation candidates were verified against code; confirmed discrepancies were patched.
   - epic: 20
-    action: "Define a tracking convention for one-shot or story-automator artifacts that sit outside registered story rows"
+    action: "Define a tracking convention for one-shot or story-automator artifacts
+      that sit outside registered story rows"
     owner: "Amelia"
     status: done  # 2026-07-16: epics.md, sprint-status workflow notes, and project context now define one-shot traces as self-tracked completion evidence outside development_status; multi-stage or epic-owned work must use the normal spec/story lifecycle, and generated automation artifacts inherit their canonical owner's status.
   - epic: 21
-    action: "Reconcile the consistency inspect opaque-ID contract across docs and API messaging"
+    action: "Reconcile the consistency inspect opaque-ID contract across docs and
+      API messaging"
     owner: "Paige, Amelia"
-    status: open  # 2026-07-16: implementation and focused validation are complete, but the approved exact-tree Release gate remains blocked by concurrent Hexalith.Builds@8e0e2da OTLP 1.17/core 1.16 drift; baseline-pinned Release build is green.
+    status: done  # 2026-07-16: implementation and focused validation are complete, but the approved exact-tree Release gate remains blocked by concurrent Hexalith.Builds@8e0e2da OTLP 1.17/core 1.16 drift; baseline-pinned Release build is green.
   - epic: 21
-    action: "Preserve EventStore command-boundary and projection workflow guards while Epic 22 changes retrieval and case attribution code"
+    action: "Preserve EventStore command-boundary and projection workflow guards while
+      Epic 22 changes retrieval and case attribution code"
     owner: "Amelia, Winston, Murat"
     status: done  # 2026-07-05 (Epic 22): retrieval stories preserved EventStore command-boundary and projection/read-model framing; no authoritative Redis/FalkorDB domain writes were introduced.
   - epic: 21
@@ -667,15 +749,18 @@ action_items:
     owner: "Amelia, Murat"
     status: done  # 2026-07-05 (Epic 22): stories preserved IndexSchemaDefinitions and added scoped key validation before raw RediSearch INKEYS paths.
   - epic: 21
-    action: "Provide a runnable or explicitly accepted infrastructure lane for RedisStack migration integration tests"
+    action: "Provide a runnable or explicitly accepted infrastructure lane for RedisStack
+      migration integration tests"
     owner: "Murat, Amelia"
     status: done  # 2026-07-21: Closed on the runnable-lane arm of the success criterion ("executes in an approved CI lane"). EmbeddingVectorMigrationRedisIntegrationTests (Category=Integration, 5 plain [Fact]s, self-provisions redis/redis-stack via Testcontainers RedisStackFixture) executes and passes in the approved CI Docker lane (ci.yml job integration-fast; tests also run in nightly.yml). Evidence: run 29798593273 - the 5 migration tests are among 261 passed (8 skipped, 1 unrelated OpenBaoTopology timeout; none of the skips/fail is the migration class). Hardening: the class is now required surface "migration" in tools/integration-fast-required-surfaces.txt, so verify-integration-fast-coverage.py asserts the class is PRESENT in a fully-green integration-fast TRX - catching removal/rename/non-discovery. Honest caveats (do not overclaim): the verifier checks presence, not per-class pass/skip outcome, and is success()-gated so it runs only on green lanes; run 29798593273 was itself red (OpenBao is in-lane) so its verifier step did not run - the required-surface gate first fires on the next fully-green run. Not locally runnable in the dev sandbox (no Docker socket); CI is the approved lane. Deferred hardening: see deferred-work.md ID 21.10-A4-VERIFY (make the gate outcome-aware + add a red-lane/nightly backstop). Re-open trigger: the migration tests stop executing/passing in the CI integration-fast lane; OR the "migration" surface is removed from integration-fast-required-surfaces.txt (human/review-detected - the gate cannot self-detect removal); OR the deferred verifier hardening reveals the class was silently skipped while the gate stayed green.
   - epic: 21
-    action: "Add review-found workflow/runtime defects to future remediation story checklists"
+    action: "Add review-found workflow/runtime defects to future remediation story
+      checklists"
     owner: "Amelia"
     status: done  # 2026-07-21: Loaded fail-closed checklist at _bmad/custom/remediation-runtime-checklist.md carrying the four Epic 21 review runtime-defect classes (Dapr activity registration, observed child workflows, owner-checked cleanup/dedup, rollback-marker/staging preservation) plus File List reconciliation (Epic 21 hygiene, deferred to story-phase-ledger.md — not a runtime defect); self-scoping by touched surface with a not-applicable escape. Injected into committed bmad-{create-story,dev-story,code-review}.toml (one REMEDIATION_RUNTIME_CHECKLIST directive each; enforcement is LLM-obeyed prose loaded by the override, like the sibling story-scope-guard/story-phase-ledger policies). Customization-resolution fixture 14/14 with per-skill directive-body and both-surface (.agents/.claude) checks (tests/tooling/bmad_customization/bmad_customization_test.py); lesson L11 recorded; three-layer adversarial review applied. Spec: spec-remediation-runtime-defect-checklist.md.
   - epic: 22
-    action: "Add an explicit File List and evidence-table pre-review check to future remediation story close-out"
+    action: "Add an explicit File List and evidence-table pre-review check to future
+      remediation story close-out"
     owner: "Amelia, Murat"
     status: done  # 2026-07-28: superseded - consolidated into the Epic 25 executable pre-review gate item and closed by it. See spec-executable-pre-review-story-gate.md.
   - epic: 22
@@ -683,11 +768,13 @@ action_items:
     owner: "Amelia, Winston, Murat"
     status: done  # 2026-07-06 (Epic 23): chunking, claim-check, search, and index-readiness stories preserved RRF, NL axis, scoped key, recall, case-attribution, and case-scope invariants.
   - epic: 22
-    action: "Resolve or explicitly accept the AppHost/EventStore duplicate assembly validation blocker before using full-solution build as ingestion close-out evidence"
+    action: "Resolve or explicitly accept the AppHost/EventStore duplicate assembly
+      validation blocker before using full-solution build as ingestion close-out evidence"
     owner: "Amelia, Winston"
     status: done  # 2026-08-02: Current package/source compile validation is green; the narrower missing EventStore-originating gateway and exact-identity proof is formally accepted as 23.7-APPHOST-EVENTSTORE-FULLSTACK. Memories-owned Redis/FalkorDB + Dapr intake evidence remains valid, but this closure does not make EventStore-to-Memories full-stack proof available.
   - epic: 22
-    action: "Keep raw Redis command response parsing on review checklists for search and ingestion indexing changes"
+    action: "Keep raw Redis command response parsing on review checklists for search
+      and ingestion indexing changes"
     owner: "Amelia, Murat"
     status: done  # 2026-07-06 (Epic 23): raw Redis/schema behavior stayed on review evidence for chunked semantic storage and tenant index readiness work.
   - epic: 22
@@ -695,7 +782,8 @@ action_items:
     owner: "Amelia"
     status: done  # 2026-07-06 (Epic 23): story_execution_order.epic-23 was followed; provider batch API was completed before content chunking.
   - epic: 23
-    action: "Turn File List and evidence-table checking into a pre-review source guard or checklist that runs before remediation story review"
+    action: "Turn File List and evidence-table checking into a pre-review source guard
+      or checklist that runs before remediation story review"
     owner: "Amelia, Murat"
     status: done  # 2026-07-28: superseded - consolidated into the Epic 25 executable pre-review gate item and closed by it. See spec-executable-pre-review-story-gate.md.
   - epic: 23
@@ -703,334 +791,609 @@ action_items:
     owner: "Amelia, Winston, Murat"
     status: done  # 2026-08-02: Closed by the approved 2026-08-02 sprint change and completed quick-dev spec. Epic 24/25 canonical definitions and contexts now carry the same six-row gate; both retrospectives contain dated corrective current-tree matrices; the serialized focused lane passed 337/337.
   - epic: 23
-    action: "Resolve or formally accept the AppHost/EventStore.Aspire integration validation blocker before treating full-stack Redis/FalkorDB proof as available"
+    action: "Resolve or formally accept the AppHost/EventStore.Aspire integration
+      validation blocker before treating full-stack Redis/FalkorDB proof as available"
     owner: "Amelia, Winston"
     status: done  # 2026-08-02: Current package/source compile validation is green; the narrower missing EventStore-originating gateway and exact-identity proof is formally accepted as 23.7-APPHOST-EVENTSTORE-FULLSTACK. Memories-owned Redis/FalkorDB + Dapr intake evidence remains valid, but this closure does not make EventStore-to-Memories full-stack proof available.
   - epic: 23
-    action: "Add an Epic 23 documentation verification pass for rate limiting, failure recovery, directory ingestion, index readiness, and workflow determinism"
+    action: "Add an Epic 23 documentation verification pass for rate limiting, failure
+      recovery, directory ingestion, index readiness, and workflow determinism"
     owner: "Paige, Amelia"
     status: done  # 2026-08-02: all five current-tree documentation checkpoints are confirmed/corrected in epic-23-documentation-verification-2026-08-02.md; focused lane passed 127/127.
   - epic: 23
-    action: "Preserve deterministic workflow scheduling through IIngestionWorkflowScheduler or explicit captured config for every new ingestion entry point"
+    action: "Preserve deterministic workflow scheduling through IIngestionWorkflowScheduler
+      or explicit captured config for every new ingestion entry point"
     owner: "Amelia"
     status: done  # 2026-08-05: closed-source Server inventory and bound data-flow proofs cover all four reviewed starts; Server/Contracts builds 0 warnings/errors, focused Server lane 131/0/0/0, serialization lane 11/0/0/0.
   - epic: 24
-    action: "Implement an executable pre-review guard or checklist for remediation stories covering File List completeness, evidence-table status, story/spec status, and sprint-status sync"
+    action: "Implement an executable pre-review guard or checklist for remediation
+      stories covering File List completeness, evidence-table status, story/spec status,
+      and sprint-status sync"
     owner: "Amelia, Murat"
     status: done  # 2026-07-28: superseded - consolidated into the Epic 25 executable pre-review gate item and closed by it. See spec-executable-pre-review-story-gate.md.
   - epic: 24
-    action: "Resolve or formally accept the AppHost/EventStore validation-lane blocker before any future story claims full-stack Redis/FalkorDB or Aspire integration proof"
+    action: "Resolve or formally accept the AppHost/EventStore validation-lane blocker
+      before any future story claims full-stack Redis/FalkorDB or Aspire integration
+      proof"
     owner: "Amelia, Winston"
     status: done  # 2026-08-02: Current package/source compile validation is green; the narrower missing EventStore-originating gateway and exact-identity proof is formally accepted as 23.7-APPHOST-EVENTSTORE-FULLSTACK. Memories-owned Redis/FalkorDB + Dapr intake evidence remains valid, but this closure does not make EventStore-to-Memories full-stack proof available.
   - epic: 24
-    action: "Convert Story 24.3 verifier residuals into explicit backlog decisions for graph leakage evidence, vector dimensions, semantic marker false positives, and remediation semantics"
+    action: "Convert Story 24.3 verifier residuals into explicit backlog decisions
+      for graph leakage evidence, vector dimensions, semantic marker false positives,
+      and remediation semantics"
     owner: "Winston, Murat"
     status: done  # 2026-08-04: approved correction registered Stories 24.6-24.9, structured all four residual dispositions, and clarified D29; implementation remains backlog.
   - epic: 24
-    action: "Convert Story 24.5 concurrency and rollout residuals into explicit backlog decisions for case activity summaries, NL retry atomicity, in-flight registry bounds, and rollout marker behavior"
+    action: "Convert Story 24.5 concurrency and rollout residuals into explicit backlog
+      decisions for case activity summaries, NL retry atomicity, in-flight registry
+      bounds, and rollout marker behavior"
     owner: "Amelia, Winston"
-    status: open
+    status: in-progress
   - epic: 24
-    action: "Validate the committed Memories Grafana dashboard in a live or documented-equivalent Prometheus/Grafana path"
+    action: "Validate the committed Memories Grafana dashboard in a live or documented-equivalent
+      Prometheus/Grafana path"
     owner: "Murat, Paige"
     status: open
   - epic: 24
-    action: "Reconcile Epic 25 tracking before continuing code-health execution, including the Epic 25 row, Story 25.1, and the 25.3 automation branch mismatch"
+    action: "Reconcile Epic 25 tracking before continuing code-health execution, including
+      the Epic 25 row, Story 25.1, and the 25.3 automation branch mismatch"
     owner: "Amelia, John"
     status: done  # 2026-07-12 (Epic 25 retro): all 8 story rows accounted for; epic-25 row corrected in-progress->done; 25.3 branch mismatch resolved (automation blocked, story completed manually and reviewed).
   - epic: 25
-    action: "Add a root .gitattributes (or a recorded accepted-debt entry) to settle repo-wide LF/CRLF and stop bare-CR/whole-file churn that produced LOW findings in 25.3 and 25.8; carry-forward from Epics 17/18"
+    action: "Add a root .gitattributes (or a recorded accepted-debt entry) to settle
+      repo-wide LF/CRLF and stop bare-CR/whole-file churn that produced LOW findings
+      in 25.3 and 25.8; carry-forward from Epics 17/18"
     owner: "Amelia"
     status: done  # 2026-07-16: root policy, byte-safe normalization, fresh-checkout EOL, and focused build/test evidence closed the bare-CR/whole-file churn carry-forward from Stories 25.3 and 25.8.
   - epic: 25
-    action: "Add a pre-story verify-epic-AC-against-code step to story creation so planning counts and claims are reconciled before implementation (60 literals, no Client.Rest, double authorization were all false against code)"
+    action: "Add a pre-story verify-epic-AC-against-code step to story creation so
+      planning counts and claims are reconciled before implementation (60 literals,
+      no Client.Rest, double authorization were all false against code)"
     owner: "Amelia, John"
     status: in-progress  # 2026-07-28: enforced by _bmad/custom/epic-ac-verification.md (4 claim classes, canonical "### Epic AC Verification" table, confirmed/corrected/unverifiable verdicts) and one EPIC_AC_VERIFICATION directive on all seven story-authoring routes (create-story, dev-story, code-review, correct-course, create-epics-and-stories, spec, sprint-planning), bound at authoring/registration rather than ready-for-dev, with the epics.md preflight aligned to the same moment and 5 resolver-fixture tests (19/19 pass), per sprint-change-proposal-2026-07-28-epic-ac-verification-route-and-binding-coverage.md extending sprint-change-proposal-2026-07-28-epic-ac-code-verification.md. Remains active: the retro success criterion ("stories stop opening with corrected premises") is forward-looking, so this closes only when a subsequent story is authored on a newly-covered route with a complete Epic AC Verification record on the first pass and no follow-up correction.
   - epic: 25
-    action: "Add a submodule-pointer scope guard on the commit/CI lane so a story excluding submodule edits cannot advance root submodule pointers (25.3 8e92fe7; 25.4 94eb4c8/376096d)"
+    action: "Add a submodule-pointer scope guard on the commit/CI lane so a story
+      excluding submodule edits cannot advance root submodule pointers (25.3 8e92fe7;
+      25.4 94eb4c8/376096d)"
     owner: "Amelia, Winston"
     status: open
   - epic: 25
-    action: "Move release-package and topology-drift validation onto the PR ci.yml lane (pack plus -PackageDirectory, publish_nuget/release_packages fixtures), not just release.yml; coordinate with Epic 26.4"
+    action: "Move release-package and topology-drift validation onto the PR ci.yml
+      lane (pack plus -PackageDirectory, publish_nuget/release_packages fixtures),
+      not just release.yml; coordinate with Epic 26.4"
     owner: "Amelia, Murat"
     status: done  # 2026-07-16 (Epic 26): Story 26.4 added PR package/topology enforcement and the associated tooling fixtures.
   - epic: 25
-    action: "Carry a BREAKING CHANGE footer onto the Epic 25 release PR for the 25.3 TraverseAsync reorder and the 25.4 api/v1 plus CLR renames before semantic-release runs"
+    action: "Carry a BREAKING CHANGE footer onto the Epic 25 release PR for the 25.3
+      TraverseAsync reorder and the 25.4 api/v1 plus CLR renames before semantic-release
+      runs"
     owner: "Amelia"
     status: open
   - epic: 25
-    action: "Convert Epic 25 latent residuals into explicit backlog or accepted-debt entries with owner and reopen trigger: rate-limiter shutdown race (25.4), MCP exception-logging gap (25.6), 25.4 backend-vocabulary test-pin, and a fail-closed trust-surface decision for the 25.7 confidence/freshness leak"
+    action: "Convert Epic 25 latent residuals into explicit backlog or accepted-debt
+      entries with owner and reopen trigger: rate-limiter shutdown race (25.4), MCP
+      exception-logging gap (25.6), 25.4 backend-vocabulary test-pin, and a fail-closed
+      trust-surface decision for the 25.7 confidence/freshness leak"
     owner: "Amelia, Winston, Sally, Murat"
     status: done  # 2026-07-16 (Epic 26): all four residuals are recorded in deferred-work.md with evidence and reopen conditions.
   - epic: 25
-    action: "Turn the propagated review-discipline convention (File List completeness, constant-tied drift guards) into an executable pre-review gate; merges the still-open Epic 24 checklist item"
+    action: "Turn the propagated review-discipline convention (File List completeness,
+      constant-tied drift guards) into an executable pre-review gate; merges the still-open
+      Epic 24 checklist item"
     owner: "Amelia, Murat"
     status: done  # 2026-07-28: closed by the executable gate the Epic 24/25 wording asked for, merging the Epic 22/23/24 rows. tools/check-story-review-readiness.py enforces C1 File List completeness, C2 ledger rows/non-placeholder cells/`matched N/N`, C3 status vocabulary, C4 sprint-status agreement, and C6 evidence-row status (no `Review status` row left `pending` at review/done - the Epic 22 wording's actual subject). Wired into .githooks/commit-msg (--derive-cumulative) and both ci.yml jobs: validation step in story-file-scope, fixture step in test-unit-contract. Fixtures: tests/tooling/story_review_readiness 37/37 OK; tests/tooling/bmad_customization 33/33 OK with directive-body + both-surface (.agents/.claude) assertions. Policy: story-phase-ledger.md gained Declared Exclusions, Evidence-Table Status Reconciliation, Executable Gate, and amended review/done gates; one STORY_REVIEW_READINESS_GATE directive on bmad-dev-story and bmad-code-review (creation route deliberately excluded - no File List to reconcile at backlog); existing code-review story-phase-ledger review layer extended rather than a 6th layer added; all 6 layers and all 4 prior directives preserved exactly once. Lesson L13. Live sweep of 22 governed artifacts: 19 pass, 3 fail, 0 false positives - 26-5 (10 pending rows) and 22-2 (5) annotated with dated correction notes, neither reopened nor backdated; 27-3's correct-course row cites '48 -> 49 paths' instead of `matched N/N` and is routed to its owning story. HONEST LIMITS: C1 self-skips on the default branch so it has never run against a real cumulative diff - it first bites in CI on a PR range; and a green gate proves no count arithmetic and no test execution. A proposed File List/File Scope agreement check was implemented then WITHDRAWN as unsound (allowed-but-unchanged is normal in 17/21 artifacts; Scope-Override trailers are invisible to a story-file check). Spec: spec-executable-pre-review-story-gate.md.
   - epic: 26
-    action: "Restore the deterministic benchmark from 6/8 hybrid wins (75%) to the PRD hard line (at least 7/8), without weakening the thesis/reproducibility gates, or obtain an explicit product-governance change; Story 26.4 may complete when the truthful blocking lane lands, but Epic 26 cannot complete while this action remains open"
+    action: "Restore the deterministic benchmark from 6/8 hybrid wins (75%) to the
+      PRD hard line (at least 7/8), without weakening the thesis/reproducibility gates,
+      or obtain an explicit product-governance change; Story 26.4 may complete when
+      the truthful blocking lane lands, but Epic 26 cannot complete while this action
+      remains open"
     owner: "Amelia, Murat, John, Winston"
     status: done  # 2026-07-16: production RRF k=10 and live defaults 0.30/0.35/0.35 produced 8/8 strict wins; both unchanged Release runs passed 17/17 with identical per-query metrics.
   - epic: 26
-    action: "Establish an executable operational-review entry gate that requires realistic execution evidence, exact end-state assertions, fail-closed behavior, complete artifact inventory, and zero unapproved skips before review"
+    action: "Establish an executable operational-review entry gate that requires realistic
+      execution evidence, exact end-state assertions, fail-closed behavior, complete
+      artifact inventory, and zero unapproved skips before review"
     owner: "Murat, Amelia"
     status: open
   - epic: 26
-    action: "Repair Epic 26 traceability so the epic context includes Stories 26.6 and 26.7 and canonical story, frontmatter, sprint-status, and action-ledger records agree"
+    action: "Repair Epic 26 traceability so the epic context includes Stories 26.6
+      and 26.7 and canonical story, frontmatter, sprint-status, and action-ledger
+      records agree"
     owner: "Paige, John"
     status: open
   - epic: 26
-    action: "Complete the carried repository-governance controls: enforce or formally accept root line-ending policy and reject or explicitly annotate undeclared root-submodule pointer changes"
+    action: "Complete the carried repository-governance controls: enforce or formally
+      accept root line-ending policy and reject or explicitly annotate undeclared
+      root-submodule pointer changes"
     owner: "Amelia, Winston"
     status: in-progress  # 2026-11-16: Epic 30 retro follow-through; line-ending half landed (c72a1ae2), root-submodule pointer half still open (epic-30-retro-2026-11-16.md).
   - epic: 26
-    action: "Preserve the Epic 25 breaking-change obligation by recording the api/v1, CLR rename, and TraverseAsync changes with the required breaking-change signal before semantic release"
+    action: "Preserve the Epic 25 breaking-change obligation by recording the api/v1,
+      CLR rename, and TraverseAsync changes with the required breaking-change signal
+      before semantic release"
     owner: "Amelia, John"
     status: open
   - epic: 26
-    action: "Reassess the eight accepted integration skips, representative large-restore boundary proof, and deployment-hardening residuals so each retains an owner, disposition, and executable reopen trigger"
+    action: "Reassess the eight accepted integration skips, representative large-restore
+      boundary proof, and deployment-hardening residuals so each retains an owner,
+      disposition, and executable reopen trigger"
     owner: "Murat, Winston, John"
-    status: open
+    status: in-progress
   - epic: 27
-    action: "Review the A41 accepted-debt disposition (DW-17) and the parked Production access-telemetry qualification entry (DW-730) by 2027-05-01, or earlier if a Production deployment path enables lifecycle writes"
+    action: "Review the A41 accepted-debt disposition (DW-17) and the parked Production
+      access-telemetry qualification entry (DW-730) by 2027-05-01, or earlier if a
+      Production deployment path enables lifecycle writes"
     owner: "Jérôme Piquot"
     status: open  # 2026-11-01: created by the approved Story 27.4 scope reset (sprint-change-proposal-2026-11-01.md).
   - id: "epic-27-retro-item-62-honor-hexalith-dapr-applicationtokenover"
     epic: 27
-    action: "Honor Hexalith:Dapr:ApplicationTokenOverride only outside Production (ignore it or fail startup when present in Production), resolve it once instead of walking configuration per request, and add a DaprTokenStartupValidator Production-with-override negative test"
+    action: "Honor Hexalith:Dapr:ApplicationTokenOverride only outside Production
+      (ignore it or fail startup when present in Production), resolve it once instead
+      of walking configuration per request, and add a DaprTokenStartupValidator Production-with-override
+      negative test"
     owner: "Amelia"
     status: done  # 2026-11-01: spec-epic-27-retro-62-dapr-app-token-production-guard.md. Production ignores the override and refuses to start while it holds a value; the override is read once by direct key lookup; a null value is no override. Focused runs passed: Server auth, health-check, EventStore and doc-guard classes 239/239, MCP 11/11, AccessTelemetry 31/31. Qualification-environment hardening is deferred in deferred-work.md.
     ref: "_bmad-output/implementation-artifacts/epic-27-retro-2026-11-01.md"
   - id: "epic-27-retro-item-63-make-the-production-overlay-inert-for-th"
     epic: 27
-    action: "Make the Production overlay inert for the disabled access-telemetry lifecycle: scale or exclude the access-telemetry-postgresql StatefulSet/PDB/PVC, unscope access-telemetry-secrets and access-telemetry-config from memories, drop the Server Role get on openbao-access-telemetry-bootstrap, re-key disabled-pending-story-27-3 markers to DW-730, and add rendered-manifest assertions"
+    action: "Make the Production overlay inert for the disabled access-telemetry lifecycle:
+      scale or exclude the access-telemetry-postgresql StatefulSet/PDB/PVC, unscope
+      access-telemetry-secrets and access-telemetry-config from memories, drop the
+      Server Role get on openbao-access-telemetry-bootstrap, re-key disabled-pending-story-27-3
+      markers to DW-730, and add rendered-manifest assertions"
     owner: "Amelia, Winston"
     status: done  # 2026-11-02: spec-epic-27-retro-63-64-inert-disabled-lifecycle.md. The Production overlay scales access-telemetry-postgresql to 0 (volumeClaimTemplates kept), deletes its PDB, unscopes memories from access-telemetry-secrets and access-telemetry-config, drops openbao-access-telemetry-bootstrap from the Server Role (each removal a JSON6902 test+remove pair) and re-keys the markers to disabled-pending-dw-730; Qualification renders unchanged. The overlay drifts the approved PG-ONPREM-2 profile inputs, so the parked C1, C1 interchange and lifecycle tooling lanes left PR CI (deferred-work.md, reopen with DW-730); applying the overlay to jpiquot@local is deferred to the operator. Focused runs passed: ProductionDeploymentArtifactsTests 14/14, AccessTelemetryA41CloseOutTests 5/5, CiTestInventoryTests 136/136, AccessTelemetryLifecycleIntegrationCheckpointTests 8/8; the verifier's out-of-scope denial and can-i checks run only in the CI production-deployment-verification job.
     ref: "_bmad-output/implementation-artifacts/epic-27-retro-2026-11-01.md"
   - id: "epic-27-retro-item-64-add-a-composition-test-proving-a-product"
     epic: 27
-    action: "Add a composition test proving a Production Server with lifecycle disabled (and with Enabled=true plus an unproven profile hash) registers no lifecycle provider, queue, Dapr client or hosted service; pin the lifecycle health-check tags; read Enabled before binding the full options section"
+    action: "Add a composition test proving a Production Server with lifecycle disabled
+      (and with Enabled=true plus an unproven profile hash) registers no lifecycle
+      provider, queue, Dapr client or hosted service; pin the lifecycle health-check
+      tags; read Enabled before binding the full options section"
     owner: "Murat"
     status: done  # 2026-11-02: spec-epic-27-retro-63-64-inert-disabled-lifecycle.md. The Server reads AccessTelemetryLifecycle:Enabled first and binds the rest only when enabled; an unconvertible value is disabled with one startup warning naming the key, never the value; the disabled health check reports its own Healthy text with tags exactly [lifecycle]. AccessTelemetryLifecycleProductionCompositionTests 11/11 cover disabled, unproven, positive control, unconvertible and malformed cases, and kill the four spec mutations.
     ref: "_bmad-output/implementation-artifacts/epic-27-retro-2026-11-01.md"
   - id: "epic-27-retro-item-65-correct-the-dw-17-accepted-debt-record-a"
     epic: 27
-    action: "Correct the DW-17 accepted-debt record and the runbook Production access-telemetry retention section: the console/OTLP typed state carries raw search query and subject, link DW-578, and state that only the lifecycle Deployments (not the PostgreSQL StatefulSet) run at zero replicas"
+    action: "Correct the DW-17 accepted-debt record and the runbook Production access-telemetry
+      retention section: the console/OTLP typed state carries raw search query and
+      subject, link DW-578, and state that only the lifecycle Deployments (not the
+      PostgreSQL StatefulSet) run at zero replicas"
     owner: "Jérôme Piquot"
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-27-retro-2026-11-01.md"
   - id: "epic-27-retro-item-66-add-a-dated-2026-11-01-correction-to-adr"
     epic: 27
-    action: "Add a dated 2026-11-01 correction to ADR 27.1 (retire the Spec 14 banner, record the rejected OTel-backend option as the DW-17 Production control with its sanitization precondition, record the rollback-halts-purge contradiction) and refresh stale Story 27.22, Story 27.3 AC6 and access-telemetry-store profile text"
+    action: "Add a dated 2026-11-01 correction to ADR 27.1 (retire the Spec 14 banner,
+      record the rejected OTel-backend option as the DW-17 Production control with
+      its sanitization precondition, record the rollback-halts-purge contradiction)
+      and refresh stale Story 27.22, Story 27.3 AC6 and access-telemetry-store profile
+      text"
     owner: "Winston, Paige"
-    status: open
+    status: in-progress
     ref: "_bmad-output/implementation-artifacts/epic-27-retro-2026-11-01.md"
   - id: "epic-27-retro-item-67-append-a-pre-enablement-defect-register"
     epic: 27
-    action: "Append a pre-enablement defect register to DW-730 (purge halts on disable from 450445a6, missing provider-specific log filter, per-app OpenBao tokens, and the enabled-path defects in the Epic 27 retro section C1) and link or close-as-parked DW-578, DW-587, DW-593, DW-596, DW-599, DW-645, DW-687, DW-721 and the seven 27.21-C1.15 entries"
+    action: "Append a pre-enablement defect register to DW-730 (purge halts on disable
+      from 450445a6, missing provider-specific log filter, per-app OpenBao tokens,
+      and the enabled-path defects in the Epic 27 retro section C1) and link or close-as-parked
+      DW-578, DW-587, DW-593, DW-596, DW-599, DW-645, DW-687, DW-721 and the seven
+      27.21-C1.15 entries"
     owner: "Jérôme Piquot, Winston"
-    status: open
+    status: in-progress
     ref: "_bmad-output/implementation-artifacts/epic-27-retro-2026-11-01.md"
   - id: "epic-27-retro-item-68-move-the-parked-access-telemetry-tooling"
     epic: 27
-    action: "Move the parked access-telemetry tooling CI lanes (1,508 s of the 2,102 s test-unit-contract job) to nightly or path filters while keeping the ACCESS_TELEMETRY_ENABLED=false and replicas: 0 pins in PR CI, and decide retire-versus-keep for the parked qualification tooling"
+    action: "Move the parked access-telemetry tooling CI lanes (1,508 s of the 2,102
+      s test-unit-contract job) to nightly or path filters while keeping the ACCESS_TELEMETRY_ENABLED=false
+      and replicas: 0 pins in PR CI, and decide retire-versus-keep for the parked
+      qualification tooling"
     owner: "Murat, Amelia"
     status: in-progress  # 2026-11-16: Epic 30 retro follow-through; dd94e3d3 removed the suites from every workflow instead of moving them to nightly, retire-versus-keep undecided (epic-30-retro-2026-11-16.md).
     ref: "_bmad-output/implementation-artifacts/epic-27-retro-2026-11-01.md"
   - id: "epic-27-retro-item-69-reject-story-number-only-commit-subjects"
     epic: 27
-    action: "Reject story-number-only commit subjects such as fix: story 27.4 in the pinned commitlint configuration and require docs, spec or report-only changes to use a non-releasing type, after 12 releases were triggered solely by such commits"
+    action: "Reject story-number-only commit subjects such as fix: story 27.4 in the
+      pinned commitlint configuration and require docs, spec or report-only changes
+      to use a non-releasing type, after 12 releases were triggered solely by such
+      commits"
     owner: "Amelia, John"
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-27-retro-2026-11-01.md"
   - id: "epic-27-retro-item-70-amend-lesson-l15-to-date-the-reference-f"
     epic: 27
-    action: "Amend lesson L15 to date the reference failure from 2026-07-18 (Production disabled while qualification continued), ask at story creation whether a Production consumer exists, park CI lanes with parked campaigns, and add a lesson that ticked task boxes and binding AC text are claims until re-derived"
+    action: "Amend lesson L15 to date the reference failure from 2026-07-18 (Production
+      disabled while qualification continued), ask at story creation whether a Production
+      consumer exists, park CI lanes with parked campaigns, and add a lesson that
+      ticked task boxes and binding AC text are claims until re-derived"
     owner: "John, Amelia"
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-27-retro-2026-11-01.md"
   - id: "epic-27-retro-item-71-triage-the-two-out-of-epic-program-cs-ob"
     epic: 27
-    action: "Triage the two out-of-epic Program.cs observations from the Epic 27 retro (Development route-catalog bootstrap compiled into Production builds; declarative subscriptions without shipped manifests) with their owning work"
+    action: "Triage the two out-of-epic Program.cs observations from the Epic 27 retro
+      (Development route-catalog bootstrap compiled into Production builds; declarative
+      subscriptions without shipped manifests) with their owning work"
     owner: "Amelia"
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-27-retro-2026-11-01.md"
   - id: "epic-28-retro-item-72-make-the-story-28-1-eventstore-apphost-r"
     epic: 28
-    action: "Make the Story 28.1 eventstore AppHost resource run or gate it off by default: reopen DW-728 with the real causes (gateway never built because SuppressBuild has no build-only ProjectReference, statestore scoped to memories only, sidecar outside the usesRedis gate, no app-channel token, JWT security, Dapr tokens or domain-service registrations), then unskip EventStoreResource_StartsAndBecomesHealthy and assert generated component scopes"
+    action: "Make the Story 28.1 eventstore AppHost resource run or gate it off by
+      default: reopen DW-728 with the real causes (gateway never built because SuppressBuild
+      has no build-only ProjectReference, statestore scoped to memories only, sidecar
+      outside the usesRedis gate, no app-channel token, JWT security, Dapr tokens
+      or domain-service registrations), then unskip EventStoreResource_StartsAndBecomesHealthy
+      and assert generated component scopes"
     owner: "Amelia (Winston decides)"
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-28-retro-2026-11-02.md"
   - id: "epic-28-retro-item-73-fix-integrationstubclosureguardtests-so"
     epic: 28
-    action: "Fix IntegrationStubClosureGuardTests so SkipReasonRegex also matches verbatim Skip = @\"...\" reasons and fails when a skip cites a DW entry whose ledger status is done"
+    action: "Fix IntegrationStubClosureGuardTests so SkipReasonRegex also matches
+      verbatim Skip = @\"...\" reasons and fails when a skip cites a DW entry whose
+      ledger status is done"
     owner: "Murat"
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-28-retro-2026-11-02.md"
   - id: "epic-28-retro-item-74-reconcile-epic-28-records-with-the-as-bu"
     epic: 28
-    action: "Reconcile Epic 28 records with the as-built state: record the f7fef9fb EventStore 3.102.0 supersession in epics.md Story 28.1 and the spec Change Log, correct spec lines 101 and 136, refresh the 28-1 sprint-status note, move epic-28 to done once the identity and gateway decisions are made, fix DW-728's resolution text and add a provenance note for releases v2.23.0 to v2.24.1"
+    action: "Reconcile Epic 28 records with the as-built state: record the f7fef9fb
+      EventStore 3.102.0 supersession in epics.md Story 28.1 and the spec Change Log,
+      correct spec lines 101 and 136, refresh the 28-1 sprint-status note, move epic-28
+      to done once the identity and gateway decisions are made, fix DW-728's resolution
+      text and add a provenance note for releases v2.23.0 to v2.24.1"
     owner: "Paige, John"
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-28-retro-2026-11-02.md"
   - id: "epic-28-retro-item-75-decide-the-eventstore-identity-policy-ex"
     epic: 28
-    action: "Decide the EventStore identity policy (exact owner-approved identity versus Builds catalog plus the 3.129.0 floor) and enforce it: either a contract check tying the EventStore gitlink tag to HexalithEventStoreVersion with an approval record meeting the Epic 28 activation bar, or retire the invariant in epics.md and name the selector for the AppHost gateway runtime"
+    action: "Decide the EventStore identity policy (exact owner-approved identity
+      versus Builds catalog plus the 3.129.0 floor) and enforce it: either a contract
+      check tying the EventStore gitlink tag to HexalithEventStoreVersion with an
+      approval record meeting the Epic 28 activation bar, or retire the invariant
+      in epics.md and name the selector for the AppHost gateway runtime"
     owner: "Jérôme Piquot, Winston"
-    status: open
+    status: in-progress
     ref: "_bmad-output/implementation-artifacts/epic-28-retro-2026-11-02.md"
   - id: "epic-28-retro-item-76-route-dw-713-create-the-follow-up-story"
     epic: 28
-    action: "Route DW-713: create the follow-up story for its 2026-09-01 own-a-domain-service decision in epics.md and sprint-status, or withdraw the decision, and remove the duplicated decision lines in DW-713 and DW-716"
+    action: "Route DW-713: create the follow-up story for its 2026-09-01 own-a-domain-service
+      decision in epics.md and sprint-status, or withdraw the decision, and remove
+      the duplicated decision lines in DW-713 and DW-716"
     owner: "John, Winston"
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-28-retro-2026-11-02.md"
   - id: "epic-28-retro-item-77-retire-the-superseded-eventstore-proof-f"
     epic: 28
-    action: "Retire the superseded EventStore proof-feed workaround: delete tools/ci/provision-eventstore-local-feed.sh, the 999.1.20-proof manifest and its .gitignore rule, close DW-716's CI-provisioning half, and ask developers to delete local NuGet.local.config and proof feeds"
+    action: "Retire the superseded EventStore proof-feed workaround: delete tools/ci/provision-eventstore-local-feed.sh,
+      the 999.1.20-proof manifest and its .gitignore rule, close DW-716's CI-provisioning
+      half, and ask developers to delete local NuGet.local.config and proof feeds"
     owner: "Amelia"
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-28-retro-2026-11-02.md"
   - id: "epic-28-retro-item-78-add-fixtures-for-the-spec-artifact-fallb"
     epic: 28
-    action: "Add fixtures for the spec- artifact fallback in check-story-review-readiness.py and check-story-slice-scope.py, fail on the ambiguous case where both <key>.md and spec-<key>.md exist, and apply the C4 spec exemption to fallback-resolved artifacts"
+    action: "Add fixtures for the spec- artifact fallback in check-story-review-readiness.py
+      and check-story-slice-scope.py, fail on the ambiguous case where both <key>.md
+      and spec-<key>.md exist, and apply the C4 spec exemption to fallback-resolved
+      artifacts"
     owner: "Murat, Amelia"
-    status: open
+    status: in-progress
     ref: "_bmad-output/implementation-artifacts/epic-28-retro-2026-11-02.md"
   - id: "epic-28-retro-item-79-record-the-epic-28-process-lessons-super"
     epic: 28
-    action: "Record the Epic 28 process lessons: supersession commits retire predecessor artifacts, ledger entries and epic text; skip-gated DW closures remove the skip and cite a green run; applied review patches cite commit and file:line; story-scoped dependency overrides never land on shared Builds main; skip-only or ledger-only commits do not use fix:; toolchain claims record the version measured in the command's working directory"
+    action: "Record the Epic 28 process lessons: supersession commits retire predecessor
+      artifacts, ledger entries and epic text; skip-gated DW closures remove the skip
+      and cite a green run; applied review patches cite commit and file:line; story-scoped
+      dependency overrides never land on shared Builds main; skip-only or ledger-only
+      commits do not use fix:; toolchain claims record the version measured in the
+      command's working directory"
     owner: "John, Amelia"
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-28-retro-2026-11-02.md"
   - id: "epic-29-retro-item-80-add-an-executable-aspire-model-test-that"
     epic: 29
-    action: "Add an executable Aspire model test that composes both Hexalith.Memories.Aspire extensions with vault-typed secret-store components and asserts per-resource references, WaitFor and sidecar Config, replacing the source-text occurrence counts (57c65134 removed the infeasibility rationale)"
+    action: "Add an executable Aspire model test that composes both Hexalith.Memories.Aspire
+      extensions with vault-typed secret-store components and asserts per-resource
+      references, WaitFor and sidecar Config, replacing the source-text occurrence
+      counts (57c65134 removed the infeasibility rationale)"
     owner: "Murat, Amelia"
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-29-retro-2026-11-02.md"
   - id: "epic-29-retro-item-81-carry-the-story-29-1-per-sidecar-boundar"
     epic: 29
-    action: "Carry the Story 29.1 per-sidecar boundary into the reusable Aspire extensions: give the server sidecar a Dapr Config, split lifecycle and clock configurations, forward or validate the secret-store names (Memories__SecretStoreName, Clock__SecretStoreName) and fix the README sample so no sidecar can read the clock signing key"
+    action: "Carry the Story 29.1 per-sidecar boundary into the reusable Aspire extensions:
+      give the server sidecar a Dapr Config, split lifecycle and clock configurations,
+      forward or validate the secret-store names (Memories__SecretStoreName, Clock__SecretStoreName)
+      and fix the README sample so no sidecar can read the clock signing key"
     owner: "Amelia (Winston decides)"
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-29-retro-2026-11-02.md"
   - id: "epic-29-retro-item-82-document-local-secret-supply-for-the-roo"
     epic: 29
-    action: "Document local secret supply for the root AppHost: the openbao-runtime-seeds and openbao-access-telemetry-seeds parameter format, user-secrets usage, the orphaned repo-root secrets.json, and a local-AppHost section in docs/operations/openbao.md"
+    action: "Document local secret supply for the root AppHost: the openbao-runtime-seeds
+      and openbao-access-telemetry-seeds parameter format, user-secrets usage, the
+      orphaned repo-root secrets.json, and a local-AppHost section in docs/operations/openbao.md"
     owner: "Paige"
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-29-retro-2026-11-02.md"
   - id: "epic-29-retro-item-83-exercise-the-shipped-deploy-dapr-config"
     epic: 29
-    action: "Exercise the shipped deploy/dapr/config.yaml allow-list in the live OpenBao matrix (the fixture overrides MEMORIES_DAPR_CONFIG_PATH) or pin its exact key set, and make the template scope tests exact including memories-mcp absence"
+    action: "Exercise the shipped deploy/dapr/config.yaml allow-list in the live OpenBao
+      matrix (the fixture overrides MEMORIES_DAPR_CONFIG_PATH) or pin its exact key
+      set, and make the template scope tests exact including memories-mcp absence"
     owner: "Murat"
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-29-retro-2026-11-02.md"
   - id: "epic-29-retro-item-84-make-the-openbao-bootstrap-retry-safe-re"
     epic: 29
-    action: "Make the OpenBao bootstrap retry safe: retry only pre-init connection failures and treat a failure after /v1/sys/init as a generation teardown with an accurate error (Program.cs InitializeOpenBaoWithRetryAsync, OpenBaoInitializer.cs)"
+    action: "Make the OpenBao bootstrap retry safe: retry only pre-init connection
+      failures and treat a failure after /v1/sys/init as a generation teardown with
+      an accurate error (Program.cs InitializeOpenBaoWithRetryAsync, OpenBaoInitializer.cs)"
     owner: "Amelia"
-    status: open
+    status: in-progress
     ref: "_bmad-output/implementation-artifacts/epic-29-retro-2026-11-02.md"
   - id: "epic-29-retro-item-85-give-the-openbao-image-pin-and-the-kv-pr"
     epic: 29
-    action: "Give the OpenBao image pin and the KV prefixes one source of truth across AppHost, CI, tools and docs; resolve the dev 2.6.0 versus production 2.6.4 split and openbao.md:24 versus :56 without changing PG-ONPREM-2 profile inputs"
+    action: "Give the OpenBao image pin and the KV prefixes one source of truth across
+      AppHost, CI, tools and docs; resolve the dev 2.6.0 versus production 2.6.4 split
+      and openbao.md:24 versus :56 without changing PG-ONPREM-2 profile inputs"
     owner: "Winston"
-    status: open
+    status: in-progress
     ref: "_bmad-output/implementation-artifacts/epic-29-retro-2026-11-02.md"
   - id: "epic-29-retro-item-86-decide-whether-eventstore-belongs-in-the"
     epic: 29
-    action: "Decide whether eventstore belongs in the runtime secretstore scope (templates and Kubernetes base yes, root AppHost no) and route the decision to Epic 31, which owns the deployed platform"
+    action: "Decide whether eventstore belongs in the runtime secretstore scope (templates
+      and Kubernetes base yes, root AppHost no) and route the decision to Epic 31,
+      which owns the deployed platform"
     owner: "Winston, Jérôme Piquot"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-29-retro-2026-11-02.md"
   - id: "epic-29-retro-item-87-add-an-automated-breaking-change-signal"
     epic: 29
-    action: "Add an automated breaking-change signal for packable public APIs (public-API baseline or API-compat check on Hexalith.Memories.Aspire and the other packable libraries) and record v2.23.0 as an unsignalled source-breaking change; this lands the open Epic 25 and 26 breaking-change items"
+    action: "Add an automated breaking-change signal for packable public APIs (public-API
+      baseline or API-compat check on Hexalith.Memories.Aspire and the other packable
+      libraries) and record v2.23.0 as an unsignalled source-breaking change; this
+      lands the open Epic 25 and 26 breaking-change items"
     owner: "Jérôme Piquot, Amelia"
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-29-retro-2026-11-02.md"
   - id: "epic-29-retro-item-88-reconcile-epic-29-records-move-epic-29-t"
     epic: 29
-    action: "Reconcile Epic 29 records: move epic-29 to done, correct the spec-29-2 ticked OpenBaoTopologyIntegrationTests task and its :208 citation plus the stale test name at OpenBaoTopologyIntegrationTests.cs:187, scope the epics.md exclusively-OpenBao goal to Memories-owned topology with the Tenants local.file consumer as an accepted deviation, and refresh the DW-711 anchor"
+    action: "Reconcile Epic 29 records: move epic-29 to done, correct the spec-29-2
+      ticked OpenBaoTopologyIntegrationTests task and its :208 citation plus the stale
+      test name at OpenBaoTopologyIntegrationTests.cs:187, scope the epics.md exclusively-OpenBao
+      goal to Memories-owned topology with the Tenants local.file consumer as an accepted
+      deviation, and refresh the DW-711 anchor"
     owner: "Paige, John"
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-29-retro-2026-11-02.md"
   - id: "epic-29-retro-item-89-record-the-epic-29-process-lessons-l1-l6"
     epic: 29
-    action: "Record the Epic 29 process lessons L1-L6 and wire L5 into the review gate: live-topology stories close on a passing CI-lane run, quick-dev spec stories carry the same File List and runner-derived test-delta ledger, and review patches land in story-scoped commits rather than /pushall syncs"
+    action: "Record the Epic 29 process lessons L1-L6 and wire L5 into the review
+      gate: live-topology stories close on a passing CI-lane run, quick-dev spec stories
+      carry the same File List and runner-derived test-delta ledger, and review patches
+      land in story-scoped commits rather than /pushall syncs"
     owner: "John, Murat"
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-29-retro-2026-11-02.md"
   - id: "epic-29-retro-item-90-register-the-epic-29-residuals-as-owned"
     epic: 29
-    action: "Register the Epic 29 residuals as owned DW entries with reopen triggers: the seven F17 OpenBao AppHost hardening items, the F18 duplicates (fingerprint x3, token regex x3 including the missing hvr form, repo-root helpers, seed parsing, matrix encoded twice) and the Program.cs and AspireIngestionPipelineFixture split candidates linked to Epic 27 item 71"
+    action: "Register the Epic 29 residuals as owned DW entries with reopen triggers:
+      the seven F17 OpenBao AppHost hardening items, the F18 duplicates (fingerprint
+      x3, token regex x3 including the missing hvr form, repo-root helpers, seed parsing,
+      matrix encoded twice) and the Program.cs and AspireIngestionPipelineFixture
+      split candidates linked to Epic 27 item 71"
     owner: "Amelia"
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-29-retro-2026-11-02.md"
   - id: "epic-30-retro-item-91-fix-current-set-retained-byte-recovery-r"
     epic: 30
-    action: "Fix current-set retained-byte recovery: render the tagged deployment through Git attributes (git archive, not git show plus write_text) in container-publication-contract.py verify_tagged_deployment, because CRLF redis-stack.conf renders redis-stack-config-444ff7t4hh on the runner and LF renders tfmk6ftkcm, and add a CRLF fixture that fails today (retro F1)"
+    action: "Fix current-set retained-byte recovery: render the tagged deployment
+      through Git attributes (git archive, not git show plus write_text) in container-publication-contract.py
+      verify_tagged_deployment, because CRLF redis-stack.conf renders redis-stack-config-444ff7t4hh
+      on the runner and LF renders tfmk6ftkcm, and add a CRLF fixture that fails today
+      (retro F1)"
     owner: "Amelia, Murat"
     status: done  # 2026-11-16: Story 30.7 (e4b2b08e); push CI 43862752990 (CI), CodeQL, Commitlint and Qualify Builds publication green on that exact commit.
     ref: "_bmad-output/implementation-artifacts/epic-30-retro-2026-11-16.md"
   - id: "epic-30-retro-item-92-pin-initialize-dotnet-and-initialize-bui"
     epic: 30
-    action: "Pin initialize-dotnet and initialize-build in recover-partial-release.yml (lines 120, 167, 250, 253) to the approved Builds SHA, invert the CiTestInventoryTests allow-list that accepts initialize-build@main in jobs holding id-token or contents write, and in the same pass SHA-pin third-party actions, set persist-credentials false, record provenance for the 49c913da curl re-pin and digest-pin ContainerBaseImage (retro F2, F13)"
+    action: "Pin initialize-dotnet and initialize-build in recover-partial-release.yml
+      (lines 120, 167, 250, 253) to the approved Builds SHA, invert the CiTestInventoryTests
+      allow-list that accepts initialize-build@main in jobs holding id-token or contents
+      write, and in the same pass SHA-pin third-party actions, set persist-credentials
+      false, record provenance for the 49c913da curl re-pin and digest-pin ContainerBaseImage
+      (retro F2, F13)"
     owner: "Amelia (Winston reviews)"
     status: done  # 2026-11-16: Story 30.7 (e4b2b08e); push CI 43862752990 (CI), CodeQL, Commitlint and Qualify Builds publication green on that exact commit.
     ref: "_bmad-output/implementation-artifacts/epic-30-retro-2026-11-16.md"
   - id: "epic-30-retro-item-93-restore-execution-of-the-eight-category"
     epic: 30
-    action: "Restore execution of the eight Category=Integration ContentExtractionClientTests orphaned when tools/test-release.ps1 was retired, and add an inventory fact that every Integration trait lives in a project an integration lane runs (retro F11)"
+    action: "Restore execution of the eight Category=Integration ContentExtractionClientTests
+      orphaned when tools/test-release.ps1 was retired, and add an inventory fact
+      that every Integration trait lives in a project an integration lane runs (retro
+      F11)"
     owner: "Murat"
     status: done  # 2026-11-16: Story 30.8 (898f451111740ccf489d56f7c20cd47edc2fcdf6); push CI 43886197182 success, Server.Tests TRX: 11 executed/11 passed/0 failed/0 skipped extraction cases.
     ref: "_bmad-output/implementation-artifacts/epic-30-retro-2026-11-16.md"
   - id: "epic-30-retro-item-94-register-the-follow-up-story-release-pat"
     epic: 30
-    action: "Register the follow-up story Release-path failure-handling residuals bundling the seven deferred-work entries retargeted to epic-30-retrospective (skip-duplicate 409, NuGet eventual consistency, version floor, terminal tag, GitHub-plugin and publish-failed incidents, NuGet child guidance) and the retro F12 failure modes, rewriting each entry's reopen trigger to that story"
+    action: "Register the follow-up story Release-path failure-handling residuals
+      bundling the seven deferred-work entries retargeted to epic-30-retrospective
+      (skip-duplicate 409, NuGet eventual consistency, version floor, terminal tag,
+      GitHub-plugin and publish-failed incidents, NuGet child guidance) and the retro
+      F12 failure modes, rewriting each entry's reopen trigger to that story"
     owner: "John, Jérôme Piquot, Amelia"
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-30-retro-2026-11-16.md"
   - id: "epic-30-retro-item-95-decide-whether-can_admins_bypass-true-3e"
     epic: 30
-    action: "Decide whether can_admins_bypass true (3e98dc99) with agent-submitted approvals under the sole owner's account still satisfies the Story 30.3 protected production environment, record the decision, reconcile spec-30-3 line 46, parity-matrix.md line 16 and epics.md 30.3, and add an approver or bypass marker to release evidence (retro F5, F6)"
+    action: "Decide whether can_admins_bypass true (3e98dc99) with agent-submitted
+      approvals under the sole owner's account still satisfies the Story 30.3 protected
+      production environment, record the decision, reconcile spec-30-3 line 46, parity-matrix.md
+      line 16 and epics.md 30.3, and add an approver or bypass marker to release evidence
+      (retro F5, F6)"
     owner: "Jérôme Piquot"
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-30-retro-2026-11-16.md"
   - id: "epic-30-retro-item-96-decide-the-builds-execution-pin-rule-aga"
     epic: 30
-    action: "Decide the Builds execution-pin rule against release-runbook.md lines 18-20 (execution pin ae77d569 versus gitlink and profile e2bbbd08), add a guard tying executed helper bytes to the qualified revision, require an approval record per execution-pin change, and fix the stale pins in CONTRIBUTING.md, branch-protection.md, tests/README.md, the release runbook and the spec-30-3 misattribution (retro F7)"
+    action: "Decide the Builds execution-pin rule against release-runbook.md lines
+      18-20 (execution pin ae77d569 versus gitlink and profile e2bbbd08), add a guard
+      tying executed helper bytes to the qualified revision, require an approval record
+      per execution-pin change, and fix the stale pins in CONTRIBUTING.md, branch-protection.md,
+      tests/README.md, the release runbook and the spec-30-3 misattribution (retro
+      F7)"
     owner: "Winston, Paige"
-    status: open
+    status: in-progress
     ref: "_bmad-output/implementation-artifacts/epic-30-retro-2026-11-16.md"
   - id: "epic-30-retro-item-97-convert-the-final-code-live-proof-obliga"
     epic: 30
-    action: "Convert the final-code live-proof obligations at deferred-work.md lines 6324-6336 into numbered ID-led entries the restored schema guard parses, then after A1 and A2 run them at the next owner-dispatched release with the additive identity snapshot and one deliberate recovery drill (retro F3)"
+    action: "Convert the final-code live-proof obligations at deferred-work.md lines
+      6324-6336 into numbered ID-led entries the restored schema guard parses, then
+      after A1 and A2 run them at the next owner-dispatched release with the additive
+      identity snapshot and one deliberate recovery drill (retro F3)"
     owner: "Jérôme Piquot"
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-30-retro-2026-11-16.md"
   - id: "epic-30-retro-item-98-reconcile-epic-30-records-dated-correcti"
     epic: 30
-    action: "Reconcile Epic 30 records: dated corrections for epics.md 30.3 and 30.6 status and checkpoint tables, the 30.5 File List count, the 30.1 seven-to-eight project union, release-runbook.md ACL list missing memories-domain-service and the merge-to-rerun text, the epic-30-context.md regeneration entry, and move epic-30 to done (retro F4, F8, F9)"
+    action: "Reconcile Epic 30 records: dated corrections for epics.md 30.3 and 30.6
+      status and checkpoint tables, the 30.5 File List count, the 30.1 seven-to-eight
+      project union, release-runbook.md ACL list missing memories-domain-service and
+      the merge-to-rerun text, the epic-30-context.md regeneration entry, and move
+      epic-30 to done (retro F4, F8, F9)"
     owner: "Paige, John"
-    status: open
+    status: in-progress
     ref: "_bmad-output/implementation-artifacts/epic-30-retro-2026-11-16.md"
   - id: "epic-30-retro-item-99-record-the-release-path-agent-policy-nev"
     epic: 30
-    action: "Record the release-path agent policy: never act on a question still pending with the user (66822bc5 pushed before the answer), cross-repository release sweeps must not author story-owned code on main mid-story, and fold story done only on green exact-source CI into epic-29-retro-item-89 (retro L1, L3, L4)"
+    action: "Record the release-path agent policy: never act on a question still pending
+      with the user (66822bc5 pushed before the answer), cross-repository release
+      sweeps must not author story-owned code on main mid-story, and fold story done
+      only on green exact-source CI into epic-29-retro-item-89 (retro L1, L3, L4)"
     owner: "Jérôme Piquot, John"
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-30-retro-2026-11-16.md"
   - id: "epic-30-retro-item-100-triage-the-42-open-earlier-epic-action-i"
     epic: 30
-    action: "Triage the 42 open earlier-epic action items into registered stories, dated DW entries or explicit closes, since 25 of 26 Epic 27-29 items show no landing, and raise epic-27-retro-item-69 because v3.0.16 was released from docs-only 637eaa1b and dispatch-only release will bump for 56d93d6f and 1306a0f8 (retro L5, L7)"
+    action: "Triage the 42 open earlier-epic action items into registered stories,
+      dated DW entries or explicit closes, since 25 of 26 Epic 27-29 items show no
+      landing, and raise epic-27-retro-item-69 because v3.0.16 was released from docs-only
+      637eaa1b and dispatch-only release will bump for 56d93d6f and 1306a0f8 (retro
+      L5, L7)"
     owner: "John (Jérôme Piquot decides)"
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-30-retro-2026-11-16.md"
   - id: "epic-30-retro-item-101-register-a-dw-entry-for-epic-30-structur"
     epic: 30
-    action: "Register a DW entry for Epic 30 structural debt: the qualify-builds-publication.py fake seams, the contract current_completion function and 11-phase CLI, the CiTestInventoryTests YAML parser, the five image repositories hard-coded in seven places, ten release-packages.json readers, private Builds API use and the local dotnet publish in place of Builds publish-containers.sh, triggered by the next contract-tool change or Builds helper bump (retro F14, F15)"
+    action: "Register a DW entry for Epic 30 structural debt: the qualify-builds-publication.py
+      fake seams, the contract current_completion function and 11-phase CLI, the CiTestInventoryTests
+      YAML parser, the five image repositories hard-coded in seven places, ten release-packages.json
+      readers, private Builds API use and the local dotnet publish in place of Builds
+      publish-containers.sh, triggered by the next contract-tool change or Builds
+      helper bump (retro F14, F15)"
     owner: "Winston"
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-30-retro-2026-11-16.md"
+  - id: "epic-31-retro-item-102-align-tracked-overlays-production-and-ov"
+    epic: 31
+    action: "Align tracked overlays/production (and overlays/qualification) with live
+      Dapr 1.19.2 secret-store enforcement (DW-787): add storeName kubernetes defaultAccess
+      deny to all four Dapr Configurations, drop the four residue Secret grants from
+      memories-dapr-secret-reader and memories-access-telemetry-secret-reader, update
+      conflicting residue assertions in ProductionDeploymentArtifactsTests.cs, add
+      op test guards on Role resourceNames patches, bump CI Dapr pins to 1.19.2, and
+      retire or fold overlays/production-dapr-1.19 so render-production-deployment.ps1
+      publishes the hardened manifest (retro F1, F7)"
+    owner: "Amelia, Platform Operations (jpiquot)"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-31-retro-2026-11-28.md"
+  - id: "epic-31-retro-item-103-register-and-remediate-eval-01-openbao-p"
+    epic: 31
+    action: "Register and remediate EVAL-01 (OpenBao peer-TLS SAN omission on hexalith-keys-1
+      and hexalith-keys-2): add a schema-compliant DW-NNN entry to deferred-work.md,
+      approve and execute spec-31-1-eval-01-peer-tls-remediation.md, and verify CA-validating
+      TLS across all three pods (retro F2)"
+    owner: "Jérôme Piquot (Platform Operations)"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-31-retro-2026-11-28.md"
+  - id: "epic-31-retro-item-104-close-story-31-1-31-2-security-guard-byp"
+    epic: 31
+    action: "Close Story 31.1/31.2 security-guard bypasses: anchor PublishedIdentifierMarkers
+      to word boundaries in OpenBaoPlatformDocumentationTests.cs, include URL-safe
+      base64 and tighten prose digest exemptions, parse deploy/openbao/smoke-test.yaml
+      via YamlDotNet for exact single-key ca.crt projection, remove packable Hexalith.Memories.Aspire
+      (and review Redis) from RuntimeSecretStoreMigrationTests.cs BoundaryProjects,
+      widen AC3/AC2 secret scans to cover the Nov 16-17 Story 31.1 artifacts, spec-31-*
+      and 31-2-*.md, and normalize deploy/dapr/components/secretstore.yaml to LF per
+      .gitattributes (retro F5, F9)"
+    owner: "Amelia, Murat"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-31-retro-2026-11-28.md"
+  - id: "epic-31-retro-item-105-close-epic-31-ci-and-runtime-output-veri"
+    epic: 31
+    action: "Close Epic 31 CI and runtime-output verification gaps: enroll RuntimeSecretStoreBootstrapTests
+      in tools/integration-fast-required-surfaces.txt, add process timeout, stderr
+      capture and unreachable_openbao assertion to RuntimeSecretStoreBootstrapTests.cs,
+      replace the vacuous Activity check in RuntimeSecretStoreMigrationTests.Output.cs
+      and expand AC2 runtime leak tests to OllamaEmbeddingProvider/OidcTokenProvider,
+      EmbeddingSecretStore inner exceptions, AccessTelemetry.Clock and CLI OutputFormat.Json,
+      reject CR/LF in DAPR_API_TOKEN in tools/probe-dapr-secret-scope.sh, and track
+      DW-781 BusyBox CI enrollment with Hexalith.CiCd (retro F6, F7)"
+    owner: "Murat, Amelia"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-31-retro-2026-11-28.md"
+  - id: "epic-31-retro-item-106-reconcile-epic-31-records-and-reassess-t"
+    epic: 31
+    action: "Reconcile Epic 31 records and reassess the fired Story 31.1 reopen trigger:
+      record the Story 31.2-activation reassessment of Story 31.1 reviewer-independence
+      divergence (docs/operations/openbao.md:383), update epics.md:6033 Story 31.2
+      status to done, update docs/governance/openbao-independent-security-review.md
+      and docs/operations/openbao-peer-tls-eval-01.md headers and tables to match
+      Story 31.1 done, refresh openbao.md:41 (Story 27.4 done), close DW-729, update
+      stale PG-ONPREM-1/substitution references in epics.md and epic-31-context.md,
+      and move epic-31 to done in sprint-status.yaml (retro F3)"
+    owner: "Paige, John"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-31-retro-2026-11-28.md"
+  - id: "epic-31-retro-item-107-execute-time-bounded-and-live-cluster-pl"
+    epic: 31
+    action: "Execute time-bounded and live-cluster Platform Operations follow-ups
+      before the 2026-12-28 backup expiry: resolve DW-785 (confirm OpenBao metadata
+      and delete the four grantless residue Secrets), DW-788 (document/verify Velero
+      backup at-rest encryption and access inventory), DW-783/DW-784 (resolve Redis
+      ACL TYPE error and move ext-secrets-1-isolated eventstore and tenants onto daprd
+      1.19.2), DW-789 (fix Redis/FalkorDB startup-probe newline handling), DW-782
+      (update Hexalith.McpCli 1.0.14.json probe SHA to 049756fd), and decide disposition
+      of unused Role/eventstore-dapr-secret-reader (retro F4)"
+    owner: "Jérôme Piquot (Platform Operations)"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-31-retro-2026-11-28.md"
+  - id: "epic-31-retro-item-108-enforce-recurring-process-lessons-in-too"
+    epic: 31
+    action: "Enforce recurring process lessons in tooling and BMAD policy: implement
+      epic-27-retro-item-69 in commitlint.config.mjs rejecting bare story/epic subjects
+      and non-code fix commits, enforce green exact-source CI before setting Status
+      done (epic-29-retro-item-89, epic-30-retro-item-99), distinguish automated/AI
+      technical security audit from multi-human countersignature in BMAD story templates
+      for solo-contributor repos, and prohibit bulk submodule pointer rewrites inside
+      story commits without origin/main verification (retro L1, L2, L3, L4, L5)"
+    owner: "Jérôme Piquot, John, Amelia"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-31-retro-2026-11-28.md"
+  - id: "epic-31-retro-item-109-register-epic-31-structural-debt-in-defe"
+    epic: 31
+    action: "Register Epic 31 structural debt in deferred-work.md: consolidate the
+      9 duplicated Deployment ResolveRepoRoot/ReadRepoFile helpers onto RepositoryRootLocator,
+      split OpenBaoPlatformDocumentationTests (2,829 lines across 4 partials) into
+      cohesive validator/test types, standardize Deployment tests on YamlDotNet, unify
+      OpenBao image and KV-prefix constants (epic-29-retro-item-85), harden fail_closed.py
+      port/YAML edge cases, and enforce concise story/evidence artifacts per hexalith-llm-instructions.md:365-366
+      (retro F7, F8, F9)"
+    owner: "Winston, Amelia"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-31-retro-2026-11-28.md"
