@@ -87,9 +87,13 @@ git show 00919bdd6fe97284da5f4f1657da4a5b336867cc:.github/workflows/ci.yml
 
 Restore its original combined `build` steps through a normal PR, removing the shared caller,
 source job and aggregate together. Preserve every specialized lane, the three required check names,
-and the audit exceptions. Adjust adoption fixtures to the approved rollback and run actionlint,
-`ci_alignment`, coverage, scope/readiness and CLI inventory checks before merge. The April branch
-protection evidence below stays historical evidence; this story performs no remote settings write.
+and the audit exceptions. Before merging, run `actionlint .github/workflows/ci.yml` and the
+`tests/tooling/coverage_gate` fixtures. Confirm the rollback PR passes `story-file-scope`, including
+its review-readiness check, and all three required checks.
+
+The former `ci_alignment` and `CiTestInventoryTests` fixtures are recorded at commit
+`5c1c22583fb4037997b266942a4fd4e05a245ebf`. The April branch protection evidence below records the
+settings observed at the time. Story 30.1 made no remote settings changes.
 
 ## Current Release Contract
 
